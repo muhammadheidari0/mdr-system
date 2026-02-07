@@ -1,0 +1,58 @@
+<header class="app-header">
+  <div class="header-right">
+    <button class="icon-btn menu-toggle" onclick="toggleSidebar()" title="منو">
+      <span class="material-icons-round">menu</span>
+    </button>
+  </div>
+
+  <div class="header-center">
+    <div class="header-search-box">
+      <input
+        id="globalDocSearchInput"
+        type="text"
+        placeholder="جستجوی سند..."
+        autocomplete="off"
+      />
+      <span class="material-icons-round search-icon">search</span>
+    </div>
+  </div>
+
+  <div class="header-left">
+    <div class="user-menu-container">
+      <button class="user-btn" onclick="toggleUserMenu()">
+        <span class="material-icons-round arrow">expand_more</span>
+        <span class="username">کاربر سیستم</span>
+        <div
+          class="avatar"
+          style="display:flex; align-items:center; justify-content:center; background:#0ea5e9; color:#fff; font-weight:700;"
+        >
+          US
+        </div>
+      </button>
+
+      <div id="user-dropdown" class="dropdown-menu">
+        <div class="user-info-header">
+          <div class="name">کاربر سیستم</div>
+          <div class="email">user@mdr.local</div>
+          <div class="role">کاربر</div>
+        </div>
+
+        <a href="#" class="dropdown-item" onclick="navigateTo('view-profile'); return false;">
+          <span class="material-icons-round">manage_accounts</span> تنظیمات کاربری
+        </a>
+
+        <a href="#" class="dropdown-item text-danger" onclick="window.authManager.logout(); return false;">
+          <span class="material-icons-round">logout</span> خروج
+        </a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof DocSearch === 'function') {
+      new DocSearch('globalDocSearchInput');
+    }
+  });
+</script>

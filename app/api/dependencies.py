@@ -1,0 +1,290 @@
+from __future__ import annotations
+from typing import Any, Dict, Generator, List
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from app.db.session import get_db as _get_db
+from app.db.models import (
+    RoleDisciplineScope,
+    RolePermission,
+    RoleProjectScope,
+    User,
+    UserDisciplineScope,
+    UserProjectScope,
+)
+from app.core.security import verify_token
+from app.core.roles import ALL_ROLES, ROLE_PERMISSIONS, Role, is_valid_role, normalize_role
+
+def get_db() -> Generator[Session, None, None]:
+    yield from _get_db()
+
+security = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    email = verify_token(credentials.credentials)
+    if email is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    
+    return user
+
+def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    if normalize_role(current_user.role) != Role.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    return current_user
+
+# ✅ کلاس جدید: مدیریت سطوح دسترسی
+class RoleChecker:
+    def __init__(self, allowed_roles: List[str]):
+        self.allowed_roles = [normalize_role(role) for role in allowed_roles]
+
+    def __call__(self, user: User = Depends(get_current_user)):
+        user_role = normalize_role(user.role)
+        if not is_valid_role(user_role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Unknown role: {user.role}"
+            )
+        # ادمین همیشه دسترسی دارد
+        if user_role == Role.ADMIN.value:
+            return user
+        if user_role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Required roles: {self.allowed_roles}"
+            )
+        return user
+
+# تعریف سطوح دسترسی استاندارد
+allow_viewer = RoleChecker([Role.ADMIN.value, Role.MANAGER.value, Role.DCC.value, Role.USER.value, Role.VIEWER.value])  # فقط خواندن
+allow_editor = RoleChecker([Role.ADMIN.value, Role.MANAGER.value, Role.DCC.value, Role.USER.value])                      # ایجاد و ویرایش
+allow_admin = RoleChecker([Role.ADMIN.value])                                                                # حذف و مدیریت
+
+# Permission-based access control (matrix-driven)
+def _fallback_permissions_for_role(role: str) -> set[str]:
+    try:
+        role_enum = Role(role)
+    except Exception:
+        return set()
+    perms = set(ROLE_PERMISSIONS.get(role_enum, []) or [])
+    return perms
+
+
+def _load_allowed_permissions(db: Session, role: str) -> set[str]:
+    has_rows = db.query(RolePermission.role).filter(RolePermission.role == role).first()
+    if has_rows:
+        rows = (
+            db.query(RolePermission.permission)
+            .filter(RolePermission.role == role, RolePermission.allowed == True)
+            .all()
+        )
+        return {perm for (perm,) in rows if perm}
+
+    # Fallback to static defaults when matrix is not seeded.
+    return _fallback_permissions_for_role(role)
+
+
+def _has_permission(db: Session, role: str, permission: str) -> bool:
+    allowed = _load_allowed_permissions(db, role)
+    if "*" in allowed:
+        return True
+    return permission in allowed
+
+
+class PermissionChecker:
+    def __init__(self, permission: str):
+        self.permission = str(permission or "").strip()
+
+    def __call__(self, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+        user_role = normalize_role(user.role)
+        if not is_valid_role(user_role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Unknown role: {user.role}",
+            )
+        if user_role == Role.ADMIN.value:
+            return user
+        if not self.permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Missing permission requirement",
+            )
+        if not _has_permission(db, user_role, self.permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Missing permission: {self.permission}",
+            )
+        return user
+
+
+def require_permission(permission: str) -> PermissionChecker:
+    return PermissionChecker(permission)
+
+
+def has_permission(db: Session, role: str, permission: str) -> bool:
+    role_key = normalize_role(role)
+    if not is_valid_role(role_key):
+        return False
+    if role_key == Role.ADMIN.value:
+        return True
+    if not str(permission or "").strip():
+        return False
+    return _has_permission(db, role_key, permission)
+
+def _normalize_scope_values(values: Any) -> List[str]:
+    if not isinstance(values, list):
+        return []
+    normalized: List[str] = []
+    for value in values:
+        norm = str(value or "").strip().upper()
+        if norm:
+            normalized.append(norm)
+    return sorted(set(normalized))
+
+
+def _default_scope_rules() -> Dict[str, Dict[str, List[str]]]:
+    return {
+        role: {
+            "projects": [],
+            "disciplines": [],
+        }
+        for role in ALL_ROLES
+    }
+
+
+def _load_scope_rules(db: Session) -> Dict[str, Dict[str, List[str]]]:
+    rules = _default_scope_rules()
+    for role, project_code in db.query(RoleProjectScope.role, RoleProjectScope.project_code).all():
+        role_key = normalize_role(role)
+        if role_key in rules:
+            rules[role_key]["projects"].append(str(project_code or "").strip().upper())
+    for role, discipline_code in db.query(
+        RoleDisciplineScope.role, RoleDisciplineScope.discipline_code
+    ).all():
+        role_key = normalize_role(role)
+        if role_key in rules:
+            rules[role_key]["disciplines"].append(str(discipline_code or "").strip().upper())
+
+    for role in ALL_ROLES:
+        rules[role]["projects"] = sorted(set(rules[role]["projects"]))
+        rules[role]["disciplines"] = sorted(set(rules[role]["disciplines"]))
+    return rules
+
+
+def _load_user_scope_rules(db: Session) -> Dict[str, Dict[str, List[str]]]:
+    normalized: Dict[str, Dict[str, List[str]]] = {}
+    for user_id, project_code in db.query(UserProjectScope.user_id, UserProjectScope.project_code).all():
+        key = str(user_id)
+        normalized.setdefault(key, {"projects": [], "disciplines": []})
+        normalized[key]["projects"].append(str(project_code or "").strip().upper())
+    for user_id, discipline_code in db.query(
+        UserDisciplineScope.user_id, UserDisciplineScope.discipline_code
+    ).all():
+        key = str(user_id)
+        normalized.setdefault(key, {"projects": [], "disciplines": []})
+        normalized[key]["disciplines"].append(str(discipline_code or "").strip().upper())
+
+    for key in list(normalized.keys()):
+        normalized[key]["projects"] = sorted(set(normalized[key]["projects"]))
+        normalized[key]["disciplines"] = sorted(set(normalized[key]["disciplines"]))
+    return normalized
+
+
+def _effective_scope_values(role_values: List[str], user_values: List[str]) -> tuple[List[str], bool]:
+    role_set = set(role_values)
+    user_set = set(user_values)
+    if role_set and user_set:
+        return sorted(role_set & user_set), True
+    if role_set:
+        return sorted(role_set), True
+    if user_set:
+        return sorted(user_set), True
+    return [], False
+
+
+def get_user_scope_filters(db: Session, user: User) -> Dict[str, Any]:
+    role = normalize_role(user.role)
+    if role == Role.ADMIN.value:
+        return {
+            "projects": [],
+            "disciplines": [],
+            "projects_restricted": False,
+            "disciplines_restricted": False,
+        }
+
+    role_scope = _load_scope_rules(db).get(role, {})
+    user_scope = _load_user_scope_rules(db).get(str(user.id), {})
+    projects, projects_restricted = _effective_scope_values(
+        _normalize_scope_values(role_scope.get("projects")),
+        _normalize_scope_values(user_scope.get("projects")),
+    )
+    disciplines, disciplines_restricted = _effective_scope_values(
+        _normalize_scope_values(role_scope.get("disciplines")),
+        _normalize_scope_values(user_scope.get("disciplines")),
+    )
+    return {
+        "projects": projects,
+        "disciplines": disciplines,
+        "projects_restricted": projects_restricted,
+        "disciplines_restricted": disciplines_restricted,
+    }
+
+
+def enforce_scope_access(
+    db: Session,
+    user: User,
+    *,
+    project_code: str | None = None,
+    discipline_code: str | None = None,
+) -> None:
+    role = normalize_role(user.role)
+    if role == Role.ADMIN.value:
+        return
+
+    filters = get_user_scope_filters(db, user)
+    project = str(project_code or "").strip().upper()
+    discipline = str(discipline_code or "").strip().upper()
+
+    if project and filters["projects_restricted"] and project not in filters["projects"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied for project: {project}",
+        )
+    if discipline and filters["disciplines_restricted"] and discipline not in filters["disciplines"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access denied for discipline: {discipline}",
+        )
+
+
+def apply_scope_query_filters(
+    query,
+    db: Session,
+    user: User,
+    *,
+    project_column=None,
+    discipline_column=None,
+):
+    role = normalize_role(user.role)
+    if role == Role.ADMIN.value:
+        return query
+
+    filters = get_user_scope_filters(db, user)
+    if project_column is not None and filters["projects_restricted"]:
+        query = query.filter(project_column.in_(filters["projects"]))
+    if discipline_column is not None and filters["disciplines_restricted"]:
+        query = query.filter(discipline_column.in_(filters["disciplines"]))
+    return query

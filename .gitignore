@@ -1,0 +1,42 @@
+# --- Python & System Files ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Security (بسیار مهم) ---
+# فایل .env حاوی تنظیمات محرمانه است و نباید در گیت باشد
+.env
+.env.local
+
+# --- Database ---
+# دیتابیس‌های SQLite و فایل‌های ژورنال نباید آپلود شوند
+*.db
+*.sqlite3
+*.sqlite
+*.db-journal
+
+# پوشه دیتابیس: فقط فایل‌های SQL (ساختار) آپلود شوند، نه خود دیتابیس‌های سنگین
+mdr_app/database/*.db
+mdr_app/database/backups/
+database/backups/
+
+# --- User Files & Media (فایل‌های سنگین) ---
+# پوشه files شما حاوی PDFها و نقشه‌های فنی است (T202 - Almas Tower...)
+# این‌ها حجم گیت را منفجر می‌کنند و نباید آپلود شوند.
+mdr_app/files/
+files/
+uploads/
+archive_files/
+
+# --- Logs & Temp Files ---
+*.log
+tree.txt
+tree01.txt
+celerybeat-schedule

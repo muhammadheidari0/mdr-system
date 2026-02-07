@@ -1,0 +1,998 @@
+<div id="view-archive" class="view-section" style="display: none;">
+    
+    <div class="archive-card">
+        <div class="archive-header">
+            <div class="archive-title">
+                <span class="material-icons-round" style="color:#3b82f6; font-size:28px;">inventory_2</span>
+                آرشیو فایل‌های پروژه
+            </div>
+            <button class="btn-archive-primary" onclick="archiveOpenModal()">
+                <span class="material-icons-round">cloud_upload</span> آپلود فایل
+            </button>
+        </div>
+
+        <div class="archive-toolbar">
+            <div class="archive-search-box">
+                <span class="material-icons-round archive-search-icon">search</span>
+                <input type="text" id="archiveSearchInput" class="archive-search-input" placeholder="جستجو..." onkeyup="archiveDebouncedSearch()">
+            </div>
+            <div class="archive-filter-group">
+                <select id="archiveProjectFilter" class="archive-filter-select" onchange="archiveApplyFilters()">
+                    <option value="">All Projects</option>
+                </select>
+                <select id="archiveDisciplineFilter" class="archive-filter-select" onchange="archiveApplyFilters()">
+                    <option value="">All Disciplines</option>
+                </select>
+                <select id="archiveStatusFilter" class="archive-filter-select" onchange="archiveApplyFilters()">
+                    <option value="">All Statuses</option>
+                    <option value="IFA">IFA</option>
+                    <option value="IFC">IFC</option>
+                    <option value="IFI">IFI</option>
+                    <option value="AB">AB</option>
+                </select>
+                <input type="date" id="archiveDateFromFilter" class="archive-filter-date" onchange="archiveApplyFilters()">
+                <input type="date" id="archiveDateToFilter" class="archive-filter-date" onchange="archiveApplyFilters()">
+                <button class="btn-archive-icon" type="button" onclick="archiveResetFilters()" title="Clear filters">
+                    <span class="material-icons-round">filter_alt_off</span>
+                </button>
+            </div>
+            <div style="flex:1;"></div>
+            <button class="btn-archive-icon" onclick="archiveLoadFiles()" title="بروزرسانی">
+                <span class="material-icons-round">refresh</span>
+            </button>
+        </div>
+
+        <div style="flex:1; overflow-x:auto;">
+            <table class="archive-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px">#</th>
+                        <th>نام فایل آرشیو شده</th>
+                        <th>شماره سند</th>
+                        <th>ریویژن</th>
+                        <th>وضعیت</th>
+                        <th>حجم</th>
+                        <th>تاریخ آپلود</th>
+                        <th style="width:86px">PDF</th>
+                        <th style="width:98px">فایل اصلی</th>
+                        <th style="width:130px">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="archiveTableBody"></tbody>
+            </table>
+            
+            <div id="archiveLoader" style="text-align:center; padding:40px; display:none;">
+                <span class="material-icons-round" style="font-size:32px; animation: spin 1s linear infinite; color:#9ca3af;">loop</span>
+                <p style="color:#6b7280; font-size:0.9rem; margin-top:10px;">در حال دریافت اطلاعات...</p>
+            </div>
+            
+            <div id="archiveEmpty" style="text-align:center; padding:50px; display:none;">
+                <span class="material-icons-round" style="font-size:48px; color:#e5e7eb;">folder_off</span>
+                <p style="color:#9ca3af; margin-top:10px;">هیچ فایلی یافت نشد.</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="archiveUploadModal" class="am-modal-overlay">
+        <div class="am-modal-box">
+            <div style="border-bottom:1px solid #eee; padding-bottom:10px; margin-bottom:15px;">
+                <h3 style="margin:0; font-size:1.1rem; color:#1f2937;">آپلود و ثبت مدرک</h3>
+            </div>
+            
+            <form id="archiveUploadForm" onsubmit="archiveHandleUpload(event)">
+                <input type="hidden" id="realDocId" name="document_id">
+
+                <div class="archive-upload-grid">
+                    <div id="archivePdfDropzone" data-kind="pdf" class="am-dropzone archive-dropzone is-pdf" onclick="document.getElementById('archivePdfFileInput').click()">
+                        <span class="material-icons-round" style="font-size:36px; color:#dc2626;">picture_as_pdf</span>
+                        <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">خروجی غیرقابل ویرایش (اجباری)</p>
+                        <p class="archive-dropzone-sub">PDF / تصویر / DWF / DWFX</p>
+                        <div id="archivePdfFileName" class="archive-file-name"></div>
+                        <div id="archivePdfValidation" class="archive-file-validation"></div>
+                    </div>
+
+                    <div id="archiveNativeDropzone" data-kind="native" class="am-dropzone archive-dropzone is-native" onclick="document.getElementById('archiveNativeFileInput').click()">
+                        <span class="material-icons-round" style="font-size:36px; color:#2563eb;">description</span>
+                        <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">فایل قابل ویرایش (اختیاری)</p>
+                        <p class="archive-dropzone-sub">DWG / DOCX / XLSX / ...</p>
+                        <div id="archiveNativeFileName" class="archive-file-name"></div>
+                        <div id="archiveNativeValidation" class="archive-file-validation"></div>
+                    </div>
+                </div>
+                <input type="file" id="archivePdfFileInput" name="file" accept=".pdf,.dwf,.dwfx,image/*,application/pdf,image/png,image/jpeg,image/webp,image/tiff,image/bmp,image/gif" hidden onchange="archiveOnFileSelect(this, 'pdf')">
+                <input type="file" id="archiveNativeFileInput" name="native_file" hidden onchange="archiveOnFileSelect(this, 'native')">
+                <div class="archive-upload-hint">Drag & Drop یا کلیک کنید. فایل خروجی باید غیرقابل ویرایش باشد و فایل Native برای نسخه قابل ویرایش است.</div>
+
+                <button type="button" id="toggleModeBtn" class="mode-toggle-btn" onclick="toggleRegistrationMode()">
+                    <span class="material-icons-round">tune</span> تغییر به حالت ثبت کامل (پیشرفته)
+                </button>
+
+                <div style="background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    
+                    <div id="quickModeContainer">
+                        <div style="margin-bottom:10px;">
+                            <label class="form-label-sm">شماره سند (Doc Code):</label>
+                            <div style="display:flex; gap:5px;">
+                                <input type="text" id="smartDocCode" class="archive-search-input" placeholder="T202-ECAR0101-TGEN" oninput="archiveOnDocCodeInput()" onkeydown="archiveHandleDocCodeKey(event)" onchange="checkDocStatus()">
+                                <button type="button" class="btn-archive-icon" onclick="checkDocStatus()"><span class="material-icons-round">search</span></button>
+                            </div>
+                            <div id="docStatusMsg" style="font-size:0.75rem; margin-top:5px; min-height:18px;"></div>
+                        </div>
+                        <div id="newDocumentFields" style="display:none; margin-top:10px;">
+                            <div style="background:#eff6ff; padding:10px; border-radius:6px; margin-bottom:10px;">
+                                <p style="margin:0; font-size:0.8rem; color:#1e40af;">اگر سند جدید است، عناوین را وارد کنید:</p>
+                            </div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                                <input type="text" id="subjectE" class="archive-search-input" placeholder="English Title">
+                                <input type="text" id="subjectP" class="archive-search-input" placeholder="عنوان فارسی">
+                            </div>
+                            <div style="margin-top:10px;">
+                                <button type="button" class="btn-archive-primary" style="font-size:0.8rem; background:#10b981;" onclick="createDocumentWithSubjects()">ساخت سریع</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="fullModeContainer" style="display:none;">
+                        <div style="background:#f0fdf4; padding:10px; border-radius:6px; margin-bottom:15px; border:1px solid #bbf7d0;">
+                            <p style="margin:0; font-size:0.8rem; color:#166534;">ثبت دقیق: اطلاعات را وارد کنید تا سریال محاسبه شود.</p>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                            <div>
+                                <label class="form-label-sm">Project</label>
+                                <select name="project_code" id="regProject" class="archive-search-input" onchange="onProjectChange()"></select>
+                            </div>
+                            <div>
+                                <label class="form-label-sm">MDR Code</label>
+                                <select name="mdr_code" id="regMdr" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                            </div>
+                            <div>
+                                <label class="form-label-sm">Phase</label>
+                                <select name="phase" id="regPhase" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                            </div>
+                        </div>
+                        
+                        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                            <div>
+                                <label class="form-label-sm">Discipline</label>
+                                <select name="discipline" id="regDisc" class="archive-search-input" onchange="onDisciplineChange()"></select>
+                            </div>
+                            <div>
+                                <label class="form-label-sm">Package</label>
+                                <select name="package" id="regPkg" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                            </div>
+                            <div>
+                                <label class="form-label-sm">Serial (Auto)</label>
+                                <input type="text" name="serial" id="regSerial" class="archive-search-input" readonly style="background:#f3f4f6; text-align:center;">
+                            </div>
+                        </div>
+                        
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
+                            <div>
+                                <label class="form-label-sm">Block</label>
+                                <select name="block" id="regBlock" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                            </div>
+                            <div>
+                                <label class="form-label-sm">Level</label>
+                                <select name="level" id="regLevel" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom:15px;">
+                            <label class="form-label-sm" style="color:#2563eb;">پیش‌نمایش شماره سند:</label>
+                            <input type="text" name="doc_number" id="fullDocNumber" class="archive-search-input" style="font-family:monospace; font-weight:bold; color:#2563eb; background:#eff6ff; direction:ltr; text-align:center;" readonly>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                            <input type="text" id="regSubjectE" name="subject_e" class="archive-search-input" placeholder="English Subject">
+                            <input type="text" id="regSubjectP" name="subject_p" class="archive-search-input" placeholder="توضیحات فارسی" onblur="updateSerialAndPreview()">
+                        </div>
+                        </div>
+                    </div>
+
+                    <div id="statusPanel" style="display:block; margin-top:20px; border-top:2px solid #e5e7eb; padding-top:15px;">
+                        <div id="prevInfo" style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:0.85rem;">
+                            <span style="color:#666;">ریویژن قبلی: <b id="prevRev">-</b></span>
+                            <span style="color:#666;">وضعیت فعلی: <b id="prevStatus">-</b></span>
+                        </div>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:15px;">
+                            <div>
+                                <label class="form-label-sm">Revision</label>
+                                <input type="text" name="revision" id="newRevInput" class="archive-search-input" style="text-align:center;" value="00" required>
+                            </div>
+                            <div>
+                                <label class="form-label-sm">Status</label>
+                                <select name="status" class="archive-search-input">
+                                    <option value="IFA">IFA (Approval)</option>
+                                    <option value="IFC">IFC (Construction)</option>
+                                    <option value="IFI">IFI (Info)</option>
+                                    <option value="AB">As-Built</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="archive-modal-actions">
+                    <button type="button" class="btn-archive-primary btn-archive-secondary" onclick="archiveCloseModal()">انصراف</button>
+                    <button type="submit" id="btnArchiveSubmit" class="btn-archive-primary" disabled>تایید و آپلود نهایی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="archiveHistoryModal" class="am-modal-overlay">
+        <div class="am-modal-box" style="max-width: 920px;">
+            <div style="border-bottom:1px solid #eee; padding-bottom:10px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+                <h3 style="margin:0; font-size:1.1rem; color:#1f2937;">Revision History</h3>
+                <button type="button" class="btn-archive-icon" onclick="archiveCloseHistoryModal()">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div id="archiveHistoryMeta" style="margin-bottom:10px; color:#334155; font-size:0.9rem;"></div>
+            <div id="archiveHistoryBody" style="max-height: 60vh; overflow:auto; border:1px solid #e5e7eb; border-radius:8px; padding:10px;">
+                <div style="text-align:center; color:#94a3b8;">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Archive page logic
+        let isFullMode = false;
+        let allPackages = [];
+        let allBlocks = [];
+        let archiveFormDataCache = null;
+        let archiveFormDataPromise = null;
+        let archiveDropzonesBound = false;
+
+        const ARCHIVE_OUTPUT_ALLOWED_EXTENSIONS = new Set([
+            'pdf', 'dwf', 'dwfx', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp', 'gif', 'webp'
+        ]);
+        const ARCHIVE_NATIVE_BLOCKED_EXTENSIONS = new Set([
+            'exe', 'msi', 'bat', 'cmd', 'ps1', 'vbs', 'js', 'jse', 'hta', 'scr', 'com', 'dll', 'reg'
+        ]);
+
+        function archiveFileExtension(fileName = '') {
+            const name = String(fileName || '').trim();
+            const idx = name.lastIndexOf('.');
+            if (idx < 0) return '';
+            return name.substring(idx + 1).toLowerCase();
+        }
+
+        function archiveFormatFileSize(bytes = 0) {
+            const size = Number(bytes || 0);
+            if (!Number.isFinite(size) || size <= 0) return '-';
+            if (size < 1024) return `${size} B`;
+            if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+            if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+            return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+        }
+
+        function archiveSetDropzoneState(kind, state = 'idle') {
+            const zone = document.getElementById(kind === 'native' ? 'archiveNativeDropzone' : 'archivePdfDropzone');
+            if (!zone) return;
+            zone.classList.remove('is-dragover', 'is-invalid', 'is-valid');
+            if (state === 'dragover') zone.classList.add('is-dragover');
+            if (state === 'invalid') zone.classList.add('is-invalid');
+            if (state === 'valid') zone.classList.add('is-valid');
+        }
+
+        function archiveSetValidationMessage(kind, message = '', level = 'info') {
+            const el = document.getElementById(kind === 'native' ? 'archiveNativeValidation' : 'archivePdfValidation');
+            if (!el) return;
+            el.classList.remove('is-error', 'is-success', 'is-info');
+            if (!message) {
+                el.textContent = '';
+                return;
+            }
+            const cls = level === 'error' ? 'is-error' : (level === 'success' ? 'is-success' : 'is-info');
+            el.classList.add(cls);
+            el.textContent = message;
+        }
+
+        function archiveValidateFileByKind(file, kind = 'pdf') {
+            if (!file) {
+                return { ok: false, message: 'فایلی انتخاب نشده است.' };
+            }
+            const ext = archiveFileExtension(file.name);
+            if (!ext) {
+                return { ok: false, message: 'پسوند فایل قابل تشخیص نیست.' };
+            }
+            if (kind === 'pdf') {
+                if (!ARCHIVE_OUTPUT_ALLOWED_EXTENSIONS.has(ext)) {
+                    return { ok: false, message: 'فرمت فایل خروجی باید PDF، تصویر یا DWF/DWFX باشد.' };
+                }
+                return { ok: true, message: 'فرمت فایل خروجی معتبر است.' };
+            }
+            if (ARCHIVE_NATIVE_BLOCKED_EXTENSIONS.has(ext)) {
+                return { ok: false, message: 'این نوع فایل برای Native مجاز نیست.' };
+            }
+            return { ok: true, message: 'فرمت Native معتبر تشخیص داده شد.' };
+        }
+
+        function archiveAssignFileToInput(file, kind = 'pdf') {
+            const input = document.getElementById(kind === 'native' ? 'archiveNativeFileInput' : 'archivePdfFileInput');
+            if (!input || !file) return false;
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function archiveValidateSelectedFilesBeforeSubmit(pdfFile, nativeFile) {
+            const pdfValidation = archiveValidateFileByKind(pdfFile, 'pdf');
+            if (!pdfValidation.ok) return { ...pdfValidation, kind: 'pdf' };
+            if (nativeFile) {
+                const nativeValidation = archiveValidateFileByKind(nativeFile, 'native');
+                if (!nativeValidation.ok) return { ...nativeValidation, kind: 'native' };
+            }
+            return { ok: true };
+        }
+
+        function archiveInitDropzones() {
+            if (archiveDropzonesBound) return;
+            archiveDropzonesBound = true;
+            const dropzones = document.querySelectorAll('.archive-dropzone[data-kind]');
+            dropzones.forEach((zone) => {
+                const kind = zone.getAttribute('data-kind') === 'native' ? 'native' : 'pdf';
+                const stop = (event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                };
+                zone.addEventListener('dragenter', (event) => {
+                    stop(event);
+                    archiveSetDropzoneState(kind, 'dragover');
+                });
+                zone.addEventListener('dragover', (event) => {
+                    stop(event);
+                    archiveSetDropzoneState(kind, 'dragover');
+                });
+                zone.addEventListener('dragleave', (event) => {
+                    stop(event);
+                    archiveSetDropzoneState(kind, 'idle');
+                });
+                zone.addEventListener('drop', (event) => {
+                    stop(event);
+                    archiveSetDropzoneState(kind, 'idle');
+                    const file = event.dataTransfer?.files?.[0];
+                    if (!file) return;
+                    const check = archiveValidateFileByKind(file, kind);
+                    if (!check.ok) {
+                        archiveSetDropzoneState(kind, 'invalid');
+                        archiveSetValidationMessage(kind, check.message, 'error');
+                        return;
+                    }
+                    if (!archiveAssignFileToInput(file, kind)) {
+                        archiveSetDropzoneState(kind, 'invalid');
+                        archiveSetValidationMessage(kind, 'مرورگر امکان ثبت فایل کشیده‌شده را نداد. لطفاً فایل را دستی انتخاب کنید.', 'error');
+                        return;
+                    }
+                    const input = document.getElementById(kind === 'native' ? 'archiveNativeFileInput' : 'archivePdfFileInput');
+                    archiveOnFileSelect(input, kind);
+                });
+            });
+        }
+
+        if(document.getElementById('view-archive').style.display !== 'none') {
+            archiveLoadFilterCatalog();
+            archiveLoadFiles();
+        }
+
+        async function archiveGetFormData(force = false) {
+            if (!force && archiveFormDataCache) {
+                return archiveFormDataCache;
+            }
+            if (!force && archiveFormDataPromise) {
+                return archiveFormDataPromise;
+            }
+            archiveFormDataPromise = (async () => {
+                const res = await fetchWithAuth('/api/v1/archive/form-data');
+                const payload = await res.json();
+                archiveFormDataCache = payload;
+                return payload;
+            })();
+            try {
+                return await archiveFormDataPromise;
+            } finally {
+                archiveFormDataPromise = null;
+            }
+        }
+
+        async function loadFormData() {
+            try {
+                const data = await archiveGetFormData();
+                allPackages = data.packages; 
+                allBlocks = data.blocks;
+                const fillSimple = (id, arr) => {
+                    const el = document.getElementById(id);
+                    if(!el) return;
+                    el.innerHTML = '';
+                    arr.forEach(val => { const op = document.createElement('option'); op.value = val; op.innerText = val; el.appendChild(op); });
+                };
+                const fillObject = (id, arr) => {
+                    const el = document.getElementById(id);
+                    if(!el) return;
+                    el.innerHTML = '';
+                    arr.forEach(item => { const op = document.createElement('option'); op.value = item.code; op.innerText = item.name ? `${item.code} - ${item.name}` : item.code; el.appendChild(op); });
+                };
+                fillObject('regProject', data.projects);
+                fillObject('regDisc', data.disciplines);
+                fillObject('regMdr', data.mdr_categories);
+                fillObject('regPhase', data.phases);
+                fillSimple('regLevel', data.levels);
+                onProjectChange();
+                onDisciplineChange();
+            } catch(e) { console.error("Error loading form data", e); }
+        }
+
+        async function archiveLoadFilterCatalog() {
+            try {
+                const data = await archiveGetFormData();
+                const projectSelect = document.getElementById('archiveProjectFilter');
+                const disciplineSelect = document.getElementById('archiveDisciplineFilter');
+                const prevProject = projectSelect?.value || '';
+                const prevDiscipline = disciplineSelect?.value || '';
+
+                if (projectSelect) {
+                    projectSelect.innerHTML = '<option value="">All Projects</option>';
+                    (data.projects || []).forEach((item) => {
+                        const op = document.createElement('option');
+                        op.value = item.code;
+                        op.innerText = item.name ? `${item.code} - ${item.name}` : item.code;
+                        projectSelect.appendChild(op);
+                    });
+                    if (prevProject) projectSelect.value = prevProject;
+                }
+
+                if (disciplineSelect) {
+                    disciplineSelect.innerHTML = '<option value="">All Disciplines</option>';
+                    (data.disciplines || []).forEach((item) => {
+                        const op = document.createElement('option');
+                        op.value = item.code;
+                        op.innerText = item.name ? `${item.code} - ${item.name}` : item.code;
+                        disciplineSelect.appendChild(op);
+                    });
+                    if (prevDiscipline) disciplineSelect.value = prevDiscipline;
+                }
+            } catch (error) {
+                console.error('Error loading archive filter catalog', error);
+            }
+        }
+
+        function onProjectChange() {
+            const selectedProj = document.getElementById('regProject').value;
+            const el = document.getElementById('regBlock');
+            el.innerHTML = '';
+            const filtered = allBlocks.filter(b => b.project_code === selectedProj);
+            if(filtered.length === 0) { const op = document.createElement('option'); op.value = 'G'; op.innerText = 'G - General'; el.appendChild(op); } 
+            else { filtered.forEach(b => { const op = document.createElement('option'); op.value = b.code; op.innerText = b.name ? `${b.code} - ${b.name}` : b.code; el.appendChild(op); }); }
+            updateSerialAndPreview();
+        }
+
+        function onDisciplineChange() {
+            const selectedDisc = document.getElementById('regDisc').value;
+            const el = document.getElementById('regPkg');
+            el.innerHTML = '';
+            const filtered = allPackages.filter(p => p.discipline_code === selectedDisc);
+            if (filtered.length === 0) { const op = document.createElement('option'); op.value = ""; op.innerText = "(پکیجی یافت نشد)"; op.disabled = true; op.selected = true; el.appendChild(op); } 
+            else { filtered.forEach(p => { const op = document.createElement('option'); op.value = p.code; op.innerText = p.name ? `${p.code} - ${p.name}` : p.code; el.appendChild(op); }); }
+            updateSerialAndPreview();
+        }
+
+        async function updateSerialAndPreview() {
+            const project = document.getElementById('regProject').value;
+            const mdr = document.getElementById('regMdr').value;
+            const phase = document.getElementById('regPhase').value;
+            const pkg = document.getElementById('regPkg').value;
+            const disc = document.getElementById('regDisc').value;
+            const block = document.getElementById('regBlock').value;
+            const level = document.getElementById('regLevel').value;
+            const subjP = document.getElementById('regSubjectP').value.trim();
+            if(!project || !mdr || !phase) return;
+            document.getElementById('fullDocNumber').value = "Calculating...";
+            try {
+                const params = new URLSearchParams({ project_code: project, mdr_code: mdr, phase: phase, pkg: pkg, discipline: disc, block: block, level: level, subject_p: subjP });
+                const res = await fetchWithAuth(`/api/v1/archive/next-serial?${params}`);
+                const data = await res.json();
+                document.getElementById('regSerial').value = data.serial;
+                document.getElementById('fullDocNumber').value = data.full_doc;
+            } catch(e) { document.getElementById('fullDocNumber').value = "Error"; }
+        }
+
+        function toggleRegistrationMode() {
+            isFullMode = !isFullMode;
+            const quick = document.getElementById('quickModeContainer');
+            const full = document.getElementById('fullModeContainer');
+            const btn = document.getElementById('toggleModeBtn');
+            const prevInfo = document.getElementById('prevInfo');
+            if(isFullMode) {
+                quick.style.display = 'none'; full.style.display = 'block';
+                btn.innerHTML = '<span class="material-icons-round">speed</span> بازگشت به حالت سریع'; btn.classList.add('active'); prevInfo.style.display = 'none';
+                if(document.getElementById('regProject').options.length === 0) loadFormData();
+            } else {
+                full.style.display = 'none'; quick.style.display = 'block';
+                btn.innerHTML = '<span class="material-icons-round">tune</span> تغییر به حالت ثبت کامل'; btn.classList.remove('active'); prevInfo.style.display = 'flex';
+            }
+            archiveRefreshSubmitButtonState();
+        }
+
+        function archiveRefreshSubmitButtonState() {
+            const submitBtn = document.getElementById('btnArchiveSubmit');
+            if (!submitBtn) return;
+            if (isFullMode) {
+                submitBtn.disabled = false;
+                return;
+            }
+            const code = String(document.getElementById('smartDocCode')?.value || '').trim();
+            submitBtn.disabled = code.length < 5;
+        }
+
+        function archiveOnDocCodeInput() {
+            const code = String(document.getElementById('smartDocCode')?.value || '').trim();
+            const msgEl = document.getElementById('docStatusMsg');
+            document.getElementById('realDocId').value = '';
+            if (code.length < 5) {
+                if (msgEl) msgEl.innerHTML = '';
+                const newFields = document.getElementById('newDocumentFields');
+                if (newFields) newFields.style.display = 'none';
+                archiveRefreshSubmitButtonState();
+                return;
+            }
+            archiveRefreshSubmitButtonState();
+            clearTimeout(window.archiveDocCodeTimer);
+            window.archiveDocCodeTimer = setTimeout(() => {
+                checkDocStatus();
+            }, 350);
+        }
+
+        function archiveHandleDocCodeKey(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                checkDocStatus();
+            }
+        }
+
+        function archiveEsc(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        async function archiveLoadFiles(searchValue = null) {
+            const tbody = document.getElementById('archiveTableBody');
+            const loader = document.getElementById('archiveLoader');
+            const empty = document.getElementById('archiveEmpty');
+            const searchInput = document.getElementById('archiveSearchInput');
+            const projectFilter = document.getElementById('archiveProjectFilter');
+            const disciplineFilter = document.getElementById('archiveDisciplineFilter');
+            const statusFilter = document.getElementById('archiveStatusFilter');
+            const dateFromFilter = document.getElementById('archiveDateFromFilter');
+            const dateToFilter = document.getElementById('archiveDateToFilter');
+            tbody.innerHTML=''; loader.style.display='block'; empty.style.display='none';
+            try {
+                if (projectFilter && projectFilter.options.length <= 1) {
+                    await archiveLoadFilterCatalog();
+                }
+                const search = String(searchValue ?? searchInput?.value ?? '').trim();
+                const params = new URLSearchParams();
+                if (search) params.set('search', search);
+                if (projectFilter?.value) params.set('project_code', projectFilter.value);
+                if (disciplineFilter?.value) params.set('discipline_code', disciplineFilter.value);
+                if (statusFilter?.value) params.set('status', statusFilter.value);
+                if (dateFromFilter?.value) params.set('date_from', dateFromFilter.value);
+                if (dateToFilter?.value) params.set('date_to', dateToFilter.value);
+                const url = `/api/v1/archive/list${params.toString() ? `?${params.toString()}` : ''}`;
+                const res = await fetchWithAuth(url);
+                const data = await res.json();
+                if(data.ok && data.data.length > 0) {
+                    tbody.innerHTML = data.data.map((f,i)=>{
+                        const sizeText = f.size ? `${(f.size / 1024).toFixed(1)} KB` : '-';
+                        const uploadedAt = f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString('fa-IR') : '-';
+                        const pdfId = Number(f.pdf_file_id || 0);
+                        const nativeId = Number(f.native_file_id || 0);
+                        const hasNative = nativeId > 0;
+                        const hasPdf = pdfId > 0;
+                        return `
+                            <tr>
+                                <td style="color:#9ca3af;">${i+1}</td>
+                                <td style="direction:ltr;text-align:right;">${archiveEsc(f.name)}</td>
+                                <td style="font-family:monospace;color:#3b82f6;">${archiveEsc(f.doc_number)}</td>
+                                <td><span class="file-badge">${archiveEsc(f.revision)}</span></td>
+                                <td><span class="file-badge" style="background:#fef3c7;color:#92400e;">${archiveEsc(f.status)}</span></td>
+                                <td>${sizeText}</td>
+                                <td>${uploadedAt}</td>
+                                <td style="text-align:center;">
+                                    <button class="btn-archive-icon archive-download-btn is-pdf" title="دانلود PDF" ${hasPdf ? '' : 'disabled'} onclick="archiveDownloadByKind(${pdfId}, ${nativeId}, 'pdf')">
+                                        <span class="material-icons-round" style="font-size:18px;">picture_as_pdf</span>
+                                    </button>
+                                </td>
+                                <td style="text-align:center;">
+                                    <button class="btn-archive-icon archive-download-btn is-native" title="دانلود فایل اصلی" ${hasNative ? '' : 'disabled'} onclick="archiveDownloadByKind(${pdfId}, ${nativeId}, 'native')">
+                                        <span class="material-icons-round" style="font-size:18px;">description</span>
+                                    </button>
+                                </td>
+                                <td>
+                                    <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                                        <button class="btn-archive-icon" title="Copy Doc Number" onclick="archiveCopyDocNumber('${archiveEsc(f.doc_number)}')">
+                                            <span class="material-icons-round" style="font-size:18px;">content_copy</span>
+                                        </button>
+                                        <button class="btn-archive-icon" title="Revision History" onclick="archiveOpenHistory(${Number(f.document_id || 0)}, '${archiveEsc(f.doc_number)}')">
+                                            <span class="material-icons-round" style="font-size:18px;">history</span>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>`;
+                    }).join('');
+                } else { empty.style.display='block'; }
+            } catch(e){console.error(e);} finally {loader.style.display='none';}
+        }
+
+        function archiveApplyFilters() {
+            archiveLoadFiles();
+        }
+
+        function archiveResetFilters() {
+            const projectFilter = document.getElementById('archiveProjectFilter');
+            const disciplineFilter = document.getElementById('archiveDisciplineFilter');
+            const statusFilter = document.getElementById('archiveStatusFilter');
+            const dateFromFilter = document.getElementById('archiveDateFromFilter');
+            const dateToFilter = document.getElementById('archiveDateToFilter');
+            if (projectFilter) projectFilter.value = '';
+            if (disciplineFilter) disciplineFilter.value = '';
+            if (statusFilter) statusFilter.value = '';
+            if (dateFromFilter) dateFromFilter.value = '';
+            if (dateToFilter) dateToFilter.value = '';
+            archiveLoadFiles();
+        }
+
+        async function checkDocStatus() {
+            const code = document.getElementById('smartDocCode').value.trim();
+            const msgEl = document.getElementById('docStatusMsg');
+            const newFields = document.getElementById('newDocumentFields');
+            if(code.length < 5) {
+                archiveRefreshSubmitButtonState();
+                return;
+            }
+            msgEl.innerHTML = `<span style="color:blue">در حال بررسی...</span>`;
+            try {
+                const res = await fetchWithAuth(`/api/v1/archive/check-status?doc_code=${encodeURIComponent(code)}`);
+                const data = await res.json();
+                if(data.exists) {
+                    msgEl.innerHTML = `<span style="color:green">یافت شد: ${data.title}</span>`;
+                    document.getElementById('realDocId').value = data.document_id;
+                    document.getElementById('newRevInput').value = data.next_revision_suggestion;
+                    document.getElementById('prevRev').innerText = data.last_revision;
+                    document.getElementById('prevStatus').innerText = data.last_status;
+                    newFields.style.display = 'none';
+                } else {
+                    msgEl.innerHTML = `<span style="color:orange">سند جدید است.</span>`;
+                    newFields.style.display = 'block';
+                }
+            } catch(e) {
+                msgEl.innerHTML = "خطا";
+            } finally {
+                archiveRefreshSubmitButtonState();
+            }
+        }
+
+        async function createDocumentWithSubjects() {
+            const code = document.getElementById('smartDocCode').value.trim();
+            const subE = document.getElementById('subjectE').value;
+            const subP = document.getElementById('subjectP').value;
+            const msgEl = document.getElementById('docStatusMsg');
+            msgEl.innerHTML = `<span style="color:blue">در حال ساخت...</span>`;
+            try {
+                const res = await fetchWithAuth(`/api/v1/archive/check-status?doc_code=${code}&subject_e=${subE}&subject_p=${subP}`);
+                const data = await res.json();
+                if(data.exists) {
+                    msgEl.innerHTML = `<span style="color:green">ثبت شد</span>`;
+                    document.getElementById('realDocId').value = data.document_id;
+                    document.getElementById('newDocumentFields').style.display='none';
+                    archiveRefreshSubmitButtonState();
+                }
+            } catch(e) { msgEl.innerHTML = "خطا"; }
+        }
+
+        async function archiveHandleUpload(e) {
+            e.preventDefault();
+            const form = e.target;
+            const btn = document.getElementById('btnArchiveSubmit');
+            const docId = Number(document.getElementById('realDocId').value || 0);
+            const pdfFile = document.getElementById('archivePdfFileInput')?.files?.[0];
+            const nativeFile = document.getElementById('archiveNativeFileInput')?.files?.[0];
+            const revision = String(document.getElementById('newRevInput')?.value || '00').trim() || '00';
+            const status = String(form.querySelector('select[name="status"]')?.value || 'IFA').trim() || 'IFA';
+            const submitText = "تایید و آپلود نهایی";
+
+            if (!pdfFile) {
+                archiveSetDropzoneState('pdf', 'invalid');
+                archiveSetValidationMessage('pdf', 'فایل خروجی الزامی است.', 'error');
+                return;
+            }
+
+            const validation = archiveValidateSelectedFilesBeforeSubmit(pdfFile, nativeFile);
+            if (!validation.ok) {
+                const targetKind = validation.kind || 'pdf';
+                archiveSetDropzoneState(targetKind, 'invalid');
+                archiveSetValidationMessage(targetKind, validation.message || 'فایل انتخاب‌شده معتبر نیست.', 'error');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = "درحال ارسال...";
+
+            try {
+                if (!isFullMode) {
+                    if (!docId) {
+                        alert("شماره سند را وارد کنید");
+                        return;
+                    }
+
+                    if (nativeFile) {
+                        const dualData = new FormData();
+                        dualData.set('document_id', String(docId));
+                        dualData.set('revision', revision);
+                        dualData.set('status', status);
+                        dualData.set('pdf_file', pdfFile);
+                        dualData.set('native_file', nativeFile);
+                        const dualRes = await fetchWithAuth('/api/v1/archive/upload-dual', { method: 'POST', body: dualData });
+                        const dualPayload = await dualRes.json();
+                        if (!dualPayload?.ok) {
+                            throw new Error(dualPayload?.detail || dualPayload?.message || 'خطا در آپلود دوگانه');
+                        }
+                    } else {
+                        const singleData = new FormData();
+                        singleData.set('document_id', String(docId));
+                        singleData.set('revision', revision);
+                        singleData.set('status', status);
+                        singleData.set('file', pdfFile);
+                        singleData.set('file_kind', 'pdf');
+                        const singleRes = await fetchWithAuth('/api/v1/archive/upload', { method: 'POST', body: singleData });
+                        const singlePayload = await singleRes.json();
+                        if (!singlePayload?.ok) {
+                            throw new Error(singlePayload?.detail || singlePayload?.message || 'خطا در آپلود PDF');
+                        }
+                    }
+                } else {
+                    if (nativeFile) {
+                        const dualRegisterData = new FormData(form);
+                        dualRegisterData.delete('file');
+                        dualRegisterData.delete('native_file');
+                        dualRegisterData.set('pdf_file', pdfFile);
+                        dualRegisterData.set('native_file', nativeFile);
+                        const dualRegisterRes = await fetchWithAuth('/api/v1/archive/register-and-upload-dual', { method: 'POST', body: dualRegisterData });
+                        const dualRegisterPayload = await dualRegisterRes.json();
+                        if (!dualRegisterPayload?.ok) {
+                            throw new Error(dualRegisterPayload?.detail || dualRegisterPayload?.message || 'خطا در ثبت و آپلود دوگانه');
+                        }
+                    } else {
+                        const registerData = new FormData(form);
+                        registerData.set('file', pdfFile);
+                        registerData.set('file_kind', 'pdf');
+                        const registerRes = await fetchWithAuth('/api/v1/archive/register-and-upload', { method: 'POST', body: registerData });
+                        const registerPayload = await registerRes.json();
+                        if (!registerPayload?.ok) {
+                            throw new Error(registerPayload?.detail || registerPayload?.message || 'خطا در ثبت سند جدید');
+                        }
+                    }
+                }
+
+                alert("با موفقیت انجام شد");
+                archiveCloseModal();
+                archiveLoadFiles();
+            } catch (err) {
+                console.error(err);
+                alert(err?.message || "خطای عملیات");
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = submitText;
+            }
+        }
+
+        async function archiveDownloadFile(fileId) {
+            try {
+                const response = await fetchWithAuth(`/api/v1/archive/download/${fileId}`);
+                if (!response || !response.ok) {
+                    alert('خطا در دریافت فایل');
+                    return;
+                }
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                let filename = `archive-${fileId}`;
+                const contentDisposition = response.headers.get('Content-Disposition') || response.headers.get('content-disposition') || '';
+                const match = contentDisposition.match(/filename\*?=(?:UTF-8''|\"?)([^\";]+)/i);
+                if (match && match[1]) {
+                    try {
+                        filename = decodeURIComponent(match[1].replace(/\"/g, '').trim());
+                    } catch (_) {
+                        filename = match[1].replace(/\"/g, '').trim();
+                    }
+                }
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                console.error(e);
+                alert('خطا در دریافت فایل');
+            }
+        }
+
+        async function archiveDownloadByKind(pdfFileId, nativeFileId, kind) {
+            const targetId = kind === 'native' ? Number(nativeFileId || 0) : Number(pdfFileId || 0);
+            if (!targetId) {
+                alert(kind === 'native' ? 'Native file not found.' : 'PDF file not found.');
+                return;
+            }
+            await archiveDownloadFile(targetId);
+        }
+
+        function archiveCopyDocNumber(docNumber) {
+            const value = String(docNumber || '').trim();
+            if (!value) return;
+            if (typeof copyToClipboard === 'function') {
+                copyToClipboard(value);
+                return;
+            }
+            navigator.clipboard.writeText(value).then(() => {
+                alert('Copied');
+            }).catch(() => {
+                alert('Copy failed');
+            });
+        }
+
+        async function archiveOpenHistory(documentId, docNumber) {
+            const id = Number(documentId || 0);
+            if (!id) {
+                alert('Document id not found.');
+                return;
+            }
+            const modal = document.getElementById('archiveHistoryModal');
+            const meta = document.getElementById('archiveHistoryMeta');
+            const body = document.getElementById('archiveHistoryBody');
+            meta.innerHTML = `<b>Doc:</b> <span style="font-family:monospace;">${archiveEsc(docNumber || '-')}</span>`;
+            body.innerHTML = '<div style="text-align:center; color:#94a3b8;">Loading...</div>';
+            modal.style.display = 'flex';
+
+            try {
+                const response = await fetchWithAuth(`/api/v1/archive/revision-history/${id}`);
+                const payload = await response.json();
+                if (!payload.ok) {
+                    body.innerHTML = '<div style="text-align:center; color:#ef4444;">Failed to load revision history.</div>';
+                    return;
+                }
+                const revisions = Array.isArray(payload.revisions) ? payload.revisions : [];
+                if (!revisions.length) {
+                    body.innerHTML = '<div style="text-align:center; color:#94a3b8;">No revisions found.</div>';
+                    return;
+                }
+                body.innerHTML = revisions.map((rev) => {
+                    const files = Array.isArray(rev.files) ? rev.files : [];
+                    const fileRows = files.length ? files.map((item) => {
+                        const fileSize = item.size ? `${(item.size / 1024).toFixed(1)} KB` : '-';
+                        const uploadedAt = item.uploaded_at ? new Date(item.uploaded_at).toLocaleString('fa-IR') : '-';
+                        return `
+                            <tr>
+                                <td>${archiveEsc(item.file_kind)}</td>
+                                <td style="direction:ltr;text-align:right;">${archiveEsc(item.name)}</td>
+                                <td>${fileSize}</td>
+                                <td>${uploadedAt}</td>
+                                <td>
+                                    <button class="btn-archive-icon" onclick="archiveDownloadFile(${Number(item.id || 0)})">
+                                        <span class="material-icons-round" style="font-size:18px;">download</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('') : '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">No files</td></tr>';
+
+                    return `
+                        <div style="border:1px solid #e5e7eb; border-radius:8px; margin-bottom:10px; overflow:hidden;">
+                            <div style="padding:8px 10px; background:#f8fafc; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                                <span class="file-badge">Rev ${archiveEsc(rev.revision || '-')}</span>
+                                <span style="color:#64748b;">Status: ${archiveEsc(rev.status || '-')}</span>
+                                <span style="color:#94a3b8;">${rev.created_at ? new Date(rev.created_at).toLocaleString('fa-IR') : '-'}</span>
+                            </div>
+                            <div style="padding:10px;">
+                                <table class="archive-table" style="width:100%;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width:90px;">Kind</th>
+                                            <th>Name</th>
+                                            <th style="width:90px;">Size</th>
+                                            <th style="width:180px;">Uploaded</th>
+                                            <th style="width:70px;">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>${fileRows}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error(error);
+                body.innerHTML = '<div style="text-align:center; color:#ef4444;">Failed to load revision history.</div>';
+            }
+        }
+
+        function archiveCloseHistoryModal() {
+            document.getElementById('archiveHistoryModal').style.display = 'none';
+        }
+
+        function archiveDebouncedSearch() { clearTimeout(window.archiveSearchTimer); window.archiveSearchTimer = setTimeout(()=>archiveLoadFiles(), 500); }
+        function archiveOpenModal() { document.getElementById('archiveUploadModal').style.display='flex'; archiveResetForm(); }
+        function archiveCloseModal() { document.getElementById('archiveUploadModal').style.display='none'; }
+        function archiveResetForm() {
+            document.getElementById('archiveUploadForm').reset();
+            document.getElementById('archivePdfFileName').innerText = '';
+            document.getElementById('archiveNativeFileName').innerText = '';
+            archiveSetDropzoneState('pdf', 'idle');
+            archiveSetDropzoneState('native', 'idle');
+            archiveSetValidationMessage('pdf', '');
+            archiveSetValidationMessage('native', '');
+            document.getElementById('docStatusMsg').innerHTML = '';
+            document.getElementById('newDocumentFields').style.display = 'none';
+            document.getElementById('realDocId').value = '';
+            isFullMode = true;
+            toggleRegistrationMode();
+        }
+
+        function archiveOnFileSelect(input, kind = 'pdf') {
+            const file = input?.files?.[0];
+            if (!file) {
+                archiveSetDropzoneState(kind, 'idle');
+                archiveSetValidationMessage(kind, '');
+                archiveRefreshSubmitButtonState();
+                return;
+            }
+
+            const check = archiveValidateFileByKind(file, kind);
+            if (!check.ok) {
+                if (input) input.value = '';
+                archiveSetDropzoneState(kind, 'invalid');
+                archiveSetValidationMessage(kind, check.message, 'error');
+                if (kind === 'native') {
+                    document.getElementById('archiveNativeFileName').innerText = '';
+                } else {
+                    document.getElementById('archivePdfFileName').innerText = '';
+                }
+                archiveRefreshSubmitButtonState();
+                return;
+            }
+
+            archiveSetDropzoneState(kind, 'valid');
+            archiveSetValidationMessage(kind, check.message, 'success');
+
+            if (kind === 'native') {
+                document.getElementById('archiveNativeFileName').innerText = `${file.name} � ${archiveFormatFileSize(file.size)}`;
+                return;
+            }
+
+            document.getElementById('archivePdfFileName').innerText = `${file.name} � ${archiveFormatFileSize(file.size)}`;
+            if (!isFullMode) {
+                const m = file.name.match(/[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+/);
+                if (m) {
+                    document.getElementById('smartDocCode').value = m[0];
+                    checkDocStatus();
+                }
+            }
+            archiveRefreshSubmitButtonState();
+        }
+        archiveInitDropzones();
+        document.getElementById('archiveUploadModal').addEventListener('click', (e)=>{if(e.target.id==='archiveUploadModal')archiveCloseModal();});
+        document.getElementById('archiveHistoryModal').addEventListener('click', (e)=>{if(e.target.id==='archiveHistoryModal')archiveCloseHistoryModal();});
+    </script>
+</div>
+
+

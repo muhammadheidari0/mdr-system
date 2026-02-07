@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  web:
+    build: .
+    container_name: mdr_app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./database:/app/database
+      - ./data_store:/app/data_store
+      - ./archive_storage:/app/archive_storage
+      - ./logs:/app/logs
+    environment:
+      SECRET_KEY: ${SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    restart: unless-stopped

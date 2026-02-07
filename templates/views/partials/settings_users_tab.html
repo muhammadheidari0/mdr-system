@@ -1,0 +1,1379 @@
+<div class="archive-card">
+  <div class="archive-header">
+    <div class="header-content">
+      <h2 class="archive-title">
+        <span class="material-icons-round" style="margin-left: 8px;">people</span>
+        مدیریت کاربران
+      </h2>
+      <p class="archive-subtitle">ایجاد، ویرایش و مدیریت کاربران سیستم</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-primary" onclick="openCreateUserModal()">
+        <span class="material-icons-round">add</span>
+        کاربر جدید
+      </button>
+    </div>
+  </div>
+
+  <div class="archive-content">
+    <div class="users-toolbar">
+      <div class="users-toolbar-filters">
+        <div class="users-input-wrap">
+          <span class="material-icons-round">search</span>
+          <input id="usersSearchInput" type="text" class="users-toolbar-input" placeholder="جستجو بر اساس ایمیل یا نام">
+        </div>
+
+        <select id="usersRoleFilter" class="users-toolbar-select" aria-label="فیلتر نقش">
+          <option value="">همه نقش‌ها</option>
+          <option value="admin">مدیر سیستم</option>
+          <option value="manager">سرپرست</option>
+          <option value="dcc">کنترل مدارک (DCC)</option>
+          <option value="user">کاربر عادی</option>
+          <option value="viewer">مشاهده‌گر</option>
+        </select>
+
+        <select id="usersStatusFilter" class="users-toolbar-select" aria-label="فیلتر وضعیت">
+          <option value="">همه وضعیت‌ها</option>
+          <option value="active">فقط فعال</option>
+          <option value="inactive">فقط غیرفعال</option>
+        </select>
+      </div>
+
+      <div class="users-toolbar-actions">
+        <label for="usersPageSize" class="users-toolbar-label">تعداد در صفحه</label>
+        <select id="usersPageSize" class="users-toolbar-select compact">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+        </select>
+        <button type="button" class="btn-archive-icon" onclick="refreshUsersTable()">
+          <span class="material-icons-round" style="font-size: 18px;">refresh</span>
+          بروزرسانی
+        </button>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table class="archive-table" id="usersTable">
+        <thead>
+          <tr>
+            <th>شناسه</th>
+            <th>ایمیل</th>
+            <th>نام کامل</th>
+            <th>نقش</th>
+            <th>وضعیت</th>
+            <th>وضعیت دسترسی</th>
+            <th>تاریخ ایجاد</th>
+            <th>عملیات</th>
+          </tr>
+        </thead>
+        <tbody id="usersTableBody">
+          <tr>
+            <td colspan="8" class="center-text muted" style="padding: 40px;">
+              <span class="material-icons-round" style="font-size: 48px; display: block; margin-bottom: 16px;">people</span>
+              در حال بارگذاری کاربران...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="users-table-footer">
+      <div id="usersTableMeta" class="users-table-meta">در حال بارگذاری کاربران...</div>
+      <div class="users-pagination">
+        <button type="button" id="usersPrevPageBtn" class="users-page-nav" onclick="changeUsersPage(-1)">قبلی</button>
+        <div id="usersPageButtons" class="users-page-buttons"></div>
+        <button type="button" id="usersNextPageBtn" class="users-page-nav" onclick="changeUsersPage(1)">بعدی</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="userModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="userModalTitle">ایجاد کاربر جدید</h3>
+      <button class="modal-close" onclick="closeUserModal()">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <form id="userForm" class="modal-body">
+      <input type="hidden" id="userId">
+
+      <div class="form-group">
+        <label for="userEmail" class="form-label-sm">ایمیل *</label>
+        <input type="email" id="userEmail" class="form-input" required>
+      </div>
+
+      <div class="form-group">
+        <label for="userFullName" class="form-label-sm">نام کامل</label>
+        <input type="text" id="userFullName" class="form-input">
+      </div>
+
+      <div class="form-group">
+        <label for="userPassword" class="form-label-sm" id="passwordLabel">رمز عبور *</label>
+        <input type="password" id="userPassword" class="form-input">
+        <small class="form-help" id="passwordHelp">برای کاربر جدید رمز عبور الزامی است</small>
+      </div>
+
+      <div class="form-group">
+        <label for="userRole" class="form-label-sm">نقش</label>
+        <select id="userRole" class="form-input">
+          <option value="viewer">مشاهده‌گر</option>
+          <option value="user">کاربر عادی</option>
+          <option value="dcc">کنترل مدارک (DCC)</option>
+          <option value="manager">سرپرست</option>
+          <option value="admin">مدیر سیستم</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="userActive" checked>
+          <span class="checkmark"></span>
+          کاربر فعال است
+        </label>
+      </div>
+    </form>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" onclick="closeUserModal()">انصراف</button>
+      <button type="button" class="btn-primary" onclick="saveUser()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<div id="deleteModal" class="modal" style="display: none;">
+  <div class="modal-content modal-sm">
+    <div class="modal-header">
+      <h3>تأیید حذف</h3>
+      <button class="modal-close" onclick="closeDeleteModal()">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <p>آیا از حذف کاربر <strong id="deleteUserName"></strong> اطمینان دارید؟</p>
+      <p class="text-danger">این عملیات غیرقابل بازگشت است.</p>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" onclick="closeDeleteModal()">انصراف</button>
+      <button type="button" class="btn-danger" onclick="confirmDelete()">حذف</button>
+    </div>
+  </div>
+</div>
+
+<div id="userAccessModal" class="modal" style="display: none;">
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h3>مدیریت دسترسی</h3>
+      <button class="modal-close" onclick="closeUserAccessModal()">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <div id="userAccessLoading" class="access-modal-loading">
+        <span class="loader" style="width: 22px; height: 22px;"></span>
+        در حال بارگذاری اطلاعات دسترسی...
+      </div>
+
+      <div id="userAccessContent">
+        <div id="userAccessSummary" class="access-summary"></div>
+
+        <div class="access-scope-grid">
+          <div class="form-group">
+            <label class="form-label-sm">پروژه‌های مجاز</label>
+            <div id="accessProjectsTagsInput" class="tags-input">
+              <div id="accessProjectsTags" class="tags-list"></div>
+              <input id="accessProjectsInput" class="tags-input-field" type="text" placeholder="کد پروژه را وارد کنید و Enter بزنید">
+              <div id="accessProjectsSuggestions" class="tag-suggestions"></div>
+            </div>
+            <small class="form-help">لیست خالی یعنی بدون محدودیت.</small>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label-sm">دیسیپلین‌های مجاز</label>
+            <div id="accessDisciplinesTagsInput" class="tags-input">
+              <div id="accessDisciplinesTags" class="tags-list"></div>
+              <input id="accessDisciplinesInput" class="tags-input-field" type="text" placeholder="کد دیسیپلین را وارد کنید و Enter بزنید">
+              <div id="accessDisciplinesSuggestions" class="tag-suggestions"></div>
+            </div>
+            <small class="form-help">لیست خالی یعنی بدون محدودیت.</small>
+          </div>
+        </div>
+
+        <div id="accessSourceStatus" class="form-help access-source-status" data-tone="info"></div>
+
+        <div class="access-preview">
+          <div class="access-preview-header">
+            <span class="material-icons-round">visibility</span>
+            پیش‌نمایش دسترسی
+          </div>
+          <div class="access-preview-grid">
+            <div class="access-preview-card">
+              <div class="access-preview-title">نقش</div>
+              <div class="access-preview-row">
+                <div class="access-preview-label">پروژه‌ها</div>
+                <div id="accessPreviewRoleProjects" class="access-preview-values"></div>
+              </div>
+              <div class="access-preview-row">
+                <div class="access-preview-label">دیسیپلین‌ها</div>
+                <div id="accessPreviewRoleDisciplines" class="access-preview-values"></div>
+              </div>
+            </div>
+            <div class="access-preview-card">
+              <div class="access-preview-title">محدودیت کاربر</div>
+              <div class="access-preview-row">
+                <div class="access-preview-label">پروژه‌ها</div>
+                <div id="accessPreviewUserProjects" class="access-preview-values"></div>
+              </div>
+              <div class="access-preview-row">
+                <div class="access-preview-label">دیسیپلین‌ها</div>
+                <div id="accessPreviewUserDisciplines" class="access-preview-values"></div>
+              </div>
+            </div>
+            <div class="access-preview-card highlight">
+              <div class="access-preview-title">دسترسی نهایی</div>
+              <div class="access-preview-row">
+                <div class="access-preview-label">پروژه‌ها</div>
+                <div id="accessPreviewEffectiveProjects" class="access-preview-values"></div>
+              </div>
+              <div class="access-preview-row">
+                <div class="access-preview-label">دیسیپلین‌ها</div>
+                <div id="accessPreviewEffectiveDisciplines" class="access-preview-values"></div>
+              </div>
+            </div>
+          </div>
+          <div class="form-help" style="margin-top: 8px;">
+            محاسبه بر اساس تقاطع نقش و محدودیت کاربر انجام می‌شود.
+          </div>
+          <div id="accessPreviewWarning" class="access-preview-warning" style="display: none;">
+            هشدار: دسترسی نهایی خالی است و کاربر به هیچ پروژه/دیسیپلین دسترسی ندارد.
+          </div>
+        </div>
+
+        <div id="accessAdminNote" class="form-help text-danger" style="margin-top: 10px; display: none;">
+          ادمین دسترسی کامل دارد و محدودیت برای او اعمال نمی‌شود.
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" onclick="closeUserAccessModal()">انصراف</button>
+      <button type="button" id="userAccessClearBtn" class="btn-secondary" onclick="clearUserAccessScope()">حذف محدودیت‌ها</button>
+      <button type="button" id="userAccessSaveBtn" class="btn-primary" onclick="saveUserAccessScope()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentDeleteUserId = null;
+let usersCache = new Map();
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const ACCESS_SCOPE_ENDPOINT = '/api/v1/settings/permissions/scope';
+const ACCESS_USER_SCOPE_ENDPOINT = '/api/v1/settings/permissions/user-scope';
+const ACCESS_USER_SCOPE_UPSERT_ENDPOINT = '/api/v1/settings/permissions/user-scope/upsert';
+const ACCESS_USER_ACCESS_ENDPOINT = '/api/v1/settings/permissions/user-access';
+const ACCESS_SCOPE_CACHE_TTL_MS = 45 * 1000;
+const ACCESS_SUGGESTION_LIMIT = 0; // 0 = unlimited
+const accessState = {
+  loaded: false,
+  loadedAt: 0,
+  loading: false,
+  loadingPromise: null,
+  loadError: null,
+  roleScope: {},
+  currentRoleScope: { projects: [], disciplines: [] },
+  projects: [],
+  disciplines: [],
+  projectMap: new Map(),
+  disciplineMap: new Map(),
+  userScope: {},
+  currentUserId: null,
+  currentUserRole: '',
+};
+const accessTags = {
+  projects: new Set(),
+  disciplines: new Set(),
+};
+let accessInputsInitialized = false;
+const USERS_PAGE_ENDPOINT = '/api/v1/users/paged';
+const USERS_DEFAULT_PAGE_SIZE = 10;
+const usersState = {
+  initialized: false,
+  loading: false,
+  requestId: 0,
+  page: 1,
+  pageSize: USERS_DEFAULT_PAGE_SIZE,
+  total: 0,
+  totalPages: 1,
+  count: 0,
+  search: '',
+  role: '',
+  status: '',
+  searchTimer: null,
+  menuBound: false,
+};
+
+function roleLabel(role) {
+  const map = {
+    admin: 'مدیر سیستم',
+    manager: 'سرپرست',
+    dcc: 'کنترل مدارک (DCC)',
+    user: 'کاربر عادی',
+    viewer: 'مشاهده‌گر',
+  };
+  return map[String(role || '').toLowerCase()] || 'نامشخص';
+}
+
+function roleClass(role) {
+  const key = String(role || '').toLowerCase();
+  return ['admin', 'manager', 'dcc', 'user', 'viewer'].includes(key) ? key : 'user';
+}
+
+function closeAllUserActionMenus() {
+  document.querySelectorAll('.users-kebab-menu.show').forEach((menu) => menu.classList.remove('show'));
+  document.querySelectorAll('.users-kebab-btn[aria-expanded="true"]').forEach((btn) => btn.setAttribute('aria-expanded', 'false'));
+}
+
+function toggleUserActionMenu(event, userId) {
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  const id = String(userId || '').trim();
+  if (!id) return;
+  const menu = document.getElementById(`usersActionMenu-${id}`);
+  if (!menu) return;
+
+  const shouldOpen = !menu.classList.contains('show');
+  closeAllUserActionMenus();
+
+  if (!shouldOpen) return;
+  menu.classList.add('show');
+  if (event && event.currentTarget) {
+    event.currentTarget.setAttribute('aria-expanded', 'true');
+  }
+}
+
+function getUserScopeStatus(user, fallbackScope = { projects: [], disciplines: [] }) {
+  const role = String((user && user.role) || '').toLowerCase();
+  const summary = user && typeof user.scope_summary === 'object' && user.scope_summary
+    ? user.scope_summary
+    : null;
+
+  const fallbackProjects = Array.isArray(fallbackScope.projects) ? fallbackScope.projects.length : 0;
+  const fallbackDisciplines = Array.isArray(fallbackScope.disciplines) ? fallbackScope.disciplines.length : 0;
+
+  const projectsCount = summary ? Number(summary.projects_count || 0) : fallbackProjects;
+  const disciplinesCount = summary ? Number(summary.disciplines_count || 0) : fallbackDisciplines;
+  const hasCustomScope = summary
+    ? Boolean(summary.has_custom_scope || projectsCount > 0 || disciplinesCount > 0)
+    : Boolean(fallbackProjects > 0 || fallbackDisciplines > 0);
+
+  let status = summary ? String(summary.status || '').toLowerCase() : '';
+  if (!status) status = role === 'admin' ? 'admin' : (hasCustomScope ? 'restricted' : 'full');
+
+  if (status === 'admin') {
+    return {
+      key: 'admin',
+      badge: 'ادمین کامل',
+      detail: 'دسترسی کامل سیستمی',
+    };
+  }
+  if (status === 'restricted') {
+    return {
+      key: 'restricted',
+      badge: 'محدود',
+      detail: `${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`,
+    };
+  }
+  return {
+    key: 'full',
+    badge: 'بدون محدودیت',
+    detail: 'بدون محدودیت پروژه/دیسیپلین',
+  };
+}
+
+function setUsersTableState(message, tone = 'muted') {
+  const tbody = document.getElementById('usersTableBody');
+  if (!tbody) return;
+  closeAllUserActionMenus();
+  const klass = tone === 'danger' ? 'text-danger' : 'muted';
+  tbody.innerHTML = `<tr><td colspan="8" class="center-text ${klass}" style="padding: 40px;">${escapeHtml(message)}</td></tr>`;
+}
+
+function setUsersTableMeta(message) {
+  const el = document.getElementById('usersTableMeta');
+  if (!el) return;
+  el.textContent = message || '';
+}
+
+function setUsersControlsDisabled(disabled) {
+  ['usersSearchInput', 'usersRoleFilter', 'usersStatusFilter', 'usersPageSize', 'usersPrevPageBtn', 'usersNextPageBtn']
+    .forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !!disabled;
+    });
+}
+
+function syncUsersFiltersFromControls({ resetPage = false } = {}) {
+  const searchInput = document.getElementById('usersSearchInput');
+  const roleFilter = document.getElementById('usersRoleFilter');
+  const statusFilter = document.getElementById('usersStatusFilter');
+  const pageSizeEl = document.getElementById('usersPageSize');
+
+  usersState.search = String((searchInput ? searchInput.value : '') || '').trim();
+  usersState.role = String((roleFilter ? roleFilter.value : '') || '').trim().toLowerCase();
+  usersState.status = String((statusFilter ? statusFilter.value : '') || '').trim().toLowerCase();
+
+  const parsedPageSize = Number((pageSizeEl ? pageSizeEl.value : '') || usersState.pageSize || USERS_DEFAULT_PAGE_SIZE);
+  usersState.pageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0 ? parsedPageSize : USERS_DEFAULT_PAGE_SIZE;
+  if (resetPage) usersState.page = 1;
+}
+
+function buildUsersQueryString() {
+  const params = new URLSearchParams();
+  params.set('page', String(usersState.page));
+  params.set('page_size', String(usersState.pageSize));
+  if (usersState.search) params.set('q', usersState.search);
+  if (usersState.role) params.set('role', usersState.role);
+  if (usersState.status === 'active') params.set('is_active', 'true');
+  if (usersState.status === 'inactive') params.set('is_active', 'false');
+  return params.toString();
+}
+
+function usersPageModel() {
+  const page = Number(usersState.page || 1);
+  const total = Number(usersState.totalPages || 1);
+  if (total <= 7) return Array.from({ length: total }, (_, idx) => idx + 1);
+
+  const pages = [1];
+  const left = Math.max(2, page - 1);
+  const right = Math.min(total - 1, page + 1);
+  if (left > 2) pages.push('...');
+  for (let i = left; i <= right; i += 1) pages.push(i);
+  if (right < total - 1) pages.push('...');
+  pages.push(total);
+  return pages;
+}
+
+function renderUsersPagination() {
+  const prevBtn = document.getElementById('usersPrevPageBtn');
+  const nextBtn = document.getElementById('usersNextPageBtn');
+  const pagesWrap = document.getElementById('usersPageButtons');
+
+  if (prevBtn) prevBtn.disabled = usersState.loading || usersState.page <= 1;
+  if (nextBtn) nextBtn.disabled = usersState.loading || usersState.page >= usersState.totalPages;
+  if (!pagesWrap) return;
+
+  if (usersState.totalPages <= 1) {
+    pagesWrap.innerHTML = '';
+    return;
+  }
+
+  const model = usersPageModel();
+  pagesWrap.innerHTML = model.map((item) => {
+    if (item === '...') return '<span class="users-page-ellipsis">...</span>';
+    const num = Number(item);
+    const active = num === usersState.page ? 'active' : '';
+    return `<button type="button" class="users-page-btn ${active}" onclick="goToUsersPage(${num})">${num}</button>`;
+  }).join('');
+}
+
+function updateUsersMetaText() {
+  const total = Number(usersState.total || 0);
+  if (!total) {
+    setUsersTableMeta('کاربری مطابق فیلتر انتخابی یافت نشد.');
+    return;
+  }
+  const from = ((usersState.page - 1) * usersState.pageSize) + 1;
+  const to = Math.min(total, from + usersState.count - 1);
+  setUsersTableMeta(`نمایش ${from} تا ${to} از ${total} کاربر`);
+}
+
+function bindUsersToolbar() {
+  if (usersState.initialized) return;
+  const searchInput = document.getElementById('usersSearchInput');
+  const roleFilter = document.getElementById('usersRoleFilter');
+  const statusFilter = document.getElementById('usersStatusFilter');
+  const pageSizeEl = document.getElementById('usersPageSize');
+
+  if (searchInput) {
+    searchInput.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      if (usersState.searchTimer) window.clearTimeout(usersState.searchTimer);
+      loadUsers({ resetPage: true });
+    });
+    searchInput.addEventListener('input', () => {
+      if (usersState.searchTimer) window.clearTimeout(usersState.searchTimer);
+      usersState.searchTimer = window.setTimeout(() => {
+        loadUsers({ resetPage: true });
+      }, 220);
+    });
+  }
+
+  if (roleFilter) roleFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
+  if (statusFilter) statusFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
+  if (pageSizeEl) pageSizeEl.addEventListener('change', () => loadUsers({ resetPage: true }));
+
+  if (!usersState.menuBound) {
+    document.addEventListener('click', (event) => {
+      const target = event && event.target;
+      if (target && target.closest && target.closest('.users-kebab')) return;
+      closeAllUserActionMenus();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event && event.key === 'Escape') closeAllUserActionMenus();
+    });
+    usersState.menuBound = true;
+  }
+
+  usersState.initialized = true;
+}
+
+function goToUsersPage(page) {
+  const target = Number(page);
+  if (!Number.isFinite(target)) return;
+  if (target < 1 || target > usersState.totalPages || target === usersState.page) return;
+  usersState.page = target;
+  loadUsers();
+}
+
+function changeUsersPage(step) {
+  const delta = Number(step || 0);
+  if (!Number.isFinite(delta) || !delta) return;
+  goToUsersPage(usersState.page + delta);
+}
+
+function refreshUsersTable() {
+  loadUsers({ resetPage: false, reloadScope: true });
+}
+
+async function loadUsers(options = {}) {
+  const tbody = document.getElementById('usersTableBody');
+  if (!tbody) return;
+
+  const requestId = ++usersState.requestId;
+  bindUsersToolbar();
+  syncUsersFiltersFromControls({ resetPage: !!options.resetPage });
+  usersState.loading = true;
+  setUsersControlsDisabled(true);
+  setUsersTableState('در حال بارگذاری کاربران...');
+  setUsersTableMeta('در حال بروزرسانی لیست کاربران...');
+
+  try {
+    const query = buildUsersQueryString();
+    let data = null;
+
+    const response = await fetchWithAuth(`${USERS_PAGE_ENDPOINT}?${query}`);
+    if (response && response.ok) {
+      data = await response.json();
+    } else {
+      const status = response ? response.status : 0;
+      if (status === 404 || status === 405) {
+        const skip = Math.max(0, (usersState.page - 1) * usersState.pageSize);
+        const legacyQuery = new URLSearchParams();
+        legacyQuery.set('skip', String(skip));
+        legacyQuery.set('limit', String(usersState.pageSize));
+        if (usersState.search) legacyQuery.set('q', usersState.search);
+        if (usersState.role) legacyQuery.set('role', usersState.role);
+        if (usersState.status === 'active') legacyQuery.set('is_active', 'true');
+        if (usersState.status === 'inactive') legacyQuery.set('is_active', 'false');
+
+        const legacyResponse = await fetchWithAuth(`/api/v1/users/?${legacyQuery.toString()}`);
+        if (!legacyResponse || !legacyResponse.ok) {
+          let legacyErr = {};
+          if (legacyResponse && typeof legacyResponse.json === 'function') {
+            legacyErr = await legacyResponse.json().catch(() => ({}));
+          }
+          throw new Error(legacyErr.detail || 'خطا در دریافت لیست کاربران');
+        }
+
+        const legacyItems = await legacyResponse.json();
+        const items = Array.isArray(legacyItems) ? legacyItems : [];
+        data = {
+          items,
+          pagination: {
+            total: items.length,
+            page: 1,
+            page_size: usersState.pageSize,
+            total_pages: 1,
+            count: items.length,
+          },
+        };
+      } else {
+        let errData = {};
+        if (response && typeof response.json === 'function') {
+          errData = await response.json().catch(() => ({}));
+        }
+        throw new Error(errData.detail || 'خطا در دریافت لیست کاربران');
+      }
+    }
+
+    if (requestId !== usersState.requestId) return;
+    if (data && data.detail) throw new Error(data.detail);
+
+    const pagination = (data && data.pagination) || {};
+    const users = Array.isArray(data && data.items) ? data.items : [];
+    usersState.total = Number(pagination.total || 0);
+    usersState.page = Number(pagination.page || usersState.page || 1);
+    usersState.pageSize = Number(pagination.page_size || usersState.pageSize || USERS_DEFAULT_PAGE_SIZE);
+    usersState.totalPages = Math.max(1, Number(pagination.total_pages || 1));
+    usersState.count = Number(pagination.count || users.length || 0);
+
+    const pageSizeEl = document.getElementById('usersPageSize');
+    if (pageSizeEl && String(pageSizeEl.value) !== String(usersState.pageSize)) {
+      pageSizeEl.value = String(usersState.pageSize);
+    }
+
+    usersCache = new Map(users.map((u) => [String(u.id), u]));
+
+    const hasScopeSummary = users.every((u) => u && typeof u.scope_summary === 'object' && u.scope_summary !== null);
+    let scopeMap = accessState.userScope || {};
+    const scopeMapIsEmpty = !scopeMap || Object.keys(scopeMap).length === 0;
+    if ((!hasScopeSummary && scopeMapIsEmpty) || (!hasScopeSummary && options.reloadScope)) {
+      try {
+        const scopePayload = await accessRequest(ACCESS_USER_SCOPE_ENDPOINT);
+        scopeMap = (scopePayload && scopePayload.scope) || {};
+        accessState.userScope = scopeMap;
+      } catch (scopeError) {
+        console.warn('Load user scope map failed:', scopeError);
+      }
+    }
+
+    if (!users.length) {
+      setUsersTableState('کاربری یافت نشد');
+      renderUsersPagination();
+      updateUsersMetaText();
+      return;
+    }
+
+    closeAllUserActionMenus();
+    tbody.innerHTML = users.map((user) => {
+      const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+      const userScope = scopeMap[String(user.id)] || { projects: [], disciplines: [] };
+      const scopeStatus = getUserScopeStatus(user, userScope);
+      const actionMenuId = `usersActionMenu-${user.id}`;
+      return `
+        <tr>
+          <td>${user.id}</td>
+          <td>${escapeHtml(user.email)}</td>
+          <td>${escapeHtml(user.full_name || '-')}</td>
+          <td><span class="role-badge ${roleClass(user.role)}">${roleLabel(user.role)}</span></td>
+          <td><span class="status-badge ${user.is_active ? 'active' : 'inactive'}">${user.is_active ? 'فعال' : 'غیرفعال'}</span></td>
+          <td>
+            <div class="scope-status-cell">
+              <span class="scope-badge ${scopeStatus.key}">${escapeHtml(scopeStatus.badge)}</span>
+              <span class="scope-detail">${escapeHtml(scopeStatus.detail)}</span>
+            </div>
+          </td>
+          <td>${user.created_at ? new Date(user.created_at).toLocaleDateString('fa-IR') : '-'}</td>
+          <td>
+            <div class="users-kebab">
+              <button
+                type="button"
+                class="users-kebab-btn"
+                onclick="toggleUserActionMenu(event, ${user.id})"
+                aria-label="عملیات"
+                aria-haspopup="true"
+                aria-expanded="false"
+                aria-controls="${actionMenuId}"
+              >
+                <span class="material-icons-round">more_vert</span>
+              </button>
+              <div class="users-kebab-menu" id="${actionMenuId}" role="menu">
+                <button type="button" class="users-kebab-item" onclick="closeAllUserActionMenus(); openUserAccessModal(${user.id})" ${isAdmin ? 'disabled' : ''}>
+                  <span class="material-icons-round">vpn_key</span>
+                  مدیریت دسترسی
+                </button>
+                <button type="button" class="users-kebab-item" onclick="closeAllUserActionMenus(); editUser(${user.id})">
+                  <span class="material-icons-round">edit</span>
+                  ویرایش کاربر
+                </button>
+                <button type="button" class="users-kebab-item danger" onclick="closeAllUserActionMenus(); deleteUser(${user.id})">
+                  <span class="material-icons-round">delete</span>
+                  حذف کاربر
+                </button>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    renderUsersPagination();
+    updateUsersMetaText();
+  } catch (error) {
+    if (requestId !== usersState.requestId) return;
+    console.error('Load users error:', error);
+    setUsersTableState('خطا در دریافت اطلاعات کاربران', 'danger');
+    setUsersTableMeta('دریافت اطلاعات ناموفق بود.');
+    usersCache = new Map();
+  } finally {
+    if (requestId !== usersState.requestId) return;
+    usersState.loading = false;
+    setUsersControlsDisabled(false);
+    renderUsersPagination();
+  }
+}
+
+function openCreateUserModal() {
+  document.getElementById('userModalTitle').textContent = 'ایجاد کاربر جدید';
+  document.getElementById('userForm').reset();
+  document.getElementById('userId').value = '';
+  document.getElementById('userEmail').disabled = false;
+  document.getElementById('userPassword').required = true;
+  document.getElementById('passwordLabel').textContent = 'رمز عبور *';
+  document.getElementById('passwordHelp').textContent = 'برای کاربر جدید رمز عبور الزامی است';
+  document.getElementById('userActive').checked = true;
+  document.getElementById('userModal').style.display = 'flex';
+}
+
+function editUser(userId) {
+  const user = usersCache.get(String(userId));
+  if (!user) {
+    UI.error('اطلاعات کاربر برای ویرایش یافت نشد. لطفاً لیست را بروزرسانی کنید.');
+    return;
+  }
+
+  document.getElementById('userModalTitle').textContent = 'ویرایش کاربر';
+  document.getElementById('userId').value = userId;
+  document.getElementById('userEmail').value = user.email || '';
+  document.getElementById('userEmail').disabled = true;
+  document.getElementById('userFullName').value = user.full_name || '';
+  document.getElementById('userRole').value = user.role || 'user';
+  document.getElementById('userActive').checked = !!user.is_active;
+  document.getElementById('userPassword').value = '';
+  document.getElementById('userPassword').required = false;
+  document.getElementById('passwordLabel').textContent = 'رمز عبور';
+  document.getElementById('passwordHelp').textContent = 'تغییر رمز از منوی کاربر انجام می‌شود';
+  document.getElementById('userModal').style.display = 'flex';
+}
+
+function closeUserModal() {
+  document.getElementById('userModal').style.display = 'none';
+}
+
+async function saveUser() {
+  const userId = document.getElementById('userId').value;
+  const email = document.getElementById('userEmail').value;
+  const fullName = document.getElementById('userFullName').value;
+  const password = document.getElementById('userPassword').value;
+  const role = document.getElementById('userRole').value;
+  const isActive = document.getElementById('userActive').checked;
+
+  if (!userId && !email) { UI.error('ایمیل الزامی است'); return; }
+  if (!userId && !password) { UI.error('رمز عبور برای کاربر جدید الزامی است'); return; }
+
+  const btn = document.querySelector('#userModal .btn-primary');
+  UI.setBtnLoading(btn, true);
+
+  try {
+    const url = userId ? `/api/v1/users/${userId}` : '/api/v1/users/';
+    const method = userId ? 'PUT' : 'POST';
+    const body = userId
+      ? { full_name: fullName, role: role, is_active: isActive }
+      : { email: email, password: password, full_name: fullName, role: role, is_active: isActive };
+
+    const response = await fetchWithAuth(url, { method, body: JSON.stringify(body) });
+    if (response && response.ok) {
+      UI.success(userId ? 'کاربر با موفقیت ویرایش شد' : 'کاربر با موفقیت ایجاد شد');
+      closeUserModal();
+      loadUsers({ resetPage: !userId });
+    } else {
+      const data = await response.json().catch(() => ({}));
+      UI.error(data.detail || 'خطا در ذخیره اطلاعات');
+    }
+  } catch (error) {
+    console.error('Save user error:', error);
+  } finally {
+    UI.setBtnLoading(btn, false);
+  }
+}
+
+function deleteUser(userId) {
+  const user = usersCache.get(String(userId));
+  currentDeleteUserId = userId;
+  document.getElementById('deleteUserName').textContent = (user && user.email) || `#${userId}`;
+  document.getElementById('deleteModal').style.display = 'flex';
+}
+
+function closeDeleteModal() {
+  document.getElementById('deleteModal').style.display = 'none';
+  currentDeleteUserId = null;
+}
+
+async function confirmDelete() {
+  if (!currentDeleteUserId) return;
+  try {
+    const response = await fetchWithAuth(`/api/v1/users/${currentDeleteUserId}`, { method: 'DELETE' });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      showToast('کاربر با موفقیت حذف شد', 'success');
+      closeDeleteModal();
+      loadUsers();
+    } else {
+      showToast(data.detail || 'خطا در حذف کاربر', 'error');
+    }
+  } catch (error) {
+    console.error('Delete user error:', error);
+    showToast('خطا در ارتباط با سرور', 'error');
+  }
+}
+
+function accessNotify(type, message) {
+  if (window.UI && typeof window.UI[type] === 'function') {
+    window.UI[type](message);
+    return;
+  }
+  if (typeof showToast === 'function') {
+    const toastType = type === 'error' ? 'error' : type === 'warning' ? 'warning' : type === 'info' ? 'info' : 'success';
+    showToast(message, toastType);
+    return;
+  }
+  alert(message);
+}
+
+function setAccessSourceStatus(message, tone = 'info') {
+  const el = document.getElementById('accessSourceStatus');
+  if (!el) return;
+  el.textContent = message || '';
+  el.dataset.tone = tone || 'info';
+}
+
+function normalizeTagValue(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function buildOptionMap(list) {
+  const map = new Map();
+  (list || []).forEach((item) => {
+    const code = normalizeTagValue(item.code);
+    if (code) map.set(code, item.name || code);
+  });
+  return map;
+}
+
+function normalizeList(values) {
+  return (values || []).map((value) => normalizeTagValue(value)).filter(Boolean);
+}
+
+function computeEffectiveScope(roleValues, userValues) {
+  const roleSet = new Set(normalizeList(roleValues));
+  const userSet = new Set(normalizeList(userValues));
+  if (roleSet.size && userSet.size) {
+    const intersection = Array.from(roleSet).filter((value) => userSet.has(value)).sort();
+    return { values: intersection, restricted: true };
+  }
+  if (roleSet.size) return { values: Array.from(roleSet).sort(), restricted: true };
+  if (userSet.size) return { values: Array.from(userSet).sort(), restricted: true };
+  return { values: [], restricted: false };
+}
+
+function getRoleScopeForUser(role) {
+  const roleKey = String(role || '').toLowerCase();
+  const scope = accessState.roleScope && accessState.roleScope[roleKey];
+  if (scope && typeof scope === 'object') {
+    return {
+      projects: normalizeList(scope.projects),
+      disciplines: normalizeList(scope.disciplines),
+    };
+  }
+  return { projects: [], disciplines: [] };
+}
+
+async function accessRequest(url, options = {}) {
+  const fn = typeof window.fetchWithAuth === 'function' ? window.fetchWithAuth : fetch;
+  const res = await fn(url, options);
+  if (!res.ok) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const body = await res.clone().json();
+      message = body.detail || body.message || message;
+    } catch (_) {}
+    throw new Error(message);
+  }
+  return res.json();
+}
+
+function setAccessLoading(isLoading) {
+  const loader = document.getElementById('userAccessLoading');
+  const content = document.getElementById('userAccessContent');
+  if (loader) loader.classList.toggle('active', !!isLoading);
+  if (content) content.style.opacity = isLoading ? '0.6' : '1';
+}
+
+function setAccessInputsDisabled(disabled) {
+  const projectsInput = document.getElementById('accessProjectsInput');
+  const disciplinesInput = document.getElementById('accessDisciplinesInput');
+  const projectsWrap = document.getElementById('accessProjectsTagsInput');
+  const disciplinesWrap = document.getElementById('accessDisciplinesTagsInput');
+  if (projectsInput) projectsInput.disabled = !!disabled;
+  if (disciplinesInput) disciplinesInput.disabled = !!disabled;
+  if (projectsWrap) projectsWrap.classList.toggle('disabled', !!disabled);
+  if (disciplinesWrap) disciplinesWrap.classList.toggle('disabled', !!disabled);
+  const saveBtn = document.getElementById('userAccessSaveBtn');
+  const clearBtn = document.getElementById('userAccessClearBtn');
+  if (saveBtn) saveBtn.disabled = !!disabled;
+  if (clearBtn) clearBtn.disabled = !!disabled;
+}
+
+async function loadAccessScopeData(force = false) {
+  const cacheFresh = accessState.loaded && (Date.now() - Number(accessState.loadedAt || 0) < ACCESS_SCOPE_CACHE_TTL_MS);
+  if (cacheFresh && !force) {
+    const projectsCount = accessState.projects.length;
+    const disciplinesCount = accessState.disciplines.length;
+    if (projectsCount || disciplinesCount) {
+      setAccessSourceStatus(`منابع بارگذاری شد: ${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`, 'info');
+    } else {
+      setAccessSourceStatus('فهرست پروژه‌ها و دیسیپلین‌ها خالی است. ابتدا داده‌های پایه را ثبت کنید.', 'warning');
+    }
+    return;
+  }
+  if (accessState.loadingPromise) {
+    await accessState.loadingPromise;
+    return;
+  }
+  accessState.loading = true;
+  accessState.loadError = null;
+  accessState.loadingPromise = (async () => {
+  try {
+    const [scopePayload, userScopePayload] = await Promise.all([
+      accessRequest(ACCESS_SCOPE_ENDPOINT),
+      accessRequest(ACCESS_USER_SCOPE_ENDPOINT),
+    ]);
+
+    accessState.roleScope = (scopePayload && scopePayload.scope) || {};
+    accessState.projects = Array.isArray(scopePayload && scopePayload.projects) ? scopePayload.projects : [];
+    accessState.disciplines = Array.isArray(scopePayload && scopePayload.disciplines) ? scopePayload.disciplines : [];
+    accessState.projectMap = buildOptionMap(accessState.projects);
+    accessState.disciplineMap = buildOptionMap(accessState.disciplines);
+    accessState.userScope = (userScopePayload && userScopePayload.scope) || {};
+    accessState.loaded = true;
+    accessState.loadedAt = Date.now();
+    const projectsCount = accessState.projects.length;
+    const disciplinesCount = accessState.disciplines.length;
+    if (projectsCount || disciplinesCount) {
+      setAccessSourceStatus(`منابع بارگذاری شد: ${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`, 'info');
+    } else {
+      setAccessSourceStatus('فهرست پروژه‌ها و دیسیپلین‌ها خالی است. ابتدا داده‌های پایه را ثبت کنید.', 'warning');
+    }
+  } catch (error) {
+    accessState.loaded = false;
+    accessState.loadError = error;
+    setAccessSourceStatus('بارگذاری داده‌های پایه ناموفق بود. دسترسی ادمین را بررسی کنید.', 'error');
+    throw error;
+  } finally {
+    accessState.loading = false;
+    accessState.loadingPromise = null;
+  }
+  })();
+  await accessState.loadingPromise;
+}
+
+async function loadUserAccessEffective(userId) {
+  if (!userId) return null;
+  return accessRequest(`${ACCESS_USER_ACCESS_ENDPOINT}/${encodeURIComponent(userId)}`);
+}
+
+function updateAccessSummary(user) {
+  const summary = document.getElementById('userAccessSummary');
+  if (!summary || !user) return;
+  summary.innerHTML = `
+    <div><strong>کاربر:</strong> ${escapeHtml(user.full_name || user.email || '-')}</div>
+    <div><strong>ایمیل:</strong> ${escapeHtml(user.email || '-')}</div>
+    <div><strong>نقش:</strong> ${escapeHtml(roleLabel(user.role))}</div>
+    <div><strong>وضعیت:</strong> ${user.is_active ? 'فعال' : 'غیرفعال'}</div>
+  `;
+}
+
+function getTagMap(type) {
+  return type === 'projects' ? accessState.projectMap : accessState.disciplineMap;
+}
+
+function formatPreviewValues(values, restricted, map) {
+  if (!restricted) {
+    return '<span class="preview-empty">بدون محدودیت</span>';
+  }
+  if (!values.length) {
+    return '<span class="preview-empty is-denied">فاقد دسترسی</span>';
+  }
+
+  const max = 6;
+  const sliced = values.slice(0, max);
+  const chips = sliced.map((code) => {
+    const name = (map ? map.get(code) : undefined);
+    const title = name && name !== code ? `${code} - ${name}` : code;
+    if (name && name !== code) {
+      return `<span class="preview-chip" title="${escapeHtml(title)}">${escapeHtml(code)}<span class="preview-chip-name">${escapeHtml(name)}</span></span>`;
+    }
+    return `<span class="preview-chip" title="${escapeHtml(title)}">${escapeHtml(code)}</span>`;
+  });
+
+  if (values.length > max) {
+    chips.push(`<span class="preview-chip preview-more">+${values.length - max}</span>`);
+  }
+
+  return chips.join('');
+}
+
+function updateAccessPreview() {
+  const roleProjectsEl = document.getElementById('accessPreviewRoleProjects');
+  if (!roleProjectsEl) return;
+
+  const roleScope = accessState.currentRoleScope || getRoleScopeForUser(accessState.currentUserRole);
+  const roleProjects = normalizeList(roleScope.projects);
+  const roleDisciplines = normalizeList(roleScope.disciplines);
+  const userProjects = Array.from(accessTags.projects || []);
+  const userDisciplines = Array.from(accessTags.disciplines || []);
+
+  const effectiveProjects = computeEffectiveScope(roleProjects, userProjects);
+  const effectiveDisciplines = computeEffectiveScope(roleDisciplines, userDisciplines);
+
+  const projectsMap = getTagMap('projects');
+  const disciplinesMap = getTagMap('disciplines');
+
+  roleProjectsEl.innerHTML = formatPreviewValues(roleProjects, roleProjects.length > 0, projectsMap);
+  const roleDisciplinesEl = document.getElementById('accessPreviewRoleDisciplines');
+  if (roleDisciplinesEl) {
+    roleDisciplinesEl.innerHTML = formatPreviewValues(roleDisciplines, roleDisciplines.length > 0, disciplinesMap);
+  }
+
+  const userProjectsEl = document.getElementById('accessPreviewUserProjects');
+  if (userProjectsEl) {
+    userProjectsEl.innerHTML = formatPreviewValues(userProjects, userProjects.length > 0, projectsMap);
+  }
+  const userDisciplinesEl = document.getElementById('accessPreviewUserDisciplines');
+  if (userDisciplinesEl) {
+    userDisciplinesEl.innerHTML = formatPreviewValues(userDisciplines, userDisciplines.length > 0, disciplinesMap);
+  }
+
+  const effectiveProjectsEl = document.getElementById('accessPreviewEffectiveProjects');
+  if (effectiveProjectsEl) {
+    effectiveProjectsEl.innerHTML = formatPreviewValues(effectiveProjects.values, effectiveProjects.restricted, projectsMap);
+  }
+  const effectiveDisciplinesEl = document.getElementById('accessPreviewEffectiveDisciplines');
+  if (effectiveDisciplinesEl) {
+    effectiveDisciplinesEl.innerHTML = formatPreviewValues(effectiveDisciplines.values, effectiveDisciplines.restricted, disciplinesMap);
+  }
+
+  const warningEl = document.getElementById('accessPreviewWarning');
+  if (warningEl) {
+    const hasEmptyRestricted =
+      (effectiveProjects.restricted && effectiveProjects.values.length === 0) ||
+      (effectiveDisciplines.restricted && effectiveDisciplines.values.length === 0);
+    warningEl.style.display = hasEmptyRestricted ? 'block' : 'none';
+  }
+}
+
+async function refreshAccessPreviewFromServer(userId, syncTags = false) {
+  try {
+    const payload = await loadUserAccessEffective(userId);
+    if (payload && payload.role_scope) {
+      accessState.currentRoleScope = {
+        projects: normalizeList(payload.role_scope.projects),
+        disciplines: normalizeList(payload.role_scope.disciplines),
+      };
+    }
+    if (syncTags && payload && payload.user_scope) {
+      setAccessTags('projects', payload.user_scope.projects || []);
+      setAccessTags('disciplines', payload.user_scope.disciplines || []);
+    } else {
+      updateAccessPreview();
+    }
+  } catch (error) {
+    console.warn('Refresh access preview failed:', error);
+  }
+}
+
+function renderAccessTags(type) {
+  const listEl = document.getElementById(type === 'projects' ? 'accessProjectsTags' : 'accessDisciplinesTags');
+  if (!listEl) return;
+
+  const values = Array.from(accessTags[type] || []).sort();
+  const map = getTagMap(type);
+  listEl.innerHTML = values.map((code) => {
+    const name = map.get(code);
+    const title = name && name !== code ? `${code} - ${name}` : code;
+    return `
+      <span class="tag-item" title="${escapeHtml(title)}">
+        <span class="tag-text">${escapeHtml(code)}</span>
+        <button type="button" class="tag-remove" onclick="removeAccessTag('${type}', '${escapeHtml(code)}')" aria-label="حذف">&times;</button>
+      </span>
+    `;
+  }).join('');
+}
+
+function setAccessTags(type, values) {
+  const normalized = (values || [])
+    .map((v) => normalizeTagValue(v))
+    .filter(Boolean);
+  accessTags[type] = new Set(normalized);
+  renderAccessTags(type);
+  updateAccessPreview();
+}
+
+function addAccessTag(type, value) {
+  const code = normalizeTagValue(value);
+  if (!code) return;
+  const list = type === 'projects' ? accessState.projects : accessState.disciplines;
+  if (Array.isArray(list) && list.length) {
+    const exists = list.some((item) => normalizeTagValue(item.code) === code);
+    if (!exists) {
+      accessNotify('error', 'کد وارد شده در لیست موجود نیست');
+      return;
+    }
+  }
+  accessTags[type].add(code);
+  renderAccessTags(type);
+  updateAccessPreview();
+}
+
+function removeAccessTag(type, value) {
+  const code = normalizeTagValue(value);
+  if (!code) return;
+  accessTags[type].delete(code);
+  renderAccessTags(type);
+  updateAccessPreview();
+}
+
+function renderAccessSuggestions(type, items) {
+  const container = document.getElementById(type === 'projects' ? 'accessProjectsSuggestions' : 'accessDisciplinesSuggestions');
+  if (!container) return;
+  if (!items.length) {
+    container.classList.remove('show');
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = items.map((item) => {
+    const code = normalizeTagValue(item.code);
+    const name = item.name || '';
+    return `
+      <div class="tag-suggestion-item" data-type="${type}" data-code="${escapeHtml(code)}">
+        <span class="tag-suggestion-code">${escapeHtml(code)}</span>
+        <span class="tag-suggestion-name">${escapeHtml(name)}</span>
+      </div>
+    `;
+  }).join('');
+  container.classList.add('show');
+}
+
+function updateAccessSuggestions(type, query = '') {
+  const list = type === 'projects' ? accessState.projects : accessState.disciplines;
+  const q = String(query || '').trim().toUpperCase();
+  const selected = accessTags[type] || new Set();
+  const matched = (list || []).filter((item) => {
+    const code = normalizeTagValue(item.code);
+    const name = String(item.name || '').toUpperCase();
+    if (selected.has(code)) return false;
+    if (!q) return true;
+    return code.includes(q) || name.includes(q);
+  });
+  const limit = Number(ACCESS_SUGGESTION_LIMIT || 0);
+  const items = limit > 0 ? matched.slice(0, limit) : matched;
+  renderAccessSuggestions(type, items);
+}
+
+function selectAccessSuggestion(type, code) {
+  addAccessTag(type, code);
+  const input = document.getElementById(type === 'projects' ? 'accessProjectsInput' : 'accessDisciplinesInput');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  updateAccessSuggestions(type, '');
+}
+
+function setupAccessTagInput(type) {
+  const input = document.getElementById(type === 'projects' ? 'accessProjectsInput' : 'accessDisciplinesInput');
+  const wrapper = document.getElementById(type === 'projects' ? 'accessProjectsTagsInput' : 'accessDisciplinesTagsInput');
+  const suggestions = document.getElementById(type === 'projects' ? 'accessProjectsSuggestions' : 'accessDisciplinesSuggestions');
+  if (!input || !wrapper) return;
+
+  wrapper.addEventListener('click', () => input.focus());
+  if (suggestions && !suggestions.dataset.bound) {
+    suggestions.addEventListener('pointerdown', (event) => {
+      const item = event.target.closest('.tag-suggestion-item');
+      if (!item) return;
+      event.preventDefault();
+      const code = item.dataset.code || '';
+      const itemType = item.dataset.type || type;
+      selectAccessSuggestion(itemType, code);
+    });
+    suggestions.dataset.bound = 'true';
+  }
+  input.addEventListener('input', (e) => updateAccessSuggestions(type, e.target.value));
+  input.addEventListener('focus', (e) => updateAccessSuggestions(type, e.target.value));
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (suggestions) suggestions.classList.remove('show');
+    }, 120);
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      addAccessTag(type, input.value);
+      input.value = '';
+      updateAccessSuggestions(type, '');
+    } else if (e.key === 'Backspace' && !input.value) {
+      const values = Array.from(accessTags[type] || []);
+      const last = values[values.length - 1];
+      if (last) removeAccessTag(type, last);
+    }
+  });
+}
+
+function initAccessTagInputs() {
+  if (accessInputsInitialized) return;
+  setupAccessTagInput('projects');
+  setupAccessTagInput('disciplines');
+  accessInputsInitialized = true;
+}
+
+async function openUserAccessModal(userId) {
+  const user = usersCache.get(String(userId));
+  if (!user) {
+    accessNotify('error', 'اطلاعات کاربر برای تنظیم دسترسی یافت نشد.');
+    return;
+  }
+
+  accessState.currentUserId = String(userId);
+  accessState.currentUserRole = String(user.role || '');
+  updateAccessSummary(user);
+  initAccessTagInputs();
+  setAccessTags('projects', []);
+  setAccessTags('disciplines', []);
+  setAccessSourceStatus('در حال بارگذاری منابع...', 'info');
+
+  const modal = document.getElementById('userAccessModal');
+  if (modal) modal.style.display = 'flex';
+
+  const adminNote = document.getElementById('accessAdminNote');
+  const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+  if (adminNote) adminNote.style.display = isAdmin ? 'block' : 'none';
+  setAccessInputsDisabled(isAdmin);
+
+  try {
+    setAccessLoading(true);
+    await loadAccessScopeData();
+    let effectivePayload = null;
+    try {
+      effectivePayload = await loadUserAccessEffective(userId);
+    } catch (error) {
+      console.warn('User access effective load failed:', error);
+    }
+
+    if (effectivePayload && effectivePayload.role_scope) {
+      accessState.currentRoleScope = {
+        projects: normalizeList(effectivePayload.role_scope.projects),
+        disciplines: normalizeList(effectivePayload.role_scope.disciplines),
+      };
+    } else {
+      accessState.currentRoleScope = getRoleScopeForUser(accessState.currentUserRole);
+    }
+
+    const scope = (effectivePayload && effectivePayload.user_scope) || accessState.userScope[String(userId)] || { projects: [], disciplines: [] };
+    setAccessTags('projects', scope.projects || []);
+    setAccessTags('disciplines', scope.disciplines || []);
+  } catch (error) {
+    setAccessInputsDisabled(true);
+    const message = (error && error.message === 'Forbidden')
+      ? 'فقط ادمین می‌تواند دسترسی‌ها را مدیریت کند.'
+      : ((error && error.message) || 'بارگذاری اطلاعات دسترسی ناموفق بود');
+    accessNotify('error', message);
+  } finally {
+    setAccessLoading(false);
+  }
+}
+
+function closeUserAccessModal() {
+  const modal = document.getElementById('userAccessModal');
+  if (modal) modal.style.display = 'none';
+  const sug1 = document.getElementById('accessProjectsSuggestions');
+  const sug2 = document.getElementById('accessDisciplinesSuggestions');
+  if (sug1) sug1.classList.remove('show');
+  if (sug2) sug2.classList.remove('show');
+}
+
+async function saveUserAccessScope() {
+  const userId = String(accessState.currentUserId || '').trim();
+  if (!userId) {
+    accessNotify('error', 'ابتدا یک کاربر را انتخاب کنید');
+    return;
+  }
+  if (accessState.loadError) {
+    accessNotify('error', 'ابتدا خطای بارگذاری منابع را برطرف کنید.');
+    return;
+  }
+  if (String(accessState.currentUserRole || '').toLowerCase() === 'admin') {
+    accessNotify('info', 'ادمین دسترسی کامل دارد و محدودیت برای او ذخیره نمی‌شود');
+    return;
+  }
+
+  const payload = {
+    user_id: Number(userId),
+    projects: Array.from(accessTags.projects || []),
+    disciplines: Array.from(accessTags.disciplines || []),
+  };
+
+  const btn = document.getElementById('userAccessSaveBtn');
+  if (btn && window.UI && window.UI.setBtnLoading) window.UI.setBtnLoading(btn, true);
+
+  try {
+    const saved = await accessRequest(ACCESS_USER_SCOPE_UPSERT_ENDPOINT, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const savedScope = (saved && saved.scope) || {
+      projects: payload.projects,
+      disciplines: payload.disciplines,
+    };
+    accessNotify('success', `دسترسی کاربر ذخیره شد (${(savedScope.projects || []).length} پروژه، ${(savedScope.disciplines || []).length} دیسیپلین)`);
+    const requestedProjects = payload.projects || [];
+    const requestedDisciplines = payload.disciplines || [];
+    const savedProjects = savedScope.projects || [];
+    const savedDisciplines = savedScope.disciplines || [];
+    const missingProjects = requestedProjects.filter((code) => !savedProjects.includes(code));
+    const missingDisciplines = requestedDisciplines.filter((code) => !savedDisciplines.includes(code));
+    if (missingProjects.length || missingDisciplines.length) {
+      const parts = [];
+      if (missingProjects.length) parts.push(`پروژه: ${missingProjects.slice(0, 6).join(', ')}`);
+      if (missingDisciplines.length) parts.push(`دیسیپلین: ${missingDisciplines.slice(0, 6).join(', ')}`);
+      accessNotify('warning', `برخی کدها ذخیره نشدند. ${parts.join(' | ')}`);
+    }
+    accessState.userScope[userId] = {
+      projects: Array.isArray(savedScope.projects) ? savedScope.projects : [],
+      disciplines: Array.isArray(savedScope.disciplines) ? savedScope.disciplines : [],
+    };
+    loadUsers({ reloadScope: true });
+    await refreshAccessPreviewFromServer(userId);
+  } catch (error) {
+    accessNotify('error', error.message || 'ذخیره دسترسی ناموفق بود');
+  } finally {
+    if (btn && window.UI && window.UI.setBtnLoading) window.UI.setBtnLoading(btn, false);
+  }
+}
+
+async function clearUserAccessScope() {
+  setAccessTags('projects', []);
+  setAccessTags('disciplines', []);
+  await saveUserAccessScope();
+}
+</script>
+

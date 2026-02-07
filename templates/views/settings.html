@@ -1,0 +1,179 @@
+<div id="view-settings" class="view-section" style="display: none;">
+  <div class="settings-shell">
+    <div class="settings-shell-header">
+      <div class="settings-shell-title-wrap">
+        <span class="material-icons-round settings-shell-icon">settings_suggest</span>
+        <div>
+          <h2 class="settings-shell-title">تنظیمات سیستم</h2>
+          <p class="settings-shell-subtitle">مدیریت پیکربندی سامانه، کاربران، مجوزها و گزارش های کنترلی</p>
+        </div>
+      </div>
+      <div class="settings-shell-badges">
+        <span class="settings-shell-badge">
+          <span class="material-icons-round">security</span>
+          Admin Console
+        </span>
+        <span class="settings-shell-badge is-muted">
+          <span class="material-icons-round">dataset</span>
+          Live Configuration
+        </span>
+      </div>
+    </div>
+
+    <div class="settings-shell-nav" role="tablist" aria-label="Settings Navigation">
+      <button
+        type="button"
+        class="settings-nav-card active"
+        data-settings-tab="true"
+        data-tab="general"
+        role="tab"
+        aria-selected="true"
+        aria-controls="tab-general"
+        onclick="switchSettingsTab('general', this)"
+      >
+        <span class="material-icons-round settings-nav-card-icon">tune</span>
+        <span class="settings-nav-card-copy">
+          <span class="settings-nav-card-title">تنظیمات عمومی</span>
+          <span class="settings-nav-card-subtitle">پروژه ها و کاتالوگ ها</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-nav-card"
+        data-settings-tab="true"
+        data-tab="users"
+        role="tab"
+        aria-selected="false"
+        aria-controls="tab-users"
+        onclick="switchSettingsTab('users', this)"
+      >
+        <span class="material-icons-round settings-nav-card-icon">people</span>
+        <span class="settings-nav-card-copy">
+          <span class="settings-nav-card-title">مدیریت کاربران</span>
+          <span class="settings-nav-card-subtitle">حساب ها و Scope</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-nav-card"
+        data-settings-tab="true"
+        data-tab="permissions"
+        role="tab"
+        aria-selected="false"
+        aria-controls="tab-permissions"
+        onclick="switchSettingsTab('permissions', this)"
+      >
+        <span class="material-icons-round settings-nav-card-icon">shield</span>
+        <span class="settings-nav-card-copy">
+          <span class="settings-nav-card-title">سطح دسترسی</span>
+          <span class="settings-nav-card-subtitle">ماتریس مجوز نقش ها</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-nav-card"
+        data-settings-tab="true"
+        data-tab="bulk"
+        role="tab"
+        aria-selected="false"
+        aria-controls="tab-bulk"
+        onclick="switchSettingsTab('bulk', this)"
+      >
+        <span class="material-icons-round settings-nav-card-icon">upload_file</span>
+        <span class="settings-nav-card-copy">
+          <span class="settings-nav-card-title">ثبت گروهی</span>
+          <span class="settings-nav-card-subtitle">Bulk Operations</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-nav-card"
+        data-settings-tab="true"
+        data-tab="reports"
+        role="tab"
+        aria-selected="false"
+        aria-controls="tab-reports"
+        onclick="switchSettingsTab('reports', this)"
+      >
+        <span class="material-icons-round settings-nav-card-icon">analytics</span>
+        <span class="settings-nav-card-copy">
+          <span class="settings-nav-card-title">گزارش ها و لاگ ها</span>
+          <span class="settings-nav-card-subtitle">Audit و Effective Access</span>
+        </span>
+      </button>
+    </div>
+
+    <div class="settings-shell-panels">
+      <section id="tab-general" class="settings-tab-content active" role="tabpanel" aria-hidden="false">
+        {% include 'views/partials/settings_general_tab.html' %}
+      </section>
+
+      <section id="tab-users" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+        {% include 'views/partials/settings_users_tab.html' %}
+      </section>
+
+      <section id="tab-permissions" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+        {% include 'views/partials/settings_permissions_tab.html' %}
+      </section>
+
+      <section id="tab-bulk" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+        {% include 'views/partials/settings_bulk_tab.html' %}
+      </section>
+
+      <section id="tab-reports" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+        {% include 'views/partials/settings_reports_tab.html' %}
+      </section>
+    </div>
+  </div>
+
+  <script>
+    function openSettingsTab(tabName) {
+      const btn = document.querySelector(`#view-settings [data-settings-tab][data-tab="${tabName}"]`);
+      switchSettingsTab(tabName, btn);
+    }
+
+    function switchSettingsTab(tabName, btnEl) {
+      const tabButtons = document.querySelectorAll('#view-settings [data-settings-tab]');
+      const tabPanels = document.querySelectorAll('#view-settings .settings-tab-content');
+
+      tabButtons.forEach((button) => {
+        button.classList.remove('active');
+        button.setAttribute('aria-selected', 'false');
+      });
+
+      tabPanels.forEach((panel) => {
+        panel.classList.remove('active');
+        panel.setAttribute('aria-hidden', 'true');
+      });
+
+      const button = btnEl || document.querySelector(`#view-settings [data-settings-tab][data-tab="${tabName}"]`);
+      if (button) {
+        button.classList.add('active');
+        button.setAttribute('aria-selected', 'true');
+      }
+
+      const target = document.getElementById(`tab-${tabName}`);
+      if (target) {
+        target.classList.add('active');
+        target.setAttribute('aria-hidden', 'false');
+      }
+
+      if (tabName === 'general' && typeof initGeneralSettings === 'function') {
+        initGeneralSettings();
+      } else if (tabName === 'users' && typeof loadUsers === 'function') {
+        loadUsers();
+      } else if (tabName === 'permissions' && typeof initPermissionsSettings === 'function') {
+        initPermissionsSettings();
+      } else if (tabName === 'reports' && typeof initSettingsReports === 'function') {
+        initSettingsReports();
+      }
+    }
+
+    window.openSettingsTab = openSettingsTab;
+    window.switchSettingsTab = switchSettingsTab;
+  </script>
+</div>

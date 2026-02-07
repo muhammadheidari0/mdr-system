@@ -1,0 +1,151 @@
+<div id="view-transmittal" class="view-section" style="display: none;">
+  <div class="archive-card">
+    <div class="archive-header">
+      <div class="header-content">
+        <h2 class="archive-title">
+          <span class="material-icons-round" style="margin-left: 8px;">send</span>
+          Transmittal 2.0
+        </h2>
+        <p class="archive-subtitle">ثبت اتمیک هدر/آیتم، شماره‌دهی خودکار، انتخاب مدارک مجاز (Scope)</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn-secondary" type="button" onclick="loadTransmittals()">
+          <span class="material-icons-round">refresh</span>
+          بازخوانی
+        </button>
+        <button class="btn-primary" type="button" onclick="showCreateMode()">
+          <span class="material-icons-round">add</span>
+          صدور جدید
+        </button>
+      </div>
+    </div>
+
+    <div class="archive-content">
+      <div class="general-overview-grid" style="margin-bottom: 14px;">
+        <div class="general-overview-card">
+          <div class="general-overview-value" id="tr2-stat-total">-</div>
+          <div class="general-overview-label">کل ترنسمیتال</div>
+        </div>
+        <div class="general-overview-card">
+          <div class="general-overview-value" id="tr2-stat-month">-</div>
+          <div class="general-overview-label">این ماه</div>
+        </div>
+        <div class="general-overview-card">
+          <div class="general-overview-value" id="tr2-stat-last" style="font-size: 0.95rem;">-</div>
+          <div class="general-overview-label">آخرین شماره</div>
+        </div>
+      </div>
+
+      <div id="tr2-list-mode">
+        <div class="table-container">
+          <table class="archive-table">
+            <thead>
+              <tr>
+                <th>شماره</th>
+                <th>موضوع</th>
+                <th>تعداد مدرک</th>
+                <th>وضعیت</th>
+                <th>تاریخ ایجاد</th>
+                <th>عملیات</th>
+              </tr>
+            </thead>
+            <tbody id="tr2-list-body">
+              <tr><td colspan="6" class="center-text muted" style="padding: 26px;">در حال بارگذاری...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="tr2-create-mode" style="display: none;">
+        <div class="general-settings-card" style="margin-bottom: 12px;">
+          <h3 class="general-settings-title">
+            <span class="material-icons-round">description</span>
+            اطلاعات هدر
+          </h3>
+          <div class="small muted" style="margin: 0 0 12px 0;">
+            Draft ID: <strong id="tr2-edit-id">NEW</strong> |
+            State: <strong id="tr2-edit-status">draft</strong>
+          </div>
+          <div class="general-form-grid">
+            <select id="tr2-project" class="form-input"></select>
+            <select id="tr2-discipline" class="form-input"></select>
+            <input id="tr2-sender" class="form-input" value="O" placeholder="Sender (I/O)">
+            <input id="tr2-receiver" class="form-input" value="C" placeholder="Receiver">
+            <input id="tr2-next-number" class="form-input" readonly placeholder="شماره خودکار">
+            <input id="tr2-subject" class="form-input" placeholder="موضوع (اختیاری)">
+          </div>
+          <div class="general-form-actions">
+            <button class="btn btn-secondary" type="button" onclick="refreshTransmittalNumber()">
+              <span class="material-icons-round">tag</span>
+              پیش‌نمایش شماره
+            </button>
+            <button class="btn btn-secondary" type="button" onclick="showListMode()">بازگشت به لیست</button>
+          </div>
+        </div>
+
+        <div class="general-settings-card" style="margin-bottom: 12px;">
+          <h3 class="general-settings-title">
+            <span class="material-icons-round">manage_search</span>
+            انتخاب مدرک مجاز
+          </h3>
+          <div class="general-list-toolbar">
+            <input id="tr2-doc-search" class="form-input general-search-input" placeholder="شماره/عنوان مدرک...">
+            <button class="btn btn-primary" type="button" onclick="searchEligibleDocs()">جستجو</button>
+          </div>
+          <div class="table-responsive">
+            <table class="archive-table">
+              <thead>
+                <tr>
+                  <th>Doc No</th>
+                  <th>Title</th>
+                  <th>Revision</th>
+                  <th>Status</th>
+                  <th>عملیات</th>
+                </tr>
+              </thead>
+              <tbody id="tr2-search-body">
+                <tr><td colspan="5" class="center-text muted">ابتدا پروژه/دیسیپلین را انتخاب کنید</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="general-settings-card">
+          <h3 class="general-settings-title">
+            <span class="material-icons-round">checklist</span>
+            آیتم‌های ترنسمیتال
+          </h3>
+          <div class="table-responsive">
+            <table class="archive-table">
+              <thead>
+                <tr>
+                  <th>Doc No</th>
+                  <th>Revision</th>
+                  <th>Status</th>
+                  <th>E-Copy</th>
+                  <th>Hard</th>
+                  <th>حذف</th>
+                </tr>
+              </thead>
+              <tbody id="tr2-docs-body">
+                <tr><td colspan="6" class="center-text muted">هنوز آیتمی اضافه نشده است</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="general-form-actions" style="margin-top: 12px;">
+            <button id="tr2-submit-btn" class="btn btn-primary" type="button" onclick="submitTransmittal()">
+              <span class="material-icons-round">save</span>
+              ذخیره Draft
+            </button>
+            <button id="tr2-issue-btn" class="btn btn-primary" type="button" onclick="submitAndIssueTransmittal()">
+              <span class="material-icons-round">send</span>
+              صدور (Issue)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/transmittal_v2.js"></script>
+</div>

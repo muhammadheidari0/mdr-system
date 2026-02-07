@@ -1,0 +1,45 @@
+<aside id="app-sidebar" class="sidebar">
+  <div class="sidebar-header">
+    <h2 style="margin:0; font-size:1rem; color:var(--text-main);">منو</h2>
+    <button class="icon-btn" onclick="toggleSidebar()">
+      <span class="material-icons-round">close</span>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">عمومی</div>
+    <a href="#" class="nav-item active" onclick="navigateTo('view-dashboard')" id="nav-dashboard">
+      <span class="material-icons-round">work_history</span>
+      <span>کارتابل کاری</span>
+    </a>
+
+    <div class="nav-section-label">مدیریت مدارک مهندسی (EDMS)</div>
+    <a href="#" class="nav-item" onclick="navigateTo('view-edms')" id="nav-edms">
+      <span class="material-icons-round">engineering</span>
+      <span>مدیریت مدارک مهندسی</span>
+    </a>
+
+    <div class="nav-section-label">دفتر فنی و اجرا (پیمانکار)</div>
+    <a href="#" class="nav-item" onclick="navigateTo('view-contractor')" id="nav-contractor">
+      <span class="material-icons-round">construction</span>
+      <span>فرم‌ها و اجرا</span>
+    </a>
+
+    <div class="nav-section-label">نظارت و کنترل پروژه (مشاور)</div>
+    <a href="#" class="nav-item" onclick="navigateTo('view-consultant')" id="nav-consultant">
+      <span class="material-icons-round">fact_check</span>
+      <span>نظارت و کنترل پروژه</span>
+    </a>
+
+    <div class="divider admin-only" style="margin:15px 0; display:none;"></div>
+    <div class="nav-section-label admin-only" style="display:none;">مدیریت</div>
+    <a href="#" class="nav-item admin-only" onclick="navigateTo('view-settings')" id="nav-settings" style="display:none;">
+      <span class="material-icons-round">settings</span>
+      <span>تنظیمات سیستم</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer" style="padding:20px; border-top:1px solid var(--border); margin-top:auto;">
+    <span style="font-size:0.75rem; color:var(--text-muted);">نسخه 2.5.0</span>
+  </div>
+</aside>

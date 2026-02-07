@@ -1,0 +1,352 @@
+<div id="view-correspondence" class="view-section" style="display: none;">
+    <div class="archive-card correspondence-card">
+        <div class="archive-header">
+            <div class="archive-title">
+                <span class="material-icons-round" style="color:#0ea5e9; font-size:28px;">mail</span>
+                مدیریت مکاتبات
+            </div>
+            <button class="btn-archive-primary" type="button" onclick="corrOpenCreate()">
+                <span class="material-icons-round">add</span>
+                مکاتبه جدید
+            </button>
+        </div>
+
+        <div class="corr-dashboard-grid">
+            <div class="corr-stat-card">
+                <div class="corr-stat-value" id="corrStatTotal">0</div>
+                <div class="corr-stat-label">کل مکاتبات</div>
+            </div>
+            <div class="corr-stat-card is-open">
+                <div class="corr-stat-value" id="corrStatOpen">0</div>
+                <div class="corr-stat-label">باز</div>
+            </div>
+            <div class="corr-stat-card is-overdue">
+                <div class="corr-stat-value" id="corrStatOverdue">0</div>
+                <div class="corr-stat-label">سررسید گذشته</div>
+            </div>
+            <div class="corr-stat-card is-actions">
+                <div class="corr-stat-value" id="corrStatOpenActions">0</div>
+                <div class="corr-stat-label">اقدام باز</div>
+            </div>
+        </div>
+
+        <div class="archive-toolbar correspondence-toolbar">
+            <div class="archive-search-box">
+                <span class="material-icons-round archive-search-icon">search</span>
+                <input
+                    type="text"
+                    id="corrSearchInput"
+                    class="archive-search-input"
+                    placeholder="جستجو بر اساس شماره، موضوع، فرستنده یا گیرنده"
+                    onkeyup="corrDebouncedSearch()"
+                >
+            </div>
+
+            <div class="corr-filter-group">
+                <select id="corrIssuingFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                    <option value="">همه مراجع صدور</option>
+                </select>
+                <select id="corrCategoryFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                    <option value="">همه دسته‌ها</option>
+                </select>
+                <select id="corrDirectionFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                    <option value="">همه جهت‌ها</option>
+                    <option value="I">وارده</option>
+                    <option value="O">صادره</option>
+                </select>
+                <select id="corrStatusFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                    <option value="">همه وضعیت‌ها</option>
+                    <option value="Open">باز</option>
+                    <option value="Closed">بسته</option>
+                    <option value="Overdue">سررسید گذشته</option>
+                </select>
+                <input type="date" id="corrDateFromFilter" class="archive-filter-date" onchange="corrApplyFilters()">
+                <input type="date" id="corrDateToFilter" class="archive-filter-date" onchange="corrApplyFilters()">
+                <button class="btn-archive-icon" type="button" onclick="corrResetFilters()" title="حذف فیلتر">
+                    <span class="material-icons-round">filter_alt_off</span>
+                </button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+                <select id="corrPageSize" class="archive-filter-select" style="min-width:90px;" onchange="corrChangePageSize(this.value)">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                </select>
+                <button class="btn-archive-icon" type="button" onclick="corrRefresh()" title="بازخوانی">
+                    <span class="material-icons-round">refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <div style="flex:1; overflow-x:auto;">
+            <table class="archive-table correspondence-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px;">#</th>
+                        <th>شماره نامه</th>
+                        <th>موضوع</th>
+                        <th>مرجع صدور</th>
+                        <th>دسته</th>
+                        <th>جهت</th>
+                        <th>تاریخ</th>
+                        <th>وضعیت</th>
+                        <th>اقدام باز</th>
+                        <th>پیوست</th>
+                        <th style="width:148px;">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="corrTableBody"></tbody>
+            </table>
+
+            <div id="corrLoader" style="text-align:center; padding:40px; display:none;">
+                <span class="material-icons-round" style="font-size:32px; animation: spin 1s linear infinite; color:#9ca3af;">loop</span>
+                <p style="color:#6b7280; font-size:0.9rem; margin-top:10px;">در حال دریافت اطلاعات مکاتبات...</p>
+            </div>
+
+            <div id="corrEmpty" style="text-align:center; padding:45px; display:none;">
+                <span class="material-icons-round" style="font-size:46px; color:#cbd5e1;">mail_off</span>
+                <p style="color:#94a3b8; margin-top:8px;">رکوردی یافت نشد.</p>
+            </div>
+        </div>
+
+        <div class="corr-pager">
+            <div id="corrPagerInfo" class="corr-pager-info">0</div>
+            <div class="corr-pager-actions">
+                <button id="corrPrevBtn" class="btn-archive-icon" type="button" onclick="corrPrevPage()">قبلی</button>
+                <button id="corrNextBtn" class="btn-archive-icon" type="button" onclick="corrNextPage()">بعدی</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="corrModal" class="am-modal-overlay">
+        <div class="am-modal-box corr-modal-box">
+            <div class="corr-modal-header">
+                <h3 id="corrModalTitle" style="margin:0; color:#0f172a;">مکاتبه جدید</h3>
+                <button type="button" class="btn-archive-icon" onclick="corrCloseModal()">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+
+            <form id="corrForm" onsubmit="corrSave(event)">
+                <input type="hidden" id="corrIdInput">
+
+                <div class="corr-form-grid corr-form-grid-4">
+                    <div>
+                        <label class="form-label-sm">مرجع صدور</label>
+                        <select id="corrIssuingInput" class="archive-search-input" onchange="corrUpdateReferencePreview()" required>
+                            <option value="">انتخاب مرجع صدور</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">دسته</label>
+                        <select id="corrCategoryInput" class="archive-search-input" onchange="corrUpdateReferencePreview()" required>
+                            <option value="">انتخاب دسته</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">جهت</label>
+                        <select id="corrDirectionInput" class="archive-search-input" onchange="corrUpdateReferencePreview()">
+                            <option value="O">صادره</option>
+                            <option value="I">وارده</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">تاریخ</label>
+                        <input type="date" id="corrDateInput" class="archive-search-input" onchange="corrUpdateReferencePreview()" required>
+                    </div>
+                </div>
+
+                <div class="corr-form-grid corr-form-grid-2">
+                    <div>
+                        <label class="form-label-sm">پروژه (اختیاری)</label>
+                        <select id="corrProjectInput" class="archive-search-input">
+                            <option value="">اتوماتیک از مرجع / بدون پروژه</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">دیسیپلین (اختیاری)</label>
+                        <select id="corrDisciplineInput" class="archive-search-input">
+                            <option value="">بدون دیسیپلین</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="corr-form-grid corr-form-grid-2">
+                    <div>
+                        <label class="form-label-sm">شماره نامه (اختیاری)</label>
+                        <input type="text" id="corrReferenceInput" class="archive-search-input" placeholder="خالی بماند اتوماتیک ساخته می‌شود" oninput="corrUpdateReferencePreview()">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">پیش‌نمایش شماره</label>
+                        <div id="corrRefPreview" class="corr-ref-preview">-</div>
+                    </div>
+                </div>
+
+                <div class="corr-form-grid corr-form-grid-1">
+                    <div>
+                        <label class="form-label-sm">موضوع</label>
+                        <input type="text" id="corrSubjectInput" class="archive-search-input" required>
+                    </div>
+                </div>
+
+                <div class="corr-form-grid corr-form-grid-2">
+                    <div>
+                        <label class="form-label-sm">فرستنده</label>
+                        <input type="text" id="corrSenderInput" class="archive-search-input">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">گیرنده</label>
+                        <input type="text" id="corrRecipientInput" class="archive-search-input">
+                    </div>
+                </div>
+
+                <div class="corr-form-grid corr-form-grid-3">
+                    <div>
+                        <label class="form-label-sm">مهلت پاسخ</label>
+                        <input type="date" id="corrDueDateInput" class="archive-search-input">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">وضعیت</label>
+                        <select id="corrStatusInput" class="archive-search-input">
+                            <option value="Open">باز</option>
+                            <option value="Closed">بسته</option>
+                            <option value="Overdue">سررسید گذشته</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">اولویت</label>
+                        <select id="corrPriorityInput" class="archive-search-input">
+                            <option value="Normal">عادی</option>
+                            <option value="High">بالا</option>
+                            <option value="Urgent">فوری</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="corr-form-grid corr-form-grid-1">
+                    <div>
+                        <label class="form-label-sm">توضیحات</label>
+                        <textarea id="corrNotesInput" class="archive-search-input corr-notes-input" rows="3"></textarea>
+                    </div>
+                </div>
+            </form>
+
+            <div class="corr-subsection" id="corrActionsSection">
+                <div class="corr-subsection-header">رهگیری اقدامات</div>
+                <div class="corr-form-grid corr-form-grid-4">
+                    <div>
+                        <label class="form-label-sm">نوع اقدام</label>
+                        <select id="corrActionTypeInput" class="archive-search-input">
+                            <option value="task">تسک</option>
+                            <option value="followup">پیگیری</option>
+                            <option value="reply">پاسخ</option>
+                            <option value="approve">تایید</option>
+                            <option value="close">بستن</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">عنوان</label>
+                        <input type="text" id="corrActionTitleInput" class="archive-search-input" placeholder="عنوان اقدام">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">موعد</label>
+                        <input type="date" id="corrActionDueInput" class="archive-search-input">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">وضعیت</label>
+                        <select id="corrActionStatusInput" class="archive-search-input">
+                            <option value="Open">باز</option>
+                            <option value="Closed">بسته</option>
+                            <option value="In Progress">در جریان</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="corr-form-grid corr-form-grid-1">
+                    <div>
+                        <label class="form-label-sm">شرح اقدام</label>
+                        <textarea id="corrActionDescInput" class="archive-search-input corr-notes-input" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="corr-action-toolbar">
+                    <input type="hidden" id="corrActionIdInput">
+                    <button class="btn-archive-primary" type="button" id="corrActionSubmitBtn" onclick="corrSubmitAction()">
+                        <span class="material-icons-round">playlist_add_check</span>
+                        افزودن اقدام
+                    </button>
+                    <button class="btn-archive-icon" type="button" onclick="corrClearActionEditor()">
+                        پاک‌سازی
+                    </button>
+                </div>
+                <div class="corr-mini-table-wrap">
+                    <table class="archive-table corr-mini-table">
+                        <thead>
+                            <tr>
+                                <th>عنوان</th>
+                                <th>نوع</th>
+                                <th>موعد</th>
+                                <th>وضعیت</th>
+                                <th style="width:110px;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corrActionsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="corr-subsection" id="corrAttachmentsSection">
+                <div class="corr-subsection-header">فایل‌های مکاتبه</div>
+                <div class="corr-form-grid corr-form-grid-4">
+                    <div>
+                        <label class="form-label-sm">نوع فایل</label>
+                        <select id="corrAttachmentKindInput" class="archive-search-input">
+                            <option value="letter">فایل نامه (PDF)</option>
+                            <option value="original">فایل اصلی نامه (Word/Excel)</option>
+                            <option value="attachment">پیوست</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">اتصال به اقدام</label>
+                        <select id="corrAttachmentActionInput" class="archive-search-input">
+                            <option value="">بدون اقدام</option>
+                        </select>
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label class="form-label-sm">انتخاب فایل</label>
+                        <input id="corrAttachmentFileInput" type="file" class="archive-search-input">
+                    </div>
+                </div>
+                <div class="corr-action-toolbar">
+                    <button class="btn-archive-primary" type="button" onclick="corrUploadAttachment()">
+                        <span class="material-icons-round">upload</span>
+                        آپلود فایل
+                    </button>
+                </div>
+                <div class="corr-mini-table-wrap">
+                    <table class="archive-table corr-mini-table">
+                        <thead>
+                            <tr>
+                                <th>نام فایل</th>
+                                <th>نوع فایل</th>
+                                <th>اقدام مرتبط</th>
+                                <th>تاریخ</th>
+                                <th style="width:130px;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corrAttachmentsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="corr-modal-footer">
+                <button type="button" class="btn-archive-icon" onclick="corrCloseModal()">انصراف</button>
+                <button type="submit" form="corrForm" class="btn-archive-primary" id="corrSaveBtn">
+                    <span class="material-icons-round">save</span>
+                    ذخیره مکاتبه
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/correspondence.js"></script>
+</div>

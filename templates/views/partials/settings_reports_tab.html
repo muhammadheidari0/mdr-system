@@ -1,0 +1,221 @@
+<div class="archive-card">
+  <div class="archive-header">
+    <div class="header-content">
+      <h2 class="archive-title">
+        <span class="material-icons-round" style="margin-left: 8px;">query_stats</span>
+        گزارش دسترسی‌ها
+      </h2>
+      <p class="archive-subtitle">
+        گزارش اینکه چه کاربری به پروژه/دیسیپلین انتخابی دسترسی دارد یا ندارد.
+      </p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-secondary" type="button" onclick="initSettingsReports(true)">
+        <span class="material-icons-round">refresh</span>
+        بازخوانی
+      </button>
+      <button class="btn-primary" type="button" onclick="loadSettingsAccessReport()">
+        <span class="material-icons-round">search</span>
+        اجرای گزارش
+      </button>
+      <button class="btn-secondary" type="button" onclick="downloadSettingsAccessReportCsv()">
+        <span class="material-icons-round">download</span>
+        خروجی CSV
+      </button>
+    </div>
+  </div>
+  <div class="archive-content">
+    <div class="general-form-grid settings-report-grid">
+      <div class="form-group">
+        <label class="form-label-sm">فیلتر پروژه</label>
+        <select id="reportProjectCode" class="form-input"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">فیلتر دیسیپلین</label>
+        <select id="reportDisciplineCode" class="form-input"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">گزینه‌ها</label>
+        <div class="settings-report-checks">
+          <label class="checkbox-label">
+            <input id="reportIncludeInactive" type="checkbox" />
+            <span class="checkmark"></span>
+            کاربران غیرفعال
+          </label>
+          <label class="checkbox-label">
+            <input id="reportIncludeDenied" type="checkbox" />
+            <span class="checkmark"></span>
+            کاربران بدون دسترسی
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">نتیجه</label>
+        <div id="settingsAccessReportMeta" class="form-help">برای شروع، یک فیلتر انتخاب کنید.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">سایز صفحه گزارش</label>
+        <select id="settingsAccessPageSize" class="form-input" onchange="setSettingsAccessPageSize(this.value)">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-container" style="margin-top: 12px;">
+      <table class="archive-table">
+        <thead>
+          <tr>
+            <th>کاربر</th>
+            <th>نقش</th>
+            <th>وضعیت</th>
+            <th>دسترسی</th>
+            <th>Scope پروژه</th>
+            <th>Scope دیسیپلین</th>
+          </tr>
+        </thead>
+        <tbody id="settingsAccessReportRows">
+          <tr>
+            <td class="center-text muted" colspan="6" style="padding: 24px;">برای نمایش گزارش، فیلتر را انتخاب کنید.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="settingsAccessPager" class="general-pager" style="margin-top: 8px;"></div>
+  </div>
+</div>
+
+<div class="archive-card" style="margin-top: 14px; min-height: auto;">
+  <div class="archive-header">
+    <div class="header-content">
+      <h3 class="archive-title">
+        <span class="material-icons-round" style="margin-left: 8px;">manage_search</span>
+        گزارش دسترسی کاربر (Reverse Lookup)
+      </h3>
+      <p class="archive-subtitle">
+        مشاهده دسترسی موثر یک کاربر بر اساس role scope و user scope.
+      </p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-primary" type="button" onclick="loadSettingsUserAccess()">
+        <span class="material-icons-round">visibility</span>
+        نمایش دسترسی کاربر
+      </button>
+    </div>
+  </div>
+  <div class="archive-content">
+    <div class="general-form-grid settings-report-grid">
+      <div class="form-group">
+        <label class="form-label-sm">کاربر</label>
+        <select id="reportUserSelect" class="form-input"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">خلاصه</label>
+        <div id="settingsUserAccessSummary" class="form-help">یک کاربر انتخاب کنید و روی «نمایش دسترسی کاربر» بزنید.</div>
+      </div>
+    </div>
+    <div class="settings-user-scope-grid">
+      <div>
+        <div class="form-label-sm">پروژه‌های موثر</div>
+        <ul id="settingsUserAccessProjects" class="settings-scope-list">
+          <li class="muted">-</li>
+        </ul>
+      </div>
+      <div>
+        <div class="form-label-sm">دیسیپلین‌های موثر</div>
+        <ul id="settingsUserAccessDisciplines" class="settings-scope-list">
+          <li class="muted">-</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="archive-card" style="margin-top: 14px;">
+  <div class="archive-header">
+    <div class="header-content">
+      <h3 class="archive-title">
+        <span class="material-icons-round" style="margin-left: 8px;">history</span>
+        لاگ تغییرات تنظیمات (Audit Logs)
+      </h3>
+      <p class="archive-subtitle">
+        ردیابی عملیات انجام‌شده روی تنظیمات و سطح دسترسی‌ها.
+      </p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-secondary" type="button" onclick="loadSettingsAuditLogs()">
+        <span class="material-icons-round">refresh</span>
+        بازخوانی لاگ‌ها
+      </button>
+    </div>
+  </div>
+  <div class="archive-content">
+    <div class="general-form-grid settings-report-grid">
+      <div class="form-group">
+        <label class="form-label-sm">Action</label>
+        <input id="settingsAuditAction" class="form-input" type="text" placeholder="مثال: permissions.scope.save">
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">Target Type</label>
+        <input id="settingsAuditTargetType" class="form-input" type="text" placeholder="مثال: role_scope">
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">Target Key</label>
+        <input id="settingsAuditTargetKey" class="form-input" type="text" placeholder="مثال: T202">
+      </div>
+      <div class="form-group">
+        <label class="form-label-sm">سایز صفحه لاگ</label>
+        <select id="settingsAuditPageSize" class="form-input" onchange="setSettingsAuditPageSize(this.value)">
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+    <div id="settingsAuditMeta" class="form-help" style="margin-top: 8px;">در حال آماده‌سازی...</div>
+    <div class="table-container" style="margin-top: 12px;">
+      <table class="archive-table">
+        <thead>
+          <tr>
+            <th>زمان</th>
+            <th>Action</th>
+            <th>Target</th>
+            <th>Actor</th>
+            <th>Before</th>
+            <th>After</th>
+          </tr>
+        </thead>
+        <tbody id="settingsAuditLogRows">
+          <tr>
+            <td class="center-text muted" colspan="6" style="padding: 24px;">در حال بارگذاری لاگ‌ها...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="settingsAuditPager" class="general-pager" style="margin-top: 8px;"></div>
+  </div>
+</div>
+
+<div id="settingsJsonModal" class="modal" style="display: none;" onclick="closeSettingsJsonModal(event)">
+  <div class="modal-content settings-json-modal-content" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <h3 id="settingsJsonModalTitle">JSON Viewer</h3>
+      <button class="modal-close" type="button" onclick="closeSettingsJsonModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="settingsJsonModalMeta" class="form-help"></div>
+      <pre id="settingsJsonModalContent" class="settings-json-modal-pre">{}</pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" type="button" onclick="copySettingsJsonModal()">
+        Copy JSON
+      </button>
+      <button class="btn-secondary" type="button" onclick="closeSettingsJsonModal()">بستن</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/settings_reports.js"></script>

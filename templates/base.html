@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}MDR System | Ø³Ø§Ù…Ø§Ù†Ù‡ Ú©Ù†ØªØ±Ù„ Ù…Ø¯Ø§Ø±Ú©{% endblock %}</title>
+
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    
+    <link href="/static/css/style.css?v=20260206b" rel="stylesheet" type="text/css" />
+    
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="{{ 'sidebar-closed' if request.cookies.get('sidebar_status') == 'closed' else '' }}">
+
+    <div id="sidebar-overlay" class="overlay" onclick="toggleSidebar()"></div>
+
+    {% include 'components/sidebar.html' %}
+
+    <div class="main-content">
+        
+        {% include 'components/header.html' %}
+
+        <div class="container-fluid">
+            {% block content %}{% endblock %}
+        </div>
+
+    </div>
+
+    <div class="fab-container">
+        <button class="fab-btn" onclick="navigateTo('view-edms'); setTimeout(() => { if (typeof openEdmsTab === 'function') openEdmsTab('archive'); const archivePanel = document.getElementById('view-archive'); if (archivePanel && archivePanel.style.display !== 'none' && typeof archiveOpenModal === 'function') archiveOpenModal(); }, 220);" title="Ø¢Ù¾Ù„ÙˆØ¯ Ø³Ù†Ø¯ Ø¬Ø¯ÛŒØ¯">
+            <span class="material-icons-round">cloud_upload</span>
+        </button>
+    </div>
+
+    <div id="context-menu" class="context-menu">
+        <div class="context-item" onclick="handleAction('view')"><span class="material-icons-round">visibility</span> Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø¬Ø²Ø¦ÛŒØ§Øª</div>
+        <div class="context-item" onclick="handleAction('history')"><span class="material-icons-round">history</span> ØªØ§Ø±ÛŒØ®Ú†Ù‡</div>
+        <div class="context-item" onclick="handleAction('upload')"><span class="material-icons-round">upload</span> Ø¢Ù¾Ù„ÙˆØ¯ ÙØ§ÛŒÙ„ Ø¬Ø¯ÛŒØ¯</div>
+        <div class="divider"></div>
+        <div class="context-item text-danger" onclick="handleAction('delete')"><span class="material-icons-round">delete</span> Ø­Ø°Ù</div>
+    </div>
+
+    <div id="global-loader" class="loading-overlay" style="display: none;">
+        <div class="loader"></div>
+    </div>
+
+    {% include 'components/doc_search.html' %}
+    
+    <script src="/static/js/ui.js"></script>
+    <script src="/static/js/auth.js"></script>
+    <script src="/static/js/app.js"></script>
+    
+    {% block scripts %}{% endblock %}
+
+</body>
+</html>
+

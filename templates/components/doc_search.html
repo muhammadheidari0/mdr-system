@@ -1,0 +1,186 @@
+<style>
+    /* Search Dropdown Styles */
+    .ds-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        left: 0;
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 10000;
+        display: none;
+        margin-top: 5px;
+        text-align: right;
+    }
+
+    .ds-item {
+        padding: 12px 15px;
+        border-bottom: 1px solid #f3f4f6;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .ds-item:last-child { border-bottom: none; }
+
+    .ds-item:hover {
+        background-color: #f0f9ff;
+    }
+
+    .ds-code {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+        color: #2563eb;
+        direction: ltr;
+        background: #eff6ff;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+    }
+
+    .ds-title {
+        font-size: 0.9rem;
+        color: #374151;
+        margin-left: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 250px;
+    }
+    
+    .ds-loading {
+        padding: 15px;
+        text-align: center;
+        color: #6b7280;
+        font-size: 0.85rem;
+    }
+</style>
+
+<script>
+    /**
+     * Smart Document Search Component
+     */
+    class DocSearch {
+        constructor(inputId, onSelectCallback = null) {
+            this.input = document.getElementById(inputId);
+            this.callback = onSelectCallback;
+            this.timer = null;
+            
+            if (!this.input) {
+                console.warn(`DocSearch: Input element with ID '${inputId}' not found.`);
+                return;
+            }
+
+            this.createDropdown();
+            
+            this.input.addEventListener('input', () => this.handleInput());
+            this.input.addEventListener('focus', () => this.handleInput());
+            
+            document.addEventListener('click', (e) => {
+                if (e.target !== this.input && !this.dropdown.contains(e.target)) {
+                    this.close();
+                }
+            });
+        }
+
+        createDropdown() {
+            const parent = this.input.parentNode;
+            if (getComputedStyle(parent).position === 'static') {
+                parent.style.position = 'relative';
+            }
+
+            this.dropdown = document.createElement('div');
+            this.dropdown.className = 'ds-dropdown';
+            parent.appendChild(this.dropdown);
+        }
+
+        handleInput() {
+            const term = this.input.value.trim();
+            clearTimeout(this.timer);
+
+            if (term.length < 2) {
+                this.close();
+                return;
+            }
+
+            this.timer = setTimeout(() => this.search(term), 400);
+        }
+
+        async search(term) {
+            this.dropdown.innerHTML = '<div class="ds-loading">Searching...</div>';
+            this.dropdown.style.display = 'block';
+
+            try {
+                const params = new URLSearchParams({
+                    doc: term,
+                    size: '7',
+                });
+                const url = `/api/v1/mdr/search?${params.toString()}`;
+
+                let res;
+                if (typeof fetchWithAuth === 'function') {
+                    res = await fetchWithAuth(url);
+                } else {
+                    const token = localStorage.getItem('access_token');
+                    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+                    res = await fetch(url, { headers });
+                }
+
+                if (!res || !res.ok) {
+                    throw new Error(`Search request failed: ${res ? res.status : 'no response'}`);
+                }
+
+                const data = await res.json();
+
+                this.dropdown.innerHTML = '';
+
+                if (data.items && data.items.length > 0) {
+                    data.items.forEach(doc => {
+                        const div = document.createElement('div');
+                        div.className = 'ds-item';
+                        
+                        const title = doc.doc_title_p || doc.doc_title_e || 'No Title';
+
+                        const titleEl = document.createElement('span');
+                        titleEl.className = 'ds-title';
+                        titleEl.title = title;
+                        titleEl.textContent = title;
+
+                        const codeEl = document.createElement('span');
+                        codeEl.className = 'ds-code';
+                        codeEl.textContent = doc.doc_number || '-';
+
+                        div.appendChild(titleEl);
+                        div.appendChild(codeEl);
+                        
+                        div.onclick = () => this.selectItem(doc);
+                        this.dropdown.appendChild(div);
+                    });
+                } else {
+                    this.dropdown.innerHTML = '<div class="ds-loading">No results found.</div>';
+                }
+            } catch (e) {
+                console.error(e);
+                this.dropdown.innerHTML = '<div class="ds-loading" style="color:#ef4444">Error fetching data</div>';
+            }
+        }
+
+        selectItem(doc) {
+            this.input.value = doc.doc_number;
+            this.close();
+            if (this.callback) {
+                this.callback(doc);
+            }
+        }
+
+        close() {
+            this.dropdown.style.display = 'none';
+        }
+    }
+</script>

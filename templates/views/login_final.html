@@ -1,0 +1,164 @@
+<div id="view-login" class="view">
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="login-logo">
+          <span class="material-icons-round" style="font-size: 48px; color: var(--primary);">engineering</span>
+        </div>
+        <h1 class="login-title">MDR System</h1>
+        <p class="login-subtitle">سامانه مدیریت اسناد</p>
+      </div>
+      
+      <form method="POST" action="/api/v1/auth/login" class="login-form">
+        <div class="form-group">
+          <label for="email" class="form-label">ایمیل</label>
+          <div class="input-group">
+            <span class="material-icons-round input-icon">email</span>
+            <input type="email" id="email" name="email" class="form-input" placeholder="ایمیل خود را وارد کنید" required>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="password" class="form-label">رمز عبور</label>
+          <div class="input-group">
+            <span class="material-icons-round input-icon">lock</span>
+            <input type="password" id="password" name="password" class="form-input" placeholder="رمز عبور خود را وارد کنید" required>
+          </div>
+        </div>
+        
+        <button type="submit" class="login-btn">
+          <span class="material-icons-round">login</span>
+          ورود به سیستم
+        </button>
+      </form>
+      
+      <div class="login-footer">
+        <p class="login-help">
+          ??????? ???? ?? ?? ???? ????? ?????? ????
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.login-card {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  width: 100%;
+  max-width: 400px;
+}
+
+.login-header {
+  text-align: center;
+  padding: 40px 30px 30px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+}
+
+.login-logo {
+  margin-bottom: 20px;
+}
+
+.login-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+}
+
+.login-subtitle {
+  color: #64748b;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.login-form {
+  padding: 30px;
+}
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+.form-label {
+  display: block;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.form-input {
+  width: 100%;
+  padding: 12px 16px 12px 48px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.input-icon {
+  position: absolute;
+  right: 16px;
+  color: #64748b;
+  font-size: 20px;
+}
+
+.login-btn {
+  width: 100%;
+  padding: 14px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.login-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+}
+
+.login-footer {
+  padding: 20px 30px;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.login-help {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin: 0;
+}
+</style>

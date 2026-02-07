@@ -1,0 +1,43 @@
+<div class="archive-card bulk-frame-card">
+  <div class="archive-header" style="padding: 15px 20px; flex-shrink: 0;">
+    <div class="archive-title">
+      <span class="material-icons-round" style="color:#f59e0b; font-size:28px;">upload_file</span>
+      ثبت گروهی اسناد (Excel Import)
+    </div>
+    <button class="btn-archive-icon" onclick="window.open('/static/templates/mdr_template.xlsx')" title="دانلود فایل نمونه اکسل">
+      <span class="material-icons-round">download</span> نمونه فایل
+    </button>
+  </div>
+
+  <div class="bulk-frame-body">
+    <iframe
+      id="bulkRegisterFrame"
+      src="/api/v1/mdr/bulk-register-page"
+      style="width:100%; min-height:460px; height:460px; border:none;"
+      scrolling="no"
+      title="Bulk Register Form"></iframe>
+  </div>
+</div>
+
+<script>
+  (function () {
+    if (window.__bulkFrameResizeBound) return;
+    window.__bulkFrameResizeBound = true;
+
+    const frame = document.getElementById('bulkRegisterFrame');
+    if (!frame) return;
+
+    window.addEventListener('message', (event) => {
+      const data = event.data || {};
+      if (data.type !== 'mdr-bulk-height') return;
+
+      const h = Number(data.height || 0);
+      if (!Number.isFinite(h) || h <= 0) return;
+
+      const minHeight = 460;
+      const maxHeight = 1400;
+      const nextHeight = Math.max(minHeight, Math.min(maxHeight, h + 10));
+      frame.style.height = `${nextHeight}px`;
+    });
+  })();
+</script>

@@ -1,0 +1,468 @@
+﻿Discipline_Code,Discipline_Name_E,Discipline_Name_P,Package_Code,Package_Name_E,Package_Name_P
+AR,Architecture,معماری,AR01,Cover Sheet & List of Drawings,جلد و فهرست کلیه نقشه‌ها
+AR,Architecture,معماری,AR02,General Notes,اطلاعات کلی
+AR,Architecture,معماری,AR03,Abbreviation,علائم اختصاری کلی
+AR,Architecture,معماری,AR04,Finishing Schedule,جدول نازک‌کاری
+AR,Architecture,معماری,AR05,Table of Area,جدول مساحت
+AR,Architecture,معماری,AR06,Site Plan,سایت پلان
+AR,Architecture,معماری,AR07,plan,پلان
+AR,Architecture,معماری,AR08,Floor Plan & Table of Area,پلان طبقات و جدول مساحت
+AR,Architecture,معماری,AR09,Construction Floor Plan,پلان اجرایی
+AR,Architecture,معماری,AR10,Reference Plan,پلان مرجع
+AR,Architecture,معماری,AR11,Furniture Plan,پلان مبلمان
+AR,Architecture,معماری,AR12,Flooring Plan,پلان کف‌سازی
+AR,Architecture,معماری,AR13,Area Plan,پلان مساحت
+AR,Architecture,معماری,AR14,Slab & Opening Plan,پلان اسلب و بازشوها
+AR,Architecture,معماری,AR15,Reflected Ceiling Plan,پلان سقف کاذب
+AR,Architecture,معماری,AR16,Section,مقطع
+AR,Architecture,معماری,AR17,Wall Section,مقطع دیوار خارجی
+AR,Architecture,معماری,AR18,Elevation,نما
+AR,Architecture,معماری,AR19,Interior Elevation,نمای داخلی
+AR,Architecture,معماری,AR20,Door Types,تیپ‌بندی درب‌ها
+AR,Architecture,معماری,AR21,Window Types,تیپ‌بندی پنجره‌ها
+AR,Architecture,معماری,AR22,Closet Types,تیپ‌بندی کمدها
+AR,Architecture,معماری,AR23,Detail,دیتیل
+AR,Architecture,معماری,AR24,Stair Enlarged Plan,بزرگنمایی پله
+AR,Architecture,معماری,AR25,Rest Room Enlarged Plan,بزرگنمایی سرویس بهداشتی
+AR,Architecture,معماری,AR26,Pantry Enlarged Plan,بزرگنمایی آبدارخانه
+AR,Architecture,معماری,AR27,Lobby Enlarged Plan,بزرگنمایی لابی
+AR,Architecture,معماری,AR28,Prayer Room Enlarged Plan,بزرگنمایی نمازخانه
+AR,Architecture,معماری,AR29,Main Entrance Enlarged Plan,بزرگنمایی ورودی‌های اصلی
+AR,Architecture,معماری,AR30,Enlarged Plan,بزرگنمایی
+AR,Architecture,معماری,AR31,Exterior View,تصاویر خارجی
+AR,Architecture,معماری,AR32,Interior View,تصاویر داخلی
+AR,Architecture,معماری,AR33,Facade Committee Album,دفترچه کمیته نما
+AR,Architecture,معماری,AR34,Architectural Drawings (M),نقشه‌های معماری (M)
+AR,Architecture,معماری,AR35,Architectural Drawings (F),نقشه‌های معماری (F)
+AR,Architecture,معماری,AR36,Technical Specifications,مشخصات فنی خصوصی
+AR,Architecture,معماری,AR37,Wall Details and Non-Structural Elements,جزئیات دیوارچینی و اجزای غیرسازه‌ای
+AR,Architecture,معماری,AR38,Wall Executive Plan,پلان اجرایی دیوارچینی
+AR,Architecture,معماری,AR39,Storage Room Doors Detail,جزئیات درب انباری
+AR,Architecture,معماری,AR40,Floor Finishing Detail of Basement Levels,جزئیات کف‌سازی طبقات منفی
+AR,Architecture,معماری,AR41,West Side Flashing Detail,جزئیات فلاشینگ سمت غربی
+AR,Architecture,معماری,AR42,Enlarged Ceiling,بزرگنمایی سقف کاذب
+AR,Architecture,معماری,AR43,Enlarged Ramp,بزرگنمایی رمپ
+AR,Architecture,معماری,AR44,Enlarged Flooring,بزرگنمایی کف‌سازی
+AR,Architecture,معماری,AR45,Enlarged Stair,بزرگنمایی پله
+AR,Architecture,معماری,AR46,Enlarged Wet Area,بزرگنمایی فضاهای تر
+AR,Architecture,معماری,AR47,Lift Lobby,بزرگنمایی لابی آسانسور
+AR,Architecture,معماری,AR48,Lift,بزرگنمایی آسانسور
+ME,Mechanical,مکانیک,ME01,Cover Sheet & List Of Drawings,جلد و فهرست کلیه نقشه‌ها
+ME,Mechanical,مکانیک,ME02,General Notes,اطلاعات کلی
+ME,Mechanical,مکانیک,ME03,Abbreviation,علائم اختصار کلی
+ME,Mechanical,مکانیک,ME04,Mechanical MTO,متره اقلام مکانیکی
+ME,Mechanical,مکانیک,ME05,Mechanical Standard Details,جزئیات اجرایی نصب تجهیزات مکانیکی
+ME,Mechanical,مکانیک,ME06,Mechanical Loads on Structure Layout,بارهای عمده تجهیزات مکانیکی بر روی سازه
+ME,Mechanical,مکانیک,ME07,Mechanical Report,گزارش فاز یک مکانیک
+ME,Mechanical,مکانیک,ME08,Mechanical System Calculations,دفترچه محاسبات تاسیسات مکانیکی
+ME,Mechanical,مکانیک,ME09,Shaft Arrangement Layout,چیدمان بازشوهای تاسیساتی
+ME,Mechanical,مکانیک,ME10,Exhaust & Ventilation Riser Diagram,دیاگرام کانال‌کشی تخلیه هوا
+ME,Mechanical,مکانیک,ME11,Exhaust & Ventilation Duct Layout,پلان کانال‌کشی تخلیه هوا
+ME,Mechanical,مکانیک,ME12,Jet Fan Layout,پلان چیدمان جت فن
+ME,Mechanical,مکانیک,ME13,HVAC Equipment Arrangement Plan,پلان جانمایی تجهیزات سیستم گرمایش و سرمایش
+ME,Mechanical,مکانیک,ME14,HVAC Air Ducting System Riser Diagram,دیاگرام کانال‌کشی سیستم تهویه مطبوع
+ME,Mechanical,مکانیک,ME15,HVAC Air Ducting System Layout,پلان کانال‌کشی سیستم تهویه مطبوع
+ME,Mechanical,مکانیک,ME16,Mechanical Room Equipment Arrangement Plan,پلان جانمایی تجهیزات موتورخانه
+ME,Mechanical,مکانیک,ME17,Mechanical Room Piping Flow Diagram,فلو دیاگرام لوله‌کشی موتورخانه
+ME,Mechanical,مکانیک,ME18,Mechanical Room Equipment Foundation Layout,پلان فونداسیون تجهیزات موتورخانه
+ME,Mechanical,مکانیک,ME19,Equipment Installation Standard Details,استاندارد دیتیل استقرار و نصب تجهیزات
+ME,Mechanical,مکانیک,ME20,Ducting Installation Standard Details,استاندارد دیتیل کانال‌کشی
+ME,Mechanical,مکانیک,ME21,Mechanical Equipment Data Sheet,مشخصات فنی تجهیزات تاسیسات مکانیکی
+ME,Mechanical,مکانیک,ME22,"Sewage, Vent & Rain Drain Riser Diagram",دیاگرام لوله‌کشی فاضلاب و آب باران
+ME,Mechanical,مکانیک,ME23,"Sewage, Vent & Rain Drain Layout",پلان لوله‌کشی فاضلاب و آب باران
+ME,Mechanical,مکانیک,ME24,Domestic Hot & Cold Water Riser Diagram,دیاگرام لوله‌کشی آب سرد و گرم مصرفی
+ME,Mechanical,مکانیک,ME25,Domestic Hot & Cold Water Layout,پلان لوله‌کشی آب سرد و گرم مصرفی
+ME,Mechanical,مکانیک,ME26,HVAC Water Riser Diagram,دیاگرام لوله‌کشی سیستم گرمایش و سرمایش
+ME,Mechanical,مکانیک,ME27,HVAC Water Layout,پلان لوله‌کشی سیستم گرمایش و سرمایش
+ME,Mechanical,مکانیک,ME28,Gas Piping & Gas Station Layout,پلان و دیاگرام لوله‌کشی گاز شهری و ایستگاه تقلیل فشار
+ME,Mechanical,مکانیک,ME29,Waste Water Treatment & Details,جزئیات تصفیه فاضلاب
+ME,Mechanical,مکانیک,ME30,Water Tanks & Details,جزئیات مخازن آب
+ME,Mechanical,مکانیک,ME31,Fuel Tanks & Details,جزئیات مخازن سوخت
+ME,Mechanical,مکانیک,ME32,Plumbing System Standard Details,استاندارد دیتیل سیستم لوله‌کشی
+ME,Mechanical,مکانیک,ME33,Condensate Drain Piping Layout,پلان لوله‌کشی درین فن‌کویل
+ME,Mechanical,مکانیک,ME34,Fan Coil Coordination Plan,جانمایی فن‌کویل
+ME,Mechanical,مکانیک,ME35,Condensate Drain Riser Diagram,دیاگرام لوله‌کشی درین فن‌کویل
+ME,Mechanical,مکانیک,ME36,Mechanical Coordination Layout,پلان هماهنگی تأسیسات مکانیکی
+EL,Electrical,برق,EL01,Cover Sheet & List Of Drawings,جلد و فهرست کلیه نقشه‌ها
+EL,Electrical,برق,EL02,General Notes,اطلاعات کلی
+EL,Electrical,برق,EL03,Abbreviation,علائم اختصار کلی
+EL,Electrical,برق,EL04,Electrical MTO,متره اقلام الکتریکی
+EL,Electrical,برق,EL05,Electrical Standard Details,جزئیات اجرایی نصب تجهیزات الکتریکی
+EL,Electrical,برق,EL06,Electrical Calculation Book,محاسبات سیستم‌های الکتریکی
+EL,Electrical,برق,EL07,Lighting System Riser Diagram,دیاگرام سیستم روشنایی
+EL,Electrical,برق,EL08,Lighting System Layout,پلان سیستم روشنایی
+EL,Electrical,برق,EL09,Power Socket System Riser Diagram,دیاگرام سیستم پریز برق
+EL,Electrical,برق,EL10,Power Socket System Layout,پلان سیستم پریز برق
+EL,Electrical,برق,EL11,Common Power Riser Diagram,دیاگرام قدرت عمومی
+EL,Electrical,برق,EL12,Telephone & Antenna System Riser Diagram,دیاگرام سیستم تلفن و آنتن
+EL,Electrical,برق,EL13,Telephone & Antenna System Layout,پلان سیستم تلفن و آنتن
+EL,Electrical,برق,EL14,Paging System Riser Diagram,دیاگرام سیستم صوتی
+EL,Electrical,برق,EL15,Paging System Layout,پلان سیستم صوتی
+EL,Electrical,برق,EL16,Access Control & PID & PMS Riser Diagram,دیاگرام کنترل تردد و PID و PMS
+EL,Electrical,برق,EL17,Access Control & PID & PMS Layout,پلان کنترل تردد و PID و PMS
+EL,Electrical,برق,EL18,CCTV System Riser Diagram,دیاگرام سیستم دوربین‌های امنیتی
+EL,Electrical,برق,EL19,CCTV System Layout,پلان سیستم دوربین‌های امنیتی
+EL,Electrical,برق,EL20,Data Network System Riser Diagram,دیاگرام سیستم شبکه
+EL,Electrical,برق,EL21,Data Network System Layout,پلان سیستم شبکه
+EL,Electrical,برق,EL22,BMS Riser Diagram,دیاگرام سیستم هوشمندسازی
+EL,Electrical,برق,EL23,BMS Layout,پلان سیستم هوشمندسازی
+EL,Electrical,برق,EL24,Commercial Units Power & Fiber Riser Diagram,دیاگرام برق و فیبر نوری واحدهای تجاری
+EL,Electrical,برق,EL25,Commercial Units Power Layout,پلان برق واحدهای تجاری
+EL,Electrical,برق,EL26,Electrical Panel Single Line Diagram,دیاگرام تک خطی تابلوهای برق
+EL,Electrical,برق,EL27,Equipment Arrangement Layout,پلان چیدمان تجهیزات
+EL,Electrical,برق,EL28,Earthing System Riser Diagram,دیاگرام سیستم اتصال به زمین
+EL,Electrical,برق,EL29,Earthing System Layout,پلان سیستم اتصال به زمین
+EL,Electrical,برق,EL30,Emergency Lighting System Diagram,دیاگرام سیستم روشنایی ایمنی
+EL,Electrical,برق,EL31,Emergency Lighting System Layout,پلان سیستم روشنایی ایمنی
+EL,Electrical,برق,EL32,Telephone & Intercom System Layout,پلان سیستم تلفن و اینترکام
+EL,Electrical,برق,EL33,MA.TV System Layout,پلان سیستم آنتن مرکزی
+EL,Electrical,برق,EL34,Mechanical Equipment Power Layout,پلان برق‌رسانی به تجهیزات مکانیکی
+EL,Electrical,برق,EL35,Electrical Power & Cable Tray Layout,پلان مسیر برق‌رسانی و سینی کابل
+EL,Electrical,برق,EL36,Electrical Panel Interconnection Diagram,دیاگرام ارتباطی تابلوهای برق
+EL,Electrical,برق,EL37,MA.TV System Diagram,رایزر دیاگرام سیستم آنتن مرکزی
+EL,Electrical,برق,EL38,"Telephone, Intercom & CCTV System Diagram","رایزر دیاگرام تلفن، اینترکام و CCTV"
+ST,Structural,سازه,ST01,Cover & Drawing List,جلد و فهرست نقشه‌ها
+ST,Structural,سازه,ST02,General Notes & Design Criteria,یادداشت‌های عمومی و مبانی طراحی
+ST,Structural,سازه,ST03,Abbreviations & Legends,علائم و اختصارات
+ST,Structural,سازه,ST04,Structural Calculation Book,دفترچه محاسبات سازه
+ST,Structural,سازه,ST05,Foundation General Arrangement (GA),نقشه جانمایی فونداسیون
+ST,Structural,سازه,ST06,Raft Foundation Reinforcement,آرماتوربندی فونداسیون رادیه
+ST,Structural,سازه,ST07,Pile Layout & Schedule,جانمایی و برنامه شمع‌ها
+ST,Structural,سازه,ST08,Pile Cap Details,جزئیات کلاف و کپ شمع‌ها
+ST,Structural,سازه,ST09,Retaining Walls Plans & Details,پلان و جزئیات دیوار حائل
+ST,Structural,سازه,ST10,Basement Walls Reinforcement,آرماتوربندی دیوارهای زیرزمین
+ST,Structural,سازه,ST11,Ground Floor Framing Plan,پلان سازه‌ای طبقه همکف
+ST,Structural,سازه,ST12,Typical Floor Framing Plan,پلان سازه‌ای طبقات تیپ
+ST,Structural,سازه,ST13,Roof Framing Plan,پلان سازه‌ای بام
+ST,Structural,سازه,ST14,Column Schedule,جدول و مقاطع ستون‌ها
+ST,Structural,سازه,ST15,Beam Schedule,جدول و مقاطع تیرها
+ST,Structural,سازه,ST16,Slab Reinforcement Plans,پلان آرماتوربندی دال‌ها
+ST,Structural,سازه,ST17,Slab Openings & Trimming,بازشوها و تقویتی دال
+ST,Structural,سازه,ST18,Shear/Core Wall Layout & Details,جانمایی و جزئیات دیوار برشی/هسته
+ST,Structural,سازه,ST19,Stair & Ramp Structural Details,جزئیات سازه‌ای پله و رمپ
+ST,Structural,سازه,ST20,Expansion Joint Details,جزئیات درز انبساط
+ST,Structural,سازه,ST21,Steel Structure GA,نقشه جانمایی سازه فولادی
+ST,Structural,سازه,ST22,Steel Connections Details,جزئیات اتصالات فولادی
+ST,Structural,سازه,ST23,Base Plate & Anchor Bolts,جزئیات بیس‌پلیت و بولت‌ها
+ST,Structural,سازه,ST24,Bracing Layout & Details,جانمایی و جزئیات مهاربندی
+ST,Structural,سازه,ST25,Lintel & Parapet Details,جزئیات نعل درگاه و جان‌پناه
+ST,Structural,سازه,ST26,Precast/Prestressed Details,جزئیات پیش‌ساخته/پیش‌تنیده
+ST,Structural,سازه,ST27,Water Tank Structural Details,جزئیات سازه‌ای مخازن آب
+ST,Structural,سازه,ST28,Equipment Foundations,فونداسیون تجهیزات
+ST,Structural,سازه,ST29,Concrete Repair Details,جزئیات ترمیم بتن
+ST,Structural,سازه,ST30,Rebar Bending Schedule (BBS),لیستوفر آرماتور
+ST,Structural,سازه,ST31,Shop Drawing Coordination (ST–MEP),نقشه‌های هماهنگی سازه و تاسیسات
+ST,Structural,سازه,ST32,As-Built Structural Drawings,نقشه‌های چون‌ساخت سازه
+ST,Structural,سازه,ST33,Seismic Detailing Requirements,جزئیات لرزه‌ای
+ST,Structural,سازه,ST34,Core & Elevator Shaft Details,جزئیات هسته و چاهک آسانسور
+CV,Civil,عمران,CV01,Cover & Drawing List,جلد و فهرست نقشه‌ها
+CV,Civil,عمران,CV02,General Notes & Legend,یادداشت‌های عمومی و علائم
+CV,Civil,عمران,CV03,Site Layout Plan,پلان جانمایی سایت
+CV,Civil,عمران,CV04,Site Grading Plan,پلان شیب‌بندی سایت
+CV,Civil,عمران,CV05,Earthworks Plan & Sections,پلان و مقاطع خاکبرداری/خاکریزی
+CV,Civil,عمران,CV06,Road Horizontal Alignment,محور افقی راه
+CV,Civil,عمران,CV07,Road Vertical Alignment & Long Sections,محور قائم و پروفیل طولی
+CV,Civil,عمران,CV08,Road Typical Cross Sections,مقاطع عرضی تیپ راه
+CV,Civil,عمران,CV09,Pavement Structure & Details,لایه‌بندی روسازی و جزئیات
+CV,Civil,عمران,CV10,Parking Layout,پلان پارکینگ
+CV,Civil,عمران,CV11,Curb & Gutter Plan,پلان جدول‌گذاری و آبرو
+CV,Civil,عمران,CV12,Sidewalk & Pedestrian Routes,پیاده‌رو و مسیرهای پیاده
+CV,Civil,عمران,CV13,Ramps & Accessibility,رمپ‌ها و دسترسی معلولین
+CV,Civil,عمران,CV14,Road Signage & Marking,علائم و خط‌کشی معابر
+CV,Civil,عمران,CV15,Stormwater Drainage Layout (On-site),پلان زهکشی آب‌های سطحی سایت
+CV,Civil,عمران,CV16,Stormwater Manhole Schedule & Details,برنامه و جزئیات آدم‌روهای آب‌های سطحی
+CV,Civil,عمران,CV17,Stormwater Profiles & Long Sections,پروفیل طولی زهکشی
+CV,Civil,عمران,CV18,Surface Drainage & Catch Basins,زهکش سطحی و آبروها
+CV,Civil,عمران,CV19,External Water Distribution Layout,پلان توزیع آب بیرونی
+CV,Civil,عمران,CV20,External Fire Water Ring Main,حلقه آب آتش‌نشانی بیرونی
+CV,Civil,عمران,CV21,External Sanitary Sewer Layout,پلان فاضلاب بیرونی
+CV,Civil,عمران,CV22,Utility Corridor / Trench Layout,پلان کانال تاسیسات مشترک
+CV,Civil,عمران,CV23,Utility Crossings & Protection,عبور تأسیسات و حفاظت
+CV,Civil,عمران,CV24,Electrical Duct Bank Layout,پلان داکت بانک الکتریکی
+CV,Civil,عمران,CV25,Retaining & Boundary Walls Details,جزئیات دیوار حائل و محوطه
+CV,Civil,عمران,CV26,Perimeter Fence & Gate Details,جزئیات حصار و دروازه
+CV,Civil,عمران,CV27,Culverts & Drainage Structures,آبگذرها و سازه‌های زهکشی
+CV,Civil,عمران,CV28,Irrigation Main Lines (Coordination),خطوط اصلی آبیاری (هماهنگی)
+CV,Civil,عمران,CV29,Civil BOQ / MTO,صورتمصالح/متره عمرانی
+CV,Civil,عمران,CV30,As-Built Civil Drawings,نقشه‌های چون‌ساخت عمرانی
+IN,Infrastructure,زیرساخت,IN01,Cover & Drawing List,جلد و فهرست نقشه‌ها
+IN,Infrastructure,زیرساخت,IN02,General Notes & Abbreviations,یادداشت‌های عمومی و اختصارات
+IN,Infrastructure,زیرساخت,IN03,Potable Water Network Layout,پلان شبکه آب شرب
+IN,Infrastructure,زیرساخت,IN04,Potable Water Profiles (Long Sections),پروفیل طولی شبکه آب شرب
+IN,Infrastructure,زیرساخت,IN05,Fire Water Network Layout (External),پلان شبکه آب آتش‌نشانی بیرونی
+IN,Infrastructure,زیرساخت,IN06,Irrigation Network Layout,پلان شبکه آبیاری
+IN,Infrastructure,زیرساخت,IN07,Irrigation Valve Chambers & Details,اتاقک ولو و جزئیات آبیاری
+IN,Infrastructure,زیرساخت,IN08,Foul Sewer Network Layout,پلان شبکه فاضلاب
+IN,Infrastructure,زیرساخت,IN09,Foul Sewer Profiles (Long Sections),پروفیل طولی شبکه فاضلاب
+IN,Infrastructure,زیرساخت,IN10,Stormwater Network Layout,پلان شبکه آب‌های سطحی
+IN,Infrastructure,زیرساخت,IN11,Stormwater Profiles (Long Sections),پروفیل طولی آب‌های سطحی
+IN,Infrastructure,زیرساخت,IN12,Manhole & Chamber Schedules,جداول آدم‌رو و منهول‌ها
+IN,Infrastructure,زیرساخت,IN13,Pumping Station GA & Details,نقشه جانمایی ایستگاه پمپاژ
+IN,Infrastructure,زیرساخت,IN14,Outfalls & Discharge Details,جزئیات پساب و خروجی‌ها
+IN,Infrastructure,زیرساخت,IN15,Utility Corridor Master Plan,پلان جامع کانال مشترک تاسیسات
+IN,Infrastructure,زیرساخت,IN16,Gas Distribution Network Layout,پلان شبکه گاز شهری بیرونی
+IN,Infrastructure,زیرساخت,IN17,Telecom Duct Bank Network,شبکه داکت‌بانک مخابرات
+IN,Infrastructure,زیرساخت,IN18,Street Lighting Layout (Coord),پلان روشنایی معابر (هماهنگی)
+IN,Infrastructure,زیرساخت,IN19,Roadworks Master Plan (Tie-in),نقشه کلی راه و اتصال‌ها
+IN,Infrastructure,زیرساخت,IN20,Infrastructure Standard Details,جزئیات تیپ زیرساخت
+IN,Infrastructure,زیرساخت,IN21,Authority/NOC Submission Package,بسته ارسال به مراجع و مجوزها
+IN,Infrastructure,زیرساخت,IN22,As-Built Infrastructure Drawings,نقشه‌های چون‌ساخت زیرساخت
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU01,Survey Base Map & Topography,نقشه پایه و توپوگرافی
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU02,Aerial Map / Orthophoto (if any),نقشه هوایی/اورتوفوتو (در صورت وجود)
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU03,Control Network & Benchmarks,شبکه کنترل و بنچ‌مارک‌ها
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU04,Setting-out Plan & Coordinates,پلان پیاده‌سازی و جدول مختصات
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU05,As-Built Survey Plans,نقشه‌های چون‌ساخت برداشت
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU06,Contours & Elevation Plan,پلان خطوط تراز و ارتفاعات
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU07,Geotechnical Investigation Report,گزارش مطالعات ژئوتکنیک
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU08,Borehole Location Plan,پلان جانمایی گمانه‌ها
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU09,Borehole Logs,لاگ گمانه‌ها
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU10,Test Pit Logs,لاگ گودال‌های آزمایشی
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU11,Laboratory Test Results,نتایج آزمایشگاه ژئوتکنیک
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU12,Soil Parameters Summary,خلاصه پارامترهای خاک
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU13,Foundation Recommendations,توصیه‌های پی
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU14,SPT/CPT Results & Profiles,نتایج SPT/CPT و پروفیل‌ها
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU15,Groundwater Monitoring Data,داده‌های پایش سطح آب زیرزمینی
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU16,Settlement Monitoring Plan,طرح پایش نشست
+SU,Surveying,ژئوتکنیک و نقشه برداری,SU17,Survey Notes & QA/QC,یادداشت‌های برداشت و کنترل کیفیت
+INR,Interior,طراح داخلی,INR01,Cover & Drawing List,جلد و فهرست نقشه‌ها
+INR,Interior,طراح داخلی,INR02,General Notes & Legends,یادداشت‌های عمومی و علائم
+INR,Interior,طراح داخلی,INR03,Furniture Layout,پلان مبلمان
+INR,Interior,طراح داخلی,INR04,Reflected Ceiling Plan (Interior),پلان سقف کاذب داخلی
+INR,Interior,طراح داخلی,INR05,Floor Finishes & Patterns,پلان نهایی کف و الگوها
+INR,Interior,طراح داخلی,INR06,Wall Finishes & Interior Elevations,پوشش دیوار و نماهای داخلی
+INR,Interior,طراح داخلی,INR07,Joinery & Millwork Details,جزئیات نجاری و ملورک
+INR,Interior,طراح داخلی,INR08,Door & Hardware Schedule,جدول درب و یراق‌آلات
+INR,Interior,طراح داخلی,INR09,Sanitary Accessories Layout,پلان اکسسوری بهداشتی
+INR,Interior,طراح داخلی,INR10,Kitchen/Pantry Interior Details,جزئیات داخلی آشپزخانه/آبدارخانه
+INR,Interior,طراح داخلی,INR11,Built-in Furniture Details,جزئیات مبلمان ثابت
+INR,Interior,طراح داخلی,INR12,Interior Signage & Graphics,راهنماها و گرافیک محیطی
+INR,Interior,طراح داخلی,INR13,3D Views & Perspectives,نماهای سه‌بعدی داخلی
+INR,Interior,طراح داخلی,INR14,Materials & Finishes Board,پنل متریال و فینیش‌ها
+INR,Interior,طراح داخلی,INR15,Large-scale Interior Details,جزئیات بزرگ‌مقیاس داخلی
+INR,Interior,طراح داخلی,INR16,Shop Drawings (Interior),نقشه‌های کارگاهی داخلی
+LS,Landscape,منظر,LS01,Cover & Drawing List,جلد و فهرست نقشه‌ها
+LS,Landscape,منظر,LS02,General Notes & Plant Legend,یادداشت‌های عمومی و علائم گیاهی
+LS,Landscape,منظر,LS03,Landscape Master Plan,نقشه مادر منظر
+LS,Landscape,منظر,LS04,Hardscape Plan,پلان هارداسکیپ
+LS,Landscape,منظر,LS05,Softscape / Planting Plan,پلان نرم‌منظر / کاشت
+LS,Landscape,منظر,LS06,Planting Schedule & Specs,جدول کاشت و مشخصات
+LS,Landscape,منظر,LS07,Irrigation Network Plan,پلان شبکه آبیاری
+LS,Landscape,منظر,LS08,Irrigation Zoning & Controller,زون‌بندی آبیاری و کنترلرها
+LS,Landscape,منظر,LS09,Irrigation Details & Sections,جزئیات آبیاری و مقاطع
+LS,Landscape,منظر,LS10,Landscape Grading & Drainage,شیب‌بندی و زهکشی منظر
+LS,Landscape,منظر,LS11,Water Features GA & Details,جانمایی آب‌نما و جزئیات
+LS,Landscape,منظر,LS12,Furniture & Equipment Layout,پلان مبلمان و تجهیزات منظر
+LS,Landscape,منظر,LS13,Pergola/Gazebo & Small Structures,آلاچیق و سازه‌های خرد منظر
+LS,Landscape,منظر,LS14,Paving Patterns & Details,الگوهای فرش و جزئیات
+LS,Landscape,منظر,LS15,Tree Pit & Protection Details,جزئیات چاله درخت و حفاظت
+LS,Landscape,منظر,LS16,Boundary & Fence Details (Landscape),حصار و مرزبندی در منظر
+LS,Landscape,منظر,LS17,Landscape Lighting Coordination,هماهنگی روشنایی منظر
+LS,Landscape,منظر,LS18,Sections & Elevations,مقاطع و نماهای منظر
+LS,Landscape,منظر,LS19,Landscape BOQ / MTO,صورتمصالح/متره منظر
+LS,Landscape,منظر,LS20,As-Built Landscape Drawings,نقشه‌های چون‌ساخت منظر
+PH,PublicHealth,مهندسی بهداشت عمومی,PH01,Cover & Drawing List,جلد و فهرست نقشه‌ها
+PH,PublicHealth,مهندسی بهداشت عمومی,PH02,General Notes & Abbreviations,یادداشت‌های عمومی و اختصارات
+PH,PublicHealth,مهندسی بهداشت عمومی,PH03,Design Criteria & Calculation Report,مبانی طراحی و دفترچه محاسبات
+PH,PublicHealth,مهندسی بهداشت عمومی,PH04,Water Supply Schematic,شماتیک تأمین آب مصرفی
+PH,PublicHealth,مهندسی بهداشت عمومی,PH05,Water Supply Riser Diagram,رایزر آب مصرفی
+PH,PublicHealth,مهندسی بهداشت عمومی,PH06,Water Supply Layout,پلان آب مصرفی
+PH,PublicHealth,مهندسی بهداشت عمومی,PH07,Hot Water System Schematic & Layout,شماتیک و پلان آب گرم مصرفی
+PH,PublicHealth,مهندسی بهداشت عمومی,PH08,Booster Pump Room GA & Details,جانمایی و جزئیات بوسترپمپ
+PH,PublicHealth,مهندسی بهداشت عمومی,PH09,Water Storage Tank Details,جزئیات مخزن آب
+PH,PublicHealth,مهندسی بهداشت عمومی,PH10,Sanitary Drainage Schematic,شماتیک فاضلاب بهداشتی
+PH,PublicHealth,مهندسی بهداشت عمومی,PH11,Sanitary Drainage Riser Diagram,رایزر فاضلاب بهداشتی
+PH,PublicHealth,مهندسی بهداشت عمومی,PH12,Sanitary Drainage Layout,پلان فاضلاب بهداشتی
+PH,PublicHealth,مهندسی بهداشت عمومی,PH13,Vent Stack Layout & Details,پلان و جزئیات لوله‌های ونت
+PH,PublicHealth,مهندسی بهداشت عمومی,PH14,Rainwater Drainage Riser & Layout,رایزر و پلان آب باران
+PH,PublicHealth,مهندسی بهداشت عمومی,PH15,Grease Trap & Interceptor Details,جزئیات چربی‌گیر و اینترسپتور
+PH,PublicHealth,مهندسی بهداشت عمومی,PH16,Sewage Lifting Station GA,جانمایی ایستگاه پمپاژ فاضلاب
+PH,PublicHealth,مهندسی بهداشت عمومی,PH17,Pipe Material Schedule,جدول مصالح و متریال لوله
+PH,PublicHealth,مهندسی بهداشت عمومی,PH18,Pipe Support & Installation Details,جزئیات ساپورت‌گذاری و نصب
+PH,PublicHealth,مهندسی بهداشت عمومی,PH19,PH BOQ / MTO,صورتمصالح/متره PH
+PH,PublicHealth,مهندسی بهداشت عمومی,PH20,As-Built PH Drawings,نقشه‌های چون‌ساخت PH
+CO,Cost,متره,CO01,Measurement Rules & Methodology,قواعد متره و روش اندازه‌گیری
+CO,Cost,متره,CO02,Bill of Quantities (BOQ),صورت‌مقادیر (BOQ)
+CO,Cost,متره,CO03,Cost Estimate — Class 4/5 (Concept),برآورد هزینه — کلاس ۴/۵ (مفهومی)
+CO,Cost,متره,CO04,Cost Estimate — Class 2/3 (DD),برآورد هزینه — کلاس ۲/۳ (توسعه طرح)
+CO,Cost,متره,CO05,Cost Estimate — Class 1 (IFC),برآورد هزینه — کلاس ۱ (اجرایی)
+CO,Cost,متره,CO06,Tender BOQ & Pricing Schedule,صورت‌مقادیر و فرم قیمت مناقصه
+CO,Cost,متره,CO07,Quantity Take-off Drawings Set,نقشه‌های برداشت مقادیر
+CO,Cost,متره,CO08,Rate Analysis,آنالیز بها
+CO,Cost,متره,CO09,Suppliers Quotations Register,ثبت استعلام‌های قیمت
+CO,Cost,متره,CO10,Tender Evaluation Report (TEC),گزارش ارزیابی مناقصات
+CO,Cost,متره,CO11,Value Engineering Proposals,پیشنهادهای مهندسی ارزش
+CO,Cost,متره,CO12,Monthly IPC (Payment Certificate),صورت‌وضعیت موقت ماهانه
+CO,Cost,متره,CO13,Variation Orders Register,ثبت تغییر مقادیر (VO)
+CO,Cost,متره,CO14,Claims & EoT Cost Substantiation,مدارک ادعا و تمدید مدت از منظر هزینه
+CO,Cost,متره,CO15,Final Account & Reconciliation,صورت‌حساب نهایی و تطبیق
+CO,Cost,متره,CO16,Cash Flow Forecast & S-curve,پیش‌بینی جریان نقدی و S-curve
+CO,Cost,متره,CO17,Monthly Cost Report,گزارش ماهانه هزینه
+PM,PMO,مدیریت پروژه,PM01,Project Charter,منشور پروژه
+PM,PMO,مدیریت پروژه,PM02,Project Management Plan (PMP),طرح مدیریت پروژه
+PM,PMO,مدیریت پروژه,PM03,Work Breakdown Structure (WBS),ساختار شکست کار (WBS)
+PM,PMO,مدیریت پروژه,PM04,Organization Breakdown Structure (OBS),ساختار شکست سازمانی (OBS)
+PM,PMO,مدیریت پروژه,PM05,Cost Breakdown Structure (CBS),ساختار شکست هزینه (CBS)
+PM,PMO,مدیریت پروژه,PM06,Master Schedule (Baseline),برنامه زمان‌بندی مبنا
+PM,PMO,مدیریت پروژه,PM07,Procurement Plan,طرح تدارکات
+PM,PMO,مدیریت پروژه,PM08,Risk Register,ثبت ریسک‌ها
+PM,PMO,مدیریت پروژه,PM09,Issues & Actions Log,ثبت مسایل و اقدامات
+PM,PMO,مدیریت پروژه,PM10,Change Management Register,ثبت تغییرات
+PM,PMO,مدیریت پروژه,PM11,Quality Management Plan,طرح مدیریت کیفیت
+PM,PMO,مدیریت پروژه,PM12,Communication Plan,طرح ارتباطات
+PM,PMO,مدیریت پروژه,PM13,Stakeholder Register,ثبت ذینفعان
+PM,PMO,مدیریت پروژه,PM14,Weekly Progress Report,گزارش هفتگی پیشرفت
+PM,PMO,مدیریت پروژه,PM15,Monthly Progress Report,گزارش ماهانه پیشرفت
+PM,PMO,مدیریت پروژه,PM16,S-curve & Dashboards,منحنی S و داشبوردها
+PM,PMO,مدیریت پروژه,PM17,RACI Matrix,ماتریس RACI
+PM,PMO,مدیریت پروژه,PM18,Lessons Learned Register,ثبت آموخته‌ها
+PM,PMO,مدیریت پروژه,PM19,Handover Plan,طرح تحویل پروژه
+PM,PMO,مدیریت پروژه,PM20,Project Closeout Report,گزارش اختتام پروژه
+UR,Planning,طراح شهری,UR01,Cover & Drawing List,جلد و فهرست نقشه‌ها
+UR,Planning,طراح شهری,UR02,Base Map & Context Analysis,نقشه پایه و تحلیل بستر
+UR,Planning,طراح شهری,UR03,Land Use Plan,پلان کاربری اراضی
+UR,Planning,طراح شهری,UR04,Zoning Compliance & Regulations,انطباق با ضوابط و مقررات
+UR,Planning,طراح شهری,UR05,Plot Subdivision Plan,تقسیم‌بندی قطعات
+UR,Planning,طراح شهری,UR06,Road & Circulation Plan,شبکه راه و تردد
+UR,Planning,طراح شهری,UR07,Parking Strategy & Plan,راهبرد و پلان پارکینگ
+UR,Planning,طراح شهری,UR08,Pedestrian & Bicycle Network,شبکه پیاده و دوچرخه
+UR,Planning,طراح شهری,UR09,Urban Massing Options,گزینه‌های جرم‌گذاری شهری
+UR,Planning,طراح شهری,UR10,Building Envelope & Height Control,پوسته ساختمانی و کنترل ارتفاع
+UR,Planning,طراح شهری,UR11,Public Realm Design Guidelines,راهنمای طراحی فضاهای عمومی
+UR,Planning,طراح شهری,UR12,Open Space & Landscape Framework,چارچوب فضاهای باز و منظر
+UR,Planning,طراح شهری,UR13,Utility Corridors Concept,مفهوم کریدورهای تاسیسات
+UR,Planning,طراح شهری,UR14,Traffic Impact Assessment (TIA),ارزیابی اثرات ترافیکی
+UR,Planning,طراح شهری,UR15,Environmental Impact Assessment (EIA),ارزیابی اثرات محیط‌زیستی
+UR,Planning,طراح شهری,UR16,Phasing Plan,برنامه فازبندی اجرا
+UR,Planning,طراح شهری,UR17,Authority Submission Package,بسته ارسال به مراجع
+UR,Planning,طراح شهری,UR18,Urban Design Guideline Document,دستورالعمل طراحی شهری
+UR,Planning,طراح شهری,UR19,3D Urban Views,نماهای سه‌بعدی شهری
+CN,Construction,پیمانکار,CN01,Construction Method Statements (CMS),روش‌های اجرایی ساخت (CMS)
+CN,Construction,پیمانکار,CN02,Inspection & Test Plan (ITP),طرح بازرسی و آزمایش (ITP)
+CN,Construction,پیمانکار,CN03,Work Inspection Requests (WIR),درخواست‌های بازرسی کار (WIR)
+CN,Construction,پیمانکار,CN04,Material Inspection Requests (MIR),درخواست‌های بازرسی مصالح (MIR)
+CN,Construction,پیمانکار,CN05,Requests for Information (RFI),درخواست اطلاعات (RFI)
+CN,Construction,پیمانکار,CN06,Shop Drawings (By Discipline),نقشه‌های کارگاهی (به تفکیک)
+CN,Construction,پیمانکار,CN07,Coordination Drawings (MEP),نقشه‌های هماهنگی تاسیسات (MEP)
+CN,Construction,پیمانکار,CN08,As-Built Drawings,نقشه‌های چون‌ساخت
+CN,Construction,پیمانکار,CN09,Detailed Construction Schedule,برنامه زمان‌بندی تفصیلی ساخت
+CN,Construction,پیمانکار,CN10,Lifting Plan,طرح لیفتینگ و جرثقیل
+CN,Construction,پیمانکار,CN11,Temporary Works Design,طراحی سازه‌های موقت
+CN,Construction,پیمانکار,CN12,Scaffold Design & Inspection,طراحی و بازرسی داربست
+CN,Construction,پیمانکار,CN13,Site Logistics Plan,پلان لجستیک کارگاه
+CN,Construction,پیمانکار,CN14,HSE Plan & Risk Assessment,طرح HSE و ارزیابی ریسک
+CN,Construction,پیمانکار,CN15,Quality Plan (QA/QC),طرح کیفیت (QA/QC)
+CN,Construction,پیمانکار,CN16,Pre-Commissioning & Commissioning Procedure,روش‌های پیش‌راه‌اندازی و راه‌اندازی
+CN,Construction,پیمانکار,CN17,"Testing Reports (Pressure, Continuity...)","گزارش تست‌ها (فشار، پیوستگی و ...)"
+CN,Construction,پیمانکار,CN18,Toolbox Talks & Training Records,جلسات ایمنی و سوابق آموزش
+CN,Construction,پیمانکار,CN19,Daily & Weekly Site Reports,گزارش‌های روزانه و هفتگی کارگاه
+CN,Construction,پیمانکار,CN20,Handover Dossier (Contractor),دوزیه تحویل از طرف پیمانکار
+SC,Subcontractor,پیمانکار جز,SC01,Scope of Works & Interface Matrix,دامنه کار و ماتریس اینترفیس
+SC,Subcontractor,پیمانکار جز,SC02,Shop Drawings (Subcontractor),نقشه‌های کارگاهی پیمانکار جز
+SC,Subcontractor,پیمانکار جز,SC03,Product Data Sheets & Catalogues,برگه‌های اطلاعات محصول و کاتالوگ‌ها
+SC,Subcontractor,پیمانکار جز,SC04,Material Submittals & Approvals,ارسال و تایید مصالح
+SC,Subcontractor,پیمانکار جز,SC05,Method Statements (SC),روش‌های اجرایی (پیمانکار جز)
+SC,Subcontractor,پیمانکار جز,SC06,Inspection & Test Plan (SC),طرح بازرسی و آزمایش (پیمانکار جز)
+SC,Subcontractor,پیمانکار جز,SC07,WIR/MIR Logs,ثبت WIR/MIR
+SC,Subcontractor,پیمانکار جز,SC08,Test Reports & Certificates,گزارش‌ها و گواهی‌های تست
+SC,Subcontractor,پیمانکار جز,SC09,Factory Acceptance Test (FAT),آزمون پذیرش در کارخانه (FAT)
+SC,Subcontractor,پیمانکار جز,SC10,Site Acceptance Test (SAT),آزمون پذیرش در سایت (SAT)
+SC,Subcontractor,پیمانکار جز,SC11,Training & O&M Documents,آموزش و مدارک بهره‌برداری
+SC,Subcontractor,پیمانکار جز,SC12,Warranty & Guarantees,گارانتی و تضمین‌ها
+SC,Subcontractor,پیمانکار جز,SC13,As-Built Drawings (SC),نقشه‌های چون‌ساخت (پیمانکار جز)
+SC,Subcontractor,پیمانکار جز,SC14,Spare Parts & Maintenance Schedules,قطعات یدکی و برنامه نگهداری
+SP,Specialist,طراح تخصصی,SP01,Design Basis & Criteria (Specialist),مبانی و معیارهای طراحی (تخصصی)
+SP,Specialist,طراح تخصصی,SP02,System Selection Report,گزارش انتخاب سیستم
+SP,Specialist,طراح تخصصی,SP03,General Arrangement (GA) Drawings,نقشه‌های جانمایی کلی (GA)
+SP,Specialist,طراح تخصصی,SP04,Detailed & Fabrication Drawings,نقشه‌های جزئی و ساخت
+SP,Specialist,طراح تخصصی,SP05,Interface & Coordination Drawings,نقشه‌های اینترفیس و هماهنگی
+SP,Specialist,طراح تخصصی,SP06,Simulations/Analysis (Thermal/Acoustic etc.),شبیه‌سازی/تحلیل (حرارتی/آکوستیک ...)
+SP,Specialist,طراح تخصصی,SP07,Mock-up Drawings & Test Plan,نقشه‌های ماکاپ و برنامه تست
+SP,Specialist,طراح تخصصی,SP08,Material Data & Specifications,اطلاعات مصالح و مشخصات
+SP,Specialist,طراح تخصصی,SP09,Installation Method Statements,روش‌های نصب
+SP,Specialist,طراح تخصصی,SP10,Testing & Commissioning Plan,برنامه تست و راه‌اندازی
+SP,Specialist,طراح تخصصی,SP11,Operation & Maintenance Manual,راهنمای بهره‌برداری و نگهداری
+SP,Specialist,طراح تخصصی,SP12,Risk & Fail-safe Analysis,تحلیل ریسک و Fail-safe
+SP,Specialist,طراح تخصصی,SP13,As-Built Drawings (Specialist),نقشه‌های چون‌ساخت (تخصصی)
+FA,Facilities,بهره‌برداری,FA01,Asset Register (Equipment List),فهرست دارایی/تجهیزات
+FA,Facilities,بهره‌برداری,FA02,Operation & Maintenance Manuals (O&M),راهنمای بهره‌برداری و نگهداری (O&M)
+FA,Facilities,بهره‌برداری,FA03,Preventive Maintenance Schedule (PPM),برنامه نگهداری پیشگیرانه (PPM)
+FA,Facilities,بهره‌برداری,FA04,Job Plans & Task Lists,پلن کارها و لیست وظایف
+FA,Facilities,بهره‌برداری,FA05,Spare Parts List & Min/Max Levels,فهرست قطعات یدکی و حدود موجودی
+FA,Facilities,بهره‌برداری,FA06,Warranty Register,ثبت گارانتی‌ها
+FA,Facilities,بهره‌برداری,FA07,Commissioning Reports,گزارش‌های راه‌اندازی
+FA,Facilities,بهره‌برداری,FA08,Training Manuals & Records,راهنما و سوابق آموزش
+FA,Facilities,بهره‌برداری,FA09,System Descriptions & Control Strategies,توصیف سامانه‌ها و راهبردهای کنترلی
+FA,Facilities,بهره‌برداری,FA10,CMMS Data Template,قالب داده‌های CMMS
+FA,Facilities,بهره‌برداری,FA11,Emergency Procedures,دستورالعمل‌های اضطراری
+FA,Facilities,بهره‌برداری,FA12,Utilities Metering Plan,طرح پایش و اندازه‌گیری انرژی/مصرف
+FA,Facilities,بهره‌برداری,FA13,Post-Occupancy Evaluation (POE),ارزیابی پس از بهره‌برداری (POE)
+FA,Facilities,بهره‌برداری,FA14,Facility Layout & Access Plans,نقشه‌های دسترسی و جانمایی تاسیسات بهره‌برداری
+CL,Client,کارفرما,CL01,Employer’s Requirements (ER),نیازمندی‌های کارفرما (ER)
+CL,Client,کارفرما,CL02,Standards & Specifications,استانداردها و مشخصات فنی
+CL,Client,کارفرما,CL03,Permits & Approvals,مجوزها و تاییدیه‌ها
+CL,Client,کارفرما,CL04,Review Comments & Approval Log,ثبت نظرات و تاییدات
+CL,Client,کارفرما,CL05,Site Instructions (SI),دستور کارگاهی (SI)
+CL,Client,کارفرما,CL06,Change Orders (CO),اوامر تغییر (CO)
+CL,Client,کارفرما,CL07,Payment Approvals,تایید پرداخت‌ها
+CL,Client,کارفرما,CL08,Authority Correspondence,مکاتبات مراجع قانونی
+CL,Client,کارفرما,CL09,Stakeholder Communications,ارتباطات ذینفعان
+CL,Client,کارفرما,CL10,Client Decisions Register,ثبت تصمیمات کارفرما
+GN,General,عمومی,GN01,Cover & Drawing List (General),جلد و فهرست نقشه‌ها (عمومی)
+GN,General,عمومی,GN02,General Notes (All Disciplines),یادداشت‌های عمومی (کل رشته‌ها)
+GN,General,عمومی,GN03,Abbreviations & Symbols (General),علائم و اختصارات (عمومی)
+GN,General,عمومی,GN04,Document Numbering Standard,استاندارد شماره‌گذاری مدارک
+GN,General,عمومی,GN05,Transmittal Templates,قالب‌های ارسال مدارک
+GN,General,عمومی,GN06,Distribution Matrix,ماتریس توزیع مدارک
+GN,General,عمومی,GN07,Master Document Register (MDR),ثبت‌کل مدارک پروژه (MDR)
+GN,General,عمومی,GN08,Document Control Procedure,روش اجرایی کنترل مدارک
+GN,General,عمومی,GN09,File Naming Convention,قاعده نام‌گذاری فایل‌ها
+GN,General,عمومی,GN10,Document Dictionaries (Codes),واژه‌نامه کدینگ مدارک
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF01,Fire Alarm Riser Diagram,رایزر سیستم اعلان حریق
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF02,Fire Alarm Layout,پلان سیستم اعلان حریق
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF03,Sprinkler System Riser Diagram,رایزر سیستم اسپرینکلر
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF04,Sprinkler System Layout,پلان سیستم اسپرینکلر
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF05,Hydrant & Standpipe Layout,پلان هیدرانت و رایزر اطفا
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF06,Fire Pump Room GA & Hydraulics,جانمایی اتاق پمپ حریق و محاسبات
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF07,Clean Agent Suppression System,سیستم اطفاء با گاز بی‌خطر (FM200/Novec)
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF08,CO2 Suppression System,سیستم اطفاء CO2
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF09,Kitchen Hood Fire Suppression,اطفاء حریق هودهای آشپزخانه
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF10,Smoke Control & Pressurization,کنترل دود و فشار مثبت
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF11,Life Safety & Egress Plan,پلان ایمنی جان و خروج اضطراری
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF12,Fire Zoning & Cause-Effect Matrix,زون‌بندی حریق و جدول علت-معلول
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF13,Fire Rating Schedule,جدول درجه حریق مصالح و اجزا
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF14,Fire Stopping Details,جزئیات درزگیری و فایراستاپ
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF15,External Fire Water Ring Main (Coord),حلقه آب اطفاء بیرونی (هماهنگی)
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF16,Emergency Lighting Cause & Effect,جدول علت-معلول روشنایی اضطراری
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF17,Fire Safety Signage & Evacuation Plan,علائم ایمنی و مسیرهای تخلیه
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF18,Detection Devices Schedules,جداول تجهیزات اعلان حریق
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF19,Fire Dampers Layout & Details,جانمایی دمپرهای حریق و جزئیات
+SF,Safety (Fire Protection),"ایمنی ، آتشنشانی",SF20,As-Built Fire Protection Drawings,نقشه‌های چون‌ساخت سامانه‌های حریق
+SV,Supervision,مهندس ناظر,SV01,Cover & List of Supervision Docs,جلد و فهرست مدارک نظارت
+SV,Supervision,مهندس ناظر,SV02,General Supervision Procedures & Guidelines,روش‌ها و دستورالعمل‌های نظارت
+SV,Supervision,مهندس ناظر,SV03,Site Observation Report (SOR),گزارش بازدید و مشاهده کارگاهی (SOR)
+SV,Supervision,مهندس ناظر,SV04,Daily Site Report (DSR),گزارش روزانه کارگاه (DSR)
+SV,Supervision,مهندس ناظر,SV05,Weekly Supervision Report,گزارش هفتگی نظارت
+SV,Supervision,مهندس ناظر,SV06,Monthly Supervision Report,گزارش ماهانه نظارت
+SV,Supervision,مهندس ناظر,SV07,ITP Review & Approval,بازبینی و تأیید ITP
+SV,Supervision,مهندس ناظر,SV08,WIR Log & Approvals,ثبت و تأیید WIR
+SV,Supervision,مهندس ناظر,SV09,MIR Log & Approvals,ثبت و تأیید MIR
+SV,Supervision,مهندس ناظر,SV10,RFI Register & Responses,ثبت RFI و پاسخ‌ها
+SV,Supervision,مهندس ناظر,SV11,TQ Register & Responses,ثبت TQ و پاسخ‌ها
+SV,Supervision,مهندس ناظر,SV12,Non-Conformance Report (NCR),گزارش عدم انطباق (NCR)
+SV,Supervision,مهندس ناظر,SV13,Corrective/Preventive Action (CAR/PAR),اقدامات اصلاحی/پیشگیرانه (CAR/PAR)
+SV,Supervision,مهندس ناظر,SV14,Surveillance Report,گزارش سرپرستی و پایش
+SV,Supervision,مهندس ناظر,SV15,Material Submittal Review,بازبینی و تأیید مصالح
+SV,Supervision,مهندس ناظر,SV16,Shop Drawing Review & Comments,بازبینی نقشه‌های کارگاهی و اظهارنظر
+SV,Supervision,مهندس ناظر,SV17,Method Statement Review,بازبینی روش اجرایی (Method Statement)
+SV,Supervision,مهندس ناظر,SV18,Test & Commissioning Witnessing Records,سوابق حضور در تست و راه‌اندازی
+SV,Supervision,مهندس ناظر,SV19,Site Instructions (SI) Issued,دستور کارگاهی (SI) صادره
+SV,Supervision,مهندس ناظر,SV20,Punch List / Snagging & Closeout,پانچ‌لیست/عیب‌یابی و بستن موارد
+SV,Supervision,مهندس ناظر,SV21,As-Built Review & Verification,بازبینی و تأیید چون‌ساخت
+SV,Supervision,مهندس ناظر,SV22,Progress Photos & Photo Log,عکس‌های پیشرفت و ثبت تصویری
+SV,Supervision,مهندس ناظر,SV23,Permit to Work Review,بازبینی مجوز کار (PTW)
+SV,Supervision,مهندس ناظر,SV24,Coordination & Site Meeting Minutes (MOM),صورتجلسات هماهنگی و کارگاهی
+SV,Supervision,مهندس ناظر,SV25,QA/QC Audit Reports (Supervision),گزارش‌های ممیزی کیفیت (نظارت)
+SV,Supervision,مهندس ناظر,SV26,HSE Walkthrough / Observations (Supervision),گزارش‌های ایمنی HSE (نظارت)
+SV,Supervision,مهندس ناظر,SV27,Tender Standards & Technical Specifications,الزامات و مشخصات فنی مناقصه
+INR,Interior,طراح داخلی,INR17,Concept Report,گزارش کانسپت
+INR,Interior,طراح داخلی,INR18,Concept Layout Plan,پلان پیشنهادی

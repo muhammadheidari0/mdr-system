@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Login (Isolated)</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            padding: 50px; 
+            background: #333; 
+            color: white; 
+        }
+        .box { 
+            background: #444; 
+            padding: 20px; 
+            border: 1px solid #666; 
+            max-width: 400px; 
+            margin: 0 auto; 
+        }
+        input { 
+            width: 100%; 
+            padding: 10px; 
+            margin: 5px 0; 
+            box-sizing: border-box; 
+        }
+        button { 
+            width: 100%; 
+            padding: 10px; 
+            background: orange; 
+            border: none; 
+            cursor: pointer; 
+            font-weight: bold; 
+        }
+        #log { 
+            margin-top: 20px; 
+            background: black; 
+            padding: 10px; 
+            font-family: monospace; 
+            color: #0f0; 
+            min-height: 100px; 
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h2>🧪 Isolated Debug Login</h2>
+    <form id="debugForm">
+        <input type="text" id="email"  placeholder="Email">
+        <input type="password" id="password"  placeholder="Password">
+        <button type="submit">TEST LOGIN</button>
+    </form>
+</div>
+
+<div id="log">Logs will appear here...</div>
+
+<script>
+    const logDiv = document.getElementById('log');
+    function log(msg) {
+        logDiv.innerHTML += msg + "\n";
+        console.log(msg);
+    }
+
+    document.getElementById('debugForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        log("🚀 Attempting login...");
+        
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+
+        try {
+            const res = await fetch('/api/v1/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+
+            log(`📡 Status: ${res.status}`);
+            
+            const data = await res.json();
+            log(`📦 Response: ${JSON.stringify(data, null, 2)}`);
+
+            if (res.ok) {
+                log("✅ LOGIN SUCCESS! Token received.");
+                localStorage.setItem('access_token', data.access_token);
+                log("💾 Token saved to LocalStorage.");
+                log("⚠️ I will NOT redirect automatically to prevent loops.");
+            } else {
+                log("❌ LOGIN FAILED.");
+            }
+
+        } catch (err) {
+            log(`🔥 NETWORK ERROR: ${err.message}`);
+        }
+    });
+</script>
+
+</body>
+</html>
