@@ -1,42 +1,78 @@
 <div id="view-contractor" class="view-section" style="display: none;">
-    <div class="archive-card module-shell-card">
-        <div class="module-shell-header">
-            <div>
-                <h2 class="module-shell-title">
-                    <span class="material-icons-round">construction</span>
-                    دفتر فنی و اجرا (پیمانکار)
-                </h2>
-                <p class="module-shell-subtitle">فرم‌های پیمانکار، گزارش‌های اجرایی و پیگیری کارگاهی</p>
+    <div class="edms-shell module-workspace-shell contractor-shell">
+        <div class="edms-shell-header">
+            <div class="edms-shell-header-main">
+                <div>
+                    <h2 class="edms-shell-title">
+                        <span class="material-icons-round">construction</span>
+                        دفتر فنی و اجرا (پیمانکار)
+                    </h2>
+                    <p class="edms-shell-subtitle">مدیریت عملیات اجرایی، درخواست‌ها، کیفیت و پیگیری کارگاهی</p>
+                </div>
+            </div>
+
+            <div class="edms-quick-stats">
+                <div class="edms-quick-stat">
+                    <div id="contractor-stat-total" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">کل آیتم‌ها</div>
+                </div>
+                <div class="edms-quick-stat">
+                    <div id="contractor-stat-open" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">باز</div>
+                </div>
+                <div class="edms-quick-stat">
+                    <div id="contractor-stat-waiting" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">در انتظار</div>
+                </div>
+                <div class="edms-quick-stat">
+                    <div id="contractor-stat-overdue" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">معوق</div>
+                </div>
             </div>
         </div>
 
-        <div class="module-shell-grid">
-            <div class="module-shell-item">
-                <div class="module-shell-item-head">
-                    <span class="material-icons-round">dynamic_form</span>
-                    فرم‌های اجرایی
-                </div>
-                <p>ثبت روزانه/هفتگی، RFI، درخواست مصالح و NCR در این بخش متمرکز می‌شود.</p>
-                <span class="module-shell-tag">D1-D2</span>
-            </div>
+        <div class="edms-tabs module-tabs" role="tablist" aria-label="Contractor tabs">
+            <button
+                type="button"
+                class="edms-tab-btn contractor-tab-btn active"
+                data-contractor-tab="execution"
+                onclick="openContractorTab('execution', this)"
+            >
+                <span class="material-icons-round">view_kanban</span>
+                <span>دفتر فنی و اجرا</span>
+            </button>
 
-            <div class="module-shell-item">
-                <div class="module-shell-item-head">
-                    <span class="material-icons-round">assessment</span>
-                    گزارش‌دهی هوشمند
-                </div>
-                <p>گزارش‌های قابل چاپ، تحلیل روند و خروجی PDF/Excel از داده‌های فرم‌ها.</p>
-                <span class="module-shell-tag">D3</span>
-            </div>
+            <button
+                type="button"
+                class="edms-tab-btn contractor-tab-btn"
+                data-contractor-tab="requests"
+                onclick="openContractorTab('requests', this)"
+            >
+                <span class="material-icons-round">outgoing_mail</span>
+                <span>درخواست‌ها و RFI</span>
+            </button>
 
-            <div class="module-shell-item">
-                <div class="module-shell-item-head">
-                    <span class="material-icons-round">notifications_active</span>
-                    اعلان‌ها و پیگیری
-                </div>
-                <p>اعلان سررسید و وضعیت تسک‌های اجرایی برای تیم پیمانکار.</p>
-                <span class="module-shell-tag">D5</span>
-            </div>
+            <button
+                type="button"
+                class="edms-tab-btn contractor-tab-btn"
+                data-contractor-tab="quality"
+                onclick="openContractorTab('quality', this)"
+            >
+                <span class="material-icons-round">rule</span>
+                <span>کیفیت و NCR</span>
+            </button>
+        </div>
+
+        <div class="module-workspace-panels">
+            <section id="contractor-panel-execution" class="module-workspace-panel active">
+                <div class="module-crud-root" data-module="contractor" data-tab="execution" data-title="دفتر فنی و اجرا"></div>
+            </section>
+            <section id="contractor-panel-requests" class="module-workspace-panel">
+                <div class="module-crud-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها و RFI"></div>
+            </section>
+            <section id="contractor-panel-quality" class="module-workspace-panel">
+                <div class="module-crud-root" data-module="contractor" data-tab="quality" data-title="کیفیت و NCR"></div>
+            </section>
         </div>
     </div>
 </div>

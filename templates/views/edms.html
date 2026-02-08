@@ -7,7 +7,7 @@
                         <span class="material-icons-round">engineering</span>
                         مدیریت مدارک مهندسی
                     </h2>
-                    <p class="edms-shell-subtitle">آرشیو، ترنسمیتال، مکاتبات و گزارش‌ها در یک فضای یکپارچه</p>
+                    <p class="edms-shell-subtitle">آرشیو، ترنسمیتال و مکاتبات در یک فضای یکپارچه</p>
                 </div>
                 <button class="edms-stats-refresh" type="button" onclick="loadEdmsHeaderStats(true)" title="به‌روزرسانی آمار">
                     <span class="material-icons-round">refresh</span>
@@ -67,24 +67,12 @@
                 <span class="material-icons-round">mail</span>
                 <span>مکاتبات</span>
             </button>
-
-            <button
-                type="button"
-                class="edms-tab-btn"
-                id="edms-tab-reports"
-                data-edms-tab="reports"
-                onclick="openEdmsTab('reports', this)"
-            >
-                <span class="material-icons-round">analytics</span>
-                <span>گزارش‌ها</span>
-            </button>
         </div>
 
         <div class="edms-panels">
             {% include 'views/archive.html' %}
             {% include 'views/transmittal.html' %}
             {% include 'views/correspondence.html' %}
-            {% include 'views/reports.html' %}
         </div>
     </div>
 </div>

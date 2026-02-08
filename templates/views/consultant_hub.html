@@ -1,42 +1,91 @@
 <div id="view-consultant" class="view-section" style="display: none;">
-    <div class="archive-card module-shell-card">
-        <div class="module-shell-header">
-            <div>
-                <h2 class="module-shell-title">
-                    <span class="material-icons-round">fact_check</span>
-                    نظارت و کنترل پروژه (مشاور)
-                </h2>
-                <p class="module-shell-subtitle">چک‌لیست نظارت، لیست نواقص، یادداشت‌های فنی و پیگیری عدم‌انطباق</p>
+    <div class="edms-shell module-workspace-shell consultant-shell">
+        <div class="edms-shell-header">
+            <div class="edms-shell-header-main">
+                <div>
+                    <h2 class="edms-shell-title">
+                        <span class="material-icons-round">fact_check</span>
+                        نظارت و کنترل پروژه (مشاور)
+                    </h2>
+                    <p class="edms-shell-subtitle">کنترل بازدیدها، نواقص، دستورکارها و پایش شاخص‌های کنترل پروژه</p>
+                </div>
+            </div>
+
+            <div class="edms-quick-stats">
+                <div class="edms-quick-stat">
+                    <div id="consultant-stat-total" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">کل آیتم‌ها</div>
+                </div>
+                <div class="edms-quick-stat">
+                    <div id="consultant-stat-open" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">باز</div>
+                </div>
+                <div class="edms-quick-stat">
+                    <div id="consultant-stat-waiting" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">در انتظار</div>
+                </div>
+                <div class="edms-quick-stat">
+                    <div id="consultant-stat-overdue" class="edms-quick-stat-value">0</div>
+                    <div class="edms-quick-stat-label">معوق</div>
+                </div>
             </div>
         </div>
 
-        <div class="module-shell-grid">
-            <div class="module-shell-item">
-                <div class="module-shell-item-head">
-                    <span class="material-icons-round">checklist</span>
-                    چک‌لیست‌های نظارتی
-                </div>
-                <p>تعریف و ثبت چک‌لیست‌های روزانه/مرحله‌ای برای بازدیدهای کارگاهی.</p>
-                <span class="module-shell-tag">D4</span>
-            </div>
+        <div class="edms-tabs module-tabs" role="tablist" aria-label="Consultant tabs">
+            <button
+                type="button"
+                class="edms-tab-btn consultant-tab-btn active"
+                data-consultant-tab="inspection"
+                onclick="openConsultantTab('inspection', this)"
+            >
+                <span class="material-icons-round">checklist</span>
+                <span>بازدید و چک‌لیست</span>
+            </button>
 
-            <div class="module-shell-item">
-                <div class="module-shell-item-head">
-                    <span class="material-icons-round">report_problem</span>
-                    لیست نواقص و NCR
-                </div>
-                <p>ثبت، دسته‌بندی و پیگیری نواقص و عدم‌انطباق‌ها تا بستن نهایی.</p>
-                <span class="module-shell-tag">D4</span>
-            </div>
+            <button
+                type="button"
+                class="edms-tab-btn consultant-tab-btn"
+                data-consultant-tab="defects"
+                onclick="openConsultantTab('defects', this)"
+            >
+                <span class="material-icons-round">report_problem</span>
+                <span>لیست نواقص</span>
+            </button>
 
-            <div class="module-shell-item">
-                <div class="module-shell-item-head">
-                    <span class="material-icons-round">edit_note</span>
-                    یادداشت‌های فنی
-                </div>
-                <p>ثبت یادداشت بازدید، پیوست عکس و مستندسازی تصمیم‌های فنی.</p>
-                <span class="module-shell-tag">D4-D5</span>
-            </div>
+            <button
+                type="button"
+                class="edms-tab-btn consultant-tab-btn"
+                data-consultant-tab="instructions"
+                onclick="openConsultantTab('instructions', this)"
+            >
+                <span class="material-icons-round">edit_note</span>
+                <span>دستورکار / صورتجلسه</span>
+            </button>
+
+            <button
+                type="button"
+                class="edms-tab-btn consultant-tab-btn"
+                data-consultant-tab="control"
+                onclick="openConsultantTab('control', this)"
+            >
+                <span class="material-icons-round">monitoring</span>
+                <span>کنترل پروژه</span>
+            </button>
+        </div>
+
+        <div class="module-workspace-panels">
+            <section id="consultant-panel-inspection" class="module-workspace-panel active">
+                <div class="module-crud-root" data-module="consultant" data-tab="inspection" data-title="بازدید و چک‌لیست"></div>
+            </section>
+            <section id="consultant-panel-defects" class="module-workspace-panel">
+                <div class="module-crud-root" data-module="consultant" data-tab="defects" data-title="لیست نواقص"></div>
+            </section>
+            <section id="consultant-panel-instructions" class="module-workspace-panel">
+                <div class="module-crud-root" data-module="consultant" data-tab="instructions" data-title="دستورکار / صورتجلسه"></div>
+            </section>
+            <section id="consultant-panel-control" class="module-workspace-panel">
+                <div class="module-crud-root" data-module="consultant" data-tab="control" data-title="کنترل پروژه"></div>
+            </section>
         </div>
     </div>
 </div>

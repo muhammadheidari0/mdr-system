@@ -22,7 +22,6 @@ let EDMS_TAB_VISIBILITY = {
     archive: true,
     transmittal: true,
     correspondence: true,
-    reports: true,
 };
 let EDMS_STATS_LOADING = false;
 let EDMS_STATS_LAST_LOADED_AT = 0;
@@ -31,19 +30,52 @@ const EDMS_TAB_TO_VIEW = {
     archive: 'view-archive',
     transmittal: 'view-transmittal',
     correspondence: 'view-correspondence',
-    reports: 'view-reports',
 };
 
 const EDMS_VIEW_TO_TAB = {
     'view-archive': 'archive',
     'view-transmittal': 'transmittal',
     'view-correspondence': 'correspondence',
-    'view-reports': 'reports',
+};
+
+const CONTRACTOR_TAB_TO_PANEL = {
+    execution: 'contractor-panel-execution',
+    requests: 'contractor-panel-requests',
+    quality: 'contractor-panel-quality',
+};
+
+const CONSULTANT_TAB_TO_PANEL = {
+    inspection: 'consultant-panel-inspection',
+    defects: 'consultant-panel-defects',
+    instructions: 'consultant-panel-instructions',
+    control: 'consultant-panel-control',
+};
+
+const WORKBOARD_STATUS_LABELS = {
+    open: 'باز',
+    in_progress: 'در حال انجام',
+    waiting: 'در انتظار',
+    done: 'انجام‌شده',
+    blocked: 'مسدود',
+};
+
+const WORKBOARD_PRIORITY_LABELS = {
+    low: 'کم',
+    normal: 'نرمال',
+    high: 'بالا',
+    urgent: 'فوری',
+};
+
+const WORKBOARD_STATE = {
+    initialized: false,
+    timers: {},
+    rowsByKey: {},
 };
 
 const VIEW_IDS = [
     'view-dashboard',
     'view-edms',
+    'view-reports',
     'view-contractor',
     'view-consultant',
     'view-profile',
@@ -137,7 +169,7 @@ function isEdmsTabVisible(tabName) {
 }
 
 function getFirstVisibleEdmsTab() {
-    const order = ['archive', 'transmittal', 'correspondence', 'reports'];
+    const order = ['archive', 'transmittal', 'correspondence'];
     return order.find((tab) => isEdmsTabVisible(tab)) || null;
 }
 
@@ -245,7 +277,6 @@ async function loadEdmsNavigation() {
         archive: true,
         transmittal: true,
         correspondence: true,
-        reports: true,
     };
 
     if (role === 'viewer') {
@@ -253,11 +284,10 @@ async function loadEdmsNavigation() {
             archive: true,
             transmittal: true,
             correspondence: true,
-            reports: true,
         };
     }
 
-    EDMS_DEFAULT_TAB = role === 'dcc' || role === 'manager' ? 'transmittal' : (role === 'viewer' ? 'reports' : 'archive');
+    EDMS_DEFAULT_TAB = role === 'dcc' || role === 'manager' ? 'transmittal' : 'archive';
     EDMS_TAB_VISIBILITY = { ...EDMS_TAB_VISIBILITY, ...fallback };
 
     try {
@@ -272,7 +302,6 @@ async function loadEdmsNavigation() {
                 archive: tabs.archive !== false,
                 transmittal: tabs.transmittal !== false,
                 correspondence: tabs.correspondence !== false,
-                reports: tabs.reports !== false,
             };
             const apiDefaultTab = String(body?.default_edms_tab || '').trim().toLowerCase();
             if (apiDefaultTab && EDMS_TAB_TO_VIEW[apiDefaultTab]) {
@@ -302,7 +331,7 @@ function openEdmsTab(tabName, btnEl = null) {
         panel.classList.toggle('active', active);
     });
 
-    document.querySelectorAll('.edms-tab-btn').forEach((button) => {
+    document.querySelectorAll('.edms-tab-btn[data-edms-tab]').forEach((button) => {
         button.classList.remove('active');
     });
 
@@ -326,9 +355,6 @@ function openEdmsTab(tabName, btnEl = null) {
         case 'correspondence':
             if (typeof initCorrespondenceView === 'function') initCorrespondenceView();
             break;
-        case 'reports':
-            if (typeof initReportsView === 'function') initReportsView();
-            break;
         default:
             break;
     }
@@ -336,6 +362,567 @@ function openEdmsTab(tabName, btnEl = null) {
 }
 
 window.openEdmsTab = openEdmsTab;
+
+function switchModuleTab(tabName, tabToPanelMap, tabButtonSelector, dataAttrName, btnEl = null) {
+    const normalized = String(tabName || '').trim().toLowerCase();
+    if (!tabToPanelMap[normalized]) return;
+
+    Object.entries(tabToPanelMap).forEach(([tab, panelId]) => {
+        const panel = document.getElementById(panelId);
+        if (!panel) return;
+        const active = tab === normalized;
+        panel.style.display = active ? 'block' : 'none';
+        panel.classList.toggle('active', active);
+    });
+
+    document.querySelectorAll(tabButtonSelector).forEach((button) => {
+        button.classList.remove('active');
+    });
+
+    const button = btnEl || document.querySelector(`${tabButtonSelector}[${dataAttrName}="${normalized}"]`);
+    if (button) button.classList.add('active');
+}
+
+function openContractorTab(tabName, btnEl = null) {
+    const normalized = String(tabName || '').trim().toLowerCase();
+    switchModuleTab(normalized, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
+    moduleBoardOnTabOpened('contractor', normalized);
+}
+
+function initContractorView() {
+    initModuleCrudBoards();
+    const currentButton = document.querySelector('.contractor-tab-btn.active');
+    const defaultTab = currentButton?.dataset?.contractorTab || 'execution';
+    openContractorTab(defaultTab, currentButton || null);
+}
+
+function openConsultantTab(tabName, btnEl = null) {
+    const normalized = String(tabName || '').trim().toLowerCase();
+    switchModuleTab(normalized, CONSULTANT_TAB_TO_PANEL, '.consultant-tab-btn', 'data-consultant-tab', btnEl);
+    moduleBoardOnTabOpened('consultant', normalized);
+}
+
+function initConsultantView() {
+    initModuleCrudBoards();
+    const currentButton = document.querySelector('.consultant-tab-btn.active');
+    const defaultTab = currentButton?.dataset?.consultantTab || 'inspection';
+    openConsultantTab(defaultTab, currentButton || null);
+}
+
+window.openContractorTab = openContractorTab;
+window.initContractorView = initContractorView;
+window.openConsultantTab = openConsultantTab;
+window.initConsultantView = initConsultantView;
+
+function moduleBoardEsc(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function moduleBoardKey(moduleKey, tabKey) {
+    return `${String(moduleKey || '').trim().toLowerCase()}-${String(tabKey || '').trim().toLowerCase()}`;
+}
+
+function moduleBoardCanEdit() {
+    const role = String(window.authManager?.user?.role || '').trim().toLowerCase();
+    return role !== 'viewer';
+}
+
+function moduleBoardGetProjects() {
+    const rows = Array.isArray(window.CACHE?.projects) ? window.CACHE.projects : [];
+    return rows
+        .map((row) => ({
+            code: String(row.code || row.project_code || '').trim().toUpperCase(),
+            name: String(row.project_name || row.name_e || row.name_p || row.code || '').trim(),
+        }))
+        .filter((row) => row.code);
+}
+
+function moduleBoardGetDisciplines() {
+    const rows = Array.isArray(window.CACHE?.disciplines) ? window.CACHE.disciplines : [];
+    return rows
+        .map((row) => ({
+            code: String(row.code || row.discipline_code || '').trim().toUpperCase(),
+            name: String(row.name_e || row.name_p || row.code || '').trim(),
+        }))
+        .filter((row) => row.code);
+}
+
+function moduleBoardStatusOptions() {
+    return Object.entries(WORKBOARD_STATUS_LABELS)
+        .map(([key, label]) => `<option value="${moduleBoardEsc(key)}">${moduleBoardEsc(label)}</option>`)
+        .join('');
+}
+
+function moduleBoardPriorityOptions() {
+    return Object.entries(WORKBOARD_PRIORITY_LABELS)
+        .map(([key, label]) => `<option value="${moduleBoardEsc(key)}">${moduleBoardEsc(label)}</option>`)
+        .join('');
+}
+
+function moduleBoardProjectOptions(includeAll = true, emptyLabel = 'همه پروژه‌ها') {
+    const options = [];
+    if (includeAll) {
+        options.push(`<option value="">${moduleBoardEsc(emptyLabel)}</option>`);
+    }
+    moduleBoardGetProjects().forEach((row) => {
+        options.push(
+            `<option value="${moduleBoardEsc(row.code)}">${moduleBoardEsc(row.code)} - ${moduleBoardEsc(row.name || row.code)}</option>`
+        );
+    });
+    return options.join('');
+}
+
+function moduleBoardDisciplineOptions(includeAll = true, emptyLabel = 'همه دیسیپلین‌ها') {
+    const options = [];
+    if (includeAll) {
+        options.push(`<option value="">${moduleBoardEsc(emptyLabel)}</option>`);
+    }
+    moduleBoardGetDisciplines().forEach((row) => {
+        options.push(
+            `<option value="${moduleBoardEsc(row.code)}">${moduleBoardEsc(row.code)} - ${moduleBoardEsc(row.name || row.code)}</option>`
+        );
+    });
+    return options.join('');
+}
+
+function moduleBoardRenderCard(moduleKey, tabKey, title) {
+    const key = moduleBoardKey(moduleKey, tabKey);
+    const canEdit = moduleBoardCanEdit();
+    return `
+<div class="archive-card module-crud-card" data-module="${moduleBoardEsc(moduleKey)}" data-tab="${moduleBoardEsc(tabKey)}">
+    <div class="module-panel-header">
+        <h3 class="archive-title">
+            <span class="material-icons-round">assignment</span>
+            ${moduleBoardEsc(title)}
+        </h3>
+        <p class="archive-subtitle">ثبت، جستجو، ویرایش و پیگیری آیتم‌های عملیاتی این تب</p>
+    </div>
+
+    <div class="module-crud-toolbar">
+        <div class="module-crud-toolbar-left">
+            ${canEdit ? `<button type="button" class="btn btn-primary" onclick="moduleBoardOpenForm('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')"><span class="material-icons-round">add</span>افزودن آیتم</button>` : ''}
+            <button type="button" class="btn-archive-icon" onclick="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)" title="به‌روزرسانی">
+                <span class="material-icons-round">refresh</span>
+            </button>
+        </div>
+        <div class="module-crud-toolbar-right">
+            <select id="mb-filter-project-${moduleBoardEsc(key)}" class="module-crud-select" onchange="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)">
+                ${moduleBoardProjectOptions()}
+            </select>
+            <select id="mb-filter-discipline-${moduleBoardEsc(key)}" class="module-crud-select" onchange="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)">
+                ${moduleBoardDisciplineOptions()}
+            </select>
+            <select id="mb-filter-status-${moduleBoardEsc(key)}" class="module-crud-select" onchange="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)">
+                <option value="">همه وضعیت‌ها</option>
+                ${moduleBoardStatusOptions()}
+            </select>
+            <input id="mb-filter-search-${moduleBoardEsc(key)}" class="module-crud-input" type="text" placeholder="جستجو در عنوان/شرح..." oninput="moduleBoardDebouncedLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')">
+        </div>
+    </div>
+
+    <div id="mb-form-wrap-${moduleBoardEsc(key)}" class="module-crud-form-wrap" hidden>
+        <h4 class="module-crud-form-title">فرم آیتم عملیاتی</h4>
+        <input id="mb-form-id-${moduleBoardEsc(key)}" type="hidden" value="">
+        <div class="module-crud-form-grid">
+            <div class="module-crud-form-field">
+                <label for="mb-form-title-${moduleBoardEsc(key)}">عنوان</label>
+                <input id="mb-form-title-${moduleBoardEsc(key)}" class="module-crud-input" type="text" maxlength="255" placeholder="عنوان آیتم">
+            </div>
+            <div class="module-crud-form-field">
+                <label for="mb-form-project-${moduleBoardEsc(key)}">پروژه</label>
+                <select id="mb-form-project-${moduleBoardEsc(key)}" class="module-crud-select">
+                    ${moduleBoardProjectOptions(true, 'بدون پروژه')}
+                </select>
+            </div>
+            <div class="module-crud-form-field">
+                <label for="mb-form-discipline-${moduleBoardEsc(key)}">دیسیپلین</label>
+                <select id="mb-form-discipline-${moduleBoardEsc(key)}" class="module-crud-select">
+                    ${moduleBoardDisciplineOptions(true, 'بدون دیسیپلین')}
+                </select>
+            </div>
+            <div class="module-crud-form-field">
+                <label for="mb-form-status-${moduleBoardEsc(key)}">وضعیت</label>
+                <select id="mb-form-status-${moduleBoardEsc(key)}" class="module-crud-select">
+                    ${moduleBoardStatusOptions()}
+                </select>
+            </div>
+            <div class="module-crud-form-field">
+                <label for="mb-form-priority-${moduleBoardEsc(key)}">اولویت</label>
+                <select id="mb-form-priority-${moduleBoardEsc(key)}" class="module-crud-select">
+                    ${moduleBoardPriorityOptions()}
+                </select>
+            </div>
+            <div class="module-crud-form-field">
+                <label for="mb-form-due-${moduleBoardEsc(key)}">تاریخ سررسید</label>
+                <input id="mb-form-due-${moduleBoardEsc(key)}" class="module-crud-input" type="date">
+            </div>
+            <div class="module-crud-form-field" style="grid-column: 1 / -1;">
+                <label for="mb-form-description-${moduleBoardEsc(key)}">شرح</label>
+                <textarea id="mb-form-description-${moduleBoardEsc(key)}" class="module-crud-textarea" placeholder="توضیحات/اقدامات"></textarea>
+            </div>
+        </div>
+        <div class="module-crud-form-actions">
+            <button type="button" class="btn btn-secondary" onclick="moduleBoardCloseForm('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')">انصراف</button>
+            <button type="button" class="btn btn-primary" onclick="moduleBoardSave('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')">
+                <span class="material-icons-round">save</span>
+                ذخیره
+            </button>
+        </div>
+    </div>
+
+    <div class="module-crud-table-wrap">
+        <table class="module-crud-table">
+            <thead>
+                <tr>
+                    <th style="width:58px;">#</th>
+                    <th>عنوان</th>
+                    <th style="width:170px;">پروژه</th>
+                    <th style="width:150px;">دیسیپلین</th>
+                    <th style="width:120px;">وضعیت</th>
+                    <th style="width:90px;">اولویت</th>
+                    <th style="width:130px;">سررسید</th>
+                    <th style="width:140px;">آخرین بروزرسانی</th>
+                    <th style="width:130px;">عملیات</th>
+                </tr>
+            </thead>
+            <tbody id="mb-tbody-${moduleBoardEsc(key)}"></tbody>
+        </table>
+        <div id="mb-empty-${moduleBoardEsc(key)}" class="module-crud-empty">آیتمی ثبت نشده است.</div>
+    </div>
+</div>
+`;
+}
+
+function initModuleCrudBoards() {
+    if (WORKBOARD_STATE.initialized) return;
+    const roots = document.querySelectorAll('.module-crud-root[data-module][data-tab]');
+    if (!roots.length) return;
+
+    roots.forEach((root) => {
+        const moduleKey = String(root.dataset.module || '').trim().toLowerCase();
+        const tabKey = String(root.dataset.tab || '').trim().toLowerCase();
+        const title = String(root.dataset.title || '').trim() || `${moduleKey}/${tabKey}`;
+        root.innerHTML = moduleBoardRenderCard(moduleKey, tabKey, title);
+    });
+    WORKBOARD_STATE.initialized = true;
+}
+
+function moduleBoardElementId(moduleKey, tabKey, name) {
+    return `mb-${name}-${moduleBoardKey(moduleKey, tabKey)}`;
+}
+
+function moduleBoardElement(moduleKey, tabKey, name) {
+    return document.getElementById(moduleBoardElementId(moduleKey, tabKey, name));
+}
+
+function moduleBoardFormatDate(value, includeTime = false) {
+    const raw = String(value || '').trim();
+    if (!raw) return '-';
+    const dt = new Date(raw);
+    if (Number.isNaN(dt.getTime())) return '-';
+    if (includeTime) {
+        return dt.toLocaleString('fa-IR');
+    }
+    return dt.toLocaleDateString('fa-IR');
+}
+
+function moduleBoardStatusClass(value) {
+    return String(value || '').trim().toLowerCase().replace(/_/g, '-');
+}
+
+function moduleBoardPriorityClass(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function moduleBoardGetRow(moduleKey, tabKey, itemId) {
+    const key = moduleBoardKey(moduleKey, tabKey);
+    const rows = Array.isArray(WORKBOARD_STATE.rowsByKey[key]) ? WORKBOARD_STATE.rowsByKey[key] : [];
+    return rows.find((row) => Number(row.id) === Number(itemId)) || null;
+}
+
+async function moduleBoardLoad(moduleKey, tabKey, force = false) {
+    initModuleCrudBoards();
+    const key = moduleBoardKey(moduleKey, tabKey);
+    const tbody = moduleBoardElement(moduleKey, tabKey, 'tbody');
+    const emptyEl = moduleBoardElement(moduleKey, tabKey, 'empty');
+    if (!tbody || !emptyEl) return;
+
+    const searchInput = moduleBoardElement(moduleKey, tabKey, 'filter-search');
+    const statusSelect = moduleBoardElement(moduleKey, tabKey, 'filter-status');
+    const projectSelect = moduleBoardElement(moduleKey, tabKey, 'filter-project');
+    const disciplineSelect = moduleBoardElement(moduleKey, tabKey, 'filter-discipline');
+
+    const params = new URLSearchParams({
+        module_key: String(moduleKey || '').trim().toLowerCase(),
+        tab_key: String(tabKey || '').trim().toLowerCase(),
+        limit: '250',
+        skip: '0',
+    });
+    const searchValue = String(searchInput?.value || '').trim();
+    const statusValue = String(statusSelect?.value || '').trim();
+    const projectValue = String(projectSelect?.value || '').trim();
+    const disciplineValue = String(disciplineSelect?.value || '').trim();
+    if (searchValue) params.set('search', searchValue);
+    if (statusValue) params.set('status', statusValue);
+    if (projectValue) params.set('project_code', projectValue);
+    if (disciplineValue) params.set('discipline_code', disciplineValue);
+
+    if (force) {
+        tbody.innerHTML = '';
+        emptyEl.textContent = 'در حال بارگذاری...';
+        emptyEl.style.display = 'block';
+    }
+
+    try {
+        const res = await fetchWithAuth(`${API_BASE}/workboard/list?${params.toString()}`);
+        const body = await res.json();
+        if (!res.ok || !body?.ok) {
+            throw new Error(body?.detail || 'Failed to load workboard items.');
+        }
+        const rows = Array.isArray(body.data) ? body.data : [];
+        WORKBOARD_STATE.rowsByKey[key] = rows;
+
+        if (!rows.length) {
+            tbody.innerHTML = '';
+            emptyEl.textContent = 'آیتمی یافت نشد.';
+            emptyEl.style.display = 'block';
+            return;
+        }
+
+        const canEdit = moduleBoardCanEdit();
+        tbody.innerHTML = rows.map((row, idx) => {
+            const projectLabel = row.project_code
+                ? `${moduleBoardEsc(row.project_code)}${row.project_name ? ` - ${moduleBoardEsc(row.project_name)}` : ''}`
+                : '-';
+            const disciplineLabel = row.discipline_code
+                ? `${moduleBoardEsc(row.discipline_code)}${row.discipline_name ? ` - ${moduleBoardEsc(row.discipline_name)}` : ''}`
+                : '-';
+            return `
+<tr>
+    <td>${idx + 1}</td>
+    <td>
+        <div style="font-weight:700; color:#0f172a;">${moduleBoardEsc(row.title || '-')}</div>
+        <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">${moduleBoardEsc(row.description || '')}</div>
+    </td>
+    <td>${projectLabel}</td>
+    <td>${disciplineLabel}</td>
+    <td><span class="module-crud-status is-${moduleBoardStatusClass(row.status)}">${moduleBoardEsc(WORKBOARD_STATUS_LABELS[row.status] || row.status || '-')}</span></td>
+    <td><span class="module-crud-priority is-${moduleBoardPriorityClass(row.priority)}">${moduleBoardEsc(WORKBOARD_PRIORITY_LABELS[row.priority] || row.priority || '-')}</span></td>
+    <td>${moduleBoardEsc(moduleBoardFormatDate(row.due_date, false))}</td>
+    <td>${moduleBoardEsc(moduleBoardFormatDate(row.updated_at || row.created_at, true))}</td>
+    <td>
+        <div class="module-crud-actions">
+            ${canEdit ? `<button type="button" class="btn-archive-icon" onclick="moduleBoardEdit('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', ${Number(row.id)})">ویرایش</button>` : ''}
+            ${canEdit ? `<button type="button" class="btn-archive-icon" onclick="moduleBoardDelete('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', ${Number(row.id)})">حذف</button>` : ''}
+            ${!canEdit ? '-' : ''}
+        </div>
+    </td>
+</tr>
+`;
+        }).join('');
+        emptyEl.style.display = 'none';
+    } catch (error) {
+        console.error('moduleBoardLoad failed:', error);
+        tbody.innerHTML = '';
+        emptyEl.textContent = error.message || 'خطا در بارگذاری آیتم‌ها.';
+        emptyEl.style.display = 'block';
+    }
+}
+
+function moduleBoardDebouncedLoad(moduleKey, tabKey) {
+    const key = moduleBoardKey(moduleKey, tabKey);
+    clearTimeout(WORKBOARD_STATE.timers[key]);
+    WORKBOARD_STATE.timers[key] = setTimeout(() => {
+        moduleBoardLoad(moduleKey, tabKey, false);
+    }, 420);
+}
+
+function moduleBoardResetForm(moduleKey, tabKey) {
+    const idInput = moduleBoardElement(moduleKey, tabKey, 'form-id');
+    const titleInput = moduleBoardElement(moduleKey, tabKey, 'form-title');
+    const descInput = moduleBoardElement(moduleKey, tabKey, 'form-description');
+    const projectSelect = moduleBoardElement(moduleKey, tabKey, 'form-project');
+    const disciplineSelect = moduleBoardElement(moduleKey, tabKey, 'form-discipline');
+    const statusSelect = moduleBoardElement(moduleKey, tabKey, 'form-status');
+    const prioritySelect = moduleBoardElement(moduleKey, tabKey, 'form-priority');
+    const dueInput = moduleBoardElement(moduleKey, tabKey, 'form-due');
+    if (idInput) idInput.value = '';
+    if (titleInput) titleInput.value = '';
+    if (descInput) descInput.value = '';
+    if (projectSelect) projectSelect.value = '';
+    if (disciplineSelect) disciplineSelect.value = '';
+    if (statusSelect) statusSelect.value = 'open';
+    if (prioritySelect) prioritySelect.value = 'normal';
+    if (dueInput) dueInput.value = '';
+}
+
+function moduleBoardOpenForm(moduleKey, tabKey, item = null) {
+    if (!moduleBoardCanEdit()) return;
+    const wrap = moduleBoardElement(moduleKey, tabKey, 'form-wrap');
+    if (!wrap) return;
+    moduleBoardResetForm(moduleKey, tabKey);
+    if (item) {
+        const idInput = moduleBoardElement(moduleKey, tabKey, 'form-id');
+        const titleInput = moduleBoardElement(moduleKey, tabKey, 'form-title');
+        const descInput = moduleBoardElement(moduleKey, tabKey, 'form-description');
+        const projectSelect = moduleBoardElement(moduleKey, tabKey, 'form-project');
+        const disciplineSelect = moduleBoardElement(moduleKey, tabKey, 'form-discipline');
+        const statusSelect = moduleBoardElement(moduleKey, tabKey, 'form-status');
+        const prioritySelect = moduleBoardElement(moduleKey, tabKey, 'form-priority');
+        const dueInput = moduleBoardElement(moduleKey, tabKey, 'form-due');
+
+        if (idInput) idInput.value = String(item.id || '');
+        if (titleInput) titleInput.value = String(item.title || '');
+        if (descInput) descInput.value = String(item.description || '');
+        if (projectSelect) projectSelect.value = String(item.project_code || '');
+        if (disciplineSelect) disciplineSelect.value = String(item.discipline_code || '');
+        if (statusSelect) statusSelect.value = String(item.status || 'open');
+        if (prioritySelect) prioritySelect.value = String(item.priority || 'normal');
+        if (dueInput) dueInput.value = String(item.due_date || '').slice(0, 10);
+    }
+    wrap.hidden = false;
+}
+
+function moduleBoardCloseForm(moduleKey, tabKey) {
+    const wrap = moduleBoardElement(moduleKey, tabKey, 'form-wrap');
+    if (wrap) wrap.hidden = true;
+    moduleBoardResetForm(moduleKey, tabKey);
+}
+
+async function moduleBoardSave(moduleKey, tabKey) {
+    if (!moduleBoardCanEdit()) return;
+    const idInput = moduleBoardElement(moduleKey, tabKey, 'form-id');
+    const titleInput = moduleBoardElement(moduleKey, tabKey, 'form-title');
+    const descInput = moduleBoardElement(moduleKey, tabKey, 'form-description');
+    const projectSelect = moduleBoardElement(moduleKey, tabKey, 'form-project');
+    const disciplineSelect = moduleBoardElement(moduleKey, tabKey, 'form-discipline');
+    const statusSelect = moduleBoardElement(moduleKey, tabKey, 'form-status');
+    const prioritySelect = moduleBoardElement(moduleKey, tabKey, 'form-priority');
+    const dueInput = moduleBoardElement(moduleKey, tabKey, 'form-due');
+
+    const title = String(titleInput?.value || '').trim();
+    if (!title) {
+        showToast('عنوان آیتم الزامی است.', 'error');
+        titleInput?.focus();
+        return;
+    }
+
+    const payload = {
+        module_key: String(moduleKey || '').trim().toLowerCase(),
+        tab_key: String(tabKey || '').trim().toLowerCase(),
+        title,
+        description: String(descInput?.value || '').trim() || null,
+        project_code: String(projectSelect?.value || '').trim() || null,
+        discipline_code: String(disciplineSelect?.value || '').trim() || null,
+        status: String(statusSelect?.value || 'open').trim() || 'open',
+        priority: String(prioritySelect?.value || 'normal').trim() || 'normal',
+        due_date: String(dueInput?.value || '').trim() ? String(dueInput.value).trim() : null,
+    };
+
+    const itemId = Number(idInput?.value || 0);
+    const endpoint = itemId > 0 ? `${API_BASE}/workboard/${itemId}` : `${API_BASE}/workboard/create`;
+    const method = itemId > 0 ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetchWithAuth(endpoint, {
+            method,
+            body: JSON.stringify(payload),
+        });
+        const body = await res.json();
+        if (!res.ok || !body?.ok) {
+            throw new Error(body?.detail || 'خطا در ذخیره آیتم.');
+        }
+        showToast(itemId > 0 ? 'آیتم بروزرسانی شد.' : 'آیتم جدید ثبت شد.', 'success');
+        moduleBoardCloseForm(moduleKey, tabKey);
+        await moduleBoardLoad(moduleKey, tabKey, true);
+        await moduleBoardRefreshSummary(moduleKey);
+    } catch (error) {
+        console.error('moduleBoardSave failed:', error);
+        showToast(error.message || 'خطا در ذخیره آیتم.', 'error');
+    }
+}
+
+function moduleBoardEdit(moduleKey, tabKey, itemId) {
+    const row = moduleBoardGetRow(moduleKey, tabKey, itemId);
+    if (!row) {
+        showToast('آیتم موردنظر یافت نشد.', 'error');
+        return;
+    }
+    moduleBoardOpenForm(moduleKey, tabKey, row);
+}
+
+async function moduleBoardDelete(moduleKey, tabKey, itemId) {
+    if (!moduleBoardCanEdit()) return;
+    const row = moduleBoardGetRow(moduleKey, tabKey, itemId);
+    const title = row?.title ? `«${row.title}»` : `#${itemId}`;
+    if (!confirm(`آیا از حذف آیتم ${title} مطمئن هستید؟`)) return;
+
+    try {
+        const res = await fetchWithAuth(`${API_BASE}/workboard/${Number(itemId)}`, { method: 'DELETE' });
+        const body = await res.json();
+        if (!res.ok || !body?.ok) {
+            throw new Error(body?.detail || 'خطا در حذف آیتم.');
+        }
+        showToast('آیتم حذف شد.', 'success');
+        await moduleBoardLoad(moduleKey, tabKey, true);
+        await moduleBoardRefreshSummary(moduleKey);
+    } catch (error) {
+        console.error('moduleBoardDelete failed:', error);
+        showToast(error.message || 'خطا در حذف آیتم.', 'error');
+    }
+}
+
+async function moduleBoardRefreshSummary(moduleKey) {
+    const normalized = String(moduleKey || '').trim().toLowerCase();
+    if (!normalized) return;
+    try {
+        const res = await fetchWithAuth(`${API_BASE}/workboard/summary?module_key=${encodeURIComponent(normalized)}`);
+        const body = await res.json();
+        if (!res.ok || !body?.ok) return;
+        const stats = body.stats || {};
+        const map = normalized === 'consultant'
+            ? {
+                total: 'consultant-stat-total',
+                open: 'consultant-stat-open',
+                waiting: 'consultant-stat-waiting',
+                overdue: 'consultant-stat-overdue',
+            }
+            : {
+                total: 'contractor-stat-total',
+                open: 'contractor-stat-open',
+                waiting: 'contractor-stat-waiting',
+                overdue: 'contractor-stat-overdue',
+            };
+        Object.entries(map).forEach(([field, id]) => {
+            const el = document.getElementById(id);
+            if (el) {
+                const value = Number(stats[field] ?? 0);
+                el.textContent = Number.isFinite(value) ? String(value) : '0';
+            }
+        });
+    } catch (error) {
+        console.warn('moduleBoardRefreshSummary failed:', error);
+    }
+}
+
+async function moduleBoardOnTabOpened(moduleKey, tabKey) {
+    initModuleCrudBoards();
+    await moduleBoardLoad(moduleKey, tabKey, true);
+    await moduleBoardRefreshSummary(moduleKey);
+}
+
+window.moduleBoardLoad = moduleBoardLoad;
+window.moduleBoardDebouncedLoad = moduleBoardDebouncedLoad;
+window.moduleBoardOpenForm = moduleBoardOpenForm;
+window.moduleBoardCloseForm = moduleBoardCloseForm;
+window.moduleBoardSave = moduleBoardSave;
+window.moduleBoardEdit = moduleBoardEdit;
+window.moduleBoardDelete = moduleBoardDelete;
 
 // ============================================================
 //  1. NAVIGATION LOGIC (Ù…Ø¯ÛŒØ±ÛŒØª Ø¬Ø§Ø¨Ø¬Ø§ÛŒÛŒ ØµÙØ­Ø§Øª)
@@ -391,6 +978,10 @@ function navigateTo(viewId) {
             break;
         }
 
+        case 'view-reports':
+            if (typeof initReportsView === 'function') initReportsView();
+            break;
+
         case 'view-contractor':
             if (typeof initContractorView === 'function') initContractorView();
             break;
@@ -424,7 +1015,7 @@ function updateSidebarState(activeViewId) {
     let navTargetView = activeViewId;
     if (activeViewId === 'view-users' || activeViewId === 'view-bulk') {
         navTargetView = 'view-settings';
-    } else if (activeViewId === 'view-archive' || activeViewId === 'view-transmittal' || activeViewId === 'view-correspondence' || activeViewId === 'view-reports') {
+    } else if (activeViewId === 'view-archive' || activeViewId === 'view-transmittal' || activeViewId === 'view-correspondence') {
         navTargetView = 'view-edms';
     }
 

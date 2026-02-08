@@ -529,6 +529,48 @@ class CorrespondenceAttachment(Base):
         back_populates="correspondence_attachments_uploaded",
     )
 
+
+class WorkboardItem(Base):
+    __tablename__ = "workboard_items"
+    __table_args__ = (
+        Index("ix_workboard_module_tab", "module_key", "tab_key"),
+        Index("ix_workboard_project_disc", "project_code", "discipline_code"),
+        Index("ix_workboard_status_due", "status", "due_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    module_key: Mapped[str] = mapped_column(String(32), index=True)  # contractor | consultant
+    tab_key: Mapped[str] = mapped_column(String(32), index=True)
+
+    project_code: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="SET NULL"), nullable=True
+    )
+    discipline_code: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="SET NULL"), nullable=True
+    )
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="open", index=True)
+    priority: Mapped[str] = mapped_column(String(32), default="normal")
+    due_date: Mapped[datetime | None] = mapped_column(DateTime)
+
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped[Optional["Project"]] = relationship("Project")
+    discipline: Mapped[Optional["Discipline"]] = relationship("Discipline")
+    created_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by_id])
+    updated_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[updated_by_id])
+
 class SettingsKV(Base):
     __tablename__ = "settings_kv"
 
