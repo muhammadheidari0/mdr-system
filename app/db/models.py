@@ -23,6 +23,36 @@ from app.db.base import Base
 # ----------------------------------------------------------------
 # 1. Authentication & Users
 # ----------------------------------------------------------------
+class Organization(Base):
+    __tablename__ = "organizations"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_organizations_code"),
+        Index("ix_organizations_parent", "parent_id"),
+        Index("ix_organizations_type", "org_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    org_type: Mapped[str] = mapped_column(String(32), nullable=False, default="contractor")
+    parent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    parent: Mapped["Organization | None"] = relationship(
+        "Organization",
+        remote_side="Organization.id",
+        back_populates="children",
+    )
+    children: Mapped[List["Organization"]] = relationship(
+        "Organization",
+        back_populates="parent",
+    )
+    users: Mapped[List["User"]] = relationship(back_populates="organization")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -32,6 +62,10 @@ class User(Base):
     full_name: Mapped[str | None] = mapped_column(String(255))
 
     role: Mapped[str] = mapped_column(String(50), default="user")
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    organization_role: Mapped[str] = mapped_column(String(32), default="viewer", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
@@ -60,6 +94,7 @@ class User(Base):
     discipline_scopes: Mapped[List["UserDisciplineScope"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    organization: Mapped["Organization | None"] = relationship(back_populates="users")
 
 # ----------------------------------------------------------------
 # 2. Base Tables & Lookups
@@ -536,6 +571,7 @@ class WorkboardItem(Base):
         Index("ix_workboard_module_tab", "module_key", "tab_key"),
         Index("ix_workboard_project_disc", "project_code", "discipline_code"),
         Index("ix_workboard_status_due", "status", "due_date"),
+        Index("ix_workboard_org_module_tab", "organization_id", "module_key", "tab_key"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -547,6 +583,9 @@ class WorkboardItem(Base):
     )
     discipline_code: Mapped[str | None] = mapped_column(
         String(20), ForeignKey("disciplines.code", ondelete="SET NULL"), nullable=True
+    )
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
     title: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -568,6 +607,7 @@ class WorkboardItem(Base):
 
     project: Mapped[Optional["Project"]] = relationship("Project")
     discipline: Mapped[Optional["Discipline"]] = relationship("Discipline")
+    organization: Mapped[Optional["Organization"]] = relationship("Organization")
     created_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by_id])
     updated_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[updated_by_id])
 
@@ -613,6 +653,51 @@ class RolePermission(Base):
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     permission: Mapped[str] = mapped_column(String(64), nullable=False)
     allowed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class RoleCategoryPermission(Base):
+    __tablename__ = "role_category_permissions"
+    __table_args__ = (
+        UniqueConstraint("category", "role", "permission", name="uq_role_cat_perm"),
+        Index("ix_role_cat_perm_category", "category"),
+        Index("ix_role_cat_perm_role", "role"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    permission: Mapped[str] = mapped_column(String(64), nullable=False)
+    allowed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+
+class RoleCategoryProjectScope(Base):
+    __tablename__ = "role_category_project_scopes"
+    __table_args__ = (
+        UniqueConstraint("category", "role", "project_code", name="uq_role_cat_project_scope"),
+        Index("ix_role_cat_project_scope_cat_role", "category", "role"),
+        Index("ix_role_cat_project_scope_project", "project_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    project_code: Mapped[str] = mapped_column(String(50), ForeignKey("projects.code", ondelete="CASCADE"))
+
+
+class RoleCategoryDisciplineScope(Base):
+    __tablename__ = "role_category_discipline_scopes"
+    __table_args__ = (
+        UniqueConstraint("category", "role", "discipline_code", name="uq_role_cat_discipline_scope"),
+        Index("ix_role_cat_discipline_scope_cat_role", "category", "role"),
+        Index("ix_role_cat_discipline_scope_disc", "discipline_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    discipline_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="CASCADE")
+    )
 
 
 class RoleProjectScope(Base):

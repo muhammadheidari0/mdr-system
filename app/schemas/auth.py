@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 
 from pydantic import BaseModel, ConfigDict
+from app.core.organizations import OrganizationRole, OrganizationType
 from app.core.roles import Role
 
 
@@ -32,6 +33,9 @@ class UserResponse(BaseModel):
     email: str
     full_name: Optional[str]
     role: Role
+    organization_id: Optional[int] = None
+    organization_role: Optional[OrganizationRole] = None
+    organization: Optional["OrganizationRef"] = None
     is_active: bool
     created_at: Optional[datetime] = None
     scope_summary: Optional[UserScopeSummary] = None
@@ -60,15 +64,32 @@ class UserCreate(BaseModel):
     password: str
     full_name: Optional[str] = None
     role: Role = Role.USER
+    organization_id: Optional[int] = None
+    organization_role: OrganizationRole = OrganizationRole.VIEWER
     is_active: bool = True
 
 
 class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[Role] = None
+    organization_id: Optional[int] = None
+    organization_role: Optional[OrganizationRole] = None
     is_active: Optional[bool] = None
 
 
 class PasswordChangeRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class OrganizationRef(BaseModel):
+    id: int
+    code: str
+    name: str
+    org_type: OrganizationType
+    parent_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+UserResponse.model_rebuild()

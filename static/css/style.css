@@ -1566,16 +1566,14 @@ tr:hover {
     padding: 8px 10px;
 }
 .archive-modal-actions {
-    position: sticky;
-    bottom: -2px;
-    z-index: 4;
     display: flex;
+    width: 100%;
     justify-content: flex-end;
     gap: 10px;
     margin-top: 16px;
-    padding-top: 10px;
+    padding-top: 12px;
     border-top: 1px solid #e2e8f0;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9) 0%, #ffffff 28%);
+    background: #ffffff;
 }
 .archive-modal-actions .btn-archive-primary {
     min-width: 140px;
@@ -2447,27 +2445,26 @@ tr:hover {
     background: #f3f4f6;
 }
 
-.permissions-matrix-table .matrix-group-row td {
-    background: #eef2ff;
-    color: #1e3a8a;
-    font-weight: 700;
-    border-top: 1px solid #dbeafe;
-    padding-top: 9px;
-    padding-bottom: 9px;
+.permissions-matrix-table .matrix-tree-section-row td {
+    background: #dbeafe;
+    color: #0f172a;
+    border-top: 1px solid #bfdbfe;
+    padding-top: 10px;
+    padding-bottom: 10px;
 }
 
-.permissions-matrix-table .matrix-group-row:hover td {
-    background: #eef2ff;
+.permissions-matrix-table .matrix-tree-section-row .sticky-col {
+    background: #dbeafe;
 }
 
-.matrix-group-header {
+.matrix-tree-section-cell {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
+    font-weight: 800;
 }
 
-.matrix-group-toggle {
+.matrix-tree-section-toggle {
     border: none;
     background: transparent;
     color: inherit;
@@ -2479,50 +2476,133 @@ tr:hover {
     font: inherit;
 }
 
-.matrix-group-toggle .material-icons-round {
+.matrix-tree-section-toggle .material-icons-round {
+    font-size: 19px;
+    transition: transform 0.18s ease;
+}
+
+.permissions-matrix-table .matrix-tree-section-row.is-collapsed .matrix-tree-section-toggle .material-icons-round {
+    transform: rotate(-90deg);
+}
+
+.matrix-tree-section-name {
+    font-size: 0.9rem;
+}
+
+.permissions-matrix-table .matrix-tree-group-row td {
+    background: #eef2ff;
+    color: #1e3a8a;
+    border-top: 1px solid #dbeafe;
+    padding-top: 9px;
+    padding-bottom: 9px;
+}
+
+.permissions-matrix-table .matrix-tree-group-row:hover td {
+    background: #e6eeff;
+}
+
+.permissions-matrix-table .matrix-tree-group-row .sticky-col {
+    background: #eef2ff;
+}
+
+.matrix-tree-group-row.is-collapsed {
+    display: none;
+}
+
+.matrix-tree-group-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    padding-right: 20px;
+}
+
+.matrix-tree-group-toggle {
+    border: none;
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font: inherit;
+}
+
+.matrix-tree-group-toggle .material-icons-round {
     font-size: 18px;
     transition: transform 0.18s ease;
 }
 
-.permissions-matrix-table .matrix-group-row.is-collapsed .matrix-group-toggle .material-icons-round {
+.permissions-matrix-table .matrix-tree-group-row.is-page-collapsed .matrix-tree-group-toggle .material-icons-round {
     transform: rotate(-90deg);
 }
 
-.matrix-group-title {
-    font-size: 0.85rem;
-    letter-spacing: 0.3px;
+.matrix-tree-group-name {
+    font-size: 0.87rem;
+    letter-spacing: 0.2px;
 }
 
-.matrix-group-tools {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+.matrix-tree-group-code {
+    margin-right: auto;
+    font-size: 0.72rem;
+    color: #64748b;
+    direction: ltr;
+    text-align: right;
+    font-weight: 600;
 }
 
 .matrix-group-count {
-    background: #e0e7ff;
-    color: #3730a3;
+    background: #dbeafe;
+    color: #1e40af;
     padding: 2px 8px;
     border-radius: 999px;
     font-size: 0.75rem;
 }
 
-.matrix-permission-row.is-collapsed {
+.matrix-tree-child-row.is-collapsed {
     display: none;
 }
 
-.matrix-permission-name {
+.matrix-tree-child-row .matrix-permission-name {
+    position: relative;
+    padding-right: 26px;
     font-weight: 600;
     color: #1f2937;
 }
 
-.matrix-permission-code {
+.matrix-tree-child-row .matrix-permission-name::before {
+    content: "";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    width: 8px;
+    height: 1px;
+    background: #94a3b8;
+}
+
+.matrix-tree-action-label {
     display: block;
-    font-size: 0.73rem;
+}
+
+.matrix-tree-empty-note {
+    margin-right: auto;
+    font-size: 0.74rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.matrix-tree-code {
+    display: block;
+    font-size: 0.72rem;
     color: #94a3b8;
     margin-top: 2px;
     direction: ltr;
     text-align: right;
+}
+
+.toggle-switch.is-indeterminate .toggle-slider {
+    background: #93c5fd;
 }
 
 .matrix-role-head {

@@ -29,7 +29,7 @@ from app.db.models import (
     Phase,
     Project,
 )
-from app.services import archive_service, docnum_service
+from app.services import archive_service, docnum_service, mdr_service
 
 router = APIRouter(prefix="/archive", tags=["Archive"])
 
@@ -63,6 +63,24 @@ def _parse_filter_date(value: str | None, field_name: str) -> datetime | None:
         raise HTTPException(status_code=400, detail=f"Invalid `{field_name}` format (YYYY-MM-DD expected).") from exc
 
 
+def _extract_serial_from_doc_number(doc_number: str, prefix: str, suffix: str) -> str | None:
+    try:
+        value = str(doc_number or "").strip().upper()
+        pfx = str(prefix or "").strip().upper()
+        sfx = str(suffix or "").strip().upper()
+        if not value.startswith(pfx):
+            return None
+        middle = value[len(pfx):]
+        if sfx and middle.endswith(sfx):
+            middle = middle[: -len(sfx)]
+        middle = str(middle or "").strip()
+        if not middle.isdigit():
+            return None
+        return middle
+    except Exception:
+        return None
+
+
 @router.get("/check-status")
 async def check_document_status(
     doc_code: str = Query(..., min_length=3),
@@ -72,7 +90,161 @@ async def check_document_status(
     user: User = Depends(require_permission("archive:read")),
 ):
     """????? ????? ??? ? ??????? ?????? ????"""
-    return archive_service.get_document_status_info(db, doc_code, subject_e, subject_p)
+    payload = archive_service.get_document_status_info(db, doc_code, subject_e, subject_p)
+    parsed_payload = payload.get("parsed") if isinstance(payload.get("parsed"), dict) else None
+    if payload.get("exists") and payload.get("document_id"):
+        doc = db.query(MdrDocument).filter(MdrDocument.id == payload["document_id"]).first()
+        if doc:
+            enforce_scope_access(
+                db,
+                user,
+                project_code=doc.project_code,
+                discipline_code=doc.discipline_code,
+            )
+            payload["project_code"] = doc.project_code
+            payload["discipline_code"] = doc.discipline_code
+    elif parsed_payload:
+        enforce_scope_access(
+            db,
+            user,
+            project_code=parsed_payload.get("project_code"),
+            discipline_code=parsed_payload.get("discipline_code"),
+        )
+    return payload
+
+
+@router.get("/doc-suggestions")
+def get_doc_suggestions(
+    q: Optional[str] = Query(None),
+    project_code: Optional[str] = Query(None),
+    limit: int = Query(default=15, ge=1, le=50),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    query = db.query(MdrDocument)
+    query = apply_scope_query_filters(
+        query,
+        db,
+        user,
+        project_column=MdrDocument.project_code,
+        discipline_column=MdrDocument.discipline_code,
+    )
+
+    project = str(project_code or "").strip().upper()
+    if project:
+        enforce_scope_access(db, user, project_code=project)
+        query = query.filter(MdrDocument.project_code == project)
+
+    term = str(q or "").strip()
+    if term:
+        like_term = f"%{term.replace(' ', '%')}%"
+        query = query.filter(
+            or_(
+                MdrDocument.doc_number.ilike(like_term),
+                MdrDocument.doc_title_e.ilike(like_term),
+                MdrDocument.doc_title_p.ilike(like_term),
+                MdrDocument.subject.ilike(like_term),
+            )
+        )
+
+    rows = query.order_by(MdrDocument.doc_number.asc()).limit(limit).all()
+    items = [
+        {
+            "id": row.id,
+            "doc_number": row.doc_number,
+            "title_e": row.doc_title_e or "",
+            "title_p": row.doc_title_p or "",
+        }
+        for row in rows
+    ]
+    return {"ok": True, "items": items}
+
+
+@router.post("/register-document")
+async def register_document_only(
+    doc_number: str = Form(...),
+    project_code: str = Form(...),
+    mdr_code: Optional[str] = Form(None),
+    phase: Optional[str] = Form(None),
+    discipline: Optional[str] = Form(None),
+    package: Optional[str] = Form(None),
+    block: Optional[str] = Form(None),
+    level: Optional[str] = Form(None),
+    subject_e: Optional[str] = Form(None),
+    subject_p: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:create")),
+):
+    if not doc_number or not project_code or not package or not block:
+        raise HTTPException(
+            status_code=400,
+            detail="Required fields missing (doc_number, project_code, package, block).",
+        )
+
+    enforce_scope_access(
+        db,
+        user,
+        project_code=project_code,
+        discipline_code=discipline,
+    )
+
+    subject_for_key = (str(subject_p or "").strip() or str(subject_e or "").strip())
+    existing_meta_doc = mdr_service.find_document_by_metadata_key(
+        db,
+        project_code=str(project_code or "").strip().upper(),
+        mdr_code=str(mdr_code or "X").strip().upper() or "X",
+        phase_code=str(phase or "X").strip().upper() or "X",
+        discipline_code=str(discipline or "XX").strip().upper() or "XX",
+        package_code=str(package or "").strip().upper(),
+        block=str(block or "").strip().upper(),
+        level_code=str(level or "GEN").strip().upper() or "GEN",
+        subject=subject_for_key,
+    )
+    if existing_meta_doc:
+        status_info = archive_service.get_document_status_info(db, existing_meta_doc.doc_number)
+        return {
+            "ok": True,
+            "created": False,
+            "document_id": existing_meta_doc.id,
+            "doc_number": existing_meta_doc.doc_number,
+            "title": existing_meta_doc.doc_title_e or existing_meta_doc.subject or "",
+            "last_revision": status_info.get("last_revision", "N/A"),
+            "last_status": status_info.get("last_status", "Registered"),
+            "next_revision_suggestion": status_info.get("next_revision_suggestion", "00"),
+            "duplicate_meta": True,
+        }
+
+    meta_data = {
+        "doc_number": str(doc_number or "").strip().upper(),
+        "project_code": str(project_code or "").strip().upper(),
+        "mdr_code": str(mdr_code or "X").strip().upper() or "X",
+        "phase": str(phase or "X").strip().upper() or "X",
+        "discipline": str(discipline or "XX").strip().upper() or "XX",
+        "package": str(package or "").strip().upper(),
+        "block": str(block or "").strip().upper(),
+        "level": str(level or "GEN").strip().upper() or "GEN",
+        "subject_e": str(subject_e or "").strip(),
+        "subject_p": str(subject_p or "").strip(),
+    }
+
+    try:
+        doc, created = archive_service.register_document_metadata(
+            db=db,
+            meta_data=meta_data,
+        )
+        status_info = archive_service.get_document_status_info(db, doc.doc_number)
+        return {
+            "ok": True,
+            "created": bool(created),
+            "document_id": doc.id,
+            "doc_number": doc.doc_number,
+            "title": doc.doc_title_e or doc.subject or "",
+            "last_revision": status_info.get("last_revision", "N/A"),
+            "last_status": status_info.get("last_status", "Registered"),
+            "next_revision_suggestion": status_info.get("next_revision_suggestion", "00"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/upload")
@@ -557,6 +729,7 @@ def get_next_serial_preview(
     pkg: str,
     block: str,
     level: str,
+    subject_e: Optional[str] = None,
     subject_p: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
@@ -569,6 +742,35 @@ def get_next_serial_preview(
         discipline_code=discipline,
     )
     try:
+        subject_for_key = (str(subject_p or "").strip() or str(subject_e or "").strip())
+        existing_meta_doc = mdr_service.find_document_by_metadata_key(
+            db,
+            project_code=str(project_code or "").strip().upper(),
+            mdr_code=str(mdr_code or "").strip().upper(),
+            phase_code=str(phase or "").strip().upper(),
+            discipline_code=str(discipline or "").strip().upper(),
+            package_code=str(pkg or "").strip().upper(),
+            block=str(block or "").strip().upper(),
+            level_code=str(level or "").strip().upper(),
+            subject=subject_for_key,
+        )
+        if existing_meta_doc:
+            prefix = (
+                f"{str(project_code or '').strip().upper()}-"
+                f"{str(mdr_code or '').strip().upper()}"
+                f"{str(phase or '').strip().upper()}"
+                f"{str(discipline or '').strip().upper()}"
+                f"{str(pkg or '').strip().upper()}"
+            )
+            suffix = f"-{str(block or '').strip().upper()}{str(level or '').strip().upper()}"
+            serial = _extract_serial_from_doc_number(existing_meta_doc.doc_number, prefix, suffix) or ""
+            return {
+                "serial": serial,
+                "full_doc": existing_meta_doc.doc_number,
+                "existing": True,
+                "existing_document_id": existing_meta_doc.id,
+            }
+
         doc_num, serial = docnum_service.generate_next_doc_number(
             db,
             project_code=project_code,
@@ -580,7 +782,12 @@ def get_next_serial_preview(
             level=level,
             subject_p=subject_p,
         )
-        return {"serial": serial, "full_doc": doc_num}
+        return {
+            "serial": serial,
+            "full_doc": doc_num,
+            "existing": False,
+            "existing_document_id": None,
+        }
     except Exception as e:
         print(f"Serial Error: {e}")
-        return {"serial": "01", "full_doc": ""}
+        return {"serial": "01", "full_doc": "", "existing": False, "existing_document_id": None}

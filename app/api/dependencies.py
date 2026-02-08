@@ -2,9 +2,18 @@ from __future__ import annotations
 from typing import Any, Dict, Generator, List
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.db.session import get_db as _get_db
+from app.core.organizations import (
+    is_contractor_category,
+    normalize_permission_category,
+    resolve_user_permission_category,
+)
 from app.db.models import (
+    Organization,
+    RoleCategoryDisciplineScope,
+    RoleCategoryPermission,
+    RoleCategoryProjectScope,
     RoleDisciplineScope,
     RolePermission,
     RoleProjectScope,
@@ -32,7 +41,12 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    user = db.query(User).filter(User.email == email).first()
+    user = (
+        db.query(User)
+        .options(joinedload(User.organization))
+        .filter(User.email == email)
+        .first()
+    )
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     
@@ -83,7 +97,34 @@ def _fallback_permissions_for_role(role: str) -> set[str]:
     return perms
 
 
-def _load_allowed_permissions(db: Session, role: str) -> set[str]:
+def _load_allowed_permissions(
+    db: Session,
+    role: str,
+    *,
+    category: str | None = None,
+) -> set[str]:
+    category_key = normalize_permission_category(category) if category is not None else None
+    if category_key:
+        has_category_rows = (
+            db.query(RoleCategoryPermission.id)
+            .filter(
+                RoleCategoryPermission.category == category_key,
+                RoleCategoryPermission.role == role,
+            )
+            .first()
+        )
+        if has_category_rows:
+            rows = (
+                db.query(RoleCategoryPermission.permission)
+                .filter(
+                    RoleCategoryPermission.category == category_key,
+                    RoleCategoryPermission.role == role,
+                    RoleCategoryPermission.allowed == True,
+                )
+                .all()
+            )
+            return {perm for (perm,) in rows if perm}
+
     has_rows = db.query(RolePermission.role).filter(RolePermission.role == role).first()
     if has_rows:
         rows = (
@@ -97,8 +138,14 @@ def _load_allowed_permissions(db: Session, role: str) -> set[str]:
     return _fallback_permissions_for_role(role)
 
 
-def _has_permission(db: Session, role: str, permission: str) -> bool:
-    allowed = _load_allowed_permissions(db, role)
+def _has_permission(
+    db: Session,
+    role: str,
+    permission: str,
+    *,
+    category: str | None = None,
+) -> bool:
+    allowed = _load_allowed_permissions(db, role, category=category)
     if "*" in allowed:
         return True
     return permission in allowed
@@ -110,6 +157,7 @@ class PermissionChecker:
 
     def __call__(self, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
         user_role = normalize_role(user.role)
+        user_category = resolve_user_permission_category(user)
         if not is_valid_role(user_role):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -122,7 +170,7 @@ class PermissionChecker:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Missing permission requirement",
             )
-        if not _has_permission(db, user_role, self.permission):
+        if not _has_permission(db, user_role, self.permission, category=user_category):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Access denied. Missing permission: {self.permission}",
@@ -143,6 +191,18 @@ def has_permission(db: Session, role: str, permission: str) -> bool:
     if not str(permission or "").strip():
         return False
     return _has_permission(db, role_key, permission)
+
+
+def has_permission_for_user(db: Session, user: User, permission: str) -> bool:
+    role_key = normalize_role(getattr(user, "role", None))
+    if not is_valid_role(role_key):
+        return False
+    if role_key == Role.ADMIN.value:
+        return True
+    if not str(permission or "").strip():
+        return False
+    category = resolve_user_permission_category(user)
+    return _has_permission(db, role_key, permission, category=category)
 
 def _normalize_scope_values(values: Any) -> List[str]:
     if not isinstance(values, list):
@@ -165,15 +225,46 @@ def _default_scope_rules() -> Dict[str, Dict[str, List[str]]]:
     }
 
 
-def _load_scope_rules(db: Session) -> Dict[str, Dict[str, List[str]]]:
+def _load_scope_rules(
+    db: Session,
+    *,
+    category: str | None = None,
+) -> Dict[str, Dict[str, List[str]]]:
     rules = _default_scope_rules()
-    for role, project_code in db.query(RoleProjectScope.role, RoleProjectScope.project_code).all():
+    role_projects: List[tuple[str, str]] = []
+    role_disciplines: List[tuple[str, str]] = []
+
+    category_key = normalize_permission_category(category) if category is not None else None
+    if category_key:
+        has_category_context = (
+            db.query(RoleCategoryPermission.id)
+            .filter(RoleCategoryPermission.category == category_key)
+            .first()
+            is not None
+        )
+        if has_category_context:
+            role_projects = (
+                db.query(RoleCategoryProjectScope.role, RoleCategoryProjectScope.project_code)
+                .filter(RoleCategoryProjectScope.category == category_key)
+                .all()
+            )
+            role_disciplines = (
+                db.query(RoleCategoryDisciplineScope.role, RoleCategoryDisciplineScope.discipline_code)
+                .filter(RoleCategoryDisciplineScope.category == category_key)
+                .all()
+            )
+
+    if not role_projects and not role_disciplines:
+        role_projects = db.query(RoleProjectScope.role, RoleProjectScope.project_code).all()
+        role_disciplines = db.query(
+            RoleDisciplineScope.role, RoleDisciplineScope.discipline_code
+        ).all()
+
+    for role, project_code in role_projects:
         role_key = normalize_role(role)
         if role_key in rules:
             rules[role_key]["projects"].append(str(project_code or "").strip().upper())
-    for role, discipline_code in db.query(
-        RoleDisciplineScope.role, RoleDisciplineScope.discipline_code
-    ).all():
+    for role, discipline_code in role_disciplines:
         role_key = normalize_role(role)
         if role_key in rules:
             rules[role_key]["disciplines"].append(str(discipline_code or "").strip().upper())
@@ -225,7 +316,8 @@ def get_user_scope_filters(db: Session, user: User) -> Dict[str, Any]:
             "disciplines_restricted": False,
         }
 
-    role_scope = _load_scope_rules(db).get(role, {})
+    category = resolve_user_permission_category(user)
+    role_scope = _load_scope_rules(db, category=category).get(role, {})
     user_scope = _load_user_scope_rules(db).get(str(user.id), {})
     projects, projects_restricted = _effective_scope_values(
         _normalize_scope_values(role_scope.get("projects")),
@@ -288,3 +380,74 @@ def apply_scope_query_filters(
     if discipline_column is not None and filters["disciplines_restricted"]:
         query = query.filter(discipline_column.in_(filters["disciplines"]))
     return query
+
+
+def get_user_accessible_organization_ids(db: Session, user: User) -> List[int]:
+    role = normalize_role(getattr(user, "role", None))
+    if role == Role.ADMIN.value:
+        return []
+
+    category = resolve_user_permission_category(user)
+    if not is_contractor_category(category):
+        return []
+
+    root_id = int(getattr(user, "organization_id", 0) or 0)
+    if root_id <= 0:
+        return [0]
+
+    rows = db.query(Organization.id, Organization.parent_id).all()
+    children_map: Dict[int, List[int]] = {}
+    for org_id, parent_id in rows:
+        if org_id is None:
+            continue
+        if parent_id is None:
+            continue
+        children_map.setdefault(int(parent_id), []).append(int(org_id))
+
+    allowed = {root_id}
+    queue = [root_id]
+    while queue:
+        current = queue.pop(0)
+        for child_id in children_map.get(current, []):
+            if child_id in allowed:
+                continue
+            allowed.add(child_id)
+            queue.append(child_id)
+    return sorted(allowed)
+
+
+def apply_organization_query_filters(
+    query,
+    db: Session,
+    user: User,
+    *,
+    organization_column=None,
+):
+    if organization_column is None:
+        return query
+    allowed_org_ids = get_user_accessible_organization_ids(db, user)
+    if not allowed_org_ids:
+        return query
+    return query.filter(organization_column.in_(allowed_org_ids))
+
+
+def enforce_organization_access(
+    db: Session,
+    user: User,
+    *,
+    organization_id: int | None,
+) -> None:
+    role = normalize_role(getattr(user, "role", None))
+    if role == Role.ADMIN.value:
+        return
+
+    allowed_org_ids = get_user_accessible_organization_ids(db, user)
+    if not allowed_org_ids:
+        return
+
+    target_org_id = int(organization_id or 0)
+    if target_org_id <= 0 or target_org_id not in allowed_org_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied for organization scope",
+        )

@@ -59,6 +59,23 @@
         type="button"
         class="settings-nav-card"
         data-settings-tab="true"
+        data-tab="organizations"
+        role="tab"
+        aria-selected="false"
+        aria-controls="tab-organizations"
+        onclick="switchSettingsTab('organizations', this)"
+      >
+        <span class="material-icons-round settings-nav-card-icon">account_tree</span>
+        <span class="settings-nav-card-copy">
+          <span class="settings-nav-card-title">مدیریت سازمان‌ها</span>
+          <span class="settings-nav-card-subtitle">ساختار و زیرمجموعه‌ها</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-nav-card"
+        data-settings-tab="true"
         data-tab="permissions"
         role="tab"
         aria-selected="false"
@@ -116,6 +133,10 @@
         {% include 'views/partials/settings_users_tab.html' %}
       </section>
 
+      <section id="tab-organizations" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+        {% include 'views/partials/settings_organizations_tab.html' %}
+      </section>
+
       <section id="tab-permissions" class="settings-tab-content" role="tabpanel" aria-hidden="true">
         {% include 'views/partials/settings_permissions_tab.html' %}
       </section>
@@ -166,6 +187,8 @@
         initGeneralSettings();
       } else if (tabName === 'users' && typeof loadUsers === 'function') {
         loadUsers();
+      } else if (tabName === 'organizations' && typeof initOrganizationsSettings === 'function') {
+        initOrganizationsSettings();
       } else if (tabName === 'permissions' && typeof initPermissionsSettings === 'function') {
         initPermissionsSettings();
       } else if (tabName === 'reports' && typeof initSettingsReports === 'function') {

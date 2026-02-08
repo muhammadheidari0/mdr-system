@@ -9,7 +9,7 @@ from sqlalchemy import desc
 from fastapi import UploadFile, HTTPException
 
 from app.db.models import ArchiveFile, DocumentRevision, MdrDocument
-from app.services import folder_service, docnum_service, mdr_service
+from app.services import folder_service, mdr_service
 from app.services.storage import StorageManager
 
 # ---------------------------------------------------------
@@ -55,6 +55,7 @@ def _parse_doc_code(doc_number: str) -> dict | None:
         # Format after MDR+Phase is usually PKG + SERIAL(2).
         core = middle[2:]
         serial_match = re.search(r"(\d{2})$", core)
+        serial_c = serial_match.group(1) if serial_match else ""
         pkg_full = core[:-2] if serial_match else core
         pkg_full = pkg_full or core or "00"
 
@@ -68,6 +69,7 @@ def _parse_doc_code(doc_number: str) -> dict | None:
             "phase_code": phase_c,
             "discipline_code": disc_c,
             "package_code": pkg_full,
+            "serial": serial_c,
             "block": block_c,
             "level_code": level_c,
         }
@@ -87,82 +89,60 @@ def _normalize_archive_file_kind(value: str | None) -> str:
 # ---------------------------------------------------------
 def get_document_status_info(db: Session, doc_number: str, subject_e: str = "", subject_p: str = ""):
     """
-    اطلاعات سند را برمی‌گرداند.
-    اگر سند وجود نداشته باشد، سعی می‌کند آن را بسازد (Auto Create).
+    Return document status only (no auto-create side effect).
     """
-    doc_number = doc_number.strip().upper()
-    
-    # 1. جستجو در دیتابیس
-    doc = db.query(MdrDocument).filter(MdrDocument.doc_number == doc_number).first()
-    
-    is_newly_created = False
-    
-    # 2. اگر نبود، تلاش برای ساختن (Auto Create)
-    if not doc:
-        parts = _parse_doc_code(doc_number)
-        if parts:
-            try:
-                # برای اطمینان، شماره سند را دوباره محاسبه نمی‌کنیم چون کاربر دقیقاً همین کد را خواسته
-                # اما چک می‌کنیم فرمت معتبر باشد
-                
-                title_e = subject_e or f"Document {doc_number}"
-                title_p = subject_p or f"سند {doc_number}"
-                
-                doc = mdr_service.create_mdr_document(
-                    db, 
-                    doc_number=doc_number, 
-                    project_code=parts['project_code'],
-                    mdr_code=parts['mdr_code'], 
-                    phase_code=parts['phase_code'],
-                    discipline_code=parts['discipline_code'], 
-                    package_code=parts['package_code'],
-                    block=parts['block'], 
-                    level_code=parts['level_code'],
-                    title_e=title_e, 
-                    title_p=title_p
-                )
-                is_newly_created = True
-                
-            except Exception as e:
-                print(f"Error creating document with MDR services: {e}")
-    
-    # 3. اگر باز هم نبود (یعنی فرمت کد اشتباه بوده و پارس نشده)
-    if not doc:
+    doc_number = str(doc_number or "").strip().upper()
+    parsed_doc = _parse_doc_code(doc_number)
+    if not doc_number:
         return {
-            "exists": False, 
-            "msg": "سند یافت نشد و کد نامعتبر است."
+            "exists": False,
+            "can_register": False,
+            "msg": "Document number is empty.",
+            "parsed": None,
         }
 
-    # 4. دریافت آخرین وضعیت
-    last_rev = db.query(DocumentRevision).filter(
-        DocumentRevision.document_id == doc.id
-    ).order_by(desc(DocumentRevision.created_at)).first()
+    doc = db.query(MdrDocument).filter(MdrDocument.doc_number == doc_number).first()
+    if not doc:
+        return {
+            "exists": False,
+            "can_register": bool(parsed_doc),
+            "msg": "Document not found in MDR registry.",
+            "parsed": parsed_doc,
+        }
+
+    last_rev = (
+        db.query(DocumentRevision)
+        .filter(DocumentRevision.document_id == doc.id)
+        .order_by(desc(DocumentRevision.created_at))
+        .first()
+    )
 
     current_rev_code = last_rev.revision if last_rev else "N/A"
     current_status = last_rev.status if last_rev else "Registered"
-    
-    suggested = "00"
-    if last_rev:
-        suggested = _calculate_next_revision(last_rev.revision)
-
-    msg = None
-    if is_newly_created:
-        msg = "سند جدید با موفقیت ایجاد شد."
-        if not subject_e and not subject_p:
-            msg += " (عناوین پیش‌فرض)"
+    suggested = _calculate_next_revision(last_rev.revision) if last_rev else "00"
 
     return {
         "exists": True,
         "document_id": doc.id,
         "doc_number": doc.doc_number,
-        "title": doc.doc_title_e or doc.subject or "بدون عنوان",
+        "title": doc.doc_title_e or doc.subject or "Untitled",
         "last_revision": current_rev_code,
         "last_status": current_status,
         "next_revision_suggestion": suggested,
-        "msg_success": msg,
-        "is_new_document": is_newly_created
+        "msg_success": None,
+        "is_new_document": False,
+        "can_register": False,
+        "parsed": {
+            "project_code": doc.project_code,
+            "mdr_code": doc.mdr_code,
+            "phase_code": doc.phase_code,
+            "discipline_code": doc.discipline_code,
+            "package_code": doc.package_code,
+            "serial": (parsed_doc or {}).get("serial", ""),
+            "block": doc.block,
+            "level_code": doc.level_code,
+        },
     }
-
 # ---------------------------------------------------------
 # 4. Main Upload Logic
 # ---------------------------------------------------------
@@ -404,6 +384,42 @@ def register_and_upload_document(
     )
     
     return archive_entry
+
+
+def register_document_metadata(
+    db: Session,
+    *,
+    meta_data: dict,
+) -> tuple[MdrDocument, bool]:
+    """
+    Register only MDR document metadata (no archive upload).
+    Returns: (document, created_flag)
+    """
+    doc_number = str(meta_data.get("doc_number") or "").strip().upper()
+    if not doc_number:
+        raise HTTPException(status_code=400, detail="Document number is required.")
+
+    existing = db.query(MdrDocument).filter(MdrDocument.doc_number == doc_number).first()
+    if existing:
+        return existing, False
+
+    doc = mdr_service.create_mdr_document(
+        db,
+        doc_number=doc_number,
+        project_code=str(meta_data.get("project_code") or "").strip().upper(),
+        mdr_code=str(meta_data.get("mdr_code") or "X").strip().upper() or "X",
+        phase_code=str(meta_data.get("phase") or "X").strip().upper() or "X",
+        discipline_code=str(meta_data.get("discipline") or "XX").strip().upper() or "XX",
+        package_code=str(meta_data.get("package") or "").strip().upper(),
+        block=str(meta_data.get("block") or "").strip().upper(),
+        level_code=str(meta_data.get("level") or "GEN").strip().upper() or "GEN",
+        title_e=str(meta_data.get("subject_e") or "").strip(),
+        title_p=str(meta_data.get("subject_p") or "").strip(),
+        subject=str(meta_data.get("subject_e") or "").strip(),
+    )
+    db.commit()
+    db.refresh(doc)
+    return doc, True
 
 
 def register_and_upload_dual_document(

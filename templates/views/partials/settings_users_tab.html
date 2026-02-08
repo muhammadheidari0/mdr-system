@@ -37,6 +37,19 @@
           <option value="active">فقط فعال</option>
           <option value="inactive">فقط غیرفعال</option>
         </select>
+
+        <select id="usersOrgTypeFilter" class="users-toolbar-select" aria-label="فیلتر دسته سازمان">
+          <option value="">همه دسته‌ها</option>
+          <option value="employer">کارفرما</option>
+          <option value="consultant">مشاور</option>
+          <option value="contractor">پیمانکار</option>
+          <option value="subcontractor">پیمانکار جزء</option>
+          <option value="system">سیستم</option>
+        </select>
+
+        <select id="usersOrganizationFilter" class="users-toolbar-select" aria-label="فیلتر سازمان">
+          <option value="">همه سازمان‌ها</option>
+        </select>
       </div>
 
       <div class="users-toolbar-actions">
@@ -61,6 +74,8 @@
             <th>ایمیل</th>
             <th>نام کامل</th>
             <th>نقش</th>
+            <th>سازمان</th>
+            <th>نقش سازمانی</th>
             <th>وضعیت</th>
             <th>وضعیت دسترسی</th>
             <th>تاریخ ایجاد</th>
@@ -69,7 +84,7 @@
         </thead>
         <tbody id="usersTableBody">
           <tr>
-            <td colspan="8" class="center-text muted" style="padding: 40px;">
+            <td colspan="10" class="center-text muted" style="padding: 40px;">
               <span class="material-icons-round" style="font-size: 48px; display: block; margin-bottom: 16px;">people</span>
               در حال بارگذاری کاربران...
             </td>
@@ -125,6 +140,22 @@
           <option value="dcc">کنترل مدارک (DCC)</option>
           <option value="manager">سرپرست</option>
           <option value="admin">مدیر سیستم</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="userOrganization" class="form-label-sm">سازمان</label>
+        <select id="userOrganization" class="form-input">
+          <option value="">-</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="userOrganizationRole" class="form-label-sm">نقش سازمانی</label>
+        <select id="userOrganizationRole" class="form-input">
+          <option value="viewer">مشاهده‌گر</option>
+          <option value="dcc">کنترل مدارک (DCC)</option>
+          <option value="admin">مدیر سازمان</option>
         </select>
       </div>
 
@@ -291,6 +322,7 @@ const ACCESS_SUGGESTION_LIMIT = 0; // 0 = unlimited
 const accessState = {
   loaded: false,
   loadedAt: 0,
+  loadedCategory: '',
   loading: false,
   loadingPromise: null,
   loadError: null,
@@ -303,6 +335,7 @@ const accessState = {
   userScope: {},
   currentUserId: null,
   currentUserRole: '',
+  currentCategory: 'consultant',
 };
 const accessTags = {
   projects: new Set(),
@@ -310,7 +343,14 @@ const accessTags = {
 };
 let accessInputsInitialized = false;
 const USERS_PAGE_ENDPOINT = '/api/v1/users/paged';
+const USERS_ORGS_ENDPOINT = '/api/v1/users/organizations/catalog';
 const USERS_DEFAULT_PAGE_SIZE = 10;
+const USERS_TABLE_COLSPAN = 10;
+const organizationsState = {
+  loaded: false,
+  loadingPromise: null,
+  items: [],
+};
 const usersState = {
   initialized: false,
   loading: false,
@@ -323,6 +363,8 @@ const usersState = {
   search: '',
   role: '',
   status: '',
+  organizationType: '',
+  organizationId: '',
   searchTimer: null,
   menuBound: false,
 };
@@ -341,6 +383,141 @@ function roleLabel(role) {
 function roleClass(role) {
   const key = String(role || '').toLowerCase();
   return ['admin', 'manager', 'dcc', 'user', 'viewer'].includes(key) ? key : 'user';
+}
+
+function organizationTypeLabel(value) {
+  const map = {
+    system: 'سیستم',
+    employer: 'کارفرما',
+    consultant: 'مشاور',
+    contractor: 'پیمانکار',
+    subcontractor: 'پیمانکار جزء',
+  };
+  const key = String(value || '').trim().toLowerCase();
+  return map[key] || 'نامشخص';
+}
+
+function normalizePermissionCategory(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'contractor' || raw === 'subcontractor') return 'contractor';
+  if (raw === 'employer') return 'employer';
+  return 'consultant';
+}
+
+function organizationRoleLabel(value) {
+  const map = {
+    admin: 'مدیر سازمان',
+    dcc: 'کنترل مدارک',
+    viewer: 'مشاهده‌گر',
+  };
+  const key = String(value || '').trim().toLowerCase();
+  return map[key] || 'مشاهده‌گر';
+}
+
+function organizationRoleClass(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return ['admin', 'dcc', 'viewer'].includes(key) ? key : 'viewer';
+}
+
+function normalizeOrgId(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num) || num <= 0) return '';
+  return String(num);
+}
+
+function filteredOrganizationsByType(typeValue = '') {
+  const key = String(typeValue || '').trim().toLowerCase();
+  const list = Array.isArray(organizationsState.items) ? organizationsState.items : [];
+  if (!key) return list;
+  return list.filter((item) => String(item && item.org_type || '').trim().toLowerCase() === key);
+}
+
+function renderUsersOrganizationFilterOptions(preserveValue = true) {
+  const orgTypeEl = document.getElementById('usersOrgTypeFilter');
+  const orgFilterEl = document.getElementById('usersOrganizationFilter');
+  if (!orgFilterEl) return;
+  const selectedType = String(orgTypeEl ? orgTypeEl.value : usersState.organizationType || '').trim().toLowerCase();
+  const previous = preserveValue ? normalizeOrgId(orgFilterEl.value || usersState.organizationId) : '';
+  const items = filteredOrganizationsByType(selectedType);
+
+  orgFilterEl.innerHTML = `
+    <option value="">همه سازمان‌ها</option>
+    ${items.map((org) => {
+      const id = normalizeOrgId(org && org.id);
+      const code = String(org && org.code || '').trim();
+      const name = String(org && org.name || '').trim();
+      const typeLabel = organizationTypeLabel(org && org.org_type);
+      const label = [name || code || `#${id}`, code ? `(${code})` : '', `- ${typeLabel}`].filter(Boolean).join(' ');
+      return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+    }).join('')}
+  `;
+
+  const hasPrevious = previous && items.some((org) => normalizeOrgId(org && org.id) === previous);
+  orgFilterEl.value = hasPrevious ? previous : '';
+}
+
+function renderUserOrganizationOptions(selectedId = '') {
+  const selectEl = document.getElementById('userOrganization');
+  if (!selectEl) return;
+  const normalizedSelected = normalizeOrgId(selectedId);
+  const items = Array.isArray(organizationsState.items) ? organizationsState.items : [];
+
+  selectEl.innerHTML = `
+    <option value="">-</option>
+    ${items.map((org) => {
+      const id = normalizeOrgId(org && org.id);
+      const code = String(org && org.code || '').trim();
+      const name = String(org && org.name || '').trim();
+      const typeLabel = organizationTypeLabel(org && org.org_type);
+      const label = [name || code || `#${id}`, code ? `(${code})` : '', `- ${typeLabel}`].filter(Boolean).join(' ');
+      return `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`;
+    }).join('')}
+  `;
+
+  if (normalizedSelected && items.some((org) => normalizeOrgId(org && org.id) === normalizedSelected)) {
+    selectEl.value = normalizedSelected;
+  } else {
+    selectEl.value = '';
+  }
+}
+
+async function ensureOrganizationsCatalogLoaded(force = false) {
+  if (organizationsState.loaded && !force) {
+    renderUsersOrganizationFilterOptions(true);
+    return;
+  }
+  if (organizationsState.loadingPromise) {
+    await organizationsState.loadingPromise;
+    return;
+  }
+
+  organizationsState.loadingPromise = (async () => {
+    const response = await fetchWithAuth(USERS_ORGS_ENDPOINT);
+    if (!response || !response.ok) {
+      const body = response && typeof response.json === 'function'
+        ? await response.json().catch(() => ({}))
+        : {};
+      throw new Error(body.detail || 'خطا در دریافت فهرست سازمان‌ها');
+    }
+    const payload = await response.json().catch(() => ({}));
+    const items = Array.isArray(payload && payload.items) ? payload.items : [];
+    organizationsState.items = items
+      .filter((org) => org && org.id && org.is_active !== false)
+      .map((org) => ({
+        id: Number(org.id),
+        code: String(org.code || '').trim(),
+        name: String(org.name || '').trim(),
+        org_type: String(org.org_type || '').trim().toLowerCase(),
+      }));
+    organizationsState.loaded = true;
+    renderUsersOrganizationFilterOptions(true);
+  })();
+
+  try {
+    await organizationsState.loadingPromise;
+  } finally {
+    organizationsState.loadingPromise = null;
+  }
 }
 
 function closeAllUserActionMenus() {
@@ -413,7 +590,7 @@ function setUsersTableState(message, tone = 'muted') {
   if (!tbody) return;
   closeAllUserActionMenus();
   const klass = tone === 'danger' ? 'text-danger' : 'muted';
-  tbody.innerHTML = `<tr><td colspan="8" class="center-text ${klass}" style="padding: 40px;">${escapeHtml(message)}</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="${USERS_TABLE_COLSPAN}" class="center-text ${klass}" style="padding: 40px;">${escapeHtml(message)}</td></tr>`;
 }
 
 function setUsersTableMeta(message) {
@@ -423,7 +600,7 @@ function setUsersTableMeta(message) {
 }
 
 function setUsersControlsDisabled(disabled) {
-  ['usersSearchInput', 'usersRoleFilter', 'usersStatusFilter', 'usersPageSize', 'usersPrevPageBtn', 'usersNextPageBtn']
+  ['usersSearchInput', 'usersRoleFilter', 'usersStatusFilter', 'usersOrgTypeFilter', 'usersOrganizationFilter', 'usersPageSize', 'usersPrevPageBtn', 'usersNextPageBtn']
     .forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.disabled = !!disabled;
@@ -434,11 +611,15 @@ function syncUsersFiltersFromControls({ resetPage = false } = {}) {
   const searchInput = document.getElementById('usersSearchInput');
   const roleFilter = document.getElementById('usersRoleFilter');
   const statusFilter = document.getElementById('usersStatusFilter');
+  const orgTypeFilter = document.getElementById('usersOrgTypeFilter');
+  const orgFilter = document.getElementById('usersOrganizationFilter');
   const pageSizeEl = document.getElementById('usersPageSize');
 
   usersState.search = String((searchInput ? searchInput.value : '') || '').trim();
   usersState.role = String((roleFilter ? roleFilter.value : '') || '').trim().toLowerCase();
   usersState.status = String((statusFilter ? statusFilter.value : '') || '').trim().toLowerCase();
+  usersState.organizationType = String((orgTypeFilter ? orgTypeFilter.value : '') || '').trim().toLowerCase();
+  usersState.organizationId = normalizeOrgId(orgFilter ? orgFilter.value : '');
 
   const parsedPageSize = Number((pageSizeEl ? pageSizeEl.value : '') || usersState.pageSize || USERS_DEFAULT_PAGE_SIZE);
   usersState.pageSize = Number.isFinite(parsedPageSize) && parsedPageSize > 0 ? parsedPageSize : USERS_DEFAULT_PAGE_SIZE;
@@ -453,6 +634,8 @@ function buildUsersQueryString() {
   if (usersState.role) params.set('role', usersState.role);
   if (usersState.status === 'active') params.set('is_active', 'true');
   if (usersState.status === 'inactive') params.set('is_active', 'false');
+  if (usersState.organizationType) params.set('organization_type', usersState.organizationType);
+  if (usersState.organizationId) params.set('organization_id', usersState.organizationId);
   return params.toString();
 }
 
@@ -510,6 +693,8 @@ function bindUsersToolbar() {
   const searchInput = document.getElementById('usersSearchInput');
   const roleFilter = document.getElementById('usersRoleFilter');
   const statusFilter = document.getElementById('usersStatusFilter');
+  const orgTypeFilter = document.getElementById('usersOrgTypeFilter');
+  const orgFilter = document.getElementById('usersOrganizationFilter');
   const pageSizeEl = document.getElementById('usersPageSize');
 
   if (searchInput) {
@@ -529,6 +714,13 @@ function bindUsersToolbar() {
 
   if (roleFilter) roleFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
   if (statusFilter) statusFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
+  if (orgTypeFilter) {
+    orgTypeFilter.addEventListener('change', () => {
+      renderUsersOrganizationFilterOptions(false);
+      loadUsers({ resetPage: true });
+    });
+  }
+  if (orgFilter) orgFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
   if (pageSizeEl) pageSizeEl.addEventListener('change', () => loadUsers({ resetPage: true }));
 
   if (!usersState.menuBound) {
@@ -570,6 +762,11 @@ async function loadUsers(options = {}) {
 
   const requestId = ++usersState.requestId;
   bindUsersToolbar();
+  try {
+    await ensureOrganizationsCatalogLoaded(false);
+  } catch (orgError) {
+    console.warn('Load organization catalog failed:', orgError);
+  }
   syncUsersFiltersFromControls({ resetPage: !!options.resetPage });
   usersState.loading = true;
   setUsersControlsDisabled(true);
@@ -594,6 +791,8 @@ async function loadUsers(options = {}) {
         if (usersState.role) legacyQuery.set('role', usersState.role);
         if (usersState.status === 'active') legacyQuery.set('is_active', 'true');
         if (usersState.status === 'inactive') legacyQuery.set('is_active', 'false');
+        if (usersState.organizationType) legacyQuery.set('organization_type', usersState.organizationType);
+        if (usersState.organizationId) legacyQuery.set('organization_id', usersState.organizationId);
 
         const legacyResponse = await fetchWithAuth(`/api/v1/users/?${legacyQuery.toString()}`);
         if (!legacyResponse || !legacyResponse.ok) {
@@ -666,6 +865,12 @@ async function loadUsers(options = {}) {
     closeAllUserActionMenus();
     tbody.innerHTML = users.map((user) => {
       const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+      const organization = user && typeof user.organization === 'object' ? user.organization : null;
+      const organizationName = organization ? (organization.name || organization.code || '-') : '-';
+      const organizationMeta = organization
+        ? [organization.code || '-', organizationTypeLabel(organization.org_type)].filter(Boolean).join(' - ')
+        : '-';
+      const organizationRole = organizationRoleLabel(user.organization_role);
       const userScope = scopeMap[String(user.id)] || { projects: [], disciplines: [] };
       const scopeStatus = getUserScopeStatus(user, userScope);
       const actionMenuId = `usersActionMenu-${user.id}`;
@@ -675,6 +880,13 @@ async function loadUsers(options = {}) {
           <td>${escapeHtml(user.email)}</td>
           <td>${escapeHtml(user.full_name || '-')}</td>
           <td><span class="role-badge ${roleClass(user.role)}">${roleLabel(user.role)}</span></td>
+          <td>
+            <div class="scope-status-cell">
+              <span class="scope-badge full">${escapeHtml(organizationName)}</span>
+              <span class="scope-detail">${escapeHtml(organizationMeta)}</span>
+            </div>
+          </td>
+          <td><span class="role-badge ${organizationRoleClass(user.organization_role)}">${escapeHtml(organizationRole)}</span></td>
           <td><span class="status-badge ${user.is_active ? 'active' : 'inactive'}">${user.is_active ? 'فعال' : 'غیرفعال'}</span></td>
           <td>
             <div class="scope-status-cell">
@@ -732,7 +944,12 @@ async function loadUsers(options = {}) {
   }
 }
 
-function openCreateUserModal() {
+async function openCreateUserModal() {
+  try {
+    await ensureOrganizationsCatalogLoaded(false);
+  } catch (error) {
+    console.warn('Organization catalog unavailable in create modal:', error);
+  }
   document.getElementById('userModalTitle').textContent = 'ایجاد کاربر جدید';
   document.getElementById('userForm').reset();
   document.getElementById('userId').value = '';
@@ -740,15 +957,23 @@ function openCreateUserModal() {
   document.getElementById('userPassword').required = true;
   document.getElementById('passwordLabel').textContent = 'رمز عبور *';
   document.getElementById('passwordHelp').textContent = 'برای کاربر جدید رمز عبور الزامی است';
+  renderUserOrganizationOptions('');
+  document.getElementById('userOrganizationRole').value = 'viewer';
   document.getElementById('userActive').checked = true;
   document.getElementById('userModal').style.display = 'flex';
 }
 
-function editUser(userId) {
+async function editUser(userId) {
   const user = usersCache.get(String(userId));
   if (!user) {
     UI.error('اطلاعات کاربر برای ویرایش یافت نشد. لطفاً لیست را بروزرسانی کنید.');
     return;
+  }
+
+  try {
+    await ensureOrganizationsCatalogLoaded(false);
+  } catch (error) {
+    console.warn('Organization catalog unavailable in edit modal:', error);
   }
 
   document.getElementById('userModalTitle').textContent = 'ویرایش کاربر';
@@ -757,6 +982,10 @@ function editUser(userId) {
   document.getElementById('userEmail').disabled = true;
   document.getElementById('userFullName').value = user.full_name || '';
   document.getElementById('userRole').value = user.role || 'user';
+  renderUserOrganizationOptions(user.organization_id);
+  const orgRoleEl = document.getElementById('userOrganizationRole');
+  const orgRoleValue = String(user.organization_role || 'viewer').toLowerCase();
+  orgRoleEl.value = ['admin', 'dcc', 'viewer'].includes(orgRoleValue) ? orgRoleValue : 'viewer';
   document.getElementById('userActive').checked = !!user.is_active;
   document.getElementById('userPassword').value = '';
   document.getElementById('userPassword').required = false;
@@ -775,6 +1004,8 @@ async function saveUser() {
   const fullName = document.getElementById('userFullName').value;
   const password = document.getElementById('userPassword').value;
   const role = document.getElementById('userRole').value;
+  const organizationId = normalizeOrgId(document.getElementById('userOrganization').value);
+  const organizationRole = String(document.getElementById('userOrganizationRole').value || 'viewer').trim().toLowerCase();
   const isActive = document.getElementById('userActive').checked;
 
   if (!userId && !email) { UI.error('ایمیل الزامی است'); return; }
@@ -787,8 +1018,22 @@ async function saveUser() {
     const url = userId ? `/api/v1/users/${userId}` : '/api/v1/users/';
     const method = userId ? 'PUT' : 'POST';
     const body = userId
-      ? { full_name: fullName, role: role, is_active: isActive }
-      : { email: email, password: password, full_name: fullName, role: role, is_active: isActive };
+      ? {
+        full_name: fullName,
+        role: role,
+        organization_id: organizationId ? Number(organizationId) : null,
+        organization_role: organizationRole || 'viewer',
+        is_active: isActive,
+      }
+      : {
+        email: email,
+        password: password,
+        full_name: fullName,
+        role: role,
+        organization_id: organizationId ? Number(organizationId) : null,
+        organization_role: organizationRole || 'viewer',
+        is_active: isActive,
+      };
 
     const response = await fetchWithAuth(url, { method, body: JSON.stringify(body) });
     if (response && response.ok) {
@@ -933,13 +1178,16 @@ function setAccessInputsDisabled(disabled) {
   if (clearBtn) clearBtn.disabled = !!disabled;
 }
 
-async function loadAccessScopeData(force = false) {
-  const cacheFresh = accessState.loaded && (Date.now() - Number(accessState.loadedAt || 0) < ACCESS_SCOPE_CACHE_TTL_MS);
+async function loadAccessScopeData(force = false, category = 'consultant') {
+  const categoryKey = normalizePermissionCategory(category);
+  const cacheFresh = accessState.loaded
+    && accessState.loadedCategory === categoryKey
+    && (Date.now() - Number(accessState.loadedAt || 0) < ACCESS_SCOPE_CACHE_TTL_MS);
   if (cacheFresh && !force) {
     const projectsCount = accessState.projects.length;
     const disciplinesCount = accessState.disciplines.length;
     if (projectsCount || disciplinesCount) {
-      setAccessSourceStatus(`منابع بارگذاری شد: ${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`, 'info');
+      setAccessSourceStatus(`منابع ${organizationTypeLabel(categoryKey)} بارگذاری شد: ${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`, 'info');
     } else {
       setAccessSourceStatus('فهرست پروژه‌ها و دیسیپلین‌ها خالی است. ابتدا داده‌های پایه را ثبت کنید.', 'warning');
     }
@@ -953,8 +1201,9 @@ async function loadAccessScopeData(force = false) {
   accessState.loadError = null;
   accessState.loadingPromise = (async () => {
   try {
+    const scopeUrl = `${ACCESS_SCOPE_ENDPOINT}?category=${encodeURIComponent(categoryKey)}`;
     const [scopePayload, userScopePayload] = await Promise.all([
-      accessRequest(ACCESS_SCOPE_ENDPOINT),
+      accessRequest(scopeUrl),
       accessRequest(ACCESS_USER_SCOPE_ENDPOINT),
     ]);
 
@@ -964,12 +1213,13 @@ async function loadAccessScopeData(force = false) {
     accessState.projectMap = buildOptionMap(accessState.projects);
     accessState.disciplineMap = buildOptionMap(accessState.disciplines);
     accessState.userScope = (userScopePayload && userScopePayload.scope) || {};
+    accessState.loadedCategory = categoryKey;
     accessState.loaded = true;
     accessState.loadedAt = Date.now();
     const projectsCount = accessState.projects.length;
     const disciplinesCount = accessState.disciplines.length;
     if (projectsCount || disciplinesCount) {
-      setAccessSourceStatus(`منابع بارگذاری شد: ${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`, 'info');
+      setAccessSourceStatus(`منابع ${organizationTypeLabel(categoryKey)} بارگذاری شد: ${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`, 'info');
     } else {
       setAccessSourceStatus('فهرست پروژه‌ها و دیسیپلین‌ها خالی است. ابتدا داده‌های پایه را ثبت کنید.', 'warning');
     }
@@ -994,10 +1244,13 @@ async function loadUserAccessEffective(userId) {
 function updateAccessSummary(user) {
   const summary = document.getElementById('userAccessSummary');
   if (!summary || !user) return;
+  const org = user && typeof user.organization === 'object' ? user.organization : null;
+  const category = normalizePermissionCategory(org ? org.org_type : null);
   summary.innerHTML = `
     <div><strong>کاربر:</strong> ${escapeHtml(user.full_name || user.email || '-')}</div>
     <div><strong>ایمیل:</strong> ${escapeHtml(user.email || '-')}</div>
     <div><strong>نقش:</strong> ${escapeHtml(roleLabel(user.role))}</div>
+    <div><strong>دسته دسترسی:</strong> ${escapeHtml(organizationTypeLabel(category))}</div>
     <div><strong>وضعیت:</strong> ${user.is_active ? 'فعال' : 'غیرفعال'}</div>
   `;
 }
@@ -1255,6 +1508,9 @@ async function openUserAccessModal(userId) {
 
   accessState.currentUserId = String(userId);
   accessState.currentUserRole = String(user.role || '');
+  accessState.currentCategory = normalizePermissionCategory(
+    user && user.organization ? user.organization.org_type : null,
+  );
   updateAccessSummary(user);
   initAccessTagInputs();
   setAccessTags('projects', []);
@@ -1271,7 +1527,7 @@ async function openUserAccessModal(userId) {
 
   try {
     setAccessLoading(true);
-    await loadAccessScopeData();
+    await loadAccessScopeData(false, accessState.currentCategory);
     let effectivePayload = null;
     try {
       effectivePayload = await loadUserAccessEffective(userId);

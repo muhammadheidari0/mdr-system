@@ -113,21 +113,13 @@
                         <div style="margin-bottom:10px;">
                             <label class="form-label-sm">شماره سند (Doc Code):</label>
                             <div style="display:flex; gap:5px;">
-                                <input type="text" id="smartDocCode" class="archive-search-input" placeholder="T202-ECAR0101-TGEN" oninput="archiveOnDocCodeInput()" onkeydown="archiveHandleDocCodeKey(event)" onchange="checkDocStatus()">
+                                <input type="text" id="smartDocCode" class="archive-search-input" placeholder="T202-ECAR0101-TGEN" list="archiveDocCodeSuggestions" oninput="archiveOnDocCodeInput()" onkeydown="archiveHandleDocCodeKey(event)" onchange="checkDocStatus()">
                                 <button type="button" class="btn-archive-icon" onclick="checkDocStatus()"><span class="material-icons-round">search</span></button>
                             </div>
+                            <datalist id="archiveDocCodeSuggestions"></datalist>
                             <div id="docStatusMsg" style="font-size:0.75rem; margin-top:5px; min-height:18px;"></div>
-                        </div>
-                        <div id="newDocumentFields" style="display:none; margin-top:10px;">
-                            <div style="background:#eff6ff; padding:10px; border-radius:6px; margin-bottom:10px;">
-                                <p style="margin:0; font-size:0.8rem; color:#1e40af;">اگر سند جدید است، عناوین را وارد کنید:</p>
-                            </div>
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-                                <input type="text" id="subjectE" class="archive-search-input" placeholder="English Title">
-                                <input type="text" id="subjectP" class="archive-search-input" placeholder="عنوان فارسی">
-                            </div>
-                            <div style="margin-top:10px;">
-                                <button type="button" class="btn-archive-primary" style="font-size:0.8rem; background:#10b981;" onclick="createDocumentWithSubjects()">ساخت سریع</button>
+                            <div style="margin-top:8px; font-size:0.74rem; color:#64748b;">
+                                در حالت سریع فقط آرشیو انجام می‌شود و سند جدید در شناسنامه مدارک ساخته نمی‌شود.
                             </div>
                         </div>
                     </div>
@@ -181,6 +173,13 @@
                         <div style="margin-bottom:15px;">
                             <label class="form-label-sm" style="color:#2563eb;">پیش‌نمایش شماره سند:</label>
                             <input type="text" name="doc_number" id="fullDocNumber" class="archive-search-input" style="font-family:monospace; font-weight:bold; color:#2563eb; background:#eff6ff; direction:ltr; text-align:center;" readonly>
+                            <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                                <div id="fullDocCheckMsg" style="font-size:0.75rem; min-height:18px; flex:1;"></div>
+                                <button type="button" id="fullRegisterDocBtn" class="btn-archive-icon" style="display:none; white-space:nowrap;" onclick="archiveRegisterPreviewDocument()">
+                                    <span class="material-icons-round" style="font-size:18px;">add_circle</span>
+                                    ثبت مدرک
+                                </button>
+                            </div>
                         </div>
 
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
@@ -211,8 +210,6 @@
                             </div>
                         </div>
                     </div>
-                </div>
-
                 <div class="archive-modal-actions">
                     <button type="button" class="btn-archive-primary btn-archive-secondary" onclick="archiveCloseModal()">انصراف</button>
                     <button type="submit" id="btnArchiveSubmit" class="btn-archive-primary" disabled>تایید و آپلود نهایی</button>
@@ -244,6 +241,9 @@
         let archiveFormDataCache = null;
         let archiveFormDataPromise = null;
         let archiveDropzonesBound = false;
+        let archiveDocSuggestTimer = null;
+        let archiveFullPreviewTimer = null;
+        let archiveSuspendAutoPreview = false;
 
         const ARCHIVE_OUTPUT_ALLOWED_EXTENSIONS = new Set([
             'pdf', 'dwf', 'dwfx', 'png', 'jpg', 'jpeg', 'tif', 'tiff', 'bmp', 'gif', 'webp'
@@ -484,6 +484,7 @@
         }
 
         async function updateSerialAndPreview() {
+            if (archiveSuspendAutoPreview) return;
             const project = document.getElementById('regProject').value;
             const mdr = document.getElementById('regMdr').value;
             const phase = document.getElementById('regPhase').value;
@@ -491,31 +492,62 @@
             const disc = document.getElementById('regDisc').value;
             const block = document.getElementById('regBlock').value;
             const level = document.getElementById('regLevel').value;
+            const subjE = document.getElementById('regSubjectE').value.trim();
             const subjP = document.getElementById('regSubjectP').value.trim();
-            if(!project || !mdr || !phase) return;
+            if(!project || !mdr || !phase) {
+                document.getElementById('fullDocNumber').value = '';
+                document.getElementById('realDocId').value = '';
+                archiveRefreshSubmitButtonState();
+                return;
+            }
             document.getElementById('fullDocNumber').value = "Calculating...";
             try {
-                const params = new URLSearchParams({ project_code: project, mdr_code: mdr, phase: phase, pkg: pkg, discipline: disc, block: block, level: level, subject_p: subjP });
+                const params = new URLSearchParams({ project_code: project, mdr_code: mdr, phase: phase, pkg: pkg, discipline: disc, block: block, level: level, subject_e: subjE, subject_p: subjP });
                 const res = await fetchWithAuth(`/api/v1/archive/next-serial?${params}`);
                 const data = await res.json();
                 document.getElementById('regSerial').value = data.serial;
                 document.getElementById('fullDocNumber').value = data.full_doc;
-            } catch(e) { document.getElementById('fullDocNumber').value = "Error"; }
+                if (data && data.existing && Number(data.existing_document_id || 0) > 0) {
+                    document.getElementById('realDocId').value = String(data.existing_document_id);
+                } else {
+                    document.getElementById('realDocId').value = '';
+                }
+                if (archiveFullPreviewTimer) clearTimeout(archiveFullPreviewTimer);
+                archiveFullPreviewTimer = setTimeout(() => archiveCheckFullModeDocStatus(), 220);
+            } catch(e) {
+                document.getElementById('fullDocNumber').value = "Error";
+                document.getElementById('realDocId').value = '';
+                archiveRefreshSubmitButtonState();
+            }
         }
 
-        function toggleRegistrationMode() {
+        async function toggleRegistrationMode() {
             isFullMode = !isFullMode;
             const quick = document.getElementById('quickModeContainer');
             const full = document.getElementById('fullModeContainer');
             const btn = document.getElementById('toggleModeBtn');
             const prevInfo = document.getElementById('prevInfo');
+            const fullMsg = document.getElementById('fullDocCheckMsg');
+            const fullRegisterBtn = document.getElementById('fullRegisterDocBtn');
+            document.getElementById('realDocId').value = '';
             if(isFullMode) {
                 quick.style.display = 'none'; full.style.display = 'block';
                 btn.innerHTML = '<span class="material-icons-round">speed</span> بازگشت به حالت سریع'; btn.classList.add('active'); prevInfo.style.display = 'none';
-                if(document.getElementById('regProject').options.length === 0) loadFormData();
+                if(document.getElementById('regProject').options.length === 0) await loadFormData();
+                if (fullMsg) fullMsg.innerHTML = '';
+                if (fullRegisterBtn) fullRegisterBtn.style.display = 'none';
+                const prefilledFromQuick = await archiveTryPrefillFullModeFromQuickCode();
+                if (prefilledFromQuick) {
+                    if (archiveFullPreviewTimer) clearTimeout(archiveFullPreviewTimer);
+                    archiveFullPreviewTimer = setTimeout(() => archiveCheckFullModeDocStatus(), 120);
+                } else {
+                    setTimeout(() => { updateSerialAndPreview(); }, 60);
+                }
             } else {
                 full.style.display = 'none'; quick.style.display = 'block';
                 btn.innerHTML = '<span class="material-icons-round">tune</span> تغییر به حالت ثبت کامل'; btn.classList.remove('active'); prevInfo.style.display = 'flex';
+                if (fullMsg) fullMsg.innerHTML = '';
+                if (fullRegisterBtn) fullRegisterBtn.style.display = 'none';
             }
             archiveRefreshSubmitButtonState();
         }
@@ -523,23 +555,109 @@
         function archiveRefreshSubmitButtonState() {
             const submitBtn = document.getElementById('btnArchiveSubmit');
             if (!submitBtn) return;
+            const docId = Number(document.getElementById('realDocId')?.value || 0);
+            const hasPdf = Boolean(document.getElementById('archivePdfFileInput')?.files?.[0]);
             if (isFullMode) {
-                submitBtn.disabled = false;
+                submitBtn.disabled = docId <= 0 || !hasPdf;
                 return;
             }
-            const code = String(document.getElementById('smartDocCode')?.value || '').trim();
-            submitBtn.disabled = code.length < 5;
+            submitBtn.disabled = docId <= 0 || !hasPdf;
+        }
+
+        function archiveNormalizeDocCode(value) {
+            return String(value || '').trim().toUpperCase();
+        }
+
+        function archiveSetSelectValue(selectId, targetValue, allowInject = false) {
+            const select = document.getElementById(selectId);
+            const normalizedTarget = archiveNormalizeDocCode(targetValue);
+            if (!select || !normalizedTarget) return false;
+
+            let option = Array.from(select.options || []).find((item) => archiveNormalizeDocCode(item.value) === normalizedTarget);
+            if (!option && allowInject) {
+                option = document.createElement('option');
+                option.value = normalizedTarget;
+                option.innerText = normalizedTarget;
+                select.appendChild(option);
+            }
+            if (!option) return false;
+            select.value = option.value;
+            return true;
+        }
+
+        async function archiveTryPrefillFullModeFromQuickCode() {
+            const quickCode = archiveNormalizeDocCode(document.getElementById('smartDocCode')?.value || '');
+            if (quickCode.length < 5) return false;
+
+            try {
+                const res = await fetchWithAuth(`/api/v1/archive/check-status?doc_code=${encodeURIComponent(quickCode)}`);
+                const data = await res.json();
+                const parsed = (data && typeof data.parsed === 'object' && data.parsed) ? data.parsed : null;
+                if (!parsed) return false;
+
+                archiveSuspendAutoPreview = true;
+
+                archiveSetSelectValue('regProject', parsed.project_code);
+                onProjectChange();
+
+                archiveSetSelectValue('regMdr', parsed.mdr_code);
+                archiveSetSelectValue('regPhase', parsed.phase_code);
+                archiveSetSelectValue('regDisc', parsed.discipline_code);
+                onDisciplineChange();
+
+                archiveSetSelectValue('regPkg', parsed.package_code, true);
+                archiveSetSelectValue('regBlock', parsed.block, true);
+                archiveSetSelectValue('regLevel', parsed.level_code, true);
+
+                if (parsed.serial) {
+                    document.getElementById('regSerial').value = archiveNormalizeDocCode(parsed.serial);
+                }
+                document.getElementById('fullDocNumber').value = quickCode;
+                if (data.exists && Number(data.document_id || 0) > 0) {
+                    document.getElementById('realDocId').value = String(data.document_id);
+                } else {
+                    document.getElementById('realDocId').value = '';
+                }
+                return true;
+            } catch (error) {
+                return false;
+            } finally {
+                archiveSuspendAutoPreview = false;
+            }
+        }
+
+        async function archiveLoadQuickDocSuggestions(term) {
+            const q = archiveNormalizeDocCode(term);
+            const list = document.getElementById('archiveDocCodeSuggestions');
+            if (!list) return;
+            if (q.length < 2) {
+                list.innerHTML = '';
+                return;
+            }
+            try {
+                const params = new URLSearchParams({ q, limit: '20' });
+                const res = await fetchWithAuth(`/api/v1/archive/doc-suggestions?${params.toString()}`);
+                const data = await res.json();
+                const items = Array.isArray(data?.items) ? data.items : [];
+                list.innerHTML = items
+                    .map((item) => `<option value="${archiveEsc(item.doc_number || '')}">${archiveEsc(item.title_e || item.title_p || '')}</option>`)
+                    .join('');
+            } catch (e) {
+                list.innerHTML = '';
+            }
         }
 
         function archiveOnDocCodeInput() {
-            const code = String(document.getElementById('smartDocCode')?.value || '').trim();
+            const input = document.getElementById('smartDocCode');
+            const code = archiveNormalizeDocCode(input?.value || '');
+            if (input) input.value = code;
             const msgEl = document.getElementById('docStatusMsg');
             document.getElementById('realDocId').value = '';
             if (code.length < 5) {
                 if (msgEl) msgEl.innerHTML = '';
-                const newFields = document.getElementById('newDocumentFields');
-                if (newFields) newFields.style.display = 'none';
                 archiveRefreshSubmitButtonState();
+                if (archiveDocSuggestTimer) clearTimeout(archiveDocSuggestTimer);
+                archiveLoadQuickDocSuggestions(code);
                 return;
             }
             archiveRefreshSubmitButtonState();
@@ -547,6 +665,10 @@
             window.archiveDocCodeTimer = setTimeout(() => {
                 checkDocStatus();
             }, 350);
+            if (archiveDocSuggestTimer) clearTimeout(archiveDocSuggestTimer);
+            archiveDocSuggestTimer = setTimeout(() => {
+                archiveLoadQuickDocSuggestions(code);
+            }, 180);
         }
 
         function archiveHandleDocCodeKey(event) {
@@ -653,10 +775,13 @@
         }
 
         async function checkDocStatus() {
-            const code = document.getElementById('smartDocCode').value.trim();
+            const input = document.getElementById('smartDocCode');
+            const code = archiveNormalizeDocCode(input?.value || '');
+            if (input) input.value = code;
             const msgEl = document.getElementById('docStatusMsg');
-            const newFields = document.getElementById('newDocumentFields');
             if(code.length < 5) {
+                document.getElementById('realDocId').value = '';
+                if (msgEl) msgEl.innerHTML = '';
                 archiveRefreshSubmitButtonState();
                 return;
             }
@@ -665,39 +790,118 @@
                 const res = await fetchWithAuth(`/api/v1/archive/check-status?doc_code=${encodeURIComponent(code)}`);
                 const data = await res.json();
                 if(data.exists) {
-                    msgEl.innerHTML = `<span style="color:green">یافت شد: ${data.title}</span>`;
+                    if (input && data.doc_number) input.value = String(data.doc_number || '');
+                    const existingDoc = archiveNormalizeDocCode(data.doc_number || code);
+                    msgEl.innerHTML = `<span style="color:green">این مدرک قبلاً ثبت شده: <b>${archiveEsc(existingDoc)}</b></span>`;
                     document.getElementById('realDocId').value = data.document_id;
                     document.getElementById('newRevInput').value = data.next_revision_suggestion;
                     document.getElementById('prevRev').innerText = data.last_revision;
                     document.getElementById('prevStatus').innerText = data.last_status;
-                    newFields.style.display = 'none';
                 } else {
-                    msgEl.innerHTML = `<span style="color:orange">سند جدید است.</span>`;
-                    newFields.style.display = 'block';
+                    document.getElementById('realDocId').value = '';
+                    document.getElementById('newRevInput').value = '00';
+                    document.getElementById('prevRev').innerText = '-';
+                    document.getElementById('prevStatus').innerText = '-';
+                    msgEl.innerHTML = `<span style="color:#b45309">این شماره سند در mdr_documents موجود نیست. در حالت سریع امکان ساخت سند وجود ندارد.</span>`;
                 }
             } catch(e) {
+                document.getElementById('realDocId').value = '';
                 msgEl.innerHTML = "خطا";
             } finally {
                 archiveRefreshSubmitButtonState();
             }
         }
 
-        async function createDocumentWithSubjects() {
-            const code = document.getElementById('smartDocCode').value.trim();
-            const subE = document.getElementById('subjectE').value;
-            const subP = document.getElementById('subjectP').value;
-            const msgEl = document.getElementById('docStatusMsg');
-            msgEl.innerHTML = `<span style="color:blue">در حال ساخت...</span>`;
+        async function archiveCheckFullModeDocStatus() {
+            if (!isFullMode) return;
+            const docCode = archiveNormalizeDocCode(document.getElementById('fullDocNumber')?.value || '');
+            const msgEl = document.getElementById('fullDocCheckMsg');
+            const registerBtn = document.getElementById('fullRegisterDocBtn');
+            if (!docCode || docCode === 'CALCULATING...' || docCode === 'ERROR') {
+                document.getElementById('realDocId').value = '';
+                if (msgEl) msgEl.innerHTML = '';
+                if (registerBtn) registerBtn.style.display = 'none';
+                archiveRefreshSubmitButtonState();
+                return;
+            }
+            if (msgEl) msgEl.innerHTML = `<span style="color:#2563eb">بررسی وجود سند...</span>`;
             try {
-                const res = await fetchWithAuth(`/api/v1/archive/check-status?doc_code=${code}&subject_e=${subE}&subject_p=${subP}`);
+                const res = await fetchWithAuth(`/api/v1/archive/check-status?doc_code=${encodeURIComponent(docCode)}`);
                 const data = await res.json();
                 if(data.exists) {
-                    msgEl.innerHTML = `<span style="color:green">ثبت شد</span>`;
+                    const existingDoc = archiveNormalizeDocCode(data.doc_number || docCode);
+                    if (msgEl) msgEl.innerHTML = `<span style="color:green">این مدرک قبلاً ثبت شده: <b>${archiveEsc(existingDoc)}</b></span>`;
                     document.getElementById('realDocId').value = data.document_id;
-                    document.getElementById('newDocumentFields').style.display='none';
-                    archiveRefreshSubmitButtonState();
+                    document.getElementById('newRevInput').value = data.next_revision_suggestion || '00';
+                    document.getElementById('prevRev').innerText = data.last_revision || '-';
+                    document.getElementById('prevStatus').innerText = data.last_status || '-';
+                    if (registerBtn) registerBtn.style.display = 'none';
+                } else {
+                    document.getElementById('realDocId').value = '';
+                    document.getElementById('newRevInput').value = '00';
+                    document.getElementById('prevRev').innerText = '-';
+                    document.getElementById('prevStatus').innerText = '-';
+                    if (msgEl) msgEl.innerHTML = `<span style="color:#b45309">این شماره سند هنوز در mdr_documents ثبت نشده است. ابتدا دکمه «ثبت مدرک» را بزنید.</span>`;
+                    if (registerBtn) registerBtn.style.display = 'inline-flex';
                 }
-            } catch(e) { msgEl.innerHTML = "خطا"; }
+            } catch(e) {
+                document.getElementById('realDocId').value = '';
+                if (msgEl) msgEl.innerHTML = '<span style="color:#dc2626">خطا در بررسی شماره سند</span>';
+                if (registerBtn) registerBtn.style.display = 'none';
+            } finally {
+                archiveRefreshSubmitButtonState();
+            }
+        }
+
+        async function archiveRegisterPreviewDocument() {
+            if (!isFullMode) return;
+            const btn = document.getElementById('fullRegisterDocBtn');
+            const msgEl = document.getElementById('fullDocCheckMsg');
+            const doc_number = archiveNormalizeDocCode(document.getElementById('fullDocNumber')?.value || '');
+            if (!doc_number) return;
+
+            const payload = new FormData();
+            payload.set('doc_number', doc_number);
+            payload.set('project_code', document.getElementById('regProject')?.value || '');
+            payload.set('mdr_code', document.getElementById('regMdr')?.value || '');
+            payload.set('phase', document.getElementById('regPhase')?.value || '');
+            payload.set('discipline', document.getElementById('regDisc')?.value || '');
+            payload.set('package', document.getElementById('regPkg')?.value || '');
+            payload.set('block', document.getElementById('regBlock')?.value || '');
+            payload.set('level', document.getElementById('regLevel')?.value || '');
+            payload.set('subject_e', document.getElementById('regSubjectE')?.value || '');
+            payload.set('subject_p', document.getElementById('regSubjectP')?.value || '');
+
+            if (btn) btn.disabled = true;
+            if (msgEl) msgEl.innerHTML = '<span style="color:#2563eb">در حال ثبت مدرک...</span>';
+            try {
+                const res = await fetchWithAuth('/api/v1/archive/register-document', { method: 'POST', body: payload });
+                const data = await res.json();
+                if (!data?.ok) {
+                    throw new Error(data?.detail || data?.message || 'خطا در ثبت مدرک');
+                }
+                document.getElementById('realDocId').value = data.document_id;
+                if (data.doc_number) {
+                    document.getElementById('fullDocNumber').value = data.doc_number;
+                }
+                document.getElementById('newRevInput').value = data.next_revision_suggestion || '00';
+                document.getElementById('prevRev').innerText = data.last_revision || '-';
+                document.getElementById('prevStatus').innerText = data.last_status || 'Registered';
+                if (msgEl) {
+                    if (data.created) {
+                        msgEl.innerHTML = '<span style="color:green">مدرک جدید ثبت شد.</span>';
+                    } else {
+                        const existingDoc = archiveNormalizeDocCode(data.doc_number || doc_number);
+                        msgEl.innerHTML = `<span style="color:green">این مدرک قبلاً ثبت شده: <b>${archiveEsc(existingDoc)}</b></span>`;
+                    }
+                }
+                if (btn) btn.style.display = 'none';
+            } catch (e) {
+                if (msgEl) msgEl.innerHTML = `<span style="color:#dc2626">${archiveEsc(e?.message || 'خطا در ثبت مدرک')}</span>`;
+            } finally {
+                if (btn) btn.disabled = false;
+                archiveRefreshSubmitButtonState();
+            }
         }
 
         async function archiveHandleUpload(e) {
@@ -729,58 +933,38 @@
             btn.innerHTML = "درحال ارسال...";
 
             try {
-                if (!isFullMode) {
-                    if (!docId) {
-                        alert("شماره سند را وارد کنید");
-                        return;
-                    }
-
-                    if (nativeFile) {
-                        const dualData = new FormData();
-                        dualData.set('document_id', String(docId));
-                        dualData.set('revision', revision);
-                        dualData.set('status', status);
-                        dualData.set('pdf_file', pdfFile);
-                        dualData.set('native_file', nativeFile);
-                        const dualRes = await fetchWithAuth('/api/v1/archive/upload-dual', { method: 'POST', body: dualData });
-                        const dualPayload = await dualRes.json();
-                        if (!dualPayload?.ok) {
-                            throw new Error(dualPayload?.detail || dualPayload?.message || 'خطا در آپلود دوگانه');
-                        }
+                if (!docId) {
+                    if (isFullMode) {
+                        alert("مدرک هنوز ثبت نشده است. ابتدا دکمه «ثبت مدرک» را بزنید.");
                     } else {
-                        const singleData = new FormData();
-                        singleData.set('document_id', String(docId));
-                        singleData.set('revision', revision);
-                        singleData.set('status', status);
-                        singleData.set('file', pdfFile);
-                        singleData.set('file_kind', 'pdf');
-                        const singleRes = await fetchWithAuth('/api/v1/archive/upload', { method: 'POST', body: singleData });
-                        const singlePayload = await singleRes.json();
-                        if (!singlePayload?.ok) {
-                            throw new Error(singlePayload?.detail || singlePayload?.message || 'خطا در آپلود PDF');
-                        }
+                        alert("شماره سند معتبر از لیست مدارک موجود انتخاب نشده است.");
+                    }
+                    return;
+                }
+
+                if (nativeFile) {
+                    const dualData = new FormData();
+                    dualData.set('document_id', String(docId));
+                    dualData.set('revision', revision);
+                    dualData.set('status', status);
+                    dualData.set('pdf_file', pdfFile);
+                    dualData.set('native_file', nativeFile);
+                    const dualRes = await fetchWithAuth('/api/v1/archive/upload-dual', { method: 'POST', body: dualData });
+                    const dualPayload = await dualRes.json();
+                    if (!dualPayload?.ok) {
+                        throw new Error(dualPayload?.detail || dualPayload?.message || 'خطا در آپلود دوگانه');
                     }
                 } else {
-                    if (nativeFile) {
-                        const dualRegisterData = new FormData(form);
-                        dualRegisterData.delete('file');
-                        dualRegisterData.delete('native_file');
-                        dualRegisterData.set('pdf_file', pdfFile);
-                        dualRegisterData.set('native_file', nativeFile);
-                        const dualRegisterRes = await fetchWithAuth('/api/v1/archive/register-and-upload-dual', { method: 'POST', body: dualRegisterData });
-                        const dualRegisterPayload = await dualRegisterRes.json();
-                        if (!dualRegisterPayload?.ok) {
-                            throw new Error(dualRegisterPayload?.detail || dualRegisterPayload?.message || 'خطا در ثبت و آپلود دوگانه');
-                        }
-                    } else {
-                        const registerData = new FormData(form);
-                        registerData.set('file', pdfFile);
-                        registerData.set('file_kind', 'pdf');
-                        const registerRes = await fetchWithAuth('/api/v1/archive/register-and-upload', { method: 'POST', body: registerData });
-                        const registerPayload = await registerRes.json();
-                        if (!registerPayload?.ok) {
-                            throw new Error(registerPayload?.detail || registerPayload?.message || 'خطا در ثبت سند جدید');
-                        }
+                    const singleData = new FormData();
+                    singleData.set('document_id', String(docId));
+                    singleData.set('revision', revision);
+                    singleData.set('status', status);
+                    singleData.set('file', pdfFile);
+                    singleData.set('file_kind', 'pdf');
+                    const singleRes = await fetchWithAuth('/api/v1/archive/upload', { method: 'POST', body: singleData });
+                    const singlePayload = await singleRes.json();
+                    if (!singlePayload?.ok) {
+                        throw new Error(singlePayload?.detail || singlePayload?.message || 'خطا در آپلود PDF');
                     }
                 }
 
@@ -942,7 +1126,13 @@
             archiveSetValidationMessage('pdf', '');
             archiveSetValidationMessage('native', '');
             document.getElementById('docStatusMsg').innerHTML = '';
-            document.getElementById('newDocumentFields').style.display = 'none';
+            const list = document.getElementById('archiveDocCodeSuggestions');
+            if (list) list.innerHTML = '';
+            const fullMsg = document.getElementById('fullDocCheckMsg');
+            if (fullMsg) fullMsg.innerHTML = '';
+            const fullRegBtn = document.getElementById('fullRegisterDocBtn');
+            if (fullRegBtn) fullRegBtn.style.display = 'none';
+            document.getElementById('fullDocNumber').value = '';
             document.getElementById('realDocId').value = '';
             isFullMode = true;
             toggleRegistrationMode();

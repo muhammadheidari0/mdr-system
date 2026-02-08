@@ -12,7 +12,9 @@ from app.api.dependencies import (
     User,
     allow_editor,
     allow_viewer,
+    apply_organization_query_filters,
     apply_scope_query_filters,
+    enforce_organization_access,
     enforce_scope_access,
     get_db,
 )
@@ -21,7 +23,7 @@ from app.db.models import Discipline, Project, WorkboardItem
 router = APIRouter(prefix="/workboard", tags=["Workboard"])
 
 VALID_MODULE_TABS: dict[str, set[str]] = {
-    "contractor": {"execution", "requests", "quality", "reports"},
+    "contractor": {"execution", "requests", "quality"},
     "consultant": {"inspection", "defects", "instructions", "control"},
 }
 
@@ -84,6 +86,7 @@ def _serialize_item(row: WorkboardItem) -> dict:
         "id": row.id,
         "module_key": row.module_key,
         "tab_key": row.tab_key,
+        "organization_id": row.organization_id,
         "project_code": row.project_code,
         "project_name": getattr(getattr(row, "project", None), "name_e", None)
         or getattr(getattr(row, "project", None), "name_p", None),
@@ -128,6 +131,7 @@ def _load_item_or_404(db: Session, item_id: int) -> WorkboardItem:
     row = (
         db.query(WorkboardItem)
         .options(
+            joinedload(WorkboardItem.organization),
             joinedload(WorkboardItem.project),
             joinedload(WorkboardItem.discipline),
             joinedload(WorkboardItem.created_by),
@@ -195,6 +199,12 @@ def get_workboard_summary(
         user,
         project_column=WorkboardItem.project_code,
         discipline_column=WorkboardItem.discipline_code,
+    )
+    query = apply_organization_query_filters(
+        query,
+        db,
+        user,
+        organization_column=WorkboardItem.organization_id,
     )
 
     module_value = _norm_lower(module_key)
@@ -270,6 +280,12 @@ def list_workboard_items(
         project_column=WorkboardItem.project_code,
         discipline_column=WorkboardItem.discipline_code,
     )
+    query = apply_organization_query_filters(
+        query,
+        db,
+        user,
+        organization_column=WorkboardItem.organization_id,
+    )
 
     search_value = _norm(search)
     if search_value:
@@ -338,10 +354,13 @@ def create_workboard_item(
         project_code=project_code,
         discipline_code=discipline_code,
     )
+    org_id = int(getattr(user, "organization_id", 0) or 0) or None
+    enforce_organization_access(db, user, organization_id=org_id)
 
     row = WorkboardItem(
         module_key=module_value,
         tab_key=tab_value,
+        organization_id=org_id,
         project_code=project_code,
         discipline_code=discipline_code,
         title=title,
@@ -373,6 +392,7 @@ def update_workboard_item(
         project_code=row.project_code,
         discipline_code=row.discipline_code,
     )
+    enforce_organization_access(db, user, organization_id=row.organization_id)
     provided = set(payload.model_fields_set)
 
     if "module_key" in provided or "tab_key" in provided:
@@ -429,6 +449,7 @@ def delete_workboard_item(
         project_code=row.project_code,
         discipline_code=row.discipline_code,
     )
+    enforce_organization_access(db, user, organization_id=row.organization_id)
     db.delete(row)
     db.commit()
     return {"ok": True}

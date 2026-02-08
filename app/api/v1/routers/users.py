@@ -2,10 +2,11 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import get_db, get_current_admin_user
-from app.db.models import User, UserDisciplineScope, UserProjectScope
+from app.core.organizations import ALL_ORG_TYPES, normalize_org_type
+from app.db.models import Organization, User, UserDisciplineScope, UserProjectScope
 from app.core.security import get_password_hash
 from app.schemas.auth import UserResponse, UserCreate, UserUpdate, UserListResponse
 
@@ -21,9 +22,11 @@ def _base_users_query(
     *,
     search: Optional[str] = None,
     role: Optional[str] = None,
+    organization_id: Optional[int] = None,
+    organization_type: Optional[str] = None,
     is_active: Optional[bool] = None,
 ):
-    q = db.query(User)
+    q = db.query(User).options(joinedload(User.organization))
     search_value = _normalize_text(search)
     if search_value:
         pattern = f"%{search_value}%"
@@ -38,9 +41,45 @@ def _base_users_query(
     if role_value:
         q = q.filter(User.role == role_value)
 
+    if organization_id is not None:
+        q = q.filter(User.organization_id == int(organization_id))
+
+    organization_type_value = normalize_org_type(organization_type)
+    if organization_type_value:
+        if organization_type_value not in ALL_ORG_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid organization_type: {organization_type_value}",
+            )
+        q = q.join(Organization, User.organization_id == Organization.id).filter(
+            Organization.org_type == organization_type_value
+        )
+
     if is_active is not None:
         q = q.filter(User.is_active == is_active)
     return q
+
+
+def _validate_organization_or_400(
+    db: Session,
+    organization_id: Optional[int],
+) -> Optional[Organization]:
+    if organization_id is None:
+        return None
+    org = db.query(Organization).filter(Organization.id == int(organization_id)).first()
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Organization not found: {organization_id}",
+        )
+    return org
+
+
+def _default_organization(db: Session) -> Optional[Organization]:
+    root = db.query(Organization).filter(Organization.code == "SYSTEM_ROOT").first()
+    if root:
+        return root
+    return db.query(Organization).filter(Organization.is_active == True).order_by(Organization.id.asc()).first()
 
 
 def _scope_counts_map(db: Session, user_ids: List[int]) -> Dict[int, dict]:
@@ -107,6 +146,19 @@ def _serialize_user_with_scope(user: User, scope_map: Dict[int, dict]) -> dict:
         "email": user.email,
         "full_name": user.full_name,
         "role": user.role,
+        "organization_id": user.organization_id,
+        "organization_role": user.organization_role,
+        "organization": (
+            {
+                "id": user.organization.id,
+                "code": user.organization.code,
+                "name": user.organization.name,
+                "org_type": user.organization.org_type,
+                "parent_id": user.organization.parent_id,
+            }
+            if user.organization
+            else None
+        ),
         "is_active": user.is_active,
         "created_at": user.created_at,
         "scope_summary": scope_summary,
@@ -119,6 +171,8 @@ def list_users(
     limit: int = 100,
     q: Optional[str] = Query(default=None),
     role: Optional[str] = Query(default=None),
+    organization_id: Optional[int] = Query(default=None),
+    organization_type: Optional[str] = Query(default=None),
     is_active: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user)
@@ -127,7 +181,14 @@ def list_users(
     لیست تمام کاربران (فقط ادمین)
     """
     users = (
-        _base_users_query(db, search=q, role=role, is_active=is_active)
+        _base_users_query(
+            db,
+            search=q,
+            role=role,
+            organization_id=organization_id,
+            organization_type=organization_type,
+            is_active=is_active,
+        )
         .order_by(User.created_at.desc(), User.id.desc())
         .offset(skip)
         .limit(limit)
@@ -143,6 +204,8 @@ def list_users_paged(
     page_size: int = Query(default=10, ge=1, le=100),
     q: Optional[str] = Query(default=None),
     role: Optional[str] = Query(default=None),
+    organization_id: Optional[int] = Query(default=None),
+    organization_type: Optional[str] = Query(default=None),
     is_active: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_admin_user),
@@ -150,7 +213,14 @@ def list_users_paged(
     """
     لیست صفحه‌بندی‌شده کاربران با قابلیت جستجو و فیلتر (فقط ادمین)
     """
-    base_query = _base_users_query(db, search=q, role=role, is_active=is_active)
+    base_query = _base_users_query(
+        db,
+        search=q,
+        role=role,
+        organization_id=organization_id,
+        organization_type=organization_type,
+        is_active=is_active,
+    )
     total = base_query.count()
     total_pages = max(1, (total + page_size - 1) // page_size)
     effective_page = min(page, total_pages) if total else 1
@@ -198,6 +268,8 @@ def create_user(
             detail="ایمیل قبلاً ثبت شده است"
         )
     
+    org = _validate_organization_or_400(db, user.organization_id) if user.organization_id is not None else _default_organization(db)
+
     # هش کردن رمز عبور
     hashed_password = get_password_hash(user.password)
     
@@ -207,6 +279,8 @@ def create_user(
         hashed_password=hashed_password,
         full_name=user.full_name,
         role=user.role.value,
+        organization_id=(org.id if org else None),
+        organization_role=user.organization_role.value,
         is_active=user.is_active
     )
     
@@ -225,7 +299,12 @@ def get_user(
     """
     دریافت اطلاعات کاربر مشخص (فقط ادمین)
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .options(joinedload(User.organization))
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -243,7 +322,12 @@ def update_user(
     """
     ویرایش اطلاعات کاربر (فقط ادمین)
     """
-    user = db.query(User).filter(User.id == user_id).first()
+    user = (
+        db.query(User)
+        .options(joinedload(User.organization))
+        .filter(User.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -255,6 +339,11 @@ def update_user(
         user.full_name = user_update.full_name
     if user_update.role is not None:
         user.role = user_update.role.value
+    if user_update.organization_id is not None:
+        org = _validate_organization_or_400(db, user_update.organization_id)
+        user.organization_id = org.id if org else None
+    if user_update.organization_role is not None:
+        user.organization_role = user_update.organization_role.value
     if user_update.is_active is not None:
         user.is_active = user_update.is_active
     
@@ -290,3 +379,29 @@ def delete_user(
     db.commit()
     
     return {"message": "کاربر با موفقیت حذف شد"}
+
+
+@router.get("/organizations/catalog")
+def list_organizations_catalog(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_admin_user),
+):
+    rows = (
+        db.query(Organization)
+        .order_by(Organization.parent_id.is_(None).desc(), Organization.parent_id.asc(), Organization.name.asc())
+        .all()
+    )
+    return {
+        "ok": True,
+        "items": [
+            {
+                "id": row.id,
+                "code": row.code,
+                "name": row.name,
+                "org_type": row.org_type,
+                "parent_id": row.parent_id,
+                "is_active": bool(row.is_active),
+            }
+            for row in rows
+        ],
+    }

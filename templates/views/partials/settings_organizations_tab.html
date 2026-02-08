@@ -1,0 +1,147 @@
+<div class="archive-card">
+  <div class="archive-header">
+    <div class="header-content">
+      <h2 class="archive-title">
+        <span class="material-icons-round" style="margin-left: 8px;">account_tree</span>
+        مدیریت سازمان‌ها
+      </h2>
+      <p class="archive-subtitle">تعریف ساختار کارفرما، مشاور، پیمانکار و زیرمجموعه‌ها</p>
+    </div>
+    <div class="header-actions">
+      <button class="btn-secondary" type="button" onclick="initOrganizationsSettings(true)">
+        <span class="material-icons-round">refresh</span>
+        بازخوانی
+      </button>
+      <button class="btn-primary" type="button" onclick="openCreateOrganizationModal()">
+        <span class="material-icons-round">add</span>
+        سازمان جدید
+      </button>
+    </div>
+  </div>
+
+  <div class="archive-content">
+    <div class="users-toolbar">
+      <div class="users-toolbar-filters">
+        <div class="users-input-wrap">
+          <span class="material-icons-round">search</span>
+          <input id="organizationsSearchInput" type="text" class="users-toolbar-input" placeholder="جستجو بر اساس نام، کد یا والد">
+        </div>
+
+        <select id="organizationsTypeFilter" class="users-toolbar-select" aria-label="فیلتر دسته سازمان">
+          <option value="">همه دسته‌ها</option>
+          <option value="employer">کارفرما</option>
+          <option value="consultant">مشاور</option>
+          <option value="contractor">پیمانکار</option>
+          <option value="subcontractor">پیمانکار جزء</option>
+          <option value="system">سیستم</option>
+        </select>
+
+        <select id="organizationsStatusFilter" class="users-toolbar-select" aria-label="فیلتر وضعیت">
+          <option value="">همه وضعیت‌ها</option>
+          <option value="active">فقط فعال</option>
+          <option value="inactive">فقط غیرفعال</option>
+        </select>
+      </div>
+
+      <div class="users-toolbar-actions">
+        <label for="organizationsPageSize" class="users-toolbar-label">تعداد در صفحه</label>
+        <select id="organizationsPageSize" class="users-toolbar-select compact">
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table class="archive-table" id="organizationsTable">
+        <thead>
+          <tr>
+            <th>شناسه</th>
+            <th>کد</th>
+            <th>نام سازمان</th>
+            <th>نوع</th>
+            <th>والد</th>
+            <th>کاربران</th>
+            <th>زیرمجموعه</th>
+            <th>وضعیت</th>
+            <th>عملیات</th>
+          </tr>
+        </thead>
+        <tbody id="organizationsTableBody">
+          <tr>
+            <td colspan="9" class="center-text muted" style="padding: 36px;">در حال بارگذاری سازمان‌ها...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="users-table-footer">
+      <div id="organizationsTableMeta" class="users-table-meta">در حال بارگذاری...</div>
+      <div class="users-pagination">
+        <button type="button" id="organizationsPrevPageBtn" class="users-page-nav" onclick="changeOrganizationsPage(-1)">قبلی</button>
+        <div id="organizationsPageButtons" class="users-page-buttons"></div>
+        <button type="button" id="organizationsNextPageBtn" class="users-page-nav" onclick="changeOrganizationsPage(1)">بعدی</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="organizationModal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="organizationModalTitle">ایجاد سازمان جدید</h3>
+      <button class="modal-close" type="button" onclick="closeOrganizationModal()">
+        <span class="material-icons-round">close</span>
+      </button>
+    </div>
+
+    <form id="organizationForm" class="modal-body">
+      <input type="hidden" id="organizationId">
+
+      <div class="form-group">
+        <label for="organizationCode" class="form-label-sm">کد سازمان *</label>
+        <input type="text" id="organizationCode" class="form-input" required placeholder="مثال: CONSULTANT_ROOT">
+      </div>
+
+      <div class="form-group">
+        <label for="organizationName" class="form-label-sm">نام سازمان *</label>
+        <input type="text" id="organizationName" class="form-input" required>
+      </div>
+
+      <div class="form-group">
+        <label for="organizationType" class="form-label-sm">نوع سازمان *</label>
+        <select id="organizationType" class="form-input">
+          <option value="employer">کارفرما</option>
+          <option value="consultant">مشاور</option>
+          <option value="contractor">پیمانکار</option>
+          <option value="subcontractor">پیمانکار جزء</option>
+          <option value="system">سیستم</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="organizationParentId" class="form-label-sm">سازمان والد</label>
+        <select id="organizationParentId" class="form-input">
+          <option value="">- بدون والد -</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="organizationIsActive" checked>
+          <span class="checkmark"></span>
+          سازمان فعال است
+        </label>
+      </div>
+    </form>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" onclick="closeOrganizationModal()">انصراف</button>
+      <button type="button" class="btn-primary" onclick="saveOrganization()">ذخیره</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/settings_organizations.js?v=20260208a"></script>

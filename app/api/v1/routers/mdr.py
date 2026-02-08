@@ -18,7 +18,7 @@ from app.api.dependencies import (
     User,
     apply_scope_query_filters,
     enforce_scope_access,
-    has_permission,
+    has_permission_for_user,
     require_permission,
 )
 from app.core.config import settings
@@ -408,7 +408,7 @@ async def bulk_register_docs_with_files(
         }
         return result
 
-    if not has_permission(db, user.role, "archive:update"):
+    if not has_permission_for_user(db, user, "archive:update"):
         raise HTTPException(
             status_code=403,
             detail="Missing permission: archive:update",

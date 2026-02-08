@@ -8,6 +8,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
+from app.core.organizations import (
+    ALL_ORG_ROLES,
+    PERMISSION_CATEGORIES,
+    OrganizationRole,
+    OrganizationType,
+    normalize_org_role,
+    normalize_permission_category,
+)
 from app.core.roles import ALL_ROLES, ROLE_PERMISSIONS, Role
 from app.db.base import Base
 
@@ -162,6 +170,9 @@ def _ensure_sqlite_schema_updates() -> None:
         _sqlite_add_column_if_missing(conn, "archive_files", "file_kind", "VARCHAR(20) DEFAULT 'pdf'")
         _sqlite_add_column_if_missing(conn, "archive_files", "is_primary", "BOOLEAN DEFAULT 1")
         _sqlite_add_column_if_missing(conn, "archive_files", "companion_file_id", "INTEGER")
+        _sqlite_add_column_if_missing(conn, "users", "organization_id", "INTEGER")
+        _sqlite_add_column_if_missing(conn, "users", "organization_role", "VARCHAR(32) DEFAULT 'viewer'")
+        _sqlite_add_column_if_missing(conn, "workboard_items", "organization_id", "INTEGER")
         _sqlite_add_column_if_missing(
             conn,
             "correspondence_attachments",
@@ -185,6 +196,31 @@ def _ensure_sqlite_schema_updates() -> None:
             "uq_correspondences_reference_no",
             "CREATE UNIQUE INDEX uq_correspondences_reference_no "
             "ON correspondences(reference_no) WHERE reference_no IS NOT NULL",
+        )
+        _sqlite_create_index_if_missing(
+            conn,
+            "ix_users_organization_id",
+            "CREATE INDEX ix_users_organization_id ON users(organization_id)",
+        )
+        _sqlite_create_index_if_missing(
+            conn,
+            "ix_organizations_parent",
+            "CREATE INDEX ix_organizations_parent ON organizations(parent_id)",
+        )
+        _sqlite_create_index_if_missing(
+            conn,
+            "ix_organizations_type",
+            "CREATE INDEX ix_organizations_type ON organizations(org_type)",
+        )
+        _sqlite_create_index_if_missing(
+            conn,
+            "ix_workboard_items_organization_id",
+            "CREATE INDEX ix_workboard_items_organization_id ON workboard_items(organization_id)",
+        )
+        _sqlite_create_index_if_missing(
+            conn,
+            "ix_workboard_org_module_tab",
+            "CREATE INDEX ix_workboard_org_module_tab ON workboard_items(organization_id, module_key, tab_key)",
         )
 
 
@@ -594,6 +630,174 @@ def _seed_user_scopes_from_kv(db: Session) -> None:
                 db.add(UserDisciplineScope(user_id=uid, discipline_code=code))
 
 
+def _seed_organization_defaults(db: Session) -> None:
+    from app.db.models import Organization
+
+    existing = {
+        str(row.code or "").strip().upper(): row
+        for row in db.query(Organization).all()
+        if str(row.code or "").strip()
+    }
+
+    seed_rows: list[tuple[str, str, str]] = [
+        ("SYSTEM_ROOT", "System Root", OrganizationType.SYSTEM.value),
+        ("EMPLOYER_ROOT", "Employer", OrganizationType.EMPLOYER.value),
+        ("CONSULTANT_ROOT", "Consultant", OrganizationType.CONSULTANT.value),
+        ("CONTRACTOR_ROOT", "Contractor", OrganizationType.CONTRACTOR.value),
+    ]
+
+    for code, name, org_type in seed_rows:
+        if code in existing:
+            continue
+        row = Organization(
+            code=code,
+            name=name,
+            org_type=org_type,
+            is_active=True,
+        )
+        db.add(row)
+        existing[code] = row
+
+    db.flush()
+
+    system_root = existing.get("SYSTEM_ROOT")
+    if system_root:
+        for code in ("EMPLOYER_ROOT", "CONSULTANT_ROOT", "CONTRACTOR_ROOT"):
+            row = existing.get(code)
+            if row and row.parent_id is None:
+                row.parent_id = system_root.id
+
+
+def _normalize_seed_org_role(system_role: str) -> str:
+    role_key = str(system_role or "").strip().lower()
+    if role_key == Role.ADMIN.value:
+        return OrganizationRole.ADMIN.value
+    if role_key == Role.DCC.value:
+        return OrganizationRole.DCC.value
+    return OrganizationRole.VIEWER.value
+
+
+def _backfill_user_organization_defaults(db: Session) -> None:
+    from app.db.models import Organization, User
+
+    system_root = (
+        db.query(Organization)
+        .filter(Organization.code == "SYSTEM_ROOT")
+        .first()
+    )
+    if not system_root:
+        return
+
+    users = db.query(User).all()
+    for user in users:
+        if getattr(user, "organization_id", None) is None:
+            user.organization_id = system_root.id
+
+        role_value = normalize_org_role(getattr(user, "organization_role", None))
+        if role_value not in ALL_ORG_ROLES:
+            user.organization_role = _normalize_seed_org_role(getattr(user, "role", None))
+
+
+def _seed_role_category_rules_from_base(db: Session) -> None:
+    from app.db.models import (
+        RoleCategoryDisciplineScope,
+        RoleCategoryPermission,
+        RoleCategoryProjectScope,
+        RoleDisciplineScope,
+        RolePermission,
+        RoleProjectScope,
+    )
+
+    has_seed = (
+        db.query(RoleCategoryPermission.id).first()
+        or db.query(RoleCategoryProjectScope.id).first()
+        or db.query(RoleCategoryDisciplineScope.id).first()
+    )
+    if has_seed:
+        return
+
+    role_perm_rows = db.query(RolePermission.role, RolePermission.permission, RolePermission.allowed).all()
+    role_project_rows = db.query(RoleProjectScope.role, RoleProjectScope.project_code).all()
+    role_discipline_rows = db.query(RoleDisciplineScope.role, RoleDisciplineScope.discipline_code).all()
+
+    if not role_perm_rows:
+        perms = _permission_keys()
+        for role in ALL_ROLES:
+            role_enum = Role(role)
+            role_perms = ROLE_PERMISSIONS.get(role_enum, [])
+            has_wildcard = "*" in role_perms
+            for perm in perms:
+                role_perm_rows.append(
+                    (
+                        role,
+                        perm,
+                        True if role == Role.ADMIN.value else (has_wildcard or perm in role_perms),
+                    )
+                )
+
+    for category in PERMISSION_CATEGORIES:
+        category_key = normalize_permission_category(category)
+        for role, permission, allowed in role_perm_rows:
+            db.add(
+                RoleCategoryPermission(
+                    category=category_key,
+                    role=str(role or "").strip().lower(),
+                    permission=str(permission or "").strip(),
+                    allowed=bool(allowed),
+                )
+            )
+        for role, project_code in role_project_rows:
+            if not str(project_code or "").strip():
+                continue
+            db.add(
+                RoleCategoryProjectScope(
+                    category=category_key,
+                    role=str(role or "").strip().lower(),
+                    project_code=str(project_code or "").strip().upper(),
+                )
+            )
+        for role, discipline_code in role_discipline_rows:
+            if not str(discipline_code or "").strip():
+                continue
+            db.add(
+                RoleCategoryDisciplineScope(
+                    category=category_key,
+                    role=str(role or "").strip().lower(),
+                    discipline_code=str(discipline_code or "").strip().upper(),
+                )
+            )
+
+
+def _backfill_workboard_organization_defaults(db: Session) -> None:
+    from app.db.models import Organization, User, WorkboardItem
+
+    users_org_map = {
+        int(uid): int(org_id)
+        for uid, org_id in db.query(User.id, User.organization_id).all()
+        if uid is not None and org_id is not None
+    }
+    org_by_code = {
+        str(code or "").strip().upper(): int(org_id)
+        for org_id, code in db.query(Organization.id, Organization.code).all()
+    }
+    system_root_id = org_by_code.get("SYSTEM_ROOT")
+    consultant_root_id = org_by_code.get("CONSULTANT_ROOT")
+    contractor_root_id = org_by_code.get("CONTRACTOR_ROOT")
+
+    rows = db.query(WorkboardItem).filter(WorkboardItem.organization_id.is_(None)).all()
+    for row in rows:
+        assigned = users_org_map.get(int(row.created_by_id or 0))
+        if assigned is None:
+            module_key = str(getattr(row, "module_key", "") or "").strip().lower()
+            if module_key == "contractor":
+                assigned = contractor_root_id or system_root_id
+            elif module_key == "consultant":
+                assigned = consultant_root_id or system_root_id
+            else:
+                assigned = system_root_id
+        row.organization_id = assigned
+
+
 def _archive_and_drop_legacy_kv(db: Session) -> None:
     from app.db.models import RolePermission, SettingsKV
 
@@ -641,6 +845,11 @@ def _run_smart_migrations() -> None:
         _backfill_permission_matrix(db)
         _seed_role_scopes_from_kv(db)
         _seed_user_scopes_from_kv(db)
+        _seed_organization_defaults(db)
+        db.flush()
+        _backfill_user_organization_defaults(db)
+        _backfill_workboard_organization_defaults(db)
+        _seed_role_category_rules_from_base(db)
         _archive_and_drop_legacy_kv(db)
         db.commit()
 

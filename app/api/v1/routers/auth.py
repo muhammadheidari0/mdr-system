@@ -64,9 +64,8 @@ def get_navigation(
     }
 
     tabs = {
-        "archive": dependencies.has_permission(db, user_role, "archive:read"),
-        "transmittal": dependencies.has_permission(db, user_role, "transmittal:read"),
-        "reports": dependencies.has_permission(db, user_role, "documents:read"),
+        "archive": dependencies.has_permission_for_user(db, current_user, "archive:read"),
+        "transmittal": dependencies.has_permission_for_user(db, current_user, "transmittal:read"),
         "correspondence": user_role in correspondence_roles,
     }
 
@@ -75,11 +74,11 @@ def get_navigation(
         Role.DCC.value: "transmittal",
         Role.MANAGER.value: "transmittal",
         Role.USER.value: "archive",
-        Role.VIEWER.value: "reports",
+        Role.VIEWER.value: "archive",
     }
     default_tab = role_default_map.get(user_role, "archive")
     if not tabs.get(default_tab):
-        default_tab = next((key for key in ("archive", "transmittal", "correspondence", "reports") if tabs.get(key)), "archive")
+        default_tab = next((key for key in ("archive", "transmittal", "correspondence") if tabs.get(key)), "archive")
 
     return {
         "ok": True,

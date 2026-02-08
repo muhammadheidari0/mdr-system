@@ -22,6 +22,21 @@
       مدیریت Scope پروژه/دیسیپلین از بخش کاربران انجام می‌شود.
     </div>
 
+    <div id="permissionsCategoryTabs" class="edms-tab-buttons" style="margin-bottom: 12px;">
+      <button type="button" class="edms-tab-btn active" data-permissions-category="consultant" onclick="switchPermissionsCategory('consultant', this)">
+        <span class="material-icons-round">fact_check</span>
+        مشاور
+      </button>
+      <button type="button" class="edms-tab-btn" data-permissions-category="contractor" onclick="switchPermissionsCategory('contractor', this)">
+        <span class="material-icons-round">construction</span>
+        پیمانکار
+      </button>
+      <button type="button" class="edms-tab-btn" data-permissions-category="employer" onclick="switchPermissionsCategory('employer', this)">
+        <span class="material-icons-round">domain</span>
+        کارفرما
+      </button>
+    </div>
+
     <div class="permissions-toolbar permissions-toolbar-minimal">
       <div class="permissions-toolbar-filters">
         <div class="permissions-toolbar-item">
@@ -66,4 +81,4 @@
   </div>
 </div>
 
-<script src="/static/js/settings_permissions.js?v=20260206f"></script>
+<script src="/static/js/settings_permissions.js?v=20260208d"></script>

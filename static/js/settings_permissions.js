@@ -1,18 +1,102 @@
-﻿(() => {
+(() => {
     const MATRIX_ENDPOINT = '/api/v1/settings/permissions/matrix';
     const SEARCH_DEBOUNCE_MS = 180;
+    const DEFAULT_CATEGORY = 'consultant';
+    const KNOWN_CATEGORIES = ['consultant', 'contractor', 'employer'];
+
+    const TREE_CATALOG = [
+        {
+            key: 'engineering_docs',
+            label: 'مدیریت مدارک مهندسی',
+            pages: [
+                { key: 'documents', label: 'مدارک مهندسی', groupKeys: ['documents'] },
+                { key: 'archive', label: 'آرشیو مدارک', groupKeys: ['archive'] },
+                { key: 'transmittal', label: 'ترنسمیتال', groupKeys: ['transmittal'] },
+                { key: 'correspondence', label: 'مکاتبات', groupKeys: ['correspondence'] },
+            ],
+        },
+        {
+            key: 'reports',
+            label: 'گزارش‌ها',
+            pages: [
+                { key: 'dashboard', label: 'داشبورد', groupKeys: ['dashboard'] },
+                { key: 'reports', label: 'گزارش‌های تحلیلی', groupKeys: ['reports'] },
+            ],
+        },
+        {
+            key: 'contractor_hub',
+            label: 'دفتر فنی و اجرا (پیمانکار)',
+            pages: [
+                {
+                    key: 'workboard_contractor',
+                    label: 'کارتابل پیمانکار',
+                    groupKeys: ['workboard_contractor', 'contractor_workboard', 'contractor'],
+                },
+            ],
+        },
+        {
+            key: 'consultant_hub',
+            label: 'نظارت و کنترل پروژه (مشاور)',
+            pages: [
+                {
+                    key: 'workboard_consultant',
+                    label: 'کارتابل مشاور',
+                    groupKeys: ['workboard_consultant', 'consultant_workboard', 'consultant'],
+                },
+            ],
+        },
+        {
+            key: 'system_settings',
+            label: 'تنظیمات سیستم',
+            pages: [
+                { key: 'settings', label: 'تنظیمات عمومی', groupKeys: ['settings'] },
+                { key: 'users', label: 'مدیریت کاربران', groupKeys: ['users'] },
+                { key: 'organizations', label: 'مدیریت سازمان‌ها', groupKeys: ['organizations'] },
+                { key: 'permissions', label: 'سطح دسترسی', groupKeys: ['permissions'] },
+                { key: 'bulk', label: 'ثبت گروهی', groupKeys: ['bulk'] },
+            ],
+        },
+    ];
 
     const state = {
         initialized: false,
         toolbarBound: false,
+        activeCategory: DEFAULT_CATEGORY,
+        categories: KNOWN_CATEGORIES.slice(),
         roles: [],
         permissions: [],
         matrix: {},
         filterQuery: '',
         filterGroup: '',
+        collapsedSections: new Set(),
         collapsedGroups: new Set(),
+        renderedSections: {},
+        renderedPages: {},
         searchTimer: null,
     };
+
+    const catalogIndex = (() => {
+        const groupToPage = new Map();
+        const pageToSection = new Map();
+        const pageLabels = new Map();
+        const sectionLabels = new Map();
+        for (const section of TREE_CATALOG) {
+            sectionLabels.set(section.key, section.label);
+            for (const page of section.pages) {
+                pageToSection.set(page.key, section.key);
+                pageLabels.set(page.key, page.label);
+                for (const key of page.groupKeys || []) {
+                    groupToPage.set(String(key || '').toLowerCase(), page.key);
+                }
+            }
+        }
+        return {
+            groupToPage,
+            pageToSection,
+            pageLabels,
+            sectionLabels,
+        };
+    })();
 
     function esc(value) {
         return String(value == null ? '' : value)
@@ -39,6 +123,21 @@
         return String(role || '').trim().toLowerCase();
     }
 
+    function normalizeCategory(value) {
+        const key = String(value || '').trim().toLowerCase();
+        if (KNOWN_CATEGORIES.indexOf(key) >= 0) return key;
+        return DEFAULT_CATEGORY;
+    }
+
+    function categoryLabel(value) {
+        const map = {
+            consultant: 'مشاور',
+            contractor: 'پیمانکار',
+            employer: 'کارفرما',
+        };
+        return map[normalizeCategory(value)] || 'مشاور';
+    }
+
     function roleLabel(role) {
         const map = {
             admin: 'مدیر سیستم',
@@ -51,23 +150,81 @@
         return map[roleKey] || role;
     }
 
+    function splitPermission(permission) {
+        const raw = String(permission || '').trim();
+        if (!raw) return [];
+        if (raw.indexOf(':') >= 0) {
+            return raw.split(':').map((item) => String(item || '').trim()).filter(Boolean);
+        }
+        if (raw.indexOf('/') >= 0) {
+            return raw.split('/').map((item) => String(item || '').trim()).filter(Boolean);
+        }
+        if (raw.indexOf('.') >= 0) {
+            return raw.split('.').map((item) => String(item || '').trim()).filter(Boolean);
+        }
+        return [raw];
+    }
+
+    function readableToken(token) {
+        const key = String(token || '').trim().toLowerCase();
+        const map = {
+            read: 'مشاهده',
+            create: 'ایجاد',
+            update: 'ویرایش',
+            delete: 'حذف',
+            issue: 'صدور',
+            void: 'ابطال',
+            manage: 'مدیریت',
+            upload: 'آپلود',
+            download: 'دانلود',
+            export: 'خروجی',
+            import: 'ورودی',
+        };
+        if (map[key]) return `${map[key]} (${key.toUpperCase()})`;
+        return String(token || '')
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toUpperCase();
+    }
+
+    function permissionLeafLabel(permission) {
+        const parts = splitPermission(permission);
+        if (!parts.length) return '-';
+        if (parts.length === 1) return readableToken(parts[0]);
+        return parts.slice(1).map((item) => readableToken(item)).join(' / ');
+    }
+
     function permissionLabel(permission) {
-        return String(permission || '')
-            .replace(':', ' / ')
-            .replace(/_/g, ' ');
+        const parts = splitPermission(permission);
+        if (!parts.length) return '-';
+        return parts.map((item) => readableToken(item)).join(' / ');
     }
 
     function permissionGroupKey(permission) {
-        const raw = String(permission || '').trim();
-        if (!raw) return 'other';
-        if (raw.indexOf(':') >= 0) return raw.split(':')[0].toLowerCase();
-        if (raw.indexOf('.') >= 0) return raw.split('.')[0].toLowerCase();
-        if (raw.indexOf('_') >= 0) return raw.split('_')[0].toLowerCase();
+        const parts = splitPermission(permission);
+        if (parts.length) return String(parts[0] || '').toLowerCase();
         return 'other';
     }
 
     function permissionGroupLabel(groupKey) {
         const key = String(groupKey || '').toLowerCase();
+        const map = {
+            archive: 'آرشیو مدارک',
+            dashboard: 'داشبورد',
+            documents: 'مدارک مهندسی',
+            transmittal: 'ترنسمیتال',
+            correspondence: 'مکاتبات',
+            settings: 'تنظیمات عمومی',
+            users: 'مدیریت کاربران',
+            organizations: 'مدیریت سازمان‌ها',
+            permissions: 'سطح دسترسی',
+            bulk: 'ثبت گروهی',
+            reports: 'گزارش‌ها',
+            workboard_contractor: 'کارتابل پیمانکار',
+            workboard_consultant: 'کارتابل مشاور',
+        };
+        if (map[key]) return map[key];
         if (!key || key === 'other') return 'سایر';
         return key.replace(/[_-]+/g, ' ').toUpperCase();
     }
@@ -81,36 +238,32 @@
         return `${raw} ${permissionLabel(raw)} ${permissionGroupKey(raw)}`.toLowerCase();
     }
 
-    function groupPermissions(perms) {
-        const groups = new Map();
-        (perms || []).forEach((perm) => {
-            const groupKey = permissionGroupKey(perm);
-            if (!groups.has(groupKey)) groups.set(groupKey, []);
-            groups.get(groupKey).push(perm);
-        });
+    function matrixUrl() {
+        const params = new URLSearchParams();
+        params.set('category', normalizeCategory(state.activeCategory));
+        return `${MATRIX_ENDPOINT}?${params.toString()}`;
+    }
 
-        const entries = Array.from(groups.entries()).map(([key, list]) => {
-            const sorted = list.slice().sort((a, b) => String(a).localeCompare(String(b)));
-            return [key, sorted];
+    function renderCategoryTabs(selectedBtn = null) {
+        const tabsRoot = document.getElementById('permissionsCategoryTabs');
+        if (!tabsRoot) return;
+        const active = normalizeCategory(state.activeCategory);
+        const buttons = tabsRoot.querySelectorAll('[data-permissions-category]');
+        buttons.forEach((btn) => {
+            const key = normalizeCategory(btn.dataset.permissionsCategory || '');
+            const isActive = key === active;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
-
-        entries.sort((a, b) => {
-            if (a[0] === 'other') return 1;
-            if (b[0] === 'other') return -1;
-            return String(a[0]).localeCompare(String(b[0]));
-        });
-
-        return entries;
+        if (selectedBtn && typeof selectedBtn.blur === 'function') {
+            selectedBtn.blur();
+        }
     }
 
     function getUniqueGroups() {
         const groups = new Set();
         (state.permissions || []).forEach((perm) => groups.add(permissionGroupKey(perm)));
-        return Array.from(groups).sort((a, b) => {
-            if (a === 'other') return 1;
-            if (b === 'other') return -1;
-            return String(a).localeCompare(String(b));
-        });
+        return Array.from(groups).sort((a, b) => String(a).localeCompare(String(b)));
     }
 
     function getFilteredPermissions() {
@@ -127,7 +280,6 @@
     async function request(url, options = {}) {
         const requester = typeof window.fetchWithAuth === 'function' ? window.fetchWithAuth : fetch;
         const response = await requester(url, options);
-
         if (!response.ok) {
             let message = `Request failed (${response.status})`;
             try {
@@ -136,7 +288,6 @@
             } catch (_) {}
             throw new Error(message);
         }
-
         return response.json();
     }
 
@@ -163,11 +314,152 @@
             <option value="">همه منابع</option>
             ${groups.map((group) => `<option value="${esc(group)}">${esc(permissionGroupLabel(group))}</option>`).join('')}
         `;
-
         groupSelect.value = groups.indexOf(selected) >= 0 ? selected : '';
-        if (groupSelect.value !== selected) {
-            state.filterGroup = '';
+        if (groupSelect.value !== selected) state.filterGroup = '';
+    }
+
+    function resolveSectionForGroup(groupKey) {
+        const key = String(groupKey || '').toLowerCase();
+        const pageKey = catalogIndex.groupToPage.get(key);
+        if (pageKey) return catalogIndex.pageToSection.get(pageKey) || 'engineering_docs';
+        if (key === 'dashboard' || key.includes('report')) return 'reports';
+        if (key.startsWith('workboard')) return key.includes('consult') ? 'consultant_hub' : 'contractor_hub';
+        if (['settings', 'users', 'permissions', 'bulk', 'organizations'].includes(key)) return 'system_settings';
+        if (['archive', 'documents', 'transmittal', 'correspondence'].includes(key)) return 'engineering_docs';
+        return 'engineering_docs';
+    }
+
+    function resolvePageForGroup(groupKey) {
+        const key = String(groupKey || '').toLowerCase();
+        const mapped = catalogIndex.groupToPage.get(key);
+        if (mapped) {
+            return {
+                key: mapped,
+                label: catalogIndex.pageLabels.get(mapped) || permissionGroupLabel(key),
+                sectionKey: catalogIndex.pageToSection.get(mapped) || 'engineering_docs',
+                dynamic: false,
+            };
         }
+        const sectionKey = resolveSectionForGroup(key);
+        return {
+            key: `dynamic:${key}`,
+            label: permissionGroupLabel(key),
+            sectionKey,
+            dynamic: true,
+        };
+    }
+
+    function buildPermissionTree(perms) {
+        const tree = TREE_CATALOG.map((section) => ({
+            key: section.key,
+            label: section.label,
+            pages: (section.pages || []).map((page) => ({
+                key: page.key,
+                label: page.label,
+                dynamic: false,
+                permissions: [],
+            })),
+        }));
+
+        const sectionByKey = new Map(tree.map((section) => [section.key, section]));
+        const pageByKey = new Map();
+        tree.forEach((section) => {
+            section.pages.forEach((page) => pageByKey.set(page.key, page));
+        });
+
+        (perms || []).forEach((permission) => {
+            const groupKey = permissionGroupKey(permission);
+            const target = resolvePageForGroup(groupKey);
+            let section = sectionByKey.get(target.sectionKey);
+            if (!section) {
+                section = { key: target.sectionKey, label: target.sectionKey, pages: [] };
+                sectionByKey.set(target.sectionKey, section);
+                tree.push(section);
+            }
+
+            let page = pageByKey.get(target.key);
+            if (!page) {
+                page = {
+                    key: target.key,
+                    label: target.label,
+                    dynamic: true,
+                    permissions: [],
+                };
+                section.pages.push(page);
+                pageByKey.set(target.key, page);
+            }
+            page.permissions.push(permission);
+        });
+
+        tree.forEach((section) => {
+            section.pages.forEach((page) => {
+                page.permissions = page.permissions
+                    .slice()
+                    .sort((a, b) => String(a).localeCompare(String(b)));
+            });
+            section.pages.sort((a, b) => {
+                if (a.dynamic && !b.dynamic) return 1;
+                if (!a.dynamic && b.dynamic) return -1;
+                return String(a.label).localeCompare(String(b.label));
+            });
+        });
+
+        return tree;
+    }
+
+    function getRoleStateForPermissions(role, permissions) {
+        const roleKey = normalizeRole(role);
+        const perms = Array.isArray(permissions) ? permissions : [];
+        if (!perms.length) {
+            return { checked: false, indeterminate: false, disabled: true, empty: true };
+        }
+        if (roleKey === 'admin') {
+            return { checked: true, indeterminate: false, disabled: true, empty: false };
+        }
+        const values = perms.map((permission) => Boolean(state.matrix[roleKey] && state.matrix[roleKey][permission]));
+        const enabledCount = values.filter(Boolean).length;
+        return {
+            checked: values.length > 0 && enabledCount === values.length,
+            indeterminate: enabledCount > 0 && enabledCount < values.length,
+            disabled: false,
+            empty: false,
+        };
+    }
+
+    function renderAggregateRoleCell(scopeKey, role, permissions, handlerName) {
+        const roleKey = normalizeRole(role);
+        const roleState = getRoleStateForPermissions(role, permissions);
+        if (roleState.empty) {
+            return `<td class="center-text matrix-role-cell"><span class="muted">-</span></td>`;
+        }
+        const checked = roleState.checked ? 'checked' : '';
+        const disabled = roleState.disabled ? 'disabled' : '';
+        const indeterminate = roleState.indeterminate ? 'data-indeterminate="1"' : '';
+        return `
+            <td class="center-text matrix-role-cell">
+                <label class="toggle-switch ${roleState.disabled ? 'is-disabled' : ''}" ${roleState.disabled ? 'title="ادمین همیشه دسترسی کامل دارد"' : ''}>
+                    <input
+                        type="checkbox"
+                        ${checked}
+                        ${disabled}
+                        ${indeterminate}
+                        onchange="${handlerName}('${encodeURIComponent(scopeKey)}', '${esc(roleKey)}', this.checked)"
+                    >
+                    <span class="toggle-slider"></span>
+                </label>
+            </td>
+        `;
+    }
+
+    function applyIndeterminateStates() {
+        const checks = document.querySelectorAll('#permissionsMatrixBody input[data-indeterminate="1"]');
+        checks.forEach((input) => {
+            try {
+                input.indeterminate = true;
+            } catch (_) {}
+            const wrap = input.closest('.toggle-switch');
+            if (wrap) wrap.classList.add('is-indeterminate');
+        });
     }
 
     function renderMatrix() {
@@ -187,68 +479,113 @@
 
         head.innerHTML = `
             <tr>
-                <th class="sticky-col matrix-permission-col">مجوز</th>
+                <th class="sticky-col matrix-permission-col">مجوز (درختی)</th>
                 ${state.roles.map((role) => `<th class="matrix-role-head">${esc(roleLabel(role))}</th>`).join('')}
             </tr>
         `;
 
         if (!filteredPermissions.length) {
+            state.renderedSections = {};
+            state.renderedPages = {};
             body.innerHTML = `<tr><td class="center-text muted" colspan="${columnCount}" style="padding: 34px;">نتیجه ای مطابق فیلتر فعلی پیدا نشد</td></tr>`;
             return;
         }
 
-        const groups = groupPermissions(filteredPermissions);
-        body.innerHTML = groups.map(([groupKey, perms]) => {
-            const encodedGroupKey = encodeURIComponent(groupKey);
-            const groupName = permissionGroupLabel(groupKey);
-            const isCollapsed = state.collapsedGroups.has(groupKey);
+        const tree = buildPermissionTree(filteredPermissions);
+        state.renderedSections = {};
+        state.renderedPages = {};
+        tree.forEach((section) => {
+            state.renderedSections[section.key] = section.pages.flatMap((page) => page.permissions || []);
+            section.pages.forEach((page) => {
+                state.renderedPages[page.key] = (page.permissions || []).slice();
+            });
+        });
 
-            const permissionRows = perms.map((permission) => {
+        body.innerHTML = tree.map((section) => {
+            const sectionCollapsed = state.collapsedSections.has(section.key);
+            const sectionPerms = state.renderedSections[section.key] || [];
+            const sectionRoleCells = state.roles
+                .map((role) => renderAggregateRoleCell(section.key, role, sectionPerms, 'togglePermissionSectionRole'))
+                .join('');
+
+            const pagesHtml = section.pages.map((page) => {
+                const pageCollapsed = state.collapsedGroups.has(page.key);
+                const hiddenBySection = sectionCollapsed;
+                const pagePerms = state.renderedPages[page.key] || [];
+                const pageRoleCells = state.roles
+                    .map((role) => renderAggregateRoleCell(page.key, role, pagePerms, 'togglePermissionGroupRole'))
+                    .join('');
+
+                const pageHiddenClass = hiddenBySection ? 'is-collapsed' : '';
+                const pageCollapsedClass = pageCollapsed ? 'is-page-collapsed' : '';
+                const emptyNote = !pagePerms.length
+                    ? '<span class="matrix-tree-empty-note">کلید مجوزی تعریف نشده</span>'
+                    : '';
+
+                const childRows = pagePerms.map((permission) => {
+                    const childHidden = hiddenBySection || pageCollapsed;
+                    const childClass = childHidden ? 'is-collapsed' : '';
+                    const leafLabel = permissionLeafLabel(permission);
+                    return `
+                        <tr class="matrix-tree-child-row ${childClass}" data-group-parent="${esc(page.key)}" data-section-parent="${esc(section.key)}">
+                            <td class="matrix-permission-name sticky-col">
+                                <span class="matrix-tree-action-label">${esc(leafLabel)}</span>
+                                <span class="matrix-tree-code">${esc(permission)}</span>
+                            </td>
+                            ${state.roles.map((role) => {
+                                const roleKey = normalizeRole(role);
+                                const isAdmin = roleKey === 'admin';
+                                const checked = Boolean(state.matrix[roleKey] && state.matrix[roleKey][permission]);
+                                return `
+                                    <td class="center-text matrix-role-cell">
+                                        <label class="toggle-switch ${isAdmin ? 'is-disabled' : ''}" ${isAdmin ? 'title="ادمین همیشه دسترسی کامل دارد"' : ''}>
+                                            <input
+                                                type="checkbox"
+                                                ${checked ? 'checked' : ''}
+                                                ${isAdmin ? 'disabled' : ''}
+                                                onchange="togglePermissionCell('${esc(roleKey)}', '${esc(permission)}', this.checked)"
+                                            >
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </td>
+                                `;
+                            }).join('')}
+                        </tr>
+                    `;
+                }).join('');
+
                 return `
-                    <tr class="matrix-permission-row ${isCollapsed ? 'is-collapsed' : ''}" data-group-parent="${esc(groupKey)}">
-                        <td class="matrix-permission-name sticky-col">
-                            <span>${esc(permissionLabel(permission))}</span>
-                            <span class="matrix-permission-code">${esc(permission)}</span>
+                    <tr class="matrix-tree-group-row ${pageHiddenClass} ${pageCollapsedClass}" data-group-key="${esc(page.key)}" data-section-parent="${esc(section.key)}">
+                        <td class="matrix-permission-name sticky-col matrix-tree-group-cell">
+                            <button type="button" class="matrix-tree-group-toggle" onclick="togglePermissionGroup('${encodeURIComponent(page.key)}')">
+                                <span class="material-icons-round">expand_more</span>
+                                <span class="matrix-tree-group-name">${esc(page.label)}</span>
+                            </button>
+                            <span class="matrix-group-count">${pagePerms.length}</span>
+                            ${emptyNote}
                         </td>
-                        ${state.roles.map((role) => {
-                            const roleKey = normalizeRole(role);
-                            const isAdmin = roleKey === 'admin';
-                            const checked = Boolean(state.matrix[roleKey] && state.matrix[roleKey][permission]);
-                            return `
-                                <td class="center-text matrix-role-cell">
-                                    <label class="toggle-switch ${isAdmin ? 'is-disabled' : ''}" ${isAdmin ? 'title="ادمین همیشه دسترسی کامل دارد"' : ''}>
-                                        <input
-                                            type="checkbox"
-                                            ${checked ? 'checked' : ''}
-                                            ${isAdmin ? 'disabled' : ''}
-                                            onchange="togglePermissionCell('${esc(role)}', '${esc(permission)}', this.checked)"
-                                        >
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                </td>
-                            `;
-                        }).join('')}
+                        ${pageRoleCells}
                     </tr>
+                    ${childRows}
                 `;
             }).join('');
 
             return `
-                <tr class="matrix-group-row ${isCollapsed ? 'is-collapsed' : ''}" data-group-key="${esc(groupKey)}">
-                    <td colspan="${columnCount}">
-                        <div class="matrix-group-header">
-                            <button type="button" class="matrix-group-toggle" onclick="togglePermissionGroup('${encodedGroupKey}')">
-                                <span class="material-icons-round">expand_more</span>
-                                <span class="matrix-group-title">${esc(groupName)}</span>
-                            </button>
-                            <div class="matrix-group-tools">
-                                <span class="matrix-group-count">${perms.length}</span>
-                            </div>
-                        </div>
+                <tr class="matrix-tree-section-row ${sectionCollapsed ? 'is-collapsed' : ''}" data-section-key="${esc(section.key)}">
+                    <td class="matrix-permission-name sticky-col matrix-tree-section-cell">
+                        <button type="button" class="matrix-tree-section-toggle" onclick="togglePermissionSection('${encodeURIComponent(section.key)}')">
+                            <span class="material-icons-round">expand_more</span>
+                            <span class="matrix-tree-section-name">${esc(section.label)}</span>
+                        </button>
+                        <span class="matrix-group-count">${sectionPerms.length}</span>
                     </td>
+                    ${sectionRoleCells}
                 </tr>
-                ${permissionRows}
+                ${pagesHtml}
             `;
         }).join('');
+
+        applyIndeterminateStates();
     }
 
     function bindToolbar() {
@@ -260,9 +597,7 @@
         if (searchInput) {
             searchInput.addEventListener('input', (event) => {
                 const value = event && event.target ? event.target.value : '';
-                if (state.searchTimer) {
-                    window.clearTimeout(state.searchTimer);
-                }
+                if (state.searchTimer) window.clearTimeout(state.searchTimer);
                 state.searchTimer = window.setTimeout(() => {
                     state.filterQuery = String(value || '');
                     renderMatrix();
@@ -283,6 +618,7 @@
 
     async function load(force = false) {
         bindToolbar();
+        renderCategoryTabs();
 
         if (state.initialized && !force) {
             renderGroupOptions();
@@ -295,14 +631,20 @@
             body.innerHTML = '<tr><td class="center-text muted" colspan="6" style="padding: 36px;">در حال بارگذاری ماتریس دسترسی...</td></tr>';
         }
 
-        const payload = await request(MATRIX_ENDPOINT);
+        const payload = await request(matrixUrl());
+        state.activeCategory = normalizeCategory(payload && payload.category);
+        if (Array.isArray(payload && payload.categories) && payload.categories.length) {
+            state.categories = payload.categories.map((item) => normalizeCategory(item));
+        }
         state.roles = Array.isArray(payload.roles) ? payload.roles : [];
         state.permissions = Array.isArray(payload.permissions) ? payload.permissions : [];
         state.matrix = payload.matrix || {};
+        state.collapsedSections = new Set();
         state.collapsedGroups = new Set();
 
         ensureMatrixDefaults();
         state.initialized = true;
+        renderCategoryTabs();
         renderGroupOptions();
         renderMatrix();
     }
@@ -310,34 +652,63 @@
     window.togglePermissionCell = function togglePermissionCell(role, permission, checked) {
         const roleKey = normalizeRole(role);
         if (roleKey === 'admin') return;
-
-        if (!state.matrix[roleKey]) {
-            state.matrix[roleKey] = {};
-        }
+        if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
         state.matrix[roleKey][permission] = Boolean(checked);
+        renderMatrix();
     };
 
-    window.togglePermissionGroup = function togglePermissionGroup(encodedKey) {
-        const groupKey = decodeURIComponent(String(encodedKey || ''));
-        if (!groupKey) return;
+    window.togglePermissionSectionRole = function togglePermissionSectionRole(encodedSectionKey, role, checked) {
+        const sectionKey = decodeURIComponent(String(encodedSectionKey || ''));
+        const roleKey = normalizeRole(role);
+        if (!sectionKey || roleKey === 'admin') return;
+        const perms = state.renderedSections[sectionKey] || [];
+        if (!perms.length) return;
+        if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
+        perms.forEach((permission) => {
+            state.matrix[roleKey][permission] = Boolean(checked);
+        });
+        renderMatrix();
+    };
 
-        if (state.collapsedGroups.has(groupKey)) {
-            state.collapsedGroups.delete(groupKey);
-        } else {
-            state.collapsedGroups.add(groupKey);
-        }
+    window.togglePermissionGroupRole = function togglePermissionGroupRole(encodedPageKey, role, checked) {
+        const pageKey = decodeURIComponent(String(encodedPageKey || ''));
+        const roleKey = normalizeRole(role);
+        if (!pageKey || roleKey === 'admin') return;
+        const perms = state.renderedPages[pageKey] || [];
+        if (!perms.length) return;
+        if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
+        perms.forEach((permission) => {
+            state.matrix[roleKey][permission] = Boolean(checked);
+        });
+        renderMatrix();
+    };
 
+    window.togglePermissionSection = function togglePermissionSection(encodedSectionKey) {
+        const sectionKey = decodeURIComponent(String(encodedSectionKey || ''));
+        if (!sectionKey) return;
+        if (state.collapsedSections.has(sectionKey)) state.collapsedSections.delete(sectionKey);
+        else state.collapsedSections.add(sectionKey);
+        renderMatrix();
+    };
+
+    window.togglePermissionGroup = function togglePermissionGroup(encodedPageKey) {
+        const pageKey = decodeURIComponent(String(encodedPageKey || ''));
+        if (!pageKey) return;
+        if (state.collapsedGroups.has(pageKey)) state.collapsedGroups.delete(pageKey);
+        else state.collapsedGroups.add(pageKey);
         renderMatrix();
     };
 
     window.expandAllPermissionGroups = function expandAllPermissionGroups() {
+        state.collapsedSections.clear();
         state.collapsedGroups.clear();
         renderMatrix();
     };
 
     window.collapseAllPermissionGroups = function collapseAllPermissionGroups() {
-        const groups = new Set(getFilteredPermissions().map((permission) => permissionGroupKey(permission)));
-        state.collapsedGroups = groups;
+        const tree = buildPermissionTree(getFilteredPermissions());
+        state.collapsedSections = new Set(tree.map((section) => section.key));
+        state.collapsedGroups = new Set(tree.flatMap((section) => section.pages.map((page) => page.key)));
         renderMatrix();
     };
 
@@ -360,15 +731,27 @@
     window.savePermissionsMatrix = async function savePermissionsMatrix() {
         try {
             ensureMatrixDefaults();
-            await request(MATRIX_ENDPOINT, {
+            await request(matrixUrl(), {
                 method: 'POST',
                 body: JSON.stringify({ matrix: state.matrix }),
             });
-            notify('success', 'ماتریس سطح دسترسی ذخیره شد');
+            notify('success', `ماتریس سطح دسترسی ${categoryLabel(state.activeCategory)} ذخیره شد`);
             await load(true);
         } catch (error) {
             notify('error', error.message || 'ذخیره ماتریس ناموفق بود');
         }
+    };
+
+    window.switchPermissionsCategory = async function switchPermissionsCategory(category, btnEl) {
+        const target = normalizeCategory(category);
+        if (target === state.activeCategory && state.initialized) {
+            renderCategoryTabs(btnEl || null);
+            return;
+        }
+        state.activeCategory = target;
+        state.initialized = false;
+        renderCategoryTabs(btnEl || null);
+        await window.initPermissionsSettings(true);
     };
 
     window.initPermissionsSettings = async function initPermissionsSettings(force = false) {
