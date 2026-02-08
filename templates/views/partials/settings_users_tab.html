@@ -1,4 +1,4 @@
-<div class="archive-card">
+<div class="archive-card" id="settingsUsersTabRoot">
   <div class="archive-header">
     <div class="header-content">
       <h2 class="archive-title">
@@ -8,7 +8,7 @@
       <p class="archive-subtitle">ایجاد، ویرایش و مدیریت کاربران سیستم</p>
     </div>
     <div class="header-actions">
-      <button class="btn-primary" onclick="openCreateUserModal()">
+      <button class="btn-primary" type="button" data-users-action="open-create-user-modal">
         <span class="material-icons-round">add</span>
         کاربر جدید
       </button>
@@ -59,7 +59,7 @@
           <option value="20">20</option>
           <option value="50">50</option>
         </select>
-        <button type="button" class="btn-archive-icon" onclick="refreshUsersTable()">
+        <button type="button" class="btn-archive-icon" data-users-action="refresh-users-table">
           <span class="material-icons-round" style="font-size: 18px;">refresh</span>
           بروزرسانی
         </button>
@@ -96,9 +96,9 @@
     <div class="users-table-footer">
       <div id="usersTableMeta" class="users-table-meta">در حال بارگذاری کاربران...</div>
       <div class="users-pagination">
-        <button type="button" id="usersPrevPageBtn" class="users-page-nav" onclick="changeUsersPage(-1)">قبلی</button>
+        <button type="button" id="usersPrevPageBtn" class="users-page-nav" data-users-action="change-users-page" data-step="-1">قبلی</button>
         <div id="usersPageButtons" class="users-page-buttons"></div>
-        <button type="button" id="usersNextPageBtn" class="users-page-nav" onclick="changeUsersPage(1)">بعدی</button>
+        <button type="button" id="usersNextPageBtn" class="users-page-nav" data-users-action="change-users-page" data-step="1">بعدی</button>
       </div>
     </div>
   </div>
@@ -108,7 +108,7 @@
   <div class="modal-content">
     <div class="modal-header">
       <h3 id="userModalTitle">ایجاد کاربر جدید</h3>
-      <button class="modal-close" onclick="closeUserModal()">
+      <button class="modal-close" data-users-action="close-user-modal">
         <span class="material-icons-round">close</span>
       </button>
     </div>
@@ -169,8 +169,8 @@
     </form>
 
     <div class="modal-footer">
-      <button type="button" class="btn-secondary" onclick="closeUserModal()">انصراف</button>
-      <button type="button" class="btn-primary" onclick="saveUser()">ذخیره</button>
+      <button type="button" class="btn-secondary" data-users-action="close-user-modal">انصراف</button>
+      <button type="button" class="btn-primary" data-users-action="save-user">ذخیره</button>
     </div>
   </div>
 </div>
@@ -179,7 +179,7 @@
   <div class="modal-content modal-sm">
     <div class="modal-header">
       <h3>تأیید حذف</h3>
-      <button class="modal-close" onclick="closeDeleteModal()">
+      <button class="modal-close" data-users-action="close-delete-modal">
         <span class="material-icons-round">close</span>
       </button>
     </div>
@@ -190,8 +190,8 @@
     </div>
 
     <div class="modal-footer">
-      <button type="button" class="btn-secondary" onclick="closeDeleteModal()">انصراف</button>
-      <button type="button" class="btn-danger" onclick="confirmDelete()">حذف</button>
+      <button type="button" class="btn-secondary" data-users-action="close-delete-modal">انصراف</button>
+      <button type="button" class="btn-danger" data-users-action="confirm-delete-user">حذف</button>
     </div>
   </div>
 </div>
@@ -200,7 +200,7 @@
   <div class="modal-content modal-lg">
     <div class="modal-header">
       <h3>مدیریت دسترسی</h3>
-      <button class="modal-close" onclick="closeUserAccessModal()">
+      <button class="modal-close" data-users-action="close-user-access-modal">
         <span class="material-icons-round">close</span>
       </button>
     </div>
@@ -293,9 +293,9 @@
     </div>
 
     <div class="modal-footer">
-      <button type="button" class="btn-secondary" onclick="closeUserAccessModal()">انصراف</button>
-      <button type="button" id="userAccessClearBtn" class="btn-secondary" onclick="clearUserAccessScope()">حذف محدودیت‌ها</button>
-      <button type="button" id="userAccessSaveBtn" class="btn-primary" onclick="saveUserAccessScope()">ذخیره</button>
+      <button type="button" class="btn-secondary" data-users-action="close-user-access-modal">انصراف</button>
+      <button type="button" id="userAccessClearBtn" class="btn-secondary" data-users-action="clear-user-access-scope">حذف محدودیت‌ها</button>
+      <button type="button" id="userAccessSaveBtn" class="btn-primary" data-users-action="save-user-access-scope">ذخیره</button>
     </div>
   </div>
 </div>
@@ -353,6 +353,7 @@ const organizationsState = {
 };
 const usersState = {
   initialized: false,
+  actionsBound: false,
   loading: false,
   requestId: 0,
   page: 1,
@@ -673,7 +674,7 @@ function renderUsersPagination() {
     if (item === '...') return '<span class="users-page-ellipsis">...</span>';
     const num = Number(item);
     const active = num === usersState.page ? 'active' : '';
-    return `<button type="button" class="users-page-btn ${active}" onclick="goToUsersPage(${num})">${num}</button>`;
+    return `<button type="button" class="users-page-btn ${active}" data-users-action="go-users-page" data-page="${num}">${num}</button>`;
   }).join('');
 }
 
@@ -690,6 +691,7 @@ function updateUsersMetaText() {
 
 function bindUsersToolbar() {
   if (usersState.initialized) return;
+  const root = document.getElementById('settingsUsersTabRoot');
   const searchInput = document.getElementById('usersSearchInput');
   const roleFilter = document.getElementById('usersRoleFilter');
   const statusFilter = document.getElementById('usersStatusFilter');
@@ -722,6 +724,75 @@ function bindUsersToolbar() {
   }
   if (orgFilter) orgFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
   if (pageSizeEl) pageSizeEl.addEventListener('change', () => loadUsers({ resetPage: true }));
+
+  if (root && !usersState.actionsBound) {
+    root.addEventListener('click', (event) => {
+      const actionEl = event && event.target && event.target.closest
+        ? event.target.closest('[data-users-action]')
+        : null;
+      if (!actionEl || !root.contains(actionEl)) return;
+
+      const action = String(actionEl.dataset.usersAction || '').trim();
+      if (!action) return;
+
+      switch (action) {
+        case 'open-create-user-modal':
+          openCreateUserModal();
+          break;
+        case 'refresh-users-table':
+          refreshUsersTable();
+          break;
+        case 'change-users-page':
+          changeUsersPage(Number(actionEl.dataset.step || 0));
+          break;
+        case 'go-users-page':
+          goToUsersPage(Number(actionEl.dataset.page || 0));
+          break;
+        case 'close-user-modal':
+          closeUserModal();
+          break;
+        case 'save-user':
+          saveUser();
+          break;
+        case 'close-delete-modal':
+          closeDeleteModal();
+          break;
+        case 'confirm-delete-user':
+          confirmDelete();
+          break;
+        case 'close-user-access-modal':
+          closeUserAccessModal();
+          break;
+        case 'clear-user-access-scope':
+          clearUserAccessScope();
+          break;
+        case 'save-user-access-scope':
+          saveUserAccessScope();
+          break;
+        case 'toggle-user-action-menu':
+          toggleUserActionMenu(event, Number(actionEl.dataset.userId || 0));
+          break;
+        case 'open-user-access-modal':
+          closeAllUserActionMenus();
+          openUserAccessModal(Number(actionEl.dataset.userId || 0));
+          break;
+        case 'edit-user':
+          closeAllUserActionMenus();
+          editUser(Number(actionEl.dataset.userId || 0));
+          break;
+        case 'delete-user':
+          closeAllUserActionMenus();
+          deleteUser(Number(actionEl.dataset.userId || 0));
+          break;
+        case 'remove-access-tag':
+          removeAccessTag(actionEl.dataset.tagType || '', actionEl.dataset.tagCode || '');
+          break;
+        default:
+          break;
+      }
+    });
+    usersState.actionsBound = true;
+  }
 
   if (!usersState.menuBound) {
     document.addEventListener('click', (event) => {
@@ -900,7 +971,7 @@ async function loadUsers(options = {}) {
               <button
                 type="button"
                 class="users-kebab-btn"
-                onclick="toggleUserActionMenu(event, ${user.id})"
+                data-users-action="toggle-user-action-menu" data-user-id="${user.id}"
                 aria-label="عملیات"
                 aria-haspopup="true"
                 aria-expanded="false"
@@ -909,15 +980,15 @@ async function loadUsers(options = {}) {
                 <span class="material-icons-round">more_vert</span>
               </button>
               <div class="users-kebab-menu" id="${actionMenuId}" role="menu">
-                <button type="button" class="users-kebab-item" onclick="closeAllUserActionMenus(); openUserAccessModal(${user.id})" ${isAdmin ? 'disabled' : ''}>
+                <button type="button" class="users-kebab-item" data-users-action="open-user-access-modal" data-user-id="${user.id}" ${isAdmin ? 'disabled' : ''}>
                   <span class="material-icons-round">vpn_key</span>
                   مدیریت دسترسی
                 </button>
-                <button type="button" class="users-kebab-item" onclick="closeAllUserActionMenus(); editUser(${user.id})">
+                <button type="button" class="users-kebab-item" data-users-action="edit-user" data-user-id="${user.id}">
                   <span class="material-icons-round">edit</span>
                   ویرایش کاربر
                 </button>
-                <button type="button" class="users-kebab-item danger" onclick="closeAllUserActionMenus(); deleteUser(${user.id})">
+                <button type="button" class="users-kebab-item danger" data-users-action="delete-user" data-user-id="${user.id}">
                   <span class="material-icons-round">delete</span>
                   حذف کاربر
                 </button>
@@ -1366,7 +1437,7 @@ function renderAccessTags(type) {
     return `
       <span class="tag-item" title="${escapeHtml(title)}">
         <span class="tag-text">${escapeHtml(code)}</span>
-        <button type="button" class="tag-remove" onclick="removeAccessTag('${type}', '${escapeHtml(code)}')" aria-label="حذف">&times;</button>
+        <button type="button" class="tag-remove" data-users-action="remove-access-tag" data-tag-type="${type}" data-tag-code="${escapeHtml(code)}" aria-label="حذف">&times;</button>
       </span>
     `;
   }).join('');

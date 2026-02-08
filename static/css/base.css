@@ -1,0 +1,8 @@
+:root {
+    --lazy-placeholder-bg: #f8fafc;
+    --lazy-placeholder-border: #e2e8f0;
+}
+
+html, body {
+    min-height: 100%;
+}

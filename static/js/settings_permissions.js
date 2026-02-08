@@ -61,6 +61,7 @@
     const state = {
         initialized: false,
         toolbarBound: false,
+        actionsBound: false,
         activeCategory: DEFAULT_CATEGORY,
         categories: KNOWN_CATEGORIES.slice(),
         roles: [],
@@ -443,7 +444,9 @@
                         ${checked}
                         ${disabled}
                         ${indeterminate}
-                        onchange="${handlerName}('${encodeURIComponent(scopeKey)}', '${esc(roleKey)}', this.checked)"
+                        data-permissions-action="${esc(handlerName)}"
+                        data-scope-key="${encodeURIComponent(scopeKey)}"
+                        data-role-key="${esc(roleKey)}"
                     >
                     <span class="toggle-slider"></span>
                 </label>
@@ -505,7 +508,7 @@
             const sectionCollapsed = state.collapsedSections.has(section.key);
             const sectionPerms = state.renderedSections[section.key] || [];
             const sectionRoleCells = state.roles
-                .map((role) => renderAggregateRoleCell(section.key, role, sectionPerms, 'togglePermissionSectionRole'))
+                .map((role) => renderAggregateRoleCell(section.key, role, sectionPerms, 'toggle-permission-section-role'))
                 .join('');
 
             const pagesHtml = section.pages.map((page) => {
@@ -513,7 +516,7 @@
                 const hiddenBySection = sectionCollapsed;
                 const pagePerms = state.renderedPages[page.key] || [];
                 const pageRoleCells = state.roles
-                    .map((role) => renderAggregateRoleCell(page.key, role, pagePerms, 'togglePermissionGroupRole'))
+                    .map((role) => renderAggregateRoleCell(page.key, role, pagePerms, 'toggle-permission-group-role'))
                     .join('');
 
                 const pageHiddenClass = hiddenBySection ? 'is-collapsed' : '';
@@ -543,7 +546,9 @@
                                                 type="checkbox"
                                                 ${checked ? 'checked' : ''}
                                                 ${isAdmin ? 'disabled' : ''}
-                                                onchange="togglePermissionCell('${esc(roleKey)}', '${esc(permission)}', this.checked)"
+                                                data-permissions-action="toggle-permission-cell"
+                                                data-role-key="${esc(roleKey)}"
+                                                data-permission="${encodeURIComponent(permission)}"
                                             >
                                             <span class="toggle-slider"></span>
                                         </label>
@@ -557,7 +562,7 @@
                 return `
                     <tr class="matrix-tree-group-row ${pageHiddenClass} ${pageCollapsedClass}" data-group-key="${esc(page.key)}" data-section-parent="${esc(section.key)}">
                         <td class="matrix-permission-name sticky-col matrix-tree-group-cell">
-                            <button type="button" class="matrix-tree-group-toggle" onclick="togglePermissionGroup('${encodeURIComponent(page.key)}')">
+                            <button type="button" class="matrix-tree-group-toggle" data-permissions-action="toggle-permission-group" data-page-key="${encodeURIComponent(page.key)}">
                                 <span class="material-icons-round">expand_more</span>
                                 <span class="matrix-tree-group-name">${esc(page.label)}</span>
                             </button>
@@ -573,7 +578,7 @@
             return `
                 <tr class="matrix-tree-section-row ${sectionCollapsed ? 'is-collapsed' : ''}" data-section-key="${esc(section.key)}">
                     <td class="matrix-permission-name sticky-col matrix-tree-section-cell">
-                        <button type="button" class="matrix-tree-section-toggle" onclick="togglePermissionSection('${encodeURIComponent(section.key)}')">
+                        <button type="button" class="matrix-tree-section-toggle" data-permissions-action="toggle-permission-section" data-section-key="${encodeURIComponent(section.key)}">
                             <span class="material-icons-round">expand_more</span>
                             <span class="matrix-tree-section-name">${esc(section.label)}</span>
                         </button>
@@ -591,6 +596,7 @@
     function bindToolbar() {
         if (state.toolbarBound) return;
 
+        const root = document.getElementById('settingsPermissionsTabRoot');
         const searchInput = document.getElementById('permissionsSearchInput');
         const groupSelect = document.getElementById('permissionsResourceFilter');
 
@@ -611,6 +617,84 @@
                 state.filterGroup = String(event && event.target ? event.target.value : '');
                 renderMatrix();
             });
+        }
+
+        if (root && !state.actionsBound) {
+            root.addEventListener('click', (event) => {
+                const actionEl = event && event.target && event.target.closest
+                    ? event.target.closest('[data-permissions-action]')
+                    : null;
+                if (!actionEl || !root.contains(actionEl)) return;
+
+                const action = String(actionEl.dataset.permissionsAction || '').trim();
+                if (!action) return;
+
+                switch (action) {
+                    case 'init-permissions-settings':
+                        window.initPermissionsSettings(String(actionEl.dataset.force || '').toLowerCase() === 'true');
+                        break;
+                    case 'switch-permissions-category':
+                        window.switchPermissionsCategory(actionEl.dataset.permissionsCategory || '', actionEl);
+                        break;
+                    case 'expand-all-permission-groups':
+                        window.expandAllPermissionGroups();
+                        break;
+                    case 'collapse-all-permission-groups':
+                        window.collapseAllPermissionGroups();
+                        break;
+                    case 'reset-permission-filters':
+                        window.resetPermissionFilters();
+                        break;
+                    case 'save-permissions-matrix':
+                        window.savePermissionsMatrix();
+                        break;
+                    case 'toggle-permission-group':
+                        window.togglePermissionGroup(actionEl.dataset.pageKey || '');
+                        break;
+                    case 'toggle-permission-section':
+                        window.togglePermissionSection(actionEl.dataset.sectionKey || '');
+                        break;
+                    default:
+                        break;
+                }
+            });
+
+            root.addEventListener('change', (event) => {
+                const actionEl = event && event.target && event.target.closest
+                    ? event.target.closest('[data-permissions-action]')
+                    : null;
+                if (!actionEl || !root.contains(actionEl)) return;
+
+                const action = String(actionEl.dataset.permissionsAction || '').trim();
+                if (!action) return;
+
+                switch (action) {
+                    case 'toggle-permission-cell':
+                        window.togglePermissionCell(
+                            actionEl.dataset.roleKey || '',
+                            decodeURIComponent(String(actionEl.dataset.permission || '')),
+                            Boolean(actionEl.checked),
+                        );
+                        break;
+                    case 'toggle-permission-group-role':
+                        window.togglePermissionGroupRole(
+                            actionEl.dataset.scopeKey || '',
+                            actionEl.dataset.roleKey || '',
+                            Boolean(actionEl.checked),
+                        );
+                        break;
+                    case 'toggle-permission-section-role':
+                        window.togglePermissionSectionRole(
+                            actionEl.dataset.scopeKey || '',
+                            actionEl.dataset.roleKey || '',
+                            Boolean(actionEl.checked),
+                        );
+                        break;
+                    default:
+                        break;
+                }
+            });
+            state.actionsBound = true;
         }
 
         state.toolbarBound = true;

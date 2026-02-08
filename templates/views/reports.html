@@ -6,7 +6,7 @@
                 <span class="material-icons-round" style="color:#ec4899; font-size:28px;">analytics</span>
                 گزارش‌ها و تحلیل‌ها
             </div>
-            <button class="btn-archive-icon" onclick="exportReportToExcel()" title="دانلود خروجی اکسل">
+            <button class="btn-archive-icon" type="button" data-report-action="export" title="دانلود خروجی اکسل">
                 <span class="material-icons-round">file_download</span> خروجی Excel
             </button>
         </div>
@@ -51,7 +51,7 @@
                 </div>
 
                 <div style="display:flex; align-items:flex-end;">
-                    <button class="btn-archive-primary" style="width:100%; justify-content:center;" onclick="generateReport()">
+                    <button class="btn-archive-primary" type="button" style="width:100%; justify-content:center;" data-report-action="generate">
                         <span class="material-icons-round">manage_search</span> تهیه گزارش
                     </button>
                 </div>
@@ -110,138 +110,5 @@
         .rpt-lbl { font-size: 0.85rem; opacity: 0.9; }
     </style>
 
-    <script>
-        // پر کردن دراپ‌داون‌ها هنگام لود شدن صفحه
-        // این تابع باید وقتی ویو نمایش داده می‌شود یا یکبار در init صدا زده شود
-        function initReportsView() {
-            if(window.CACHE && window.CACHE.projects) {
-                const projSel = document.getElementById('rpt-project');
-                if(projSel.options.length <= 1) {
-                    window.CACHE.projects.forEach(p => {
-                        projSel.innerHTML += `<option value="${p.code}">${p.code} - ${p.project_name || p.name || ''}</option>`;
-                    });
-                }
-            }
-            if(window.CACHE && window.CACHE.disciplines) {
-                const discSel = document.getElementById('rpt-discipline');
-                if(discSel.options.length <= 1) {
-                    window.CACHE.disciplines.forEach(d => {
-                        discSel.innerHTML += `<option value="${d.code}">${d.name_e || d.name || d.code}</option>`;
-                    });
-                }
-            }
-        }
-
-        async function generateReport() {
-            const tbody = document.getElementById('rpt-tbody');
-            tbody.innerHTML = '<tr><td colspan="7" class="center-text">⏳ در حال پردازش و دریافت اطلاعات...</td></tr>';
-
-            // ساخت پارامترهای جستجو
-            const params = new URLSearchParams();
-            const project = document.getElementById('rpt-project').value;
-            const disc = document.getElementById('rpt-discipline').value;
-            const status = document.getElementById('rpt-status').value;
-            const dateStart = document.getElementById('rpt-date-start').value;
-            const dateEnd = document.getElementById('rpt-date-end').value;
-            
-            if(project) params.append('project_code', project);
-            if(status) params.append('status', status);
-            params.append('page', '1');
-            params.append('size', '1000');
-
-            try {
-                const res = await fetchWithAuth(`/api/v1/mdr/search?${params.toString()}`);
-                const data = await res.json();
-
-                let items = data.items || [];
-
-                if (disc) {
-                    items = items.filter(item => getDisciplineFromCode(item.doc_number) === disc);
-                }
-
-                if (dateStart) {
-                    const start = new Date(`${dateStart}T00:00:00`);
-                    items = items.filter(item => item.created_at && new Date(item.created_at) >= start);
-                }
-
-                if (dateEnd) {
-                    const end = new Date(`${dateEnd}T23:59:59`);
-                    items = items.filter(item => item.created_at && new Date(item.created_at) <= end);
-                }
-
-                if(items.length > 0) {
-                    renderReportTable(items);
-                    calculateKPIs(items);
-                } else {
-                    tbody.innerHTML = '<tr><td colspan="7" class="center-text" style="color:#ef4444;">هیچ سندی با این مشخصات یافت نشد.</td></tr>';
-                    resetKPIs();
-                }
-
-            } catch(e) {
-                console.error(e);
-                tbody.innerHTML = '<tr><td colspan="7" class="center-text text-danger">خطا در ارتباط با سرور</td></tr>';
-            }
-        }
-
-        function renderReportTable(items) {
-            const tbody = document.getElementById('rpt-tbody');
-            tbody.innerHTML = items.map((item, index) => `
-                <tr>
-                    <td>${index + 1}</td>
-                    <td class="ltr-cell font-mono bold">${item.doc_number}</td>
-                    <td>${item.doc_title_p || item.doc_title_e || '-'}</td>
-                    <td>${getDisciplineFromCode(item.doc_number)}</td>
-                    <td class="center-text"><span class="rev-badge">${item.revision}</span></td>
-                    <td class="center-text">${item.status}</td>
-                    <td class="center-text" style="font-size:0.8rem;">
-                        ${item.created_at ? new Date(item.created_at).toLocaleDateString('fa-IR') : '-'}
-                    </td>
-                </tr>
-            `).join('');
-        }
-
-        function calculateKPIs(items) {
-            const total = items.length;
-            
-            // محاسبه تعداد IFC
-            const ifcCount = items.filter(i => i.status === 'IFC' || i.status === 'AB').length;
-            const progress = total > 0 ? Math.round((ifcCount / total) * 100) : 0;
-            
-            // محاسبه میانگین ریویژن (فقط یک تخمین عددی ساده)
-            // فرض: A=0, B=1, ... 00=0, 01=1
-            // اینجا فقط نمایشی است
-            
-            document.getElementById('rpt-total-count').innerText = total;
-            document.getElementById('rpt-ifc-count').innerText = `${progress}%`;
-            document.getElementById('rpt-rev-avg').innerText = '-'; // نیاز به منطق پیچیده‌تر دارد
-        }
-        
-        function resetKPIs() {
-            document.getElementById('rpt-total-count').innerText = '0';
-            document.getElementById('rpt-ifc-count').innerText = '0%';
-        }
-
-        function getDisciplineFromCode(docNum) {
-            if(!docNum) return '-';
-            const parts = docNum.split('-');
-            if (parts.length < 2) return '-';
-            const middle = parts[1] || '';
-            if (middle.length < 6) return '-';
-
-            const serialMatch = middle.match(/(\d{2})$/);
-            const serialLen = serialMatch ? 2 : 0;
-            const pkg = middle.slice(2, middle.length - serialLen);
-            return pkg.length >= 2 ? pkg.slice(0, 2) : '-';
-        }
-
-        function exportReportToExcel() {
-            const table = document.getElementById('report-table');
-            // استفاده از کتابخانه SheetJS که در base.html لود شده
-            const wb = XLSX.utils.table_to_book(table, {sheet: "Report"});
-            XLSX.writeFile(wb, `MDR_Report_${new Date().toLocaleDateString('fa-IR')}.xlsx`);
-        }
-
-        // Initialize immediately if visible (or call from app.js navigation)
-        // setTimeout(initReportsView, 500);
-    </script>
+    <script src="/static/js/views/reports_logic.js?v=20260209a"></script>
 </div>

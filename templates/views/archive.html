@@ -6,7 +6,7 @@
                 <span class="material-icons-round" style="color:#3b82f6; font-size:28px;">inventory_2</span>
                 آرشیو فایل‌های پروژه
             </div>
-            <button class="btn-archive-primary" onclick="archiveOpenModal()">
+            <button class="btn-archive-primary" type="button" data-archive-action="open-modal">
                 <span class="material-icons-round">cloud_upload</span> آپلود فایل
             </button>
         </div>
@@ -14,30 +14,30 @@
         <div class="archive-toolbar">
             <div class="archive-search-box">
                 <span class="material-icons-round archive-search-icon">search</span>
-                <input type="text" id="archiveSearchInput" class="archive-search-input" placeholder="جستجو..." onkeyup="archiveDebouncedSearch()">
+                <input type="text" id="archiveSearchInput" class="archive-search-input" placeholder="جستجو...">
             </div>
             <div class="archive-filter-group">
-                <select id="archiveProjectFilter" class="archive-filter-select" onchange="archiveApplyFilters()">
+                <select id="archiveProjectFilter" class="archive-filter-select">
                     <option value="">All Projects</option>
                 </select>
-                <select id="archiveDisciplineFilter" class="archive-filter-select" onchange="archiveApplyFilters()">
+                <select id="archiveDisciplineFilter" class="archive-filter-select">
                     <option value="">All Disciplines</option>
                 </select>
-                <select id="archiveStatusFilter" class="archive-filter-select" onchange="archiveApplyFilters()">
+                <select id="archiveStatusFilter" class="archive-filter-select">
                     <option value="">All Statuses</option>
                     <option value="IFA">IFA</option>
                     <option value="IFC">IFC</option>
                     <option value="IFI">IFI</option>
                     <option value="AB">AB</option>
                 </select>
-                <input type="date" id="archiveDateFromFilter" class="archive-filter-date" onchange="archiveApplyFilters()">
-                <input type="date" id="archiveDateToFilter" class="archive-filter-date" onchange="archiveApplyFilters()">
-                <button class="btn-archive-icon" type="button" onclick="archiveResetFilters()" title="Clear filters">
+                <input type="date" id="archiveDateFromFilter" class="archive-filter-date">
+                <input type="date" id="archiveDateToFilter" class="archive-filter-date">
+                <button class="btn-archive-icon" type="button" data-archive-action="reset-filters" title="Clear filters">
                     <span class="material-icons-round">filter_alt_off</span>
                 </button>
             </div>
             <div style="flex:1;"></div>
-            <button class="btn-archive-icon" onclick="archiveLoadFiles()" title="بروزرسانی">
+            <button class="btn-archive-icon" type="button" data-archive-action="refresh-list" title="بروزرسانی">
                 <span class="material-icons-round">refresh</span>
             </button>
         </div>
@@ -79,11 +79,11 @@
                 <h3 style="margin:0; font-size:1.1rem; color:#1f2937;">آپلود و ثبت مدرک</h3>
             </div>
             
-            <form id="archiveUploadForm" onsubmit="archiveHandleUpload(event)">
+            <form id="archiveUploadForm">
                 <input type="hidden" id="realDocId" name="document_id">
 
                 <div class="archive-upload-grid">
-                    <div id="archivePdfDropzone" data-kind="pdf" class="am-dropzone archive-dropzone is-pdf" onclick="document.getElementById('archivePdfFileInput').click()">
+                    <div id="archivePdfDropzone" data-kind="pdf" class="am-dropzone archive-dropzone is-pdf">
                         <span class="material-icons-round" style="font-size:36px; color:#dc2626;">picture_as_pdf</span>
                         <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">خروجی غیرقابل ویرایش (اجباری)</p>
                         <p class="archive-dropzone-sub">PDF / تصویر / DWF / DWFX</p>
@@ -91,7 +91,7 @@
                         <div id="archivePdfValidation" class="archive-file-validation"></div>
                     </div>
 
-                    <div id="archiveNativeDropzone" data-kind="native" class="am-dropzone archive-dropzone is-native" onclick="document.getElementById('archiveNativeFileInput').click()">
+                    <div id="archiveNativeDropzone" data-kind="native" class="am-dropzone archive-dropzone is-native">
                         <span class="material-icons-round" style="font-size:36px; color:#2563eb;">description</span>
                         <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">فایل قابل ویرایش (اختیاری)</p>
                         <p class="archive-dropzone-sub">DWG / DOCX / XLSX / ...</p>
@@ -99,11 +99,11 @@
                         <div id="archiveNativeValidation" class="archive-file-validation"></div>
                     </div>
                 </div>
-                <input type="file" id="archivePdfFileInput" name="file" accept=".pdf,.dwf,.dwfx,image/*,application/pdf,image/png,image/jpeg,image/webp,image/tiff,image/bmp,image/gif" hidden onchange="archiveOnFileSelect(this, 'pdf')">
-                <input type="file" id="archiveNativeFileInput" name="native_file" hidden onchange="archiveOnFileSelect(this, 'native')">
+                <input type="file" id="archivePdfFileInput" name="file" accept=".pdf,.dwf,.dwfx,image/*,application/pdf,image/png,image/jpeg,image/webp,image/tiff,image/bmp,image/gif" hidden>
+                <input type="file" id="archiveNativeFileInput" name="native_file" hidden>
                 <div class="archive-upload-hint">Drag & Drop یا کلیک کنید. فایل خروجی باید غیرقابل ویرایش باشد و فایل Native برای نسخه قابل ویرایش است.</div>
 
-                <button type="button" id="toggleModeBtn" class="mode-toggle-btn" onclick="toggleRegistrationMode()">
+                <button type="button" id="toggleModeBtn" class="mode-toggle-btn" data-archive-action="toggle-mode">
                     <span class="material-icons-round">tune</span> تغییر به حالت ثبت کامل (پیشرفته)
                 </button>
 
@@ -113,8 +113,8 @@
                         <div style="margin-bottom:10px;">
                             <label class="form-label-sm">شماره سند (Doc Code):</label>
                             <div style="display:flex; gap:5px;">
-                                <input type="text" id="smartDocCode" class="archive-search-input" placeholder="T202-ECAR0101-TGEN" list="archiveDocCodeSuggestions" oninput="archiveOnDocCodeInput()" onkeydown="archiveHandleDocCodeKey(event)" onchange="checkDocStatus()">
-                                <button type="button" class="btn-archive-icon" onclick="checkDocStatus()"><span class="material-icons-round">search</span></button>
+                                <input type="text" id="smartDocCode" class="archive-search-input" placeholder="T202-ECAR0101-TGEN" list="archiveDocCodeSuggestions">
+                                <button type="button" class="btn-archive-icon" data-archive-action="check-doc-status"><span class="material-icons-round">search</span></button>
                             </div>
                             <datalist id="archiveDocCodeSuggestions"></datalist>
                             <div id="docStatusMsg" style="font-size:0.75rem; margin-top:5px; min-height:18px;"></div>
@@ -132,26 +132,26 @@
                         <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
                             <div>
                                 <label class="form-label-sm">Project</label>
-                                <select name="project_code" id="regProject" class="archive-search-input" onchange="onProjectChange()"></select>
+                                <select name="project_code" id="regProject" class="archive-search-input"></select>
                             </div>
                             <div>
                                 <label class="form-label-sm">MDR Code</label>
-                                <select name="mdr_code" id="regMdr" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                                <select name="mdr_code" id="regMdr" class="archive-search-input"></select>
                             </div>
                             <div>
                                 <label class="form-label-sm">Phase</label>
-                                <select name="phase" id="regPhase" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                                <select name="phase" id="regPhase" class="archive-search-input"></select>
                             </div>
                         </div>
                         
                         <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
                             <div>
                                 <label class="form-label-sm">Discipline</label>
-                                <select name="discipline" id="regDisc" class="archive-search-input" onchange="onDisciplineChange()"></select>
+                                <select name="discipline" id="regDisc" class="archive-search-input"></select>
                             </div>
                             <div>
                                 <label class="form-label-sm">Package</label>
-                                <select name="package" id="regPkg" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                                <select name="package" id="regPkg" class="archive-search-input"></select>
                             </div>
                             <div>
                                 <label class="form-label-sm">Serial (Auto)</label>
@@ -162,11 +162,11 @@
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-bottom:10px;">
                             <div>
                                 <label class="form-label-sm">Block</label>
-                                <select name="block" id="regBlock" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                                <select name="block" id="regBlock" class="archive-search-input"></select>
                             </div>
                             <div>
                                 <label class="form-label-sm">Level</label>
-                                <select name="level" id="regLevel" class="archive-search-input" onchange="updateSerialAndPreview()"></select>
+                                <select name="level" id="regLevel" class="archive-search-input"></select>
                             </div>
                         </div>
                         
@@ -175,7 +175,7 @@
                             <input type="text" name="doc_number" id="fullDocNumber" class="archive-search-input" style="font-family:monospace; font-weight:bold; color:#2563eb; background:#eff6ff; direction:ltr; text-align:center;" readonly>
                             <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
                                 <div id="fullDocCheckMsg" style="font-size:0.75rem; min-height:18px; flex:1;"></div>
-                                <button type="button" id="fullRegisterDocBtn" class="btn-archive-icon" style="display:none; white-space:nowrap;" onclick="archiveRegisterPreviewDocument()">
+                                <button type="button" id="fullRegisterDocBtn" class="btn-archive-icon" style="display:none; white-space:nowrap;" data-archive-action="register-preview-doc">
                                     <span class="material-icons-round" style="font-size:18px;">add_circle</span>
                                     ثبت مدرک
                                 </button>
@@ -184,7 +184,7 @@
 
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                             <input type="text" id="regSubjectE" name="subject_e" class="archive-search-input" placeholder="English Subject">
-                            <input type="text" id="regSubjectP" name="subject_p" class="archive-search-input" placeholder="توضیحات فارسی" onblur="updateSerialAndPreview()">
+                            <input type="text" id="regSubjectP" name="subject_p" class="archive-search-input" placeholder="توضیحات فارسی">
                         </div>
                         </div>
                     </div>
@@ -211,7 +211,7 @@
                         </div>
                     </div>
                 <div class="archive-modal-actions">
-                    <button type="button" class="btn-archive-primary btn-archive-secondary" onclick="archiveCloseModal()">انصراف</button>
+                    <button type="button" class="btn-archive-primary btn-archive-secondary" data-archive-action="close-modal">انصراف</button>
                     <button type="submit" id="btnArchiveSubmit" class="btn-archive-primary" disabled>تایید و آپلود نهایی</button>
                 </div>
             </form>
@@ -222,7 +222,7 @@
         <div class="am-modal-box" style="max-width: 920px;">
             <div style="border-bottom:1px solid #eee; padding-bottom:10px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
                 <h3 style="margin:0; font-size:1.1rem; color:#1f2937;">Revision History</h3>
-                <button type="button" class="btn-archive-icon" onclick="archiveCloseHistoryModal()">
+                <button type="button" class="btn-archive-icon" data-archive-action="close-history-modal">
                     <span class="material-icons-round">close</span>
                 </button>
             </div>
@@ -241,6 +241,7 @@
         let archiveFormDataCache = null;
         let archiveFormDataPromise = null;
         let archiveDropzonesBound = false;
+        let archiveUiEventsBound = false;
         let archiveDocSuggestTimer = null;
         let archiveFullPreviewTimer = null;
         let archiveSuspendAutoPreview = false;
@@ -731,21 +732,21 @@
                                 <td>${sizeText}</td>
                                 <td>${uploadedAt}</td>
                                 <td style="text-align:center;">
-                                    <button class="btn-archive-icon archive-download-btn is-pdf" title="دانلود PDF" ${hasPdf ? '' : 'disabled'} onclick="archiveDownloadByKind(${pdfId}, ${nativeId}, 'pdf')">
+                                    <button class="btn-archive-icon archive-download-btn is-pdf" title="دانلود PDF" ${hasPdf ? '' : 'disabled'} data-archive-action="download-kind" data-kind="pdf" data-pdf-id="${pdfId}" data-native-id="${nativeId}">
                                         <span class="material-icons-round" style="font-size:18px;">picture_as_pdf</span>
                                     </button>
                                 </td>
                                 <td style="text-align:center;">
-                                    <button class="btn-archive-icon archive-download-btn is-native" title="دانلود فایل اصلی" ${hasNative ? '' : 'disabled'} onclick="archiveDownloadByKind(${pdfId}, ${nativeId}, 'native')">
+                                    <button class="btn-archive-icon archive-download-btn is-native" title="دانلود فایل اصلی" ${hasNative ? '' : 'disabled'} data-archive-action="download-kind" data-kind="native" data-pdf-id="${pdfId}" data-native-id="${nativeId}">
                                         <span class="material-icons-round" style="font-size:18px;">description</span>
                                     </button>
                                 </td>
                                 <td>
                                     <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                                        <button class="btn-archive-icon" title="Copy Doc Number" onclick="archiveCopyDocNumber('${archiveEsc(f.doc_number)}')">
+                                        <button class="btn-archive-icon" title="Copy Doc Number" data-archive-action="copy-doc" data-doc-number="${archiveEsc(f.doc_number)}">
                                             <span class="material-icons-round" style="font-size:18px;">content_copy</span>
                                         </button>
-                                        <button class="btn-archive-icon" title="Revision History" onclick="archiveOpenHistory(${Number(f.document_id || 0)}, '${archiveEsc(f.doc_number)}')">
+                                        <button class="btn-archive-icon" title="Revision History" data-archive-action="open-history" data-document-id="${Number(f.document_id || 0)}" data-doc-number="${archiveEsc(f.doc_number)}">
                                             <span class="material-icons-round" style="font-size:18px;">history</span>
                                         </button>
                                     </div>
@@ -1072,7 +1073,7 @@
                                 <td>${fileSize}</td>
                                 <td>${uploadedAt}</td>
                                 <td>
-                                    <button class="btn-archive-icon" onclick="archiveDownloadFile(${Number(item.id || 0)})">
+                                    <button class="btn-archive-icon" data-archive-action="download-file" data-file-id="${Number(item.id || 0)}">
                                         <span class="material-icons-round" style="font-size:18px;">download</span>
                                     </button>
                                 </td>
@@ -1179,10 +1180,131 @@
             }
             archiveRefreshSubmitButtonState();
         }
+
+        function archiveBindUiEvents() {
+            if (archiveUiEventsBound) return;
+            const root = document.getElementById('view-archive');
+            if (!root) return;
+            archiveUiEventsBound = true;
+
+            const searchInput = document.getElementById('archiveSearchInput');
+            const projectFilter = document.getElementById('archiveProjectFilter');
+            const disciplineFilter = document.getElementById('archiveDisciplineFilter');
+            const statusFilter = document.getElementById('archiveStatusFilter');
+            const dateFromFilter = document.getElementById('archiveDateFromFilter');
+            const dateToFilter = document.getElementById('archiveDateToFilter');
+
+            searchInput?.addEventListener('keyup', archiveDebouncedSearch);
+            [projectFilter, disciplineFilter, statusFilter, dateFromFilter, dateToFilter].forEach((el) => {
+                el?.addEventListener('change', archiveApplyFilters);
+            });
+
+            const uploadForm = document.getElementById('archiveUploadForm');
+            uploadForm?.addEventListener('submit', archiveHandleUpload);
+
+            const smartDocCode = document.getElementById('smartDocCode');
+            smartDocCode?.addEventListener('input', archiveOnDocCodeInput);
+            smartDocCode?.addEventListener('keydown', archiveHandleDocCodeKey);
+
+            const pdfInput = document.getElementById('archivePdfFileInput');
+            const nativeInput = document.getElementById('archiveNativeFileInput');
+            const pdfDropzone = document.getElementById('archivePdfDropzone');
+            const nativeDropzone = document.getElementById('archiveNativeDropzone');
+
+            pdfInput?.addEventListener('change', () => archiveOnFileSelect(pdfInput, 'pdf'));
+            nativeInput?.addEventListener('change', () => archiveOnFileSelect(nativeInput, 'native'));
+            pdfDropzone?.addEventListener('click', () => pdfInput?.click());
+            nativeDropzone?.addEventListener('click', () => nativeInput?.click());
+
+            const regProject = document.getElementById('regProject');
+            const regDisc = document.getElementById('regDisc');
+            const regMdr = document.getElementById('regMdr');
+            const regPhase = document.getElementById('regPhase');
+            const regPkg = document.getElementById('regPkg');
+            const regBlock = document.getElementById('regBlock');
+            const regLevel = document.getElementById('regLevel');
+            const regSubjectE = document.getElementById('regSubjectE');
+            const regSubjectP = document.getElementById('regSubjectP');
+
+            regProject?.addEventListener('change', onProjectChange);
+            regDisc?.addEventListener('change', onDisciplineChange);
+            [regMdr, regPhase, regPkg, regBlock, regLevel].forEach((el) => {
+                el?.addEventListener('change', updateSerialAndPreview);
+            });
+
+            const onSubjectInput = () => {
+                if (window.archiveSubjectTimer) clearTimeout(window.archiveSubjectTimer);
+                window.archiveSubjectTimer = setTimeout(() => updateSerialAndPreview(), 220);
+            };
+            regSubjectE?.addEventListener('input', onSubjectInput);
+            regSubjectP?.addEventListener('input', onSubjectInput);
+
+            root.addEventListener('click', (event) => {
+                const actionEl = event.target?.closest?.('[data-archive-action]');
+                if (!actionEl || !root.contains(actionEl)) return;
+
+                const action = String(actionEl.getAttribute('data-archive-action') || '').trim();
+                switch (action) {
+                    case 'open-modal':
+                        archiveOpenModal();
+                        break;
+                    case 'close-modal':
+                        archiveCloseModal();
+                        break;
+                    case 'toggle-mode':
+                        toggleRegistrationMode();
+                        break;
+                    case 'check-doc-status':
+                        checkDocStatus();
+                        break;
+                    case 'register-preview-doc':
+                        archiveRegisterPreviewDocument();
+                        break;
+                    case 'reset-filters':
+                        archiveResetFilters();
+                        break;
+                    case 'refresh-list':
+                        archiveLoadFiles();
+                        break;
+                    case 'close-history-modal':
+                        archiveCloseHistoryModal();
+                        break;
+                    case 'download-kind': {
+                        const pdfId = Number(actionEl.getAttribute('data-pdf-id') || 0);
+                        const nativeId = Number(actionEl.getAttribute('data-native-id') || 0);
+                        const kind = String(actionEl.getAttribute('data-kind') || 'pdf');
+                        archiveDownloadByKind(pdfId, nativeId, kind);
+                        break;
+                    }
+                    case 'copy-doc':
+                        archiveCopyDocNumber(actionEl.getAttribute('data-doc-number') || '');
+                        break;
+                    case 'open-history': {
+                        const documentId = Number(actionEl.getAttribute('data-document-id') || 0);
+                        const docNumber = actionEl.getAttribute('data-doc-number') || '';
+                        archiveOpenHistory(documentId, docNumber);
+                        break;
+                    }
+                    case 'download-file':
+                        archiveDownloadFile(Number(actionEl.getAttribute('data-file-id') || 0));
+                        break;
+                    default:
+                        break;
+                }
+            });
+
+            document.getElementById('archiveUploadModal')?.addEventListener('click', (event) => {
+                if (event.target?.id === 'archiveUploadModal') archiveCloseModal();
+            });
+            document.getElementById('archiveHistoryModal')?.addEventListener('click', (event) => {
+                if (event.target?.id === 'archiveHistoryModal') archiveCloseHistoryModal();
+            });
+        }
+
+        archiveBindUiEvents();
         archiveInitDropzones();
-        document.getElementById('archiveUploadModal').addEventListener('click', (e)=>{if(e.target.id==='archiveUploadModal')archiveCloseModal();});
-        document.getElementById('archiveHistoryModal').addEventListener('click', (e)=>{if(e.target.id==='archiveHistoryModal')archiveCloseHistoryModal();});
     </script>
 </div>
+
 
 

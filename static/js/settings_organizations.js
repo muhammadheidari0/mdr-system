@@ -219,7 +219,7 @@
                 const padding = depth * 18;
                 const protectedOrg = isProtectedOrganization(item);
                 const toggleLabel = item.is_active ? 'غیرفعال' : 'فعال‌سازی';
-                const toggleAction = item.is_active ? `deactivateOrganization(${id})` : `restoreOrganization(${id})`;
+                const toggleAction = item.is_active ? 'deactivate-organization' : 'restore-organization';
                 const toggleDisabled = protectedOrg ? 'disabled' : '';
                 const deleteDisabled = protectedOrg ? 'disabled' : '';
 
@@ -239,9 +239,9 @@
                         <td>${statusBadge(Boolean(item.is_active))}</td>
                         <td>
                             <div class="general-row-actions">
-                                <button class="btn-archive-icon" type="button" onclick="openEditOrganizationModal(${id})">ویرایش</button>
-                                <button class="btn-archive-icon" type="button" onclick="${toggleAction}" ${toggleDisabled}>${toggleLabel}</button>
-                                <button class="btn-archive-icon" type="button" onclick="hardDeleteOrganization(${id})" ${deleteDisabled}>حذف دائم</button>
+                                <button class="btn-archive-icon" type="button" data-org-action="open-edit-organization-modal" data-org-id="${id}">ویرایش</button>
+                                <button class="btn-archive-icon" type="button" data-org-action="${toggleAction}" data-org-id="${id}" ${toggleDisabled}>${toggleLabel}</button>
+                                <button class="btn-archive-icon" type="button" data-org-action="hard-delete-organization" data-org-id="${id}" ${deleteDisabled}>حذف دائم</button>
                             </div>
                         </td>
                     </tr>
@@ -265,7 +265,7 @@
             for (let p = start; p <= end; p += 1) {
                 const activeClass = p === info.page ? ' active' : '';
                 pages.push(
-                    `<button type="button" class="users-page-btn${activeClass}" onclick="gotoOrganizationsPage(${p})">${p}</button>`
+                    `<button type="button" class="users-page-btn${activeClass}" data-org-action="goto-organizations-page" data-page="${p}">${p}</button>`
                 );
             }
             pageButtons.innerHTML = pages.join('');
@@ -453,6 +453,7 @@
         if (state.bound) return;
         state.bound = true;
 
+        const root = document.getElementById('settingsOrganizationsTabRoot');
         const searchInput = document.getElementById('organizationsSearchInput');
         const typeFilter = document.getElementById('organizationsTypeFilter');
         const statusFilter = document.getElementById('organizationsStatusFilter');
@@ -504,6 +505,53 @@
                 }
             });
         }
+
+        document.addEventListener('click', (event) => {
+            const actionEl = event && event.target && event.target.closest
+                ? event.target.closest('[data-org-action]')
+                : null;
+            if (!actionEl) return;
+
+            if (root && !root.contains(actionEl) && !(modal && modal.contains(actionEl))) return;
+
+            const action = String(actionEl.dataset.orgAction || '').trim();
+            if (!action) return;
+
+            switch (action) {
+                case 'refresh-organizations':
+                    loadOrganizations(true);
+                    break;
+                case 'open-create-organization-modal':
+                    openCreateOrganizationModal();
+                    break;
+                case 'change-organizations-page':
+                    changeOrganizationsPage(Number(actionEl.dataset.step || 0));
+                    break;
+                case 'goto-organizations-page':
+                    gotoOrganizationsPage(Number(actionEl.dataset.page || 0));
+                    break;
+                case 'close-organization-modal':
+                    closeOrganizationModal();
+                    break;
+                case 'save-organization':
+                    saveOrganization();
+                    break;
+                case 'open-edit-organization-modal':
+                    openEditOrganizationModal(Number(actionEl.dataset.orgId || 0));
+                    break;
+                case 'deactivate-organization':
+                    deactivateOrganization(Number(actionEl.dataset.orgId || 0));
+                    break;
+                case 'restore-organization':
+                    restoreOrganization(Number(actionEl.dataset.orgId || 0));
+                    break;
+                case 'hard-delete-organization':
+                    hardDeleteOrganization(Number(actionEl.dataset.orgId || 0));
+                    break;
+                default:
+                    break;
+            }
+        });
     }
 
     function gotoOrganizationsPage(page) {

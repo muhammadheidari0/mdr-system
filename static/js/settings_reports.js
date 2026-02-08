@@ -8,6 +8,7 @@
 
     const state = {
         initialized: false,
+        bound: false,
         projects: [],
         disciplines: [],
         users: [],
@@ -151,9 +152,9 @@
         container.innerHTML = `
             <div class="general-pager-left">نمایش ${info.from}-${info.to} از ${info.total} (سایز: ${info.pageSize})</div>
             <div class="general-pager-right">
-                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} onclick="${onPageFn}(${info.page - 1})">قبلی</button>
+                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} data-settings-reports-action="${esc(onPageFn)}" data-page="${info.page - 1}">قبلی</button>
                 <span>صفحه ${info.page} از ${info.totalPages}</span>
-                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} onclick="${onPageFn}(${info.page + 1})">بعدی</button>
+                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} data-settings-reports-action="${esc(onPageFn)}" data-page="${info.page + 1}">بعدی</button>
             </div>
         `;
     }
@@ -282,7 +283,7 @@
 
     function jsonActionButton(index, field, rawValue) {
         if (!norm(rawValue)) return '-';
-        return `<button class="btn-archive-icon" type="button" onclick="openSettingsAuditJsonModal(${index}, '${field}')">نمایش JSON</button>`;
+        return `<button class="btn-archive-icon" type="button" data-settings-reports-action="open-settings-audit-json-modal" data-index="${index}" data-field="${esc(field)}">نمایش JSON</button>`;
     }
 
     function renderAuditRows() {
@@ -367,6 +368,91 @@
         syncAccessPageSizeFromDom();
         syncAuditPageSizeFromDom();
         state.initialized = true;
+    }
+
+    function bindSettingsReportsActions() {
+        if (state.bound) return;
+        state.bound = true;
+
+        const root = document.getElementById('settingsReportsTabRoot');
+        if (!root) return;
+
+        const jsonModal = document.getElementById('settingsJsonModal');
+        const jsonModalContent = jsonModal ? jsonModal.querySelector('.settings-json-modal-content') : null;
+
+        if (jsonModal && !jsonModal.__settingsReportsBound) {
+            jsonModal.addEventListener('click', (event) => {
+                if (event.target === jsonModal) closeJsonModal();
+            });
+            if (jsonModalContent) {
+                jsonModalContent.addEventListener('click', (event) => event.stopPropagation());
+            }
+            jsonModal.__settingsReportsBound = true;
+        }
+
+        root.addEventListener('click', (event) => {
+            const actionEl = event && event.target && event.target.closest
+                ? event.target.closest('[data-settings-reports-action]')
+                : null;
+            if (!actionEl || !root.contains(actionEl)) return;
+
+            const action = norm(actionEl.dataset.settingsReportsAction);
+            if (!action) return;
+
+            switch (action) {
+                case 'init-settings-reports':
+                    window.initSettingsReports(String(actionEl.dataset.force || '').toLowerCase() === 'true');
+                    break;
+                case 'load-settings-access-report':
+                    window.loadSettingsAccessReport();
+                    break;
+                case 'download-settings-access-report-csv':
+                    window.downloadSettingsAccessReportCsv();
+                    break;
+                case 'load-settings-user-access':
+                    window.loadSettingsUserAccess();
+                    break;
+                case 'load-settings-audit-logs':
+                    window.loadSettingsAuditLogs();
+                    break;
+                case 'close-settings-json-modal':
+                    closeJsonModal();
+                    break;
+                case 'copy-settings-json-modal':
+                    window.copySettingsJsonModal();
+                    break;
+                case 'gotoSettingsAccessPage':
+                    window.gotoSettingsAccessPage(toInt(actionEl.dataset.page, 1));
+                    break;
+                case 'gotoSettingsAuditPage':
+                    window.gotoSettingsAuditPage(toInt(actionEl.dataset.page, 1));
+                    break;
+                case 'open-settings-audit-json-modal':
+                    window.openSettingsAuditJsonModal(
+                        toNonNegativeInt(actionEl.dataset.index, -1),
+                        actionEl.dataset.field || 'before',
+                    );
+                    break;
+                default:
+                    break;
+            }
+        });
+
+        root.addEventListener('change', (event) => {
+            const actionEl = event && event.target && event.target.closest
+                ? event.target.closest('[data-settings-reports-action]')
+                : null;
+            if (!actionEl || !root.contains(actionEl)) return;
+
+            const action = norm(actionEl.dataset.settingsReportsAction);
+            if (!action) return;
+
+            if (action === 'set-settings-access-page-size') {
+                window.setSettingsAccessPageSize(actionEl.value);
+            } else if (action === 'set-settings-audit-page-size') {
+                window.setSettingsAuditPageSize(actionEl.value);
+            }
+        });
     }
 
     window.gotoSettingsAccessPage = function gotoSettingsAccessPage(page) {
@@ -589,6 +675,7 @@
 
     window.initSettingsReports = async function initSettingsReports(force = false) {
         try {
+            bindSettingsReportsActions();
             await loadMetadata(force);
             renderAccessReportRows();
             renderAuditRows();

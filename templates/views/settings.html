@@ -29,7 +29,6 @@
         role="tab"
         aria-selected="true"
         aria-controls="tab-general"
-        onclick="switchSettingsTab('general', this)"
       >
         <span class="material-icons-round settings-nav-card-icon">tune</span>
         <span class="settings-nav-card-copy">
@@ -46,7 +45,6 @@
         role="tab"
         aria-selected="false"
         aria-controls="tab-users"
-        onclick="switchSettingsTab('users', this)"
       >
         <span class="material-icons-round settings-nav-card-icon">people</span>
         <span class="settings-nav-card-copy">
@@ -63,7 +61,6 @@
         role="tab"
         aria-selected="false"
         aria-controls="tab-organizations"
-        onclick="switchSettingsTab('organizations', this)"
       >
         <span class="material-icons-round settings-nav-card-icon">account_tree</span>
         <span class="settings-nav-card-copy">
@@ -80,7 +77,6 @@
         role="tab"
         aria-selected="false"
         aria-controls="tab-permissions"
-        onclick="switchSettingsTab('permissions', this)"
       >
         <span class="material-icons-round settings-nav-card-icon">shield</span>
         <span class="settings-nav-card-copy">
@@ -97,7 +93,6 @@
         role="tab"
         aria-selected="false"
         aria-controls="tab-bulk"
-        onclick="switchSettingsTab('bulk', this)"
       >
         <span class="material-icons-round settings-nav-card-icon">upload_file</span>
         <span class="settings-nav-card-copy">
@@ -114,7 +109,6 @@
         role="tab"
         aria-selected="false"
         aria-controls="tab-reports"
-        onclick="switchSettingsTab('reports', this)"
       >
         <span class="material-icons-round settings-nav-card-icon">analytics</span>
         <span class="settings-nav-card-copy">
@@ -151,52 +145,5 @@
     </div>
   </div>
 
-  <script>
-    function openSettingsTab(tabName) {
-      const btn = document.querySelector(`#view-settings [data-settings-tab][data-tab="${tabName}"]`);
-      switchSettingsTab(tabName, btn);
-    }
-
-    function switchSettingsTab(tabName, btnEl) {
-      const tabButtons = document.querySelectorAll('#view-settings [data-settings-tab]');
-      const tabPanels = document.querySelectorAll('#view-settings .settings-tab-content');
-
-      tabButtons.forEach((button) => {
-        button.classList.remove('active');
-        button.setAttribute('aria-selected', 'false');
-      });
-
-      tabPanels.forEach((panel) => {
-        panel.classList.remove('active');
-        panel.setAttribute('aria-hidden', 'true');
-      });
-
-      const button = btnEl || document.querySelector(`#view-settings [data-settings-tab][data-tab="${tabName}"]`);
-      if (button) {
-        button.classList.add('active');
-        button.setAttribute('aria-selected', 'true');
-      }
-
-      const target = document.getElementById(`tab-${tabName}`);
-      if (target) {
-        target.classList.add('active');
-        target.setAttribute('aria-hidden', 'false');
-      }
-
-      if (tabName === 'general' && typeof initGeneralSettings === 'function') {
-        initGeneralSettings();
-      } else if (tabName === 'users' && typeof loadUsers === 'function') {
-        loadUsers();
-      } else if (tabName === 'organizations' && typeof initOrganizationsSettings === 'function') {
-        initOrganizationsSettings();
-      } else if (tabName === 'permissions' && typeof initPermissionsSettings === 'function') {
-        initPermissionsSettings();
-      } else if (tabName === 'reports' && typeof initSettingsReports === 'function') {
-        initSettingsReports();
-      }
-    }
-
-    window.openSettingsTab = openSettingsTab;
-    window.switchSettingsTab = switchSettingsTab;
-  </script>
+  <script src="/static/js/views/settings_shell.js?v=20260209a"></script>
 </div>

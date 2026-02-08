@@ -68,6 +68,7 @@ const WORKBOARD_PRIORITY_LABELS = {
 
 const WORKBOARD_STATE = {
     initialized: false,
+    actionsBound: false,
     timers: {},
     rowsByKey: {},
 };
@@ -88,6 +89,25 @@ const ADMIN_ONLY_VIEWS = new Set([
     'view-settings'
 ]);
 
+const VIEW_PARTIALS = {
+    'view-dashboard': 'dashboard',
+    'view-edms': 'edms',
+    'view-reports': 'reports',
+    'view-contractor': 'contractor',
+    'view-consultant': 'consultant',
+    'view-profile': 'profile',
+    'view-settings': 'settings',
+};
+
+const VIEW_LOAD_CACHE = new Set(['view-dashboard']);
+const LOADED_PARTIAL_SCRIPTS = new Set();
+const PERF_METRICS = {};
+const PERF_PANEL_ID = 'dev-performance-panel';
+
+if (window.performance?.mark) {
+    window.performance.mark('app_boot_start');
+}
+
 // ============================================================
 //  0. INITIALIZATION (Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒ Ø§ÙˆÙ„ÛŒÙ‡)
 // ============================================================
@@ -103,15 +123,19 @@ window.onload = async () => {
     }
     
     toggleLoader(true);
+    primeLoadedScriptCache();
     
     // 1. Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø§ÛŒÙ‡ (Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§ØŒ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§ Ùˆ...)
     await loadDictionary();
     await loadEdmsNavigation();
     
     // 2. Ø§Ø¬Ø¨Ø§Ø± Ø¨Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ø¯Ø± Ø´Ø±ÙˆØ¹ Ú©Ø§Ø±
-    navigateTo('view-dashboard');
+    await navigateTo('view-dashboard');
     
     toggleLoader(false);
+    markPerf('first_view_ready');
+    measurePerf('app_boot', 'app_boot_start', 'first_view_ready');
+    renderDevPerformancePanel();
     
     // 3. ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ù„ÛŒØ³Ù†Ø±Ù‡Ø§ (Ú©Ù„ÛŒÚ©â€ŒÙ‡Ø§ÛŒ Ø¹Ù…ÙˆÙ…ÛŒ)
     setupGlobalListeners();
@@ -128,6 +152,31 @@ window.onload = async () => {
 
 function setupGlobalListeners() {
     document.addEventListener('click', (e) => {
+        const navTrigger = e.target.closest('[data-nav-target]');
+        if (navTrigger) {
+            e.preventDefault();
+            navigateTo(navTrigger.getAttribute('data-nav-target'));
+            return;
+        }
+
+        const uiAction = e.target.closest('[data-ui-action]');
+        if (uiAction) {
+            e.preventDefault();
+            const action = String(uiAction.getAttribute('data-ui-action') || '').trim().toLowerCase();
+            if (action === 'toggle-sidebar') {
+                toggleSidebar();
+                return;
+            }
+            if (action === 'toggle-user-menu') {
+                toggleUserMenu();
+                return;
+            }
+            if (action === 'logout') {
+                window.authManager?.logout?.();
+                return;
+            }
+        }
+
         // Ø¨Ø³ØªÙ† Ù…Ù†ÙˆÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ú©Ø§Ø±Ø¨Ø±
         if (!e.target.closest('.user-menu-container')) {
             const dropdown = document.getElementById('user-dropdown');
@@ -163,6 +212,118 @@ function mapToRoutedView(viewId) {
     }
     return requested;
 }
+
+async function ensureXlsxLoaded() {
+    if (window.XLSX) return window.XLSX;
+    const src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
+    const absoluteSrc = new URL(src, window.location.origin).href;
+    if (LOADED_PARTIAL_SCRIPTS.has(absoluteSrc) && window.XLSX) return window.XLSX;
+
+    await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load XLSX library.'));
+        document.head.appendChild(script);
+    });
+    LOADED_PARTIAL_SCRIPTS.add(absoluteSrc);
+    return window.XLSX;
+}
+
+window.ensureXlsxLoaded = ensureXlsxLoaded;
+
+async function executeScriptsInElement(rootElement) {
+    const scripts = Array.from(rootElement.querySelectorAll('script'));
+    for (const oldScript of scripts) {
+        const newScript = document.createElement('script');
+        for (const attr of Array.from(oldScript.attributes || [])) {
+            newScript.setAttribute(attr.name, attr.value);
+        }
+
+        const srcAttr = oldScript.getAttribute('src');
+        if (srcAttr) {
+            const absoluteSrc = new URL(srcAttr, window.location.origin).href;
+            if (LOADED_PARTIAL_SCRIPTS.has(absoluteSrc)) {
+                oldScript.remove();
+                continue;
+            }
+            await new Promise((resolve, reject) => {
+                newScript.onload = () => resolve();
+                newScript.onerror = () => reject(new Error(`Failed to load script: ${srcAttr}`));
+                oldScript.replaceWith(newScript);
+            });
+            LOADED_PARTIAL_SCRIPTS.add(absoluteSrc);
+            continue;
+        }
+
+        newScript.textContent = oldScript.textContent || '';
+        oldScript.replaceWith(newScript);
+    }
+}
+
+async function loadViewPartial(viewId) {
+    const partialName = VIEW_PARTIALS[viewId];
+    if (!partialName) return true;
+    if (VIEW_LOAD_CACHE.has(viewId)) return true;
+
+    const host = document.getElementById(viewId);
+    if (!host) return false;
+
+    host.innerHTML = '<div class="lazy-view-state">در حال بارگذاری صفحه...</div>';
+    const metricKey = `partial_${partialName}`;
+    markPerf(`${metricKey}_start`);
+
+    try {
+        const res = await fetch(`/ui/partial/${encodeURIComponent(partialName)}`, {
+            headers: { 'X-Requested-With': 'fetch' },
+            credentials: 'same-origin',
+        });
+        if (!res.ok) {
+            throw new Error(`Failed to load view (${res.status})`);
+        }
+        const html = await res.text();
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        const incomingView = wrapper.querySelector(`#${viewId}`) || wrapper.querySelector('.view-section');
+        if (!incomingView) {
+            throw new Error(`Invalid partial payload for ${viewId}`);
+        }
+
+        host.replaceWith(incomingView);
+        await executeScriptsInElement(incomingView);
+        VIEW_LOAD_CACHE.add(viewId);
+        markPerf(`${metricKey}_end`);
+        measurePerf(metricKey, `${metricKey}_start`, `${metricKey}_end`);
+        window.AppEvents?.emit?.('view:loaded', { viewId, partialName });
+        return true;
+    } catch (error) {
+        host.innerHTML = `
+            <div class="lazy-view-state">
+                خطا در بارگذاری صفحه.
+                <button type="button" class="btn-archive-icon" data-nav-target="${viewId}">تلاش مجدد</button>
+            </div>
+        `;
+        showToast('بارگذاری صفحه با خطا مواجه شد.', 'error');
+        console.error(error);
+        return false;
+    }
+}
+
+function consumePendingSettingsTab() {
+    const val = PENDING_SETTINGS_TAB;
+    PENDING_SETTINGS_TAB = null;
+    return val;
+}
+
+function consumePendingEdmsTab() {
+    const val = PENDING_EDMS_TAB;
+    PENDING_EDMS_TAB = null;
+    return val;
+}
+
+window.consumePendingSettingsTab = consumePendingSettingsTab;
+window.consumePendingEdmsTab = consumePendingEdmsTab;
 
 function isEdmsTabVisible(tabName) {
     return EDMS_TAB_VISIBILITY[String(tabName || '').trim().toLowerCase()] !== false;
@@ -243,6 +404,73 @@ function setEdmsHeaderStats(data = {}) {
         const el = document.getElementById(id);
         if (el) el.textContent = Number.isFinite(Number(value)) ? String(Number(value)) : '0';
     });
+}
+
+function primeLoadedScriptCache() {
+    document.querySelectorAll('script[src]').forEach((scriptEl) => {
+        try {
+            const src = new URL(scriptEl.getAttribute('src'), window.location.origin).href;
+            LOADED_PARTIAL_SCRIPTS.add(src);
+        } catch (error) {
+            // Ignore malformed URLs
+        }
+    });
+}
+
+function markPerf(name) {
+    if (!window.performance?.mark) return;
+    window.performance.mark(name);
+}
+
+function measurePerf(metricName, startMark, endMark) {
+    if (!window.performance?.measure) return;
+    try {
+        window.performance.measure(metricName, startMark, endMark);
+        const entries = window.performance.getEntriesByName(metricName);
+        const latest = entries?.[entries.length - 1];
+        if (!latest) return;
+        PERF_METRICS[metricName] = Number(latest.duration || 0).toFixed(1);
+        if (window.__DEV_PERF__) {
+            console.info(`[perf] ${metricName}: ${PERF_METRICS[metricName]}ms`);
+        }
+    } catch (error) {
+        // Ignore missing marks
+    }
+}
+
+function shouldShowPerfPanel() {
+    const qs = new URLSearchParams(window.location.search || '');
+    if (qs.get('perf') === '1') return true;
+    return localStorage.getItem('dev_perf_panel') === '1';
+}
+
+function renderDevPerformancePanel() {
+    if (!shouldShowPerfPanel()) return;
+    let panel = document.getElementById(PERF_PANEL_ID);
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = PERF_PANEL_ID;
+        panel.style.cssText = [
+            'position:fixed',
+            'bottom:16px',
+            'left:16px',
+            'z-index:9999',
+            'min-width:220px',
+            'max-width:280px',
+            'background:#0f172a',
+            'color:#e2e8f0',
+            'border:1px solid #334155',
+            'border-radius:10px',
+            'padding:10px 12px',
+            'font:12px/1.6 Vazirmatn, sans-serif',
+            'box-shadow:0 10px 24px rgba(2,6,23,0.35)',
+        ].join(';');
+        document.body.appendChild(panel);
+    }
+    const rows = Object.entries(PERF_METRICS)
+        .map(([k, v]) => `<div><strong>${k}:</strong> ${v}ms</div>`)
+        .join('');
+    panel.innerHTML = `<div style="font-weight:700; margin-bottom:6px;">Performance</div>${rows || '<div>no metrics</div>'}`;
 }
 
 async function loadEdmsHeaderStats(force = false) {
@@ -362,6 +590,10 @@ function openEdmsTab(tabName, btnEl = null) {
 }
 
 window.openEdmsTab = openEdmsTab;
+window.loadEdmsLastTab = loadEdmsLastTab;
+window.getEffectiveDefaultEdmsTab = getEffectiveDefaultEdmsTab;
+window.getFirstVisibleEdmsTab = getFirstVisibleEdmsTab;
+window.isEdmsTabVisible = isEdmsTabVisible;
 
 function switchModuleTab(tabName, tabToPanelMap, tabButtonSelector, dataAttrName, btnEl = null) {
     const normalized = String(tabName || '').trim().toLowerCase();
@@ -505,23 +737,23 @@ function moduleBoardRenderCard(moduleKey, tabKey, title) {
 
     <div class="module-crud-toolbar">
         <div class="module-crud-toolbar-left">
-            ${canEdit ? `<button type="button" class="btn btn-primary" onclick="moduleBoardOpenForm('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')"><span class="material-icons-round">add</span>افزودن آیتم</button>` : ''}
-            <button type="button" class="btn-archive-icon" onclick="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)" title="به‌روزرسانی">
+            ${canEdit ? `<button type="button" class="btn btn-primary" data-mb-action="open-form"><span class="material-icons-round">add</span>افزودن آیتم</button>` : ''}
+            <button type="button" class="btn-archive-icon" data-mb-action="load" data-force="true" title="به‌روزرسانی">
                 <span class="material-icons-round">refresh</span>
             </button>
         </div>
         <div class="module-crud-toolbar-right">
-            <select id="mb-filter-project-${moduleBoardEsc(key)}" class="module-crud-select" onchange="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)">
+            <select id="mb-filter-project-${moduleBoardEsc(key)}" class="module-crud-select" data-mb-action="filter-project">
                 ${moduleBoardProjectOptions()}
             </select>
-            <select id="mb-filter-discipline-${moduleBoardEsc(key)}" class="module-crud-select" onchange="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)">
+            <select id="mb-filter-discipline-${moduleBoardEsc(key)}" class="module-crud-select" data-mb-action="filter-discipline">
                 ${moduleBoardDisciplineOptions()}
             </select>
-            <select id="mb-filter-status-${moduleBoardEsc(key)}" class="module-crud-select" onchange="moduleBoardLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', true)">
+            <select id="mb-filter-status-${moduleBoardEsc(key)}" class="module-crud-select" data-mb-action="filter-status">
                 <option value="">همه وضعیت‌ها</option>
                 ${moduleBoardStatusOptions()}
             </select>
-            <input id="mb-filter-search-${moduleBoardEsc(key)}" class="module-crud-input" type="text" placeholder="جستجو در عنوان/شرح..." oninput="moduleBoardDebouncedLoad('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')">
+            <input id="mb-filter-search-${moduleBoardEsc(key)}" class="module-crud-input" type="text" placeholder="جستجو در عنوان/شرح..." data-mb-action="filter-search">
         </div>
     </div>
 
@@ -567,8 +799,8 @@ function moduleBoardRenderCard(moduleKey, tabKey, title) {
             </div>
         </div>
         <div class="module-crud-form-actions">
-            <button type="button" class="btn btn-secondary" onclick="moduleBoardCloseForm('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')">انصراف</button>
-            <button type="button" class="btn btn-primary" onclick="moduleBoardSave('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}')">
+            <button type="button" class="btn btn-secondary" data-mb-action="close-form">انصراف</button>
+            <button type="button" class="btn btn-primary" data-mb-action="save-form">
                 <span class="material-icons-round">save</span>
                 ذخیره
             </button>
@@ -599,6 +831,7 @@ function moduleBoardRenderCard(moduleKey, tabKey, title) {
 }
 
 function initModuleCrudBoards() {
+    moduleBoardBindActions();
     if (WORKBOARD_STATE.initialized) return;
     const roots = document.querySelectorAll('.module-crud-root[data-module][data-tab]');
     if (!roots.length) return;
@@ -610,6 +843,86 @@ function initModuleCrudBoards() {
         root.innerHTML = moduleBoardRenderCard(moduleKey, tabKey, title);
     });
     WORKBOARD_STATE.initialized = true;
+}
+
+function moduleBoardResolveContext(actionEl) {
+    const card = actionEl && actionEl.closest ? actionEl.closest('.module-crud-card[data-module][data-tab]') : null;
+    if (!card) return null;
+    const moduleKey = String(card.dataset.module || '').trim().toLowerCase();
+    const tabKey = String(card.dataset.tab || '').trim().toLowerCase();
+    if (!moduleKey || !tabKey) return null;
+    return { moduleKey, tabKey };
+}
+
+function moduleBoardBindActions() {
+    if (WORKBOARD_STATE.actionsBound) return;
+
+    document.addEventListener('click', (event) => {
+        const actionEl = event && event.target && event.target.closest
+            ? event.target.closest('[data-mb-action]')
+            : null;
+        if (!actionEl) return;
+        const action = String(actionEl.dataset.mbAction || '').trim().toLowerCase();
+        if (!action) return;
+
+        const context = moduleBoardResolveContext(actionEl);
+        if (!context) return;
+
+        switch (action) {
+            case 'open-form':
+                moduleBoardOpenForm(context.moduleKey, context.tabKey);
+                break;
+            case 'close-form':
+                moduleBoardCloseForm(context.moduleKey, context.tabKey);
+                break;
+            case 'save-form':
+                moduleBoardSave(context.moduleKey, context.tabKey);
+                break;
+            case 'load':
+                moduleBoardLoad(
+                    context.moduleKey,
+                    context.tabKey,
+                    String(actionEl.dataset.force || '').toLowerCase() === 'true'
+                );
+                break;
+            case 'edit-item':
+                moduleBoardEdit(context.moduleKey, context.tabKey, Number(actionEl.dataset.itemId || 0));
+                break;
+            case 'delete-item':
+                moduleBoardDelete(context.moduleKey, context.tabKey, Number(actionEl.dataset.itemId || 0));
+                break;
+            default:
+                break;
+        }
+    });
+
+    document.addEventListener('change', (event) => {
+        const actionEl = event && event.target && event.target.closest
+            ? event.target.closest('[data-mb-action]')
+            : null;
+        if (!actionEl) return;
+        const action = String(actionEl.dataset.mbAction || '').trim().toLowerCase();
+        if (!['filter-project', 'filter-discipline', 'filter-status'].includes(action)) return;
+
+        const context = moduleBoardResolveContext(actionEl);
+        if (!context) return;
+        moduleBoardLoad(context.moduleKey, context.tabKey, true);
+    });
+
+    document.addEventListener('input', (event) => {
+        const actionEl = event && event.target && event.target.closest
+            ? event.target.closest('[data-mb-action]')
+            : null;
+        if (!actionEl) return;
+        const action = String(actionEl.dataset.mbAction || '').trim().toLowerCase();
+        if (action !== 'filter-search') return;
+
+        const context = moduleBoardResolveContext(actionEl);
+        if (!context) return;
+        moduleBoardDebouncedLoad(context.moduleKey, context.tabKey);
+    });
+
+    WORKBOARD_STATE.actionsBound = true;
 }
 
 function moduleBoardElementId(moduleKey, tabKey, name) {
@@ -717,8 +1030,8 @@ async function moduleBoardLoad(moduleKey, tabKey, force = false) {
     <td>${moduleBoardEsc(moduleBoardFormatDate(row.updated_at || row.created_at, true))}</td>
     <td>
         <div class="module-crud-actions">
-            ${canEdit ? `<button type="button" class="btn-archive-icon" onclick="moduleBoardEdit('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', ${Number(row.id)})">ویرایش</button>` : ''}
-            ${canEdit ? `<button type="button" class="btn-archive-icon" onclick="moduleBoardDelete('${moduleBoardEsc(moduleKey)}', '${moduleBoardEsc(tabKey)}', ${Number(row.id)})">حذف</button>` : ''}
+            ${canEdit ? `<button type="button" class="btn-archive-icon" data-mb-action="edit-item" data-item-id="${Number(row.id)}">ویرایش</button>` : ''}
+            ${canEdit ? `<button type="button" class="btn-archive-icon" data-mb-action="delete-item" data-item-id="${Number(row.id)}">حذف</button>` : ''}
             ${!canEdit ? '-' : ''}
         </div>
     </td>
@@ -928,7 +1241,16 @@ window.moduleBoardDelete = moduleBoardDelete;
 //  1. NAVIGATION LOGIC (Ù…Ø¯ÛŒØ±ÛŒØª Ø¬Ø§Ø¨Ø¬Ø§ÛŒÛŒ ØµÙØ­Ø§Øª)
 // ============================================================
 
-function navigateTo(viewId) {
+async function runViewInitializer(viewId) {
+    const boot = window.ViewBoot?.[viewId];
+    if (boot && typeof boot.init === 'function') {
+        await boot.init();
+        return true;
+    }
+    return false;
+}
+
+async function navigateTo(viewId) {
     const routedViewId = mapToRoutedView(viewId);
     console.log("Navigating to:", routedViewId);
 
@@ -939,7 +1261,7 @@ function navigateTo(viewId) {
     if (routedViewId === 'view-users' || routedViewId === 'view-bulk') {
         if (!window.requireAdmin()) return;
         PENDING_SETTINGS_TAB = routedViewId === 'view-users' ? 'users' : 'bulk';
-        navigateTo('view-settings');
+        await navigateTo('view-settings');
         return;
     }
     
@@ -947,6 +1269,11 @@ function navigateTo(viewId) {
         return;
     }
     
+    markPerf('view_switch_start');
+
+    const loaded = await loadViewPartial(routedViewId);
+    if (!loaded) return;
+
     document.querySelectorAll('.view-section').forEach(el => {
         el.style.display = 'none';
         el.classList.remove('active');
@@ -958,53 +1285,65 @@ function navigateTo(viewId) {
     target.style.display = 'block';
     target.classList.add('active');
     
-    switch(routedViewId) {
-        case 'view-dashboard':
-            if (typeof initDashboard === 'function') initDashboard();
-            break;
+    const handledByModule = await runViewInitializer(routedViewId);
+    if (!handledByModule) {
+        switch(routedViewId) {
+            case 'view-dashboard':
+                if (typeof initDashboard === 'function') initDashboard();
+                break;
 
-        case 'view-edms': {
-            const lastSavedTab = loadEdmsLastTab();
-            const requestedTab = PENDING_EDMS_TAB || lastSavedTab || getEffectiveDefaultEdmsTab() || 'archive';
-            const safeTab = isEdmsTabVisible(requestedTab) ? requestedTab : getFirstVisibleEdmsTab();
-            if (safeTab) {
-                openEdmsTab(safeTab);
-                loadEdmsHeaderStats();
-            } else {
-                showToast('هیچ تب فعالی برای EDMS در دسترس نیست.', 'error');
-                navigateTo('view-dashboard');
-                return;
+            case 'view-edms': {
+                const lastSavedTab = loadEdmsLastTab();
+                const requestedTab = PENDING_EDMS_TAB || lastSavedTab || getEffectiveDefaultEdmsTab() || 'archive';
+                const safeTab = isEdmsTabVisible(requestedTab) ? requestedTab : getFirstVisibleEdmsTab();
+                if (safeTab) {
+                    openEdmsTab(safeTab);
+                    loadEdmsHeaderStats();
+                } else {
+                    showToast('هیچ تب فعالی برای EDMS در دسترس نیست.', 'error');
+                    await navigateTo('view-dashboard');
+                    return;
+                }
+                break;
             }
-            break;
+
+            case 'view-reports':
+                if (typeof initReportsView === 'function') initReportsView();
+                break;
+
+            case 'view-contractor':
+                if (typeof initContractorView === 'function') initContractorView();
+                break;
+
+            case 'view-consultant':
+                if (typeof initConsultantView === 'function') initConsultantView();
+                break;
+                
+            case 'view-settings':
+                if (typeof openSettingsTab === 'function') {
+                    const targetTab = PENDING_SETTINGS_TAB || 'general';
+                    PENDING_SETTINGS_TAB = null;
+                    openSettingsTab(targetTab);
+                }
+                break;
+
+            case 'view-profile':
+                if (typeof initUserSettingsView === 'function') initUserSettingsView();
+                break;
         }
-
-        case 'view-reports':
-            if (typeof initReportsView === 'function') initReportsView();
-            break;
-
-        case 'view-contractor':
-            if (typeof initContractorView === 'function') initContractorView();
-            break;
-
-        case 'view-consultant':
-            if (typeof initConsultantView === 'function') initConsultantView();
-            break;
-            
-        case 'view-settings':
-            if (typeof openSettingsTab === 'function') {
-                const targetTab = PENDING_SETTINGS_TAB || 'general';
-                PENDING_SETTINGS_TAB = null;
-                openSettingsTab(targetTab);
-            }
-            break;
-
-        case 'view-profile':
-            if (typeof initUserSettingsView === 'function') initUserSettingsView();
-            break;
     }
-    
+
+    markPerf('view_switch_end');
+    measurePerf('view_switch', 'view_switch_start', 'view_switch_end');
+    renderDevPerformancePanel();
+    window.AppEvents?.emit?.('view:activated', { viewId: routedViewId });
     updateSidebarState(routedViewId);
 }
+
+window.navigateTo = navigateTo;
+window.App = window.App || {};
+window.App.navigateTo = navigateTo;
+window.App.events = window.AppEvents || null;
 
 function updateSidebarState(activeViewId) {
     // Ø­Ø°Ù Ú©Ù„Ø§Ø³ active Ø§Ø² Ù‡Ù…Ù‡ Ø¢ÛŒØªÙ…â€ŒÙ‡Ø§
@@ -1098,6 +1437,8 @@ function toggleUserMenu() {
         dropdown.classList.toggle('show');
     }
 }
+
+window.showToast = showToast;
 
 // ============================================================
 //  4. TRANSMITTAL LOGIC

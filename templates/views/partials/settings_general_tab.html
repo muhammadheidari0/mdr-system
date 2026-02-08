@@ -1,29 +1,29 @@
 <div class="general-settings-nav">
-  <button type="button" class="general-settings-btn active" data-general-tab="db" onclick="switchGeneralSettingsPage('db', this)">
+  <button type="button" class="general-settings-btn active" data-general-tab="db" data-general-action="switch-page">
     <span class="material-icons-round">storage</span> مدیریت پایگاه داده
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="projects" onclick="switchGeneralSettingsPage('projects', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="projects" data-general-action="switch-page">
     <span class="material-icons-round">apartment</span> پروژه‌ها
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="mdr" onclick="switchGeneralSettingsPage('mdr', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="mdr" data-general-action="switch-page">
     <span class="material-icons-round">category</span> MDR
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="phases" onclick="switchGeneralSettingsPage('phases', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="phases" data-general-action="switch-page">
     <span class="material-icons-round">timeline</span> فازها
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="disciplines" onclick="switchGeneralSettingsPage('disciplines', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="disciplines" data-general-action="switch-page">
     <span class="material-icons-round">engineering</span> دیسیپلین‌ها
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="packages" onclick="switchGeneralSettingsPage('packages', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="packages" data-general-action="switch-page">
     <span class="material-icons-round">inventory_2</span> پکیج‌ها
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="blocks" onclick="switchGeneralSettingsPage('blocks', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="blocks" data-general-action="switch-page">
     <span class="material-icons-round">domain</span> بلوک‌ها
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="levels" onclick="switchGeneralSettingsPage('levels', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="levels" data-general-action="switch-page">
     <span class="material-icons-round">stairs</span> سطوح
   </button>
-  <button type="button" class="general-settings-btn" data-general-tab="statuses" onclick="switchGeneralSettingsPage('statuses', this)">
+  <button type="button" class="general-settings-btn" data-general-tab="statuses" data-general-action="switch-page">
     <span class="material-icons-round">flag</span> وضعیت‌ها
   </button>
 </div>
@@ -38,7 +38,7 @@
         اطلاعات پایه (پروژه، MDR، فاز، دیسیپلین، پکیج، بلوک، سطح، وضعیت)
         از فایل <code>master_data.xlsx</code> خوانده و بروزرسانی می‌شود.
       </div>
-      <button class="btn btn-warning" type="button" onclick="localRunSeed()">
+      <button class="btn btn-warning" type="button" data-general-action="run-seed">
         <span class="material-icons-round">sync</span> اجرای Seed
       </button>
     </div>
@@ -57,12 +57,34 @@
     <h3 class="general-settings-title">
       <span class="material-icons-round">folder_open</span> Storage Paths
     </h3>
+    <div class="general-settings-note general-settings-note-info">
+      <span class="material-icons-round">info</span>
+      <div>
+        این مسیرها محل ذخیره فیزیکی فایل‌ها هستند. مسیر نسبی نسبت به پوشه اصلی برنامه
+        <code>(BASE_DIR)</code> محاسبه می‌شود.
+      </div>
+    </div>
     <div class="general-form-grid">
-      <input id="mdrStoragePathInput" class="form-input" placeholder="MDR storage path (e.g. ./files/technical)">
-      <input id="correspondenceStoragePathInput" class="form-input" placeholder="Correspondence path (e.g. ./files/correspondence)">
+      <div class="storage-path-field-group">
+        <div class="storage-path-field-title">مسیر مدارک مهندسی (MDR / Archive)</div>
+        <input id="mdrStoragePathInput" class="form-input" placeholder="MDR storage path (e.g. ./files/technical)">
+        <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/technical</code></div>
+        <span class="form-help storage-path-help">برای فایل‌های آرشیو مدارک، نسخه‌ها و پیوست‌های MDR</span>
+      </div>
+      <div class="storage-path-field-group">
+        <div class="storage-path-field-title">مسیر مکاتبات (Correspondence)</div>
+        <input id="correspondenceStoragePathInput" class="form-input" placeholder="Correspondence path (e.g. ./files/correspondence)">
+        <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/correspondence</code></div>
+        <span class="form-help storage-path-help">برای نامه‌ها، اکشن‌ها و پیوست‌های مکاتبات (Correspondence)</span>
+      </div>
+    </div>
+    <div id="storagePathsConflictError" class="storage-path-inline-error" style="display:none;"></div>
+    <div class="general-settings-note storage-path-warning">
+      <span class="material-icons-round">warning_amber</span>
+      <div>پیشنهاد می‌شود این دو مسیر یکسان نباشند تا اختلاط فایل‌ها رخ ندهد.</div>
     </div>
     <div class="general-form-actions">
-      <button class="btn btn-primary" type="button" onclick="saveStoragePaths()">Save Paths</button>
+      <button class="btn btn-primary" type="button" data-general-action="save-storage-paths">Save Paths</button>
     </div>
   </div>
 
@@ -92,16 +114,16 @@
         </label>
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="saveProjectSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetProjectForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-project">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-project">جدید</button>
       </div>
     </div>
 
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست پروژه‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchProjectsInput" class="form-input general-search-input" placeholder="جستجو در پروژه‌ها..." oninput="updateSettingsSearch('projects', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('projects', this.value)">
+        <input id="searchProjectsInput" class="form-input general-search-input" placeholder="جستجو در پروژه‌ها..." data-general-action="search-entity" data-entity="projects">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="projects">
           <option value="5">5</option>
           <option value="10" selected>10</option>
           <option value="20">20</option>
@@ -132,15 +154,15 @@
         <label class="checkbox-label"><input id="mdrActiveInput" type="checkbox" checked><span class="checkmark"></span>فعال</label>
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="saveMdrSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetMdrForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-mdr">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-mdr">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست MDR</h3>
       <div class="general-list-toolbar">
-        <input id="searchMdrInput" class="form-input general-search-input" placeholder="جستجو در MDR..." oninput="updateSettingsSearch('mdr', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('mdr', this.value)">
+        <input id="searchMdrInput" class="form-input general-search-input" placeholder="جستجو در MDR..." data-general-action="search-entity" data-entity="mdr">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="mdr">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
@@ -165,15 +187,15 @@
         <input id="phaseNamePInput" class="form-input" placeholder="نام فارسی">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="savePhaseSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetPhaseForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-phase">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-phase">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست فازها</h3>
       <div class="general-list-toolbar">
-        <input id="searchPhasesInput" class="form-input general-search-input" placeholder="جستجو در فازها..." oninput="updateSettingsSearch('phases', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('phases', this.value)">
+        <input id="searchPhasesInput" class="form-input general-search-input" placeholder="جستجو در فازها..." data-general-action="search-entity" data-entity="phases">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="phases">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
@@ -198,15 +220,15 @@
         <input id="disciplineNamePInput" class="form-input" placeholder="نام فارسی">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="saveDisciplineSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetDisciplineForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-discipline">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-discipline">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست دیسیپلین‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchDisciplinesInput" class="form-input general-search-input" placeholder="جستجو در دیسیپلین‌ها..." oninput="updateSettingsSearch('disciplines', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('disciplines', this.value)">
+        <input id="searchDisciplinesInput" class="form-input general-search-input" placeholder="جستجو در دیسیپلین‌ها..." data-general-action="search-entity" data-entity="disciplines">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="disciplines">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
@@ -232,15 +254,15 @@
         <input id="packageNamePInput" class="form-input" placeholder="نام فارسی پکیج">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="savePackageSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetPackageForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-package">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-package">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست پکیج‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchPackagesInput" class="form-input general-search-input" placeholder="جستجو در پکیج‌ها..." oninput="updateSettingsSearch('packages', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('packages', this.value)">
+        <input id="searchPackagesInput" class="form-input general-search-input" placeholder="جستجو در پکیج‌ها..." data-general-action="search-entity" data-entity="packages">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="packages">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
@@ -268,15 +290,15 @@
         <label class="checkbox-label"><input id="blockActiveInput" type="checkbox" checked><span class="checkmark"></span>فعال</label>
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="saveBlockSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetBlockForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-block">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-block">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست بلوک‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchBlocksInput" class="form-input general-search-input" placeholder="جستجو در بلوک‌ها..." oninput="updateSettingsSearch('blocks', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('blocks', this.value)">
+        <input id="searchBlocksInput" class="form-input general-search-input" placeholder="جستجو در بلوک‌ها..." data-general-action="search-entity" data-entity="blocks">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="blocks">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
@@ -302,15 +324,15 @@
         <input id="levelSortInput" class="form-input" type="number" value="0" placeholder="ترتیب">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="saveLevelSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetLevelForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-level">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-level">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست سطوح</h3>
       <div class="general-list-toolbar">
-        <input id="searchLevelsInput" class="form-input general-search-input" placeholder="جستجو در سطوح..." oninput="updateSettingsSearch('levels', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('levels', this.value)">
+        <input id="searchLevelsInput" class="form-input general-search-input" placeholder="جستجو در سطوح..." data-general-action="search-entity" data-entity="levels">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="levels">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
@@ -336,15 +358,15 @@
         <input id="statusSortInput" class="form-input" type="number" value="0" placeholder="ترتیب">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" onclick="saveStatusSetting()">ذخیره</button>
-        <button class="btn btn-secondary" type="button" onclick="resetStatusForm()">جدید</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-status">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-status">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
       <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست وضعیت‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchStatusesInput" class="form-input general-search-input" placeholder="جستجو در وضعیت‌ها..." oninput="updateSettingsSearch('statuses', this.value)">
-        <select class="form-input general-page-size" onchange="updateSettingsPageSize('statuses', this.value)">
+        <input id="searchStatusesInput" class="form-input general-search-input" placeholder="جستجو در وضعیت‌ها..." data-general-action="search-entity" data-entity="statuses">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="statuses">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>

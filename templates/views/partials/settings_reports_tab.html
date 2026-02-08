@@ -1,3 +1,4 @@
+<div id="settingsReportsTabRoot">
 <div class="archive-card">
   <div class="archive-header">
     <div class="header-content">
@@ -10,15 +11,15 @@
       </p>
     </div>
     <div class="header-actions">
-      <button class="btn-secondary" type="button" onclick="initSettingsReports(true)">
+      <button class="btn-secondary" type="button" data-settings-reports-action="init-settings-reports" data-force="true">
         <span class="material-icons-round">refresh</span>
         بازخوانی
       </button>
-      <button class="btn-primary" type="button" onclick="loadSettingsAccessReport()">
+      <button class="btn-primary" type="button" data-settings-reports-action="load-settings-access-report">
         <span class="material-icons-round">search</span>
         اجرای گزارش
       </button>
-      <button class="btn-secondary" type="button" onclick="downloadSettingsAccessReportCsv()">
+      <button class="btn-secondary" type="button" data-settings-reports-action="download-settings-access-report-csv">
         <span class="material-icons-round">download</span>
         خروجی CSV
       </button>
@@ -55,7 +56,7 @@
       </div>
       <div class="form-group">
         <label class="form-label-sm">سایز صفحه گزارش</label>
-        <select id="settingsAccessPageSize" class="form-input" onchange="setSettingsAccessPageSize(this.value)">
+        <select id="settingsAccessPageSize" class="form-input" data-settings-reports-action="set-settings-access-page-size">
           <option value="10">10</option>
           <option value="20" selected>20</option>
           <option value="50">50</option>
@@ -99,7 +100,7 @@
       </p>
     </div>
     <div class="header-actions">
-      <button class="btn-primary" type="button" onclick="loadSettingsUserAccess()">
+      <button class="btn-primary" type="button" data-settings-reports-action="load-settings-user-access">
         <span class="material-icons-round">visibility</span>
         نمایش دسترسی کاربر
       </button>
@@ -145,7 +146,7 @@
       </p>
     </div>
     <div class="header-actions">
-      <button class="btn-secondary" type="button" onclick="loadSettingsAuditLogs()">
+      <button class="btn-secondary" type="button" data-settings-reports-action="load-settings-audit-logs">
         <span class="material-icons-round">refresh</span>
         بازخوانی لاگ‌ها
       </button>
@@ -167,7 +168,7 @@
       </div>
       <div class="form-group">
         <label class="form-label-sm">سایز صفحه لاگ</label>
-        <select id="settingsAuditPageSize" class="form-input" onchange="setSettingsAuditPageSize(this.value)">
+        <select id="settingsAuditPageSize" class="form-input" data-settings-reports-action="set-settings-audit-page-size">
           <option value="10">10</option>
           <option value="20" selected>20</option>
           <option value="50">50</option>
@@ -199,23 +200,25 @@
   </div>
 </div>
 
-<div id="settingsJsonModal" class="modal" style="display: none;" onclick="closeSettingsJsonModal(event)">
-  <div class="modal-content settings-json-modal-content" onclick="event.stopPropagation()">
+<div id="settingsJsonModal" class="modal" style="display: none;">
+  <div class="modal-content settings-json-modal-content">
     <div class="modal-header">
       <h3 id="settingsJsonModalTitle">JSON Viewer</h3>
-      <button class="modal-close" type="button" onclick="closeSettingsJsonModal()">&times;</button>
+      <button class="modal-close" type="button" data-settings-reports-action="close-settings-json-modal">&times;</button>
     </div>
     <div class="modal-body">
       <div id="settingsJsonModalMeta" class="form-help"></div>
       <pre id="settingsJsonModalContent" class="settings-json-modal-pre">{}</pre>
     </div>
     <div class="modal-footer">
-      <button class="btn-primary" type="button" onclick="copySettingsJsonModal()">
+      <button class="btn-primary" type="button" data-settings-reports-action="copy-settings-json-modal">
         Copy JSON
       </button>
-      <button class="btn-secondary" type="button" onclick="closeSettingsJsonModal()">بستن</button>
+      <button class="btn-secondary" type="button" data-settings-reports-action="close-settings-json-modal">بستن</button>
     </div>
   </div>
+</div>
+
 </div>
 
 <script src="/static/js/settings_reports.js"></script>

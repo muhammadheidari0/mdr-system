@@ -1,4 +1,4 @@
-﻿<div class="archive-card">
+<div class="archive-card" id="settingsPermissionsTabRoot">
   <div class="archive-header">
     <div class="header-content">
       <h2 class="archive-title">
@@ -10,7 +10,7 @@
       </p>
     </div>
     <div class="header-actions">
-      <button class="btn-secondary" type="button" onclick="initPermissionsSettings(true)">
+      <button class="btn-secondary" type="button" data-permissions-action="init-permissions-settings" data-force="true">
         <span class="material-icons-round">refresh</span>
         بازخوانی
       </button>
@@ -23,15 +23,15 @@
     </div>
 
     <div id="permissionsCategoryTabs" class="edms-tab-buttons" style="margin-bottom: 12px;">
-      <button type="button" class="edms-tab-btn active" data-permissions-category="consultant" onclick="switchPermissionsCategory('consultant', this)">
+      <button type="button" class="edms-tab-btn active" data-permissions-category="consultant" data-permissions-action="switch-permissions-category">
         <span class="material-icons-round">fact_check</span>
         مشاور
       </button>
-      <button type="button" class="edms-tab-btn" data-permissions-category="contractor" onclick="switchPermissionsCategory('contractor', this)">
+      <button type="button" class="edms-tab-btn" data-permissions-category="contractor" data-permissions-action="switch-permissions-category">
         <span class="material-icons-round">construction</span>
         پیمانکار
       </button>
-      <button type="button" class="edms-tab-btn" data-permissions-category="employer" onclick="switchPermissionsCategory('employer', this)">
+      <button type="button" class="edms-tab-btn" data-permissions-category="employer" data-permissions-action="switch-permissions-category">
         <span class="material-icons-round">domain</span>
         کارفرما
       </button>
@@ -52,16 +52,16 @@
       </div>
 
       <div class="permissions-toolbar-actions">
-        <button class="btn-archive-icon" type="button" onclick="expandAllPermissionGroups()" title="باز کردن همه گروه‌ها">
+        <button class="btn-archive-icon" type="button" data-permissions-action="expand-all-permission-groups" title="باز کردن همه گروه‌ها">
           <span class="material-icons-round">unfold_more</span>
         </button>
-        <button class="btn-archive-icon" type="button" onclick="collapseAllPermissionGroups()" title="بستن همه گروه‌ها">
+        <button class="btn-archive-icon" type="button" data-permissions-action="collapse-all-permission-groups" title="بستن همه گروه‌ها">
           <span class="material-icons-round">unfold_less</span>
         </button>
-        <button class="btn-archive-icon" type="button" onclick="resetPermissionFilters()" title="پاکسازی فیلترها">
+        <button class="btn-archive-icon" type="button" data-permissions-action="reset-permission-filters" title="پاکسازی فیلترها">
           <span class="material-icons-round">filter_alt_off</span>
         </button>
-        <button class="btn-primary" type="button" onclick="savePermissionsMatrix()">
+        <button class="btn-primary" type="button" data-permissions-action="save-permissions-matrix">
           <span class="material-icons-round">save</span>
           ذخیره تغییرات
         </button>

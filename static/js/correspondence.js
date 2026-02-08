@@ -1,5 +1,5 @@
 (function () {
-  const S = { inited: false, page: 1, size: 20, total: 0, items: [], loading: false, timer: null, actions: [], atts: [], cat: { issuing: [], categories: [], projects: [], disciplines: [] } };
+  const S = { inited: false, bound: false, page: 1, size: 20, total: 0, items: [], loading: false, timer: null, actions: [], atts: [], cat: { issuing: [], categories: [], projects: [], disciplines: [] } };
   const q = (id) => document.getElementById(id);
   const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const dIn = (v) => !v ? "" : (String(v).includes("T") ? String(v).split("T")[0] : String(v).slice(0, 10));
@@ -67,9 +67,9 @@
         <td>${esc(x.issuing_name || x.issuing_code || "-")}</td><td>${esc(x.category_name || x.category_code || "-")}</td><td>${esc(dirFa(x.direction))}</td>
         <td>${dFa(x.corr_date)}</td><td><span class="corr-status-badge ${statusClass(x.status)}">${esc(x.status || "-")}</span></td><td>${Number(x.open_actions_count || 0)}</td><td>${Number(x.attachments_count || 0)}</td>
         <td><div class="corr-row-actions">
-          <button class="btn-archive-icon" onclick="corrOpenEdit(${Number(x.id || 0)})"><span class="material-icons-round">edit</span></button>
-          <button class="btn-archive-icon" onclick="corrOpenWorkflow(${Number(x.id || 0)})"><span class="material-icons-round">assignment</span></button>
-          <button class="btn-archive-icon" onclick="corrCopyRef('${esc(x.reference_no || "")}')"><span class="material-icons-round">content_copy</span></button>
+          <button class="btn-archive-icon" type="button" data-corr-action="open-edit" data-corr-id="${Number(x.id || 0)}"><span class="material-icons-round">edit</span></button>
+          <button class="btn-archive-icon" type="button" data-corr-action="open-workflow" data-corr-id="${Number(x.id || 0)}"><span class="material-icons-round">assignment</span></button>
+          <button class="btn-archive-icon" type="button" data-corr-action="copy-ref" data-corr-ref="${esc(x.reference_no || "")}"><span class="material-icons-round">content_copy</span></button>
         </div></td>
       </tr>`).join("");
     renderPager();
@@ -106,7 +106,7 @@
   function renderActions() {
     const b = q("corrActionsBody"); if (!b) return;
     if (!S.actions.length) { b.innerHTML = `<tr><td colspan="5" class="corr-empty-row">اقدامی ثبت نشده است.</td></tr>`; fillActionOptions(); return; }
-    b.innerHTML = S.actions.map((a) => `<tr><td>${esc(a.title || a.description || "-")}</td><td>${esc(a.action_type || "-")}</td><td>${dFa(a.due_date)}</td><td><div class="corr-action-status-cell"><span class="corr-status-badge ${statusClass(a.status)}">${esc(a.status || "-")}</span><label class="corr-action-check"><input type="checkbox" ${a.is_closed ? "checked" : ""} onchange="corrToggleActionClosed(${Number(a.id)},this.checked)"><span>بسته</span></label></div></td><td><div class="corr-row-actions"><button class="btn-archive-icon" onclick="corrEditAction(${Number(a.id)})"><span class="material-icons-round">edit</span></button><button class="btn-archive-icon" onclick="corrDeleteAction(${Number(a.id)})"><span class="material-icons-round">delete</span></button></div></td></tr>`).join("");
+    b.innerHTML = S.actions.map((a) => `<tr><td>${esc(a.title || a.description || "-")}</td><td>${esc(a.action_type || "-")}</td><td>${dFa(a.due_date)}</td><td><div class="corr-action-status-cell"><span class="corr-status-badge ${statusClass(a.status)}">${esc(a.status || "-")}</span><label class="corr-action-check"><input type="checkbox" ${a.is_closed ? "checked" : ""} data-corr-action="toggle-action-closed" data-action-id="${Number(a.id)}"><span>بسته</span></label></div></td><td><div class="corr-row-actions"><button class="btn-archive-icon" type="button" data-corr-action="edit-action" data-action-id="${Number(a.id)}"><span class="material-icons-round">edit</span></button><button class="btn-archive-icon" type="button" data-corr-action="delete-action" data-action-id="${Number(a.id)}"><span class="material-icons-round">delete</span></button></div></td></tr>`).join("");
     fillActionOptions();
   }
   async function loadActions(id) {
@@ -130,7 +130,7 @@
   function renderAtts() {
     const b = q("corrAttachmentsBody"); if (!b) return;
     if (!S.atts.length) { b.innerHTML = `<tr><td colspan="5" class="corr-empty-row">فایلی ثبت نشده است.</td></tr>`; return; }
-    b.innerHTML = S.atts.map((a) => `<tr><td>${esc(a.file_name || "-")}</td><td>${esc(kindFa(a.file_kind))}</td><td>${esc(S.actions.find((x) => Number(x.id) === Number(a.action_id))?.title || "-")}</td><td>${dFa(a.uploaded_at)}</td><td><div class="corr-row-actions"><button class="btn-archive-icon" onclick="corrDownloadAttachment(${Number(a.id)})"><span class="material-icons-round">download</span></button><button class="btn-archive-icon" onclick="corrDeleteAttachment(${Number(a.id)})"><span class="material-icons-round">delete</span></button></div></td></tr>`).join("");
+    b.innerHTML = S.atts.map((a) => `<tr><td>${esc(a.file_name || "-")}</td><td>${esc(kindFa(a.file_kind))}</td><td>${esc(S.actions.find((x) => Number(x.id) === Number(a.action_id))?.title || "-")}</td><td>${dFa(a.uploaded_at)}</td><td><div class="corr-row-actions"><button class="btn-archive-icon" type="button" data-corr-action="download-attachment" data-attachment-id="${Number(a.id)}"><span class="material-icons-round">download</span></button><button class="btn-archive-icon" type="button" data-corr-action="delete-attachment" data-attachment-id="${Number(a.id)}"><span class="material-icons-round">delete</span></button></div></td></tr>`).join("");
   }
   async function loadAtts(id) { if (!id) { S.atts = []; renderAtts(); return; } const r = await fetchWithAuth(`/api/v1/correspondence/${id}/attachments`), b = await r.json(); if (!r.ok || !b?.ok) return err(b?.detail || "خطا در دریافت فایل‌ها"), S.atts = [], renderAtts(); S.atts = Array.isArray(b.data) ? b.data : []; renderAtts(); }
   async function corrUploadAttachment() {
@@ -171,10 +171,105 @@
   async function corrOpenWorkflow(id) { await corrOpenEdit(id); q("corrActionsSection")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
   function corrCloseModal() { q("corrModal").style.display = "none"; }
 
-  async function init() { await loadCatalog(); if (!S.inited) { S.inited = true; formDefaults(); } await loadDashboard(); await loadList(); }
+  function bindEvents() {
+    if (S.bound) return;
+    const root = q("view-correspondence");
+    if (!root) return;
+    S.bound = true;
+
+    q("corrSearchInput")?.addEventListener("keyup", corrDebouncedSearch);
+    ["corrIssuingFilter", "corrCategoryFilter", "corrDirectionFilter", "corrStatusFilter", "corrDateFromFilter", "corrDateToFilter"].forEach((id) => {
+      q(id)?.addEventListener("change", () => corrApplyFilters(true));
+    });
+    q("corrPageSize")?.addEventListener("change", (event) => corrChangePageSize(event?.target?.value));
+
+    q("corrForm")?.addEventListener("submit", corrSave);
+    q("corrReferenceInput")?.addEventListener("input", corrUpdateReferencePreview);
+    q("corrIssuingInput")?.addEventListener("change", () => { syncProjectFromIssuing(); corrUpdateReferencePreview(); });
+    ["corrCategoryInput", "corrDirectionInput", "corrDateInput"].forEach((id) => {
+      q(id)?.addEventListener("change", corrUpdateReferencePreview);
+    });
+
+    root.addEventListener("click", (event) => {
+      const el = event.target?.closest?.("[data-corr-action]");
+      if (!el || !root.contains(el)) return;
+      const action = String(el.getAttribute("data-corr-action") || "").trim();
+      switch (action) {
+        case "open-create":
+          corrOpenCreate();
+          break;
+        case "reset-filters":
+          corrResetFilters();
+          break;
+        case "refresh":
+          corrRefresh();
+          break;
+        case "prev-page":
+          corrPrevPage();
+          break;
+        case "next-page":
+          corrNextPage();
+          break;
+        case "close-modal":
+          corrCloseModal();
+          break;
+        case "submit-action":
+          corrSubmitAction();
+          break;
+        case "clear-action-editor":
+          clearActionEditor();
+          break;
+        case "upload-attachment":
+          corrUploadAttachment();
+          break;
+        case "open-edit":
+          corrOpenEdit(Number(el.getAttribute("data-corr-id") || 0));
+          break;
+        case "open-workflow":
+          corrOpenWorkflow(Number(el.getAttribute("data-corr-id") || 0));
+          break;
+        case "copy-ref":
+          corrCopyRef(el.getAttribute("data-corr-ref") || "");
+          break;
+        case "edit-action":
+          corrEditAction(Number(el.getAttribute("data-action-id") || 0));
+          break;
+        case "delete-action":
+          corrDeleteAction(Number(el.getAttribute("data-action-id") || 0));
+          break;
+        case "download-attachment":
+          corrDownloadAttachment(Number(el.getAttribute("data-attachment-id") || 0));
+          break;
+        case "delete-attachment":
+          corrDeleteAttachment(Number(el.getAttribute("data-attachment-id") || 0));
+          break;
+        default:
+          break;
+      }
+    });
+
+    root.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!target) return;
+      if (target.matches("input[data-corr-action='toggle-action-closed']")) {
+        corrToggleActionClosed(Number(target.getAttribute("data-action-id") || 0), !!target.checked);
+      }
+    });
+
+    q("corrModal")?.addEventListener("click", (event) => {
+      if (event.target?.id === "corrModal") corrCloseModal();
+    });
+  }
+
+  async function init() {
+    bindEvents();
+    await loadCatalog();
+    if (!S.inited) { S.inited = true; formDefaults(); }
+    await loadDashboard();
+    await loadList();
+  }
   window.initCorrespondenceView = init; window.corrOpenCreate = corrOpenCreate; window.corrOpenEdit = corrOpenEdit; window.corrOpenWorkflow = corrOpenWorkflow; window.corrCloseModal = corrCloseModal; window.corrSave = corrSave;
   window.corrDebouncedSearch = corrDebouncedSearch; window.corrApplyFilters = corrApplyFilters; window.corrResetFilters = corrResetFilters; window.corrPrevPage = corrPrevPage; window.corrNextPage = corrNextPage; window.corrChangePageSize = corrChangePageSize; window.corrRefresh = corrRefresh; window.corrUpdateReferencePreview = corrUpdateReferencePreview; window.corrSubmitAction = corrSubmitAction; window.corrClearActionEditor = clearActionEditor; window.corrUploadAttachment = corrUploadAttachment; window.corrCopyRef = corrCopyRef; window.corrEditAction = corrEditAction; window.corrDeleteAction = corrDeleteAction; window.corrToggleActionClosed = corrToggleActionClosed; window.corrDownloadAttachment = corrDownloadAttachment; window.corrDeleteAttachment = corrDeleteAttachment;
-  q("corrModal")?.addEventListener("click", (e) => { if (e.target.id === "corrModal") corrCloseModal(); });
-  q("corrIssuingInput")?.addEventListener("change", () => { syncProjectFromIssuing(); corrUpdateReferencePreview(); });
   if (q("view-correspondence")?.style.display !== "none") init();
 })();
+

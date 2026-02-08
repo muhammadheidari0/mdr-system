@@ -5,7 +5,7 @@
                 <span class="material-icons-round" style="color:#0ea5e9; font-size:28px;">mail</span>
                 مدیریت مکاتبات
             </div>
-            <button class="btn-archive-primary" type="button" onclick="corrOpenCreate()">
+            <button class="btn-archive-primary" type="button" data-corr-action="open-create">
                 <span class="material-icons-round">add</span>
                 مکاتبه جدید
             </button>
@@ -38,42 +38,41 @@
                     id="corrSearchInput"
                     class="archive-search-input"
                     placeholder="جستجو بر اساس شماره، موضوع، فرستنده یا گیرنده"
-                    onkeyup="corrDebouncedSearch()"
                 >
             </div>
 
             <div class="corr-filter-group">
-                <select id="corrIssuingFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                <select id="corrIssuingFilter" class="archive-filter-select">
                     <option value="">همه مراجع صدور</option>
                 </select>
-                <select id="corrCategoryFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                <select id="corrCategoryFilter" class="archive-filter-select">
                     <option value="">همه دسته‌ها</option>
                 </select>
-                <select id="corrDirectionFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                <select id="corrDirectionFilter" class="archive-filter-select">
                     <option value="">همه جهت‌ها</option>
                     <option value="I">وارده</option>
                     <option value="O">صادره</option>
                 </select>
-                <select id="corrStatusFilter" class="archive-filter-select" onchange="corrApplyFilters()">
+                <select id="corrStatusFilter" class="archive-filter-select">
                     <option value="">همه وضعیت‌ها</option>
                     <option value="Open">باز</option>
                     <option value="Closed">بسته</option>
                     <option value="Overdue">سررسید گذشته</option>
                 </select>
-                <input type="date" id="corrDateFromFilter" class="archive-filter-date" onchange="corrApplyFilters()">
-                <input type="date" id="corrDateToFilter" class="archive-filter-date" onchange="corrApplyFilters()">
-                <button class="btn-archive-icon" type="button" onclick="corrResetFilters()" title="حذف فیلتر">
+                <input type="date" id="corrDateFromFilter" class="archive-filter-date">
+                <input type="date" id="corrDateToFilter" class="archive-filter-date">
+                <button class="btn-archive-icon" type="button" data-corr-action="reset-filters" title="حذف فیلتر">
                     <span class="material-icons-round">filter_alt_off</span>
                 </button>
             </div>
 
             <div style="display:flex; align-items:center; gap:8px;">
-                <select id="corrPageSize" class="archive-filter-select" style="min-width:90px;" onchange="corrChangePageSize(this.value)">
+                <select id="corrPageSize" class="archive-filter-select" style="min-width:90px;">
                     <option value="10">10</option>
                     <option value="20" selected>20</option>
                     <option value="50">50</option>
                 </select>
-                <button class="btn-archive-icon" type="button" onclick="corrRefresh()" title="بازخوانی">
+                <button class="btn-archive-icon" type="button" data-corr-action="refresh" title="بازخوانی">
                     <span class="material-icons-round">refresh</span>
                 </button>
             </div>
@@ -113,8 +112,8 @@
         <div class="corr-pager">
             <div id="corrPagerInfo" class="corr-pager-info">0</div>
             <div class="corr-pager-actions">
-                <button id="corrPrevBtn" class="btn-archive-icon" type="button" onclick="corrPrevPage()">قبلی</button>
-                <button id="corrNextBtn" class="btn-archive-icon" type="button" onclick="corrNextPage()">بعدی</button>
+                <button id="corrPrevBtn" class="btn-archive-icon" type="button" data-corr-action="prev-page">قبلی</button>
+                <button id="corrNextBtn" class="btn-archive-icon" type="button" data-corr-action="next-page">بعدی</button>
             </div>
         </div>
     </div>
@@ -123,37 +122,37 @@
         <div class="am-modal-box corr-modal-box">
             <div class="corr-modal-header">
                 <h3 id="corrModalTitle" style="margin:0; color:#0f172a;">مکاتبه جدید</h3>
-                <button type="button" class="btn-archive-icon" onclick="corrCloseModal()">
+                <button type="button" class="btn-archive-icon" data-corr-action="close-modal">
                     <span class="material-icons-round">close</span>
                 </button>
             </div>
 
-            <form id="corrForm" onsubmit="corrSave(event)">
+            <form id="corrForm">
                 <input type="hidden" id="corrIdInput">
 
                 <div class="corr-form-grid corr-form-grid-4">
                     <div>
                         <label class="form-label-sm">مرجع صدور</label>
-                        <select id="corrIssuingInput" class="archive-search-input" onchange="corrUpdateReferencePreview()" required>
+                        <select id="corrIssuingInput" class="archive-search-input" required>
                             <option value="">انتخاب مرجع صدور</option>
                         </select>
                     </div>
                     <div>
                         <label class="form-label-sm">دسته</label>
-                        <select id="corrCategoryInput" class="archive-search-input" onchange="corrUpdateReferencePreview()" required>
+                        <select id="corrCategoryInput" class="archive-search-input" required>
                             <option value="">انتخاب دسته</option>
                         </select>
                     </div>
                     <div>
                         <label class="form-label-sm">جهت</label>
-                        <select id="corrDirectionInput" class="archive-search-input" onchange="corrUpdateReferencePreview()">
+                        <select id="corrDirectionInput" class="archive-search-input">
                             <option value="O">صادره</option>
                             <option value="I">وارده</option>
                         </select>
                     </div>
                     <div>
                         <label class="form-label-sm">تاریخ</label>
-                        <input type="date" id="corrDateInput" class="archive-search-input" onchange="corrUpdateReferencePreview()" required>
+                        <input type="date" id="corrDateInput" class="archive-search-input" required>
                     </div>
                 </div>
 
@@ -175,7 +174,7 @@
                 <div class="corr-form-grid corr-form-grid-2">
                     <div>
                         <label class="form-label-sm">شماره نامه (اختیاری)</label>
-                        <input type="text" id="corrReferenceInput" class="archive-search-input" placeholder="خالی بماند اتوماتیک ساخته می‌شود" oninput="corrUpdateReferencePreview()">
+                        <input type="text" id="corrReferenceInput" class="archive-search-input" placeholder="خالی بماند اتوماتیک ساخته می‌شود">
                     </div>
                     <div>
                         <label class="form-label-sm">پیش‌نمایش شماره</label>
@@ -270,11 +269,11 @@
                 </div>
                 <div class="corr-action-toolbar">
                     <input type="hidden" id="corrActionIdInput">
-                    <button class="btn-archive-primary" type="button" id="corrActionSubmitBtn" onclick="corrSubmitAction()">
+                    <button class="btn-archive-primary" type="button" id="corrActionSubmitBtn" data-corr-action="submit-action">
                         <span class="material-icons-round">playlist_add_check</span>
                         افزودن اقدام
                     </button>
-                    <button class="btn-archive-icon" type="button" onclick="corrClearActionEditor()">
+                    <button class="btn-archive-icon" type="button" data-corr-action="clear-action-editor">
                         پاک‌سازی
                     </button>
                 </div>
@@ -317,7 +316,7 @@
                     </div>
                 </div>
                 <div class="corr-action-toolbar">
-                    <button class="btn-archive-primary" type="button" onclick="corrUploadAttachment()">
+                    <button class="btn-archive-primary" type="button" data-corr-action="upload-attachment">
                         <span class="material-icons-round">upload</span>
                         آپلود فایل
                     </button>
@@ -339,7 +338,7 @@
             </div>
 
             <div class="corr-modal-footer">
-                <button type="button" class="btn-archive-icon" onclick="corrCloseModal()">انصراف</button>
+                <button type="button" class="btn-archive-icon" data-corr-action="close-modal">انصراف</button>
                 <button type="submit" form="corrForm" class="btn-archive-primary" id="corrSaveBtn">
                     <span class="material-icons-round">save</span>
                     ذخیره مکاتبه

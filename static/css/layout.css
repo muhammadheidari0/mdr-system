@@ -1,0 +1,13 @@
+.lazy-view-placeholder {
+    border: 1px dashed var(--lazy-placeholder-border);
+    border-radius: 10px;
+    background: var(--lazy-placeholder-bg);
+    min-height: 120px;
+}
+
+.lazy-view-state {
+    padding: 18px;
+    color: #64748b;
+    text-align: center;
+    font-size: 0.9rem;
+}

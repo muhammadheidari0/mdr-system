@@ -6,6 +6,7 @@
         initialized: false,
         loadingPromise: null,
         storagePathsLoaded: false,
+        actionsBound: false,
         activePage: 'db',
         data: {
             projects: [],
@@ -113,9 +114,9 @@
         pager.innerHTML = `
             <div class="general-pager-left">نمایش ${info.from}-${info.to} از ${info.total}</div>
             <div class="general-pager-right">
-                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} onclick="settingsGotoPage('${entity}', ${info.page - 1})">قبلی</button>
+                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page - 1}">قبلی</button>
                 <span>صفحه ${info.page} از ${info.totalPages}</span>
-                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} onclick="settingsGotoPage('${entity}', ${info.page + 1})">بعدی</button>
+                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page + 1}">بعدی</button>
             </div>
         `;
     }
@@ -144,8 +145,8 @@
                     <td>${esc(p.project_name || p.name_e || '-')}</td>
                     <td>${boolBadge(Boolean(p.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditProjectByCode('${encoded(p.code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deleteProjectSetting('${encoded(p.code)}')">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-project" data-code="${esc(encoded(p.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-project" data-code="${esc(encoded(p.code))}">غیرفعال</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -156,8 +157,8 @@
                     <td>${esc(m.name_e || m.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(m.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditMdrByCode('${encoded(m.code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deleteMdrSetting('${encoded(m.code)}')">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-mdr" data-code="${esc(encoded(m.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-mdr" data-code="${esc(encoded(m.code))}">غیرفعال</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -168,8 +169,8 @@
                     <td>${esc(p.name_e || '-')}</td>
                     <td>${esc(p.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditPhaseByCode('${encoded(p.ph_code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deletePhaseSetting('${encoded(p.ph_code)}')">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-phase" data-code="${esc(encoded(p.ph_code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-phase" data-code="${esc(encoded(p.ph_code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -180,8 +181,8 @@
                     <td>${esc(d.name_e || '-')}</td>
                     <td>${esc(d.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditDisciplineByCode('${encoded(d.code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deleteDisciplineSetting('${encoded(d.code)}')">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-discipline" data-code="${esc(encoded(d.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-discipline" data-code="${esc(encoded(d.code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -193,8 +194,8 @@
                     <td>${esc(p.name_e || '-')}</td>
                     <td>${esc(p.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditPackageByKey('${encoded(p.discipline_code)}','${encoded(p.package_code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deletePackageSetting('${encoded(p.discipline_code)}','${encoded(p.package_code)}')">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -206,8 +207,8 @@
                     <td>${esc(b.name_e || b.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(b.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditBlockByKey('${encoded(b.project_code)}','${encoded(b.code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deleteBlockSetting('${encoded(b.project_code)}','${encoded(b.code)}')">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">غیرفعال</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -219,8 +220,8 @@
                     <td>${esc(l.name_p || '-')}</td>
                     <td>${esc(l.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditLevelByCode('${encoded(l.code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deleteLevelSetting('${encoded(l.code)}')">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-level" data-code="${esc(encoded(l.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-level" data-code="${esc(encoded(l.code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -232,8 +233,8 @@
                     <td>${esc(s.description || '-')}</td>
                     <td>${esc(s.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" onclick="openEditStatusByCode('${encoded(s.code)}')">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" onclick="deleteStatusSetting('${encoded(s.code)}')">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-status" data-code="${esc(encoded(s.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-status" data-code="${esc(encoded(s.code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -326,12 +327,74 @@
         const mdrInput = document.getElementById('mdrStoragePathInput');
         const corrInput = document.getElementById('correspondenceStoragePathInput');
         if (!mdrInput || !corrInput) return;
+        bindStoragePathValidation();
         if (STORE.storagePathsLoaded && !force) return;
 
         const payload = await request(`${API_BASE}/storage-paths`);
         mdrInput.value = norm(payload?.mdr_storage_path);
         corrInput.value = norm(payload?.correspondence_storage_path);
+        validateStoragePathConflict(false);
         STORE.storagePathsLoaded = true;
+    }
+
+    function normalizeStoragePathForCompare(value) {
+        return norm(value).replace(/[\\/]+$/g, '');
+    }
+
+    function setStoragePathConflictError(message = '') {
+        const box = document.getElementById('storagePathsConflictError');
+        const mdrInput = document.getElementById('mdrStoragePathInput');
+        const corrInput = document.getElementById('correspondenceStoragePathInput');
+        if (!mdrInput || !corrInput) return;
+        if (message) {
+            if (box) {
+                box.textContent = message;
+                box.style.display = 'block';
+            }
+            mdrInput.classList.add('form-input-error');
+            corrInput.classList.add('form-input-error');
+            return;
+        }
+        if (box) {
+            box.textContent = '';
+            box.style.display = 'none';
+        }
+        mdrInput.classList.remove('form-input-error');
+        corrInput.classList.remove('form-input-error');
+    }
+
+    function validateStoragePathConflict(showError = true) {
+        const mdrInput = document.getElementById('mdrStoragePathInput');
+        const corrInput = document.getElementById('correspondenceStoragePathInput');
+        if (!mdrInput || !corrInput) return true;
+
+        const mdrPath = normalizeStoragePathForCompare(mdrInput.value);
+        const corrPath = normalizeStoragePathForCompare(corrInput.value);
+        const hasConflict = Boolean(mdrPath) && Boolean(corrPath) && mdrPath === corrPath;
+
+        if (hasConflict) {
+            if (showError) {
+                setStoragePathConflictError('مسیر MDR و مسیر مکاتبات نباید یکسان باشند.');
+            }
+            return false;
+        }
+
+        setStoragePathConflictError('');
+        return true;
+    }
+
+    function bindStoragePathValidation() {
+        const mdrInput = document.getElementById('mdrStoragePathInput');
+        const corrInput = document.getElementById('correspondenceStoragePathInput');
+        if (!mdrInput || !corrInput) return;
+        if (mdrInput.dataset.storagePathBound === '1') return;
+
+        const onInput = () => {
+            validateStoragePathConflict(true);
+        };
+        mdrInput.addEventListener('input', onInput);
+        corrInput.addEventListener('input', onInput);
+        mdrInput.dataset.storagePathBound = '1';
     }
 
     async function ensureSelects() {
@@ -378,7 +441,157 @@
         if (['projects', 'disciplines', 'packages', 'blocks'].includes(page)) await ensureSelects();
     }
 
+    function bindGeneralActions() {
+        if (STORE.actionsBound) return;
+
+        document.addEventListener('click', (event) => {
+            const actionEl = event && event.target && event.target.closest
+                ? event.target.closest('[data-general-action]')
+                : null;
+            if (!actionEl) return;
+
+            const action = String(actionEl.dataset.generalAction || '').trim();
+            if (!action) return;
+
+            switch (action) {
+                case 'switch-page':
+                    window.switchGeneralSettingsPage(actionEl.dataset.generalTab || '', actionEl);
+                    break;
+                case 'run-seed':
+                    window.localRunSeed();
+                    break;
+                case 'save-storage-paths':
+                    window.saveStoragePaths();
+                    break;
+                case 'save-project':
+                    window.saveProjectSetting();
+                    break;
+                case 'reset-project':
+                    window.resetProjectForm();
+                    break;
+                case 'save-mdr':
+                    window.saveMdrSetting();
+                    break;
+                case 'reset-mdr':
+                    window.resetMdrForm();
+                    break;
+                case 'save-phase':
+                    window.savePhaseSetting();
+                    break;
+                case 'reset-phase':
+                    window.resetPhaseForm();
+                    break;
+                case 'save-discipline':
+                    window.saveDisciplineSetting();
+                    break;
+                case 'reset-discipline':
+                    window.resetDisciplineForm();
+                    break;
+                case 'save-package':
+                    window.savePackageSetting();
+                    break;
+                case 'reset-package':
+                    window.resetPackageForm();
+                    break;
+                case 'save-block':
+                    window.saveBlockSetting();
+                    break;
+                case 'reset-block':
+                    window.resetBlockForm();
+                    break;
+                case 'save-level':
+                    window.saveLevelSetting();
+                    break;
+                case 'reset-level':
+                    window.resetLevelForm();
+                    break;
+                case 'save-status':
+                    window.saveStatusSetting();
+                    break;
+                case 'reset-status':
+                    window.resetStatusForm();
+                    break;
+                case 'goto-page':
+                    window.settingsGotoPage(actionEl.dataset.entity || '', Number(actionEl.dataset.page || 1));
+                    break;
+                case 'open-edit-project':
+                    window.openEditProjectByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-project':
+                    window.deleteProjectSetting(actionEl.dataset.code || '');
+                    break;
+                case 'open-edit-mdr':
+                    window.openEditMdrByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-mdr':
+                    window.deleteMdrSetting(actionEl.dataset.code || '');
+                    break;
+                case 'open-edit-phase':
+                    window.openEditPhaseByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-phase':
+                    window.deletePhaseSetting(actionEl.dataset.code || '');
+                    break;
+                case 'open-edit-discipline':
+                    window.openEditDisciplineByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-discipline':
+                    window.deleteDisciplineSetting(actionEl.dataset.code || '');
+                    break;
+                case 'open-edit-package':
+                    window.openEditPackageByKey(actionEl.dataset.disciplineCode || '', actionEl.dataset.packageCode || '');
+                    break;
+                case 'delete-package':
+                    window.deletePackageSetting(actionEl.dataset.disciplineCode || '', actionEl.dataset.packageCode || '');
+                    break;
+                case 'open-edit-block':
+                    window.openEditBlockByKey(actionEl.dataset.projectCode || '', actionEl.dataset.code || '');
+                    break;
+                case 'delete-block':
+                    window.deleteBlockSetting(actionEl.dataset.projectCode || '', actionEl.dataset.code || '');
+                    break;
+                case 'open-edit-level':
+                    window.openEditLevelByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-level':
+                    window.deleteLevelSetting(actionEl.dataset.code || '');
+                    break;
+                case 'open-edit-status':
+                    window.openEditStatusByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-status':
+                    window.deleteStatusSetting(actionEl.dataset.code || '');
+                    break;
+                default:
+                    break;
+            }
+        });
+
+        document.addEventListener('input', (event) => {
+            const actionEl = event && event.target && event.target.closest
+                ? event.target.closest('[data-general-action]')
+                : null;
+            if (!actionEl) return;
+            const action = String(actionEl.dataset.generalAction || '').trim();
+            if (action !== 'search-entity') return;
+            window.updateSettingsSearch(actionEl.dataset.entity || '', actionEl.value || '');
+        });
+
+        document.addEventListener('change', (event) => {
+            const actionEl = event && event.target && event.target.closest
+                ? event.target.closest('[data-general-action]')
+                : null;
+            if (!actionEl) return;
+            const action = String(actionEl.dataset.generalAction || '').trim();
+            if (action !== 'page-size-entity') return;
+            window.updateSettingsPageSize(actionEl.dataset.entity || '', actionEl.value || 10);
+        });
+
+        STORE.actionsBound = true;
+    }
+
     async function initGeneralSettings(force = false) {
+        bindGeneralActions();
         if (STORE.loadingPromise) return STORE.loadingPromise;
 
         const job = (async () => {
@@ -518,10 +731,12 @@
 
     window.saveStoragePaths = async function saveStoragePaths() {
         try {
+            bindStoragePathValidation();
             const mdr_storage_path = norm(document.getElementById('mdrStoragePathInput')?.value);
             const correspondence_storage_path = norm(document.getElementById('correspondenceStoragePathInput')?.value);
             requireVal(mdr_storage_path, 'MDR storage path');
             requireVal(correspondence_storage_path, 'Correspondence storage path');
+            if (!validateStoragePathConflict(true)) return;
 
             const payload = await request(`${API_BASE}/storage-paths`, {
                 method: 'POST',
@@ -532,6 +747,7 @@
             document.getElementById('correspondenceStoragePathInput').value = norm(
                 payload?.correspondence_storage_path || correspondence_storage_path
             );
+            setStoragePathConflictError('');
             STORE.storagePathsLoaded = true;
             tSuccess('Storage paths saved.');
         } catch (err) {

@@ -131,6 +131,36 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/ui/partial/{view_name}", response_class=HTMLResponse, include_in_schema=False)
+    async def ui_partial(request: Request, view_name: str):
+        """Return whitelisted UI partials for lazy view loading."""
+        if not templates:
+            return HTMLResponse("<h1>Error: Templates folder not found!</h1>", status_code=500)
+
+        allowed_views = {
+            "dashboard": "views/dashboard.html",
+            "edms": "views/edms.html",
+            "reports": "views/reports.html",
+            "contractor": "views/contractor_hub.html",
+            "consultant": "views/consultant_hub.html",
+            "profile": "views/profile_settings.html",
+            "settings": "views/settings.html",
+        }
+        key = str(view_name or "").strip().lower()
+        template_name = allowed_views.get(key)
+        if not template_name:
+            raise HTTPException(status_code=404, detail="Unknown UI partial")
+
+        return templates.TemplateResponse(
+            request,
+            template_name,
+            {
+                "app_name": settings.APP_NAME,
+                "version": settings.APP_VERSION,
+                "api_prefix": settings.API_PREFIX,
+            },
+        )
+
     @app.get("/login", response_class=HTMLResponse, include_in_schema=False)
     async def login_page(request: Request):
         """صفحه ورود به سیستم - کاملاً ایزوله"""

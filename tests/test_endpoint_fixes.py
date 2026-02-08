@@ -65,6 +65,26 @@ def test_lookup_dictionary_endpoint_available():
     assert isinstance(body.get("data"), dict)
 
 
+def test_ui_partial_endpoint_returns_whitelisted_view_html():
+    response = client.get("/ui/partial/settings")
+    assert response.status_code == 200, response.text
+    assert "view-settings" in response.text
+
+
+def test_ui_partial_endpoint_rejects_unknown_view_name():
+    response = client.get("/ui/partial/not-a-real-view")
+    assert response.status_code == 404, response.text
+
+
+def test_index_page_contains_lazy_placeholders_for_heavy_views():
+    response = client.get("/")
+    assert response.status_code == 200, response.text
+    html = response.text
+    assert 'data-lazy-view="edms"' in html
+    assert 'data-lazy-view="settings"' in html
+    assert 'data-lazy-view="reports"' in html
+
+
 def test_users_response_contains_created_at_field():
     headers = _auth_headers()
     response = client.get("/api/v1/users/", headers=headers)

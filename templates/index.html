@@ -2,22 +2,24 @@
 
 {% block content %}
     <div id="main-views-container">
-        
-        {% include 'views/login_working.html' %}
-
         {% include 'views/dashboard.html' %}
-
-        {% include 'views/edms.html' %}
-
-        {% include 'views/reports.html' %}
-
-        {% include 'views/contractor_hub.html' %}
-
-        {% include 'views/consultant_hub.html' %}
-
-        {% include 'views/profile_settings.html' %}
-
-        {% include 'views/settings.html' %}
-        
+        <div id="view-edms" class="view-section lazy-view-placeholder" data-lazy-view="edms" style="display:none;">
+            <div class="lazy-view-state">در حال آماده‌سازی ماژول...</div>
+        </div>
+        <div id="view-reports" class="view-section lazy-view-placeholder" data-lazy-view="reports" style="display:none;">
+            <div class="lazy-view-state">در حال آماده‌سازی ماژول...</div>
+        </div>
+        <div id="view-contractor" class="view-section lazy-view-placeholder" data-lazy-view="contractor" style="display:none;">
+            <div class="lazy-view-state">در حال آماده‌سازی ماژول...</div>
+        </div>
+        <div id="view-consultant" class="view-section lazy-view-placeholder" data-lazy-view="consultant" style="display:none;">
+            <div class="lazy-view-state">در حال آماده‌سازی ماژول...</div>
+        </div>
+        <div id="view-profile" class="view-section lazy-view-placeholder" data-lazy-view="profile" style="display:none;">
+            <div class="lazy-view-state">در حال آماده‌سازی ماژول...</div>
+        </div>
+        <div id="view-settings" class="view-section lazy-view-placeholder" data-lazy-view="settings" style="display:none;">
+            <div class="lazy-view-state">در حال آماده‌سازی ماژول...</div>
+        </div>
     </div>
 {% endblock %}

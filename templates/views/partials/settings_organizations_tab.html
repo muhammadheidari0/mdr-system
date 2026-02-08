@@ -1,4 +1,4 @@
-<div class="archive-card">
+<div class="archive-card" id="settingsOrganizationsTabRoot">
   <div class="archive-header">
     <div class="header-content">
       <h2 class="archive-title">
@@ -8,11 +8,11 @@
       <p class="archive-subtitle">تعریف ساختار کارفرما، مشاور، پیمانکار و زیرمجموعه‌ها</p>
     </div>
     <div class="header-actions">
-      <button class="btn-secondary" type="button" onclick="initOrganizationsSettings(true)">
+      <button class="btn-secondary" type="button" data-org-action="refresh-organizations">
         <span class="material-icons-round">refresh</span>
         بازخوانی
       </button>
-      <button class="btn-primary" type="button" onclick="openCreateOrganizationModal()">
+      <button class="btn-primary" type="button" data-org-action="open-create-organization-modal">
         <span class="material-icons-round">add</span>
         سازمان جدید
       </button>
@@ -80,9 +80,9 @@
     <div class="users-table-footer">
       <div id="organizationsTableMeta" class="users-table-meta">در حال بارگذاری...</div>
       <div class="users-pagination">
-        <button type="button" id="organizationsPrevPageBtn" class="users-page-nav" onclick="changeOrganizationsPage(-1)">قبلی</button>
+        <button type="button" id="organizationsPrevPageBtn" class="users-page-nav" data-org-action="change-organizations-page" data-step="-1">قبلی</button>
         <div id="organizationsPageButtons" class="users-page-buttons"></div>
-        <button type="button" id="organizationsNextPageBtn" class="users-page-nav" onclick="changeOrganizationsPage(1)">بعدی</button>
+        <button type="button" id="organizationsNextPageBtn" class="users-page-nav" data-org-action="change-organizations-page" data-step="1">بعدی</button>
       </div>
     </div>
   </div>
@@ -92,7 +92,7 @@
   <div class="modal-content">
     <div class="modal-header">
       <h3 id="organizationModalTitle">ایجاد سازمان جدید</h3>
-      <button class="modal-close" type="button" onclick="closeOrganizationModal()">
+      <button class="modal-close" type="button" data-org-action="close-organization-modal">
         <span class="material-icons-round">close</span>
       </button>
     </div>
@@ -138,8 +138,8 @@
     </form>
 
     <div class="modal-footer">
-      <button type="button" class="btn-secondary" onclick="closeOrganizationModal()">انصراف</button>
-      <button type="button" class="btn-primary" onclick="saveOrganization()">ذخیره</button>
+      <button type="button" class="btn-secondary" data-org-action="close-organization-modal">انصراف</button>
+      <button type="button" class="btn-primary" data-org-action="save-organization">ذخیره</button>
     </div>
   </div>
 </div>

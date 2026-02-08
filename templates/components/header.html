@@ -1,6 +1,6 @@
 <header class="app-header">
   <div class="header-right">
-    <button class="icon-btn menu-toggle" onclick="toggleSidebar()" title="منو">
+    <button class="icon-btn menu-toggle" data-ui-action="toggle-sidebar" type="button" title="منو">
       <span class="material-icons-round">menu</span>
     </button>
   </div>
@@ -19,7 +19,7 @@
 
   <div class="header-left">
     <div class="user-menu-container">
-      <button class="user-btn" onclick="toggleUserMenu()">
+      <button class="user-btn" data-ui-action="toggle-user-menu" type="button">
         <span class="material-icons-round arrow">expand_more</span>
         <span class="username">کاربر سیستم</span>
         <div
@@ -37,11 +37,11 @@
           <div class="role">کاربر</div>
         </div>
 
-        <a href="#" class="dropdown-item" onclick="navigateTo('view-profile'); return false;">
+        <a href="#" class="dropdown-item" data-nav-target="view-profile">
           <span class="material-icons-round">manage_accounts</span> تنظیمات کاربری
         </a>
 
-        <a href="#" class="dropdown-item text-danger" onclick="window.authManager.logout(); return false;">
+        <a href="#" class="dropdown-item text-danger" data-ui-action="logout">
           <span class="material-icons-round">logout</span> خروج
         </a>
       </div>
