@@ -4,21 +4,31 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import traceback  # ✅ برای لاگ خطاهای دقیق
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
 from app.api.dependencies import get_db, allow_admin
 from app.core.config import settings
+from app.core.organizations import (
+    ALL_ORG_TYPES,
+    DEFAULT_PERMISSION_CATEGORY,
+    PERMISSION_CATEGORIES,
+    normalize_permission_category,
+    resolve_user_permission_category,
+)
 from app.core.roles import ALL_ROLES, ROLE_PERMISSIONS, Role, normalize_role
 from app.db.models import (
     Project, Phase, Discipline, Package, Level,
-    SettingsKV, Block, MdrCategory, DocStatus, User as DbUser,
+    SettingsKV, Block, MdrCategory, DocStatus, User as DbUser, Organization, WorkboardItem,
+    RoleCategoryDisciplineScope, RoleCategoryPermission, RoleCategoryProjectScope,
     RolePermission, RoleProjectScope, RoleDisciplineScope,
     UserProjectScope, UserDisciplineScope,
     SettingsAuditLog,
@@ -67,7 +77,7 @@ class DisciplineIn(BaseModel):
 
 class PackageIn(BaseModel):
     discipline_code: str = Field(..., min_length=1, max_length=20)
-    package_code: str = Field(..., min_length=1, max_length=30)
+    package_code: Optional[str] = Field(default=None, max_length=30)
     name_e: str = Field(..., min_length=1, max_length=255)
     name_p: Optional[str] = Field(default=None, max_length=255)
 
@@ -137,6 +147,21 @@ class DocStatusDeleteIn(BaseModel):
     code: str
 
 
+class OrganizationIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    code: str = Field(..., min_length=1, max_length=64)
+    name: str = Field(..., min_length=1, max_length=255)
+    org_type: str = Field(default="contractor", min_length=1, max_length=32)
+    parent_id: Optional[int] = Field(default=None, ge=1)
+    is_active: bool = True
+
+
+class OrganizationDeleteIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    code: Optional[str] = Field(default=None, max_length=64)
+    hard_delete: bool = False
+
+
 class PermissionMatrixIn(BaseModel):
     matrix: Dict[str, Dict[str, bool]]
 
@@ -160,6 +185,78 @@ def _norm(s: Any) -> str:
 
 def _upper(s: Any) -> str:
     return _norm(s).upper()
+
+
+_PKG_SEQ_RE = re.compile(r"(\d{1,3})$")
+
+
+def _extract_package_sequence(code: Any, discipline_code: Any = "") -> Optional[int]:
+    raw = _upper(code)
+    if not raw:
+        return None
+    dcode = _upper(discipline_code)
+    candidate = raw
+    if dcode and candidate.startswith(dcode):
+        candidate = candidate[len(dcode):]
+
+    if candidate.isdigit():
+        seq = int(candidate)
+    else:
+        match = _PKG_SEQ_RE.search(candidate)
+        if not match:
+            return None
+        seq = int(match.group(1))
+
+    if seq < 1 or seq > 99:
+        return None
+    return seq
+
+
+def _normalize_package_code_by_discipline(code: Any, discipline_code: Any = "") -> str:
+    seq = _extract_package_sequence(code, discipline_code)
+    if seq is None:
+        return _upper(code)
+    return f"{seq:02d}"
+
+
+def _next_package_code_for_discipline(db: Session, discipline_code: str) -> str:
+    dcode = _upper(discipline_code)
+    used: set[int] = set()
+    rows = db.query(Package.package_code).filter(Package.discipline_code == dcode).all()
+    for (pkg_code,) in rows:
+        seq = _extract_package_sequence(pkg_code, dcode)
+        if seq is not None:
+            used.add(seq)
+
+    for seq in range(1, 100):
+        if seq not in used:
+            return f"{seq:02d}"
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"No available 2-digit package code left for discipline {dcode}.",
+    )
+
+
+def _normalize_permission_category_or_400(value: Optional[str]) -> str:
+    raw = _norm(value).lower()
+    if not raw:
+        return DEFAULT_PERMISSION_CATEGORY
+    if raw in PERMISSION_CATEGORIES:
+        return raw
+    if raw in ALL_ORG_TYPES:
+        return normalize_permission_category(raw)
+    raise HTTPException(status_code=400, detail=f"Invalid category: {value}")
+
+
+def _normalize_org_type_or_400(value: Optional[str]) -> str:
+    key = _norm(value).lower()
+    if not key:
+        raise HTTPException(status_code=400, detail="org_type is required")
+    if key not in ALL_ORG_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid org_type: {value}")
+    return key
+
 
 def _count(db: Session, model) -> int:
     return db.query(model).count()
@@ -222,10 +319,16 @@ def _build_access_report_items(
 ) -> List[Dict[str, Any]]:
     project = _upper(project_code)
     discipline = _upper(discipline_code)
-    role_scope = _load_scope_rules(db)
     user_scope = _load_user_scope_rules(db)
+    role_scope_cache: Dict[str, Dict[str, Dict[str, List[str]]]] = {}
 
-    q = db.query(DbUser).order_by(DbUser.id)
+    def _scope_for_category(category_key: str) -> Dict[str, Dict[str, List[str]]]:
+        cache_key = _normalize_permission_category_or_400(category_key)
+        if cache_key not in role_scope_cache:
+            role_scope_cache[cache_key] = _load_scope_rules(db, category=cache_key)
+        return role_scope_cache[cache_key]
+
+    q = db.query(DbUser).options(joinedload(DbUser.organization)).order_by(DbUser.id)
     if not include_inactive:
         q = q.filter(DbUser.is_active == True)
     users = q.all()
@@ -233,6 +336,7 @@ def _build_access_report_items(
     items: List[Dict[str, Any]] = []
     for user in users:
         role = normalize_role(user.role)
+        category = resolve_user_permission_category(user)
         project_allowed = True
         discipline_allowed = True
         has_access = True
@@ -242,6 +346,7 @@ def _build_access_report_items(
         discipline_restricted = False
 
         if role != Role.ADMIN.value:
+            role_scope = _scope_for_category(category)
             role_projects = role_scope.get(role, {}).get("projects", [])
             role_disciplines = role_scope.get(role, {}).get("disciplines", [])
             user_projects = user_scope.get(str(user.id), {}).get("projects", [])
@@ -263,6 +368,7 @@ def _build_access_report_items(
                     "email": user.email,
                     "full_name": user.full_name,
                     "role": role,
+                    "category": category,
                     "is_active": user.is_active,
                     "has_access": has_access,
                     "project_allowed": project_allowed,
@@ -359,22 +465,35 @@ def _normalize_permission_matrix(raw: Any) -> Dict[str, Dict[str, bool]]:
     return normalized
 
 
-def _load_permission_matrix(db: Session) -> Dict[str, Dict[str, bool]]:
+def _load_permission_matrix(
+    db: Session,
+    *,
+    category: Optional[str] = None,
+) -> Dict[str, Dict[str, bool]]:
     matrix = _default_permission_matrix()
     perms = _permission_keys()
-    rows = db.query(RolePermission).all()
+    rows = []
+
+    if category is not None:
+        category_key = _normalize_permission_category_or_400(category)
+        rows = (
+            db.query(RoleCategoryPermission)
+            .filter(RoleCategoryPermission.category == category_key)
+            .all()
+        )
+
     if not rows:
-        return matrix
+        rows = db.query(RolePermission).all()
 
     for row in rows:
-        role = _norm(row.role).lower()
-        perm = _norm(row.permission)
+        role = _norm(getattr(row, "role", None)).lower()
+        perm = _norm(getattr(row, "permission", None))
         if role not in ALL_ROLES or perm not in perms:
             continue
         if role == Role.ADMIN.value:
             matrix[role][perm] = True
             continue
-        matrix[role][perm] = bool(row.allowed)
+        matrix[role][perm] = bool(getattr(row, "allowed", False))
     return matrix
 
 
@@ -422,15 +541,45 @@ def _normalize_scope_rules(raw: Any) -> Dict[str, Dict[str, List[str]]]:
     return normalized
 
 
-def _load_scope_rules(db: Session) -> Dict[str, Dict[str, List[str]]]:
+def _load_scope_rules(
+    db: Session,
+    *,
+    category: Optional[str] = None,
+) -> Dict[str, Dict[str, List[str]]]:
     normalized = _default_scope_rules()
-    role_projects = db.query(RoleProjectScope.role, RoleProjectScope.project_code).all()
+
+    role_projects: List[tuple[str, str]] = []
+    role_disciplines: List[tuple[str, str]] = []
+
+    if category is not None:
+        category_key = _normalize_permission_category_or_400(category)
+        has_category_context = (
+            db.query(RoleCategoryPermission.id)
+            .filter(RoleCategoryPermission.category == category_key)
+            .first()
+            is not None
+        )
+        if has_category_context:
+            role_projects = (
+                db.query(RoleCategoryProjectScope.role, RoleCategoryProjectScope.project_code)
+                .filter(RoleCategoryProjectScope.category == category_key)
+                .all()
+            )
+            role_disciplines = (
+                db.query(RoleCategoryDisciplineScope.role, RoleCategoryDisciplineScope.discipline_code)
+                .filter(RoleCategoryDisciplineScope.category == category_key)
+                .all()
+            )
+
+    if not role_projects and not role_disciplines:
+        role_projects = db.query(RoleProjectScope.role, RoleProjectScope.project_code).all()
+        role_disciplines = db.query(RoleDisciplineScope.role, RoleDisciplineScope.discipline_code).all()
+
     for role, project_code in role_projects:
         role_key = _norm(role).lower()
         if role_key in normalized and project_code:
             normalized[role_key]["projects"].append(_upper(project_code))
 
-    role_disciplines = db.query(RoleDisciplineScope.role, RoleDisciplineScope.discipline_code).all()
     for role, discipline_code in role_disciplines:
         role_key = _norm(role).lower()
         if role_key in normalized and discipline_code:
@@ -487,6 +636,62 @@ def _load_user_scope_rules(db: Session) -> Dict[str, Dict[str, List[str]]]:
     return normalized
 
 
+def _organization_sort_key(row: Organization) -> tuple[str, str, int]:
+    return (_norm(row.name).lower(), _norm(row.code).lower(), int(row.id))
+
+
+def _flatten_organizations(rows: List[Organization]) -> List[tuple[Organization, int]]:
+    rows_by_id: Dict[int, Organization] = {int(row.id): row for row in rows}
+    children_map: Dict[Optional[int], List[Organization]] = {}
+    for row in rows:
+        parent_id = int(row.parent_id) if row.parent_id is not None and int(row.parent_id) in rows_by_id else None
+        children_map.setdefault(parent_id, []).append(row)
+
+    for items in children_map.values():
+        items.sort(key=_organization_sort_key)
+
+    ordered: List[tuple[Organization, int]] = []
+
+    def _walk(parent_id: Optional[int], depth: int, trail: set[int]) -> None:
+        for item in children_map.get(parent_id, []):
+            item_id = int(item.id)
+            if item_id in trail:
+                continue
+            ordered.append((item, depth))
+            _walk(item_id, depth + 1, trail | {item_id})
+
+    _walk(None, 0, set())
+
+    if len(ordered) < len(rows):
+        visited = {int(row.id) for row, _ in ordered}
+        leftovers = [row for row in rows if int(row.id) not in visited]
+        leftovers.sort(key=_organization_sort_key)
+        for row in leftovers:
+            ordered.append((row, 0))
+
+    return ordered
+
+
+def _build_organization_tree(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    nodes = {
+        int(item["id"]): {
+            **item,
+            "children": [],
+        }
+        for item in items
+    }
+    roots: List[Dict[str, Any]] = []
+    for item in items:
+        item_id = int(item["id"])
+        parent_id = item.get("parent_id")
+        node = nodes[item_id]
+        if parent_id is not None and int(parent_id) in nodes:
+            nodes[int(parent_id)]["children"].append(node)
+        else:
+            roots.append(node)
+    return roots
+
+
 # -----------------------------
 # Endpoints
 # -----------------------------
@@ -502,6 +707,7 @@ def overview(db: Session = Depends(get_db)):
         "db": {"url": settings.DATABASE_URL},
         "counts": {
             "projects": _count(db, Project),
+            "organizations": _count(db, Organization),
             "phases": _count(db, Phase),
             "disciplines": _count(db, Discipline),
             "packages": _count(db, Package),
@@ -511,8 +717,11 @@ def overview(db: Session = Depends(get_db)):
             "settings_kv": _count(db, SettingsKV),
             "statuses": _count(db, DocStatus),
             "role_permissions": _count(db, RolePermission),
+            "role_category_permissions": _count(db, RoleCategoryPermission),
             "role_project_scopes": _count(db, RoleProjectScope),
+            "role_category_project_scopes": _count(db, RoleCategoryProjectScope),
             "role_discipline_scopes": _count(db, RoleDisciplineScope),
+            "role_category_discipline_scopes": _count(db, RoleCategoryDisciplineScope),
             "user_project_scopes": _count(db, UserProjectScope),
             "user_discipline_scopes": _count(db, UserDisciplineScope),
             "settings_audit_logs": _count(db, SettingsAuditLog),
@@ -552,6 +761,227 @@ def seed_all(db: Session = Depends(get_db)):
         print("!!!!!!!!!!!!!! SEEDING ERROR !!!!!!!!!!!!!!")
         traceback.print_exc()  # چاپ کامل متن خطا در ترمینال
         raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
+
+
+# --- Organizations ---
+@router.get("/organizations")
+def list_organizations_settings(
+    include_inactive: bool = Query(default=False),
+    tree: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    all_rows = db.query(Organization).order_by(Organization.id.asc()).all()
+    parent_lookup = {int(row.id): row for row in all_rows}
+    rows = [row for row in all_rows if include_inactive or bool(row.is_active)]
+
+    users_count = {
+        int(org_id): int(count)
+        for org_id, count in (
+            db.query(DbUser.organization_id, func.count(DbUser.id))
+            .group_by(DbUser.organization_id)
+            .all()
+        )
+        if org_id is not None
+    }
+    children_count = {
+        int(parent_id): int(count)
+        for parent_id, count in (
+            db.query(Organization.parent_id, func.count(Organization.id))
+            .group_by(Organization.parent_id)
+            .all()
+        )
+        if parent_id is not None
+    }
+
+    flat_rows = _flatten_organizations(rows)
+    items: List[Dict[str, Any]] = []
+    for row, depth in flat_rows:
+        parent = parent_lookup.get(int(row.parent_id)) if row.parent_id is not None else None
+        items.append(
+            {
+                "id": row.id,
+                "code": row.code,
+                "name": row.name,
+                "org_type": row.org_type,
+                "parent_id": row.parent_id,
+                "parent_code": parent.code if parent else None,
+                "parent_name": parent.name if parent else None,
+                "is_active": bool(row.is_active),
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+                "users_count": users_count.get(int(row.id), 0),
+                "children_count": children_count.get(int(row.id), 0),
+                "depth": int(depth),
+            }
+        )
+
+    payload: Dict[str, Any] = {
+        "ok": True,
+        "count": len(items),
+        "items": items,
+    }
+    if tree:
+        payload["tree"] = _build_organization_tree(items)
+    return payload
+
+
+@router.post("/organizations/upsert")
+def upsert_organization_settings(
+    payload: OrganizationIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    code = _upper(payload.code)
+    name = _norm(payload.name)
+    org_type = _normalize_org_type_or_400(payload.org_type)
+    parent_id = int(payload.parent_id) if payload.parent_id is not None else None
+
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    row = None
+    if payload.id is not None:
+        row = db.query(Organization).filter(Organization.id == int(payload.id)).first()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Organization not found: {payload.id}")
+    if row is None:
+        row = db.query(Organization).filter(Organization.code == code).first()
+
+    parent = None
+    if parent_id is not None:
+        parent = db.query(Organization).filter(Organization.id == parent_id).first()
+        if not parent:
+            raise HTTPException(status_code=400, detail=f"Parent organization not found: {parent_id}")
+
+    if row is not None and parent is not None:
+        if int(row.id) == int(parent.id):
+            raise HTTPException(status_code=400, detail="Organization cannot be its own parent")
+        probe_id: Optional[int] = int(parent.id)
+        visited: set[int] = set()
+        while probe_id is not None and probe_id not in visited:
+            if probe_id == int(row.id):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid parent_id: cycle detected in organization hierarchy",
+                )
+            visited.add(probe_id)
+            probe_id = (
+                db.query(Organization.parent_id)
+                .filter(Organization.id == probe_id)
+                .scalar()
+            )
+
+    duplicate = db.query(Organization).filter(Organization.code == code)
+    if row is not None:
+        duplicate = duplicate.filter(Organization.id != int(row.id))
+    if duplicate.first():
+        raise HTTPException(status_code=409, detail=f"Organization code already exists: {code}")
+
+    before = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    if row:
+        row.code = code
+        row.name = name
+        row.org_type = org_type
+        row.parent_id = parent_id
+        row.is_active = bool(payload.is_active)
+    else:
+        row = Organization(
+            code=code,
+            name=name,
+            org_type=org_type,
+            parent_id=parent_id,
+            is_active=bool(payload.is_active),
+        )
+        db.add(row)
+
+    db.flush()
+    after = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    _audit_log(
+        db,
+        actor=current_user,
+        action="organization.upsert",
+        target_type="organization",
+        target_key=code,
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {"ok": True, "message": "Organization upserted", "item": after}
+
+
+@router.post("/organizations/delete")
+def delete_organization_settings(
+    payload: OrganizationDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    if payload.id is None and not _norm(payload.code):
+        raise HTTPException(status_code=400, detail="id or code is required")
+
+    row = None
+    if payload.id is not None:
+        row = db.query(Organization).filter(Organization.id == int(payload.id)).first()
+    if row is None and _norm(payload.code):
+        row = db.query(Organization).filter(Organization.code == _upper(payload.code)).first()
+    if row is None:
+        return {"ok": True, "message": "Organization not found (noop)"}
+
+    code = _upper(row.code)
+    if code == "SYSTEM_ROOT":
+        raise HTTPException(status_code=409, detail="SYSTEM_ROOT is protected and cannot be deleted")
+
+    children_count = db.query(Organization).filter(Organization.parent_id == int(row.id)).count()
+    users_count = db.query(DbUser).filter(DbUser.organization_id == int(row.id)).count()
+    workboard_count = db.query(WorkboardItem).filter(WorkboardItem.organization_id == int(row.id)).count()
+    dependencies = {
+        "children": int(children_count),
+        "users": int(users_count),
+        "workboard_items": int(workboard_count),
+    }
+
+    before = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    if payload.hard_delete:
+        if children_count > 0 or users_count > 0 or workboard_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Cannot hard delete organization with dependencies. "
+                    f"children={children_count}, users={users_count}, workboard_items={workboard_count}"
+                ),
+            )
+        _audit_log(
+            db,
+            actor=current_user,
+            action="organization.delete.hard",
+            target_type="organization",
+            target_key=code,
+            before=before,
+            after=None,
+        )
+        db.delete(row)
+        db.commit()
+        return {"ok": True, "message": "Organization deleted", "id": row.id, "code": code}
+
+    row.is_active = False
+    after = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    _audit_log(
+        db,
+        actor=current_user,
+        action="organization.delete.soft",
+        target_type="organization",
+        target_key=code,
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "message": "Organization disabled",
+        "id": row.id,
+        "code": code,
+        "dependencies": dependencies,
+    }
 
 
 # --- Projects ---
@@ -936,18 +1366,32 @@ def upsert_package_settings(
     current_user: DbUser = Depends(allow_admin),
 ):
     dcode = _upper(payload.discipline_code)
-    pcode = _upper(payload.package_code)
+    raw_pcode = _upper(payload.package_code)
 
     disc = db.query(Discipline).filter(Discipline.code == dcode).first()
     if not disc:
         raise HTTPException(status_code=400, detail=f"Discipline {dcode} not found")
 
-    row = db.query(Package).filter(Package.discipline_code == dcode, Package.package_code == pcode).first()
+    normalized_input_code = _normalize_package_code_by_discipline(raw_pcode, dcode)
+    candidate_codes: List[str] = []
+    if raw_pcode:
+        candidate_codes.append(raw_pcode)
+    if normalized_input_code and normalized_input_code not in candidate_codes:
+        candidate_codes.append(normalized_input_code)
+
+    row = None
+    for code in candidate_codes:
+        row = db.query(Package).filter(Package.discipline_code == dcode, Package.package_code == code).first()
+        if row:
+            break
+
     before = _as_dict(row, ["discipline_code", "package_code", "name_e", "name_p"])
     if row:
+        pcode = row.package_code
         row.name_e = _norm(payload.name_e)
         row.name_p = _norm(payload.name_p) or row.name_p
     else:
+        pcode = _next_package_code_for_discipline(db, dcode)
         row = Package(
             discipline_code=dcode,
             package_code=pcode,
@@ -1219,10 +1663,16 @@ def save_storage_paths(
 
 
 @router.get("/permissions/matrix")
-def get_permissions_matrix(db: Session = Depends(get_db)):
-    matrix = _load_permission_matrix(db)
+def get_permissions_matrix(
+    category: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    category_key = _normalize_permission_category_or_400(category)
+    matrix = _load_permission_matrix(db, category=category_key)
     return {
         "ok": True,
+        "category": category_key,
+        "categories": list(PERMISSION_CATEGORIES),
         "roles": list(ALL_ROLES),
         "permissions": _permission_keys(),
         "matrix": matrix,
@@ -1232,17 +1682,22 @@ def get_permissions_matrix(db: Session = Depends(get_db)):
 @router.post("/permissions/matrix")
 def save_permissions_matrix(
     payload: PermissionMatrixIn,
+    category: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: DbUser = Depends(allow_admin),
 ):
-    before = _load_permission_matrix(db)
+    category_key = _normalize_permission_category_or_400(category)
+    before = _load_permission_matrix(db, category=category_key)
     matrix = _normalize_permission_matrix(payload.matrix)
     perms = _permission_keys()
-    db.query(RolePermission).delete(synchronize_session=False)
+    db.query(RoleCategoryPermission).filter(
+        RoleCategoryPermission.category == category_key
+    ).delete(synchronize_session=False)
     for role in ALL_ROLES:
         for perm in perms:
             db.add(
-                RolePermission(
+                RoleCategoryPermission(
+                    category=category_key,
                     role=role,
                     permission=perm,
                     allowed=True if role == Role.ADMIN.value else bool(matrix[role][perm]),
@@ -1252,18 +1707,27 @@ def save_permissions_matrix(
         db,
         actor=current_user,
         action="permissions.matrix.save",
-        target_type="permissions_matrix",
-        target_key=None,
-        before=before,
-        after=matrix,
+        target_type="permissions_matrix_category",
+        target_key=category_key,
+        before={"category": category_key, "matrix": before},
+        after={"category": category_key, "matrix": matrix},
     )
     db.commit()
-    return {"ok": True, "message": "Permissions matrix saved", "matrix": matrix}
+    return {
+        "ok": True,
+        "message": "Permissions matrix saved",
+        "category": category_key,
+        "matrix": matrix,
+    }
 
 
 @router.get("/permissions/scope")
-def get_permissions_scope(db: Session = Depends(get_db)):
-    scope = _load_scope_rules(db)
+def get_permissions_scope(
+    category: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    category_key = _normalize_permission_category_or_400(category)
+    scope = _load_scope_rules(db, category=category_key)
     projects = [
         {"code": p.code, "name": p.name_e or p.name_p or p.code}
         for p in db.query(Project).filter(Project.is_active == True).order_by(Project.code).all()
@@ -1274,6 +1738,8 @@ def get_permissions_scope(db: Session = Depends(get_db)):
     ]
     return {
         "ok": True,
+        "category": category_key,
+        "categories": list(PERMISSION_CATEGORIES),
         "roles": list(ALL_ROLES),
         "scope": scope,
         "projects": projects,
@@ -1284,35 +1750,58 @@ def get_permissions_scope(db: Session = Depends(get_db)):
 @router.post("/permissions/scope")
 def save_permissions_scope(
     payload: PermissionScopeIn,
+    category: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: DbUser = Depends(allow_admin),
 ):
-    before = _load_scope_rules(db)
+    category_key = _normalize_permission_category_or_400(category)
+    before = _load_scope_rules(db, category=category_key)
     scope = _normalize_scope_rules(payload.scope)
     project_codes = {code for (code,) in db.query(Project.code).all()}
     discipline_codes = {code for (code,) in db.query(Discipline.code).all()}
 
-    db.query(RoleProjectScope).delete(synchronize_session=False)
-    db.query(RoleDisciplineScope).delete(synchronize_session=False)
+    db.query(RoleCategoryProjectScope).filter(
+        RoleCategoryProjectScope.category == category_key
+    ).delete(synchronize_session=False)
+    db.query(RoleCategoryDisciplineScope).filter(
+        RoleCategoryDisciplineScope.category == category_key
+    ).delete(synchronize_session=False)
 
     for role in ALL_ROLES:
         for code in scope.get(role, {}).get("projects", []):
             if code in project_codes:
-                db.add(RoleProjectScope(role=role, project_code=code))
+                db.add(
+                    RoleCategoryProjectScope(
+                        category=category_key,
+                        role=role,
+                        project_code=code,
+                    )
+                )
         for code in scope.get(role, {}).get("disciplines", []):
             if code in discipline_codes:
-                db.add(RoleDisciplineScope(role=role, discipline_code=code))
+                db.add(
+                    RoleCategoryDisciplineScope(
+                        category=category_key,
+                        role=role,
+                        discipline_code=code,
+                    )
+                )
     _audit_log(
         db,
         actor=current_user,
         action="permissions.scope.save",
-        target_type="role_scope",
-        target_key=None,
-        before=before,
-        after=scope,
+        target_type="role_scope_category",
+        target_key=category_key,
+        before={"category": category_key, "scope": before},
+        after={"category": category_key, "scope": scope},
     )
     db.commit()
-    return {"ok": True, "message": "Permission scope saved", "scope": scope}
+    return {
+        "ok": True,
+        "message": "Permission scope saved",
+        "category": category_key,
+        "scope": scope,
+    }
 
 
 @router.get("/permissions/user-scope")
@@ -1452,6 +1941,7 @@ def permissions_access_report_csv(
             "email",
             "full_name",
             "role",
+            "category",
             "is_active",
             "has_access",
             "project_allowed",
@@ -1471,6 +1961,7 @@ def permissions_access_report_csv(
                 item.get("email"),
                 item.get("full_name"),
                 item.get("role"),
+                item.get("category"),
                 item.get("is_active"),
                 item.get("has_access"),
                 item.get("project_allowed"),
@@ -1498,12 +1989,18 @@ def permissions_user_access_report(
     include_catalog: bool = Query(default=True),
     db: Session = Depends(get_db),
 ):
-    user = db.query(DbUser).filter(DbUser.id == user_id).first()
+    user = (
+        db.query(DbUser)
+        .options(joinedload(DbUser.organization))
+        .filter(DbUser.id == user_id)
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     role = normalize_role(user.role)
-    role_scope = _load_scope_rules(db).get(role, {"projects": [], "disciplines": []})
+    category = resolve_user_permission_category(user)
+    role_scope = _load_scope_rules(db, category=category).get(role, {"projects": [], "disciplines": []})
     user_scope = _load_user_scope_rules(db).get(str(user_id), {"projects": [], "disciplines": []})
     projects, projects_restricted = _effective_scope_values(
         role_scope.get("projects", []),
@@ -1516,11 +2013,13 @@ def permissions_user_access_report(
 
     payload: Dict[str, Any] = {
         "ok": True,
+        "category": category,
         "user": {
             "id": user.id,
             "email": user.email,
             "full_name": user.full_name,
             "role": role,
+            "category": category,
             "is_active": user.is_active,
         },
         "role_scope": role_scope,

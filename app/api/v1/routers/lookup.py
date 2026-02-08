@@ -1,6 +1,7 @@
 # app/api/v1/routers/lookup.py
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,6 +16,7 @@ from app.db.models import (
     Discipline, 
     Package, 
     Level, 
+    Organization,
     MdrCategory, 
     Block
 )
@@ -33,6 +35,52 @@ def _norm(s: Optional[str]) -> str:
 
 def _upper(s: Optional[str]) -> str:
     return _norm(s).upper()
+
+
+_PKG_SEQ_RE = re.compile(r"(\d{1,3})$")
+
+
+def _extract_package_sequence(code: Optional[str], discipline_code: Optional[str] = None) -> Optional[int]:
+    raw = _upper(code)
+    if not raw:
+        return None
+    dcode = _upper(discipline_code)
+    candidate = raw
+    if dcode and candidate.startswith(dcode):
+        candidate = candidate[len(dcode):]
+
+    if candidate.isdigit():
+        seq = int(candidate)
+    else:
+        match = _PKG_SEQ_RE.search(candidate)
+        if not match:
+            return None
+        seq = int(match.group(1))
+
+    if seq < 1 or seq > 99:
+        return None
+    return seq
+
+
+def _normalize_package_code(code: Optional[str], discipline_code: Optional[str] = None) -> str:
+    seq = _extract_package_sequence(code, discipline_code)
+    if seq is None:
+        return _upper(code)
+    return f"{seq:02d}"
+
+
+def _next_package_code(db: Session, discipline_code: str) -> str:
+    dcode = _upper(discipline_code)
+    used: set[int] = set()
+    rows = db.query(Package.package_code).filter(Package.discipline_code == dcode).all()
+    for (pkg_code,) in rows:
+        seq = _extract_package_sequence(pkg_code, dcode)
+        if seq is not None:
+            used.add(seq)
+    for seq in range(1, 100):
+        if seq not in used:
+            return f"{seq:02d}"
+    raise HTTPException(status_code=400, detail=f"No available package code for discipline {dcode}")
 
 
 # ------------------------------------------------------------
@@ -186,24 +234,38 @@ def list_packages(
 @router.post("/packages")
 def upsert_package(
     discipline_code: str,
-    package_code: str,
     name_e: str,
+    package_code: Optional[str] = None,
     name_p: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(allow_admin),
 ):
     dcode = _upper(discipline_code)
-    pcode = _upper(package_code)
+    raw_pcode = _upper(package_code)
 
     disc = db.query(Discipline).filter(Discipline.code == dcode).first()
     if not disc:
         raise HTTPException(status_code=400, detail=f"Discipline {dcode} not found")
 
-    pkg = db.query(Package).filter(Package.discipline_code == dcode, Package.package_code == pcode).first()
+    normalized_input_code = _normalize_package_code(raw_pcode, dcode)
+    candidate_codes: list[str] = []
+    if raw_pcode:
+        candidate_codes.append(raw_pcode)
+    if normalized_input_code and normalized_input_code not in candidate_codes:
+        candidate_codes.append(normalized_input_code)
+
+    pkg = None
+    for code in candidate_codes:
+        pkg = db.query(Package).filter(Package.discipline_code == dcode, Package.package_code == code).first()
+        if pkg:
+            break
+
     if pkg:
+        pcode = pkg.package_code
         pkg.name_e = _norm(name_e)
         if name_p: pkg.name_p = _norm(name_p)
     else:
+        pcode = _next_package_code(db, dcode)
         db.add(Package(discipline_code=dcode, package_code=pcode, name_e=_norm(name_e), name_p=_norm(name_p)))
     
     db.commit()
@@ -313,5 +375,16 @@ def dictionary(db: Session = Depends(get_db)):
         "mdr_categories": [
             {"code": r.code, "name": r.name_e, "letter": r.code, "name_p": r.name_p}
             for r in db.query(MdrCategory).filter(MdrCategory.is_active == True).order_by(MdrCategory.sort_order).all()
-        ]
+        ],
+        "organizations": [
+            {
+                "id": r.id,
+                "code": r.code,
+                "name": r.name,
+                "org_type": r.org_type,
+                "parent_id": r.parent_id,
+                "is_active": r.is_active,
+            }
+            for r in db.query(Organization).filter(Organization.is_active == True).all()
+        ],
     })

@@ -339,6 +339,24 @@
         if (!STORE.data.disciplines.length) await loadEntity('disciplines', true);
         fillSelect('blockProjectInput', STORE.data.projects, (p) => `${p.code} - ${p.project_name || '-'}`, (p) => p.code);
         fillSelect('packageDisciplineInput', STORE.data.disciplines, (d) => `${d.code} - ${d.name_e || '-'}`, (d) => d.code);
+
+        const packageDiscInput = document.getElementById('packageDisciplineInput');
+        const packageCodeInput = document.getElementById('packageCodeInput');
+        if (packageDiscInput && packageCodeInput && !packageDiscInput.dataset.autoCodeBound) {
+            packageDiscInput.dataset.autoCodeBound = '1';
+            packageDiscInput.addEventListener('change', () => {
+                if (isPackageEditMode()) return;
+                packageCodeInput.value = nextPackageCodeForDiscipline(packageDiscInput.value);
+            });
+        }
+        if (packageDiscInput && packageCodeInput) {
+            packageCodeInput.readOnly = true;
+        }
+        if (packageDiscInput && packageCodeInput && !packageCodeInput.dataset.mode) {
+            setPackageFormMode('new');
+        } else if (packageDiscInput && packageCodeInput && !isPackageEditMode()) {
+            packageCodeInput.value = nextPackageCodeForDiscipline(packageDiscInput.value);
+        }
     }
 
     function activeGeneralPage() {
@@ -386,6 +404,58 @@
 
     function requireVal(value, label) {
         if (!norm(value)) throw new Error(`${label} الزامی است`);
+    }
+
+    function extractPackageSequence(code, disciplineCode = '') {
+        const raw = norm(code).toUpperCase();
+        if (!raw) return null;
+        const disc = norm(disciplineCode).toUpperCase();
+        let candidate = raw;
+        if (disc && candidate.startsWith(disc)) {
+            candidate = candidate.slice(disc.length);
+        }
+        if (/^\d+$/.test(candidate)) {
+            const n = Number(candidate);
+            if (Number.isInteger(n) && n >= 1 && n <= 99) return n;
+            return null;
+        }
+        const match = candidate.match(/(\d{1,3})$/);
+        if (!match) return null;
+        const n = Number(match[1]);
+        if (!Number.isInteger(n) || n < 1 || n > 99) return null;
+        return n;
+    }
+
+    function nextPackageCodeForDiscipline(disciplineCode) {
+        const disc = norm(disciplineCode).toUpperCase();
+        const used = new Set();
+        (STORE.data.packages || []).forEach((pkg) => {
+            if (norm(pkg?.discipline_code).toUpperCase() !== disc) return;
+            const seq = extractPackageSequence(pkg?.package_code, disc);
+            if (seq !== null) used.add(seq);
+        });
+        for (let i = 1; i <= 99; i += 1) {
+            if (!used.has(i)) return String(i).padStart(2, '0');
+        }
+        return '';
+    }
+
+    function isPackageEditMode() {
+        const codeInput = document.getElementById('packageCodeInput');
+        return (codeInput?.dataset?.mode || 'new') === 'edit';
+    }
+
+    function setPackageFormMode(mode = 'new') {
+        const codeInput = document.getElementById('packageCodeInput');
+        const discInput = document.getElementById('packageDisciplineInput');
+        if (!codeInput || !discInput) return;
+        const finalMode = mode === 'edit' ? 'edit' : 'new';
+        codeInput.dataset.mode = finalMode;
+        codeInput.readOnly = true;
+        discInput.disabled = finalMode === 'edit';
+        if (finalMode === 'new') {
+            codeInput.value = nextPackageCodeForDiscipline(discInput.value);
+        }
     }
 
     function findBy(listName, predicate) {
@@ -600,14 +670,23 @@
 
     window.savePackageSetting = async function savePackageSetting() {
         try {
+            const disciplineCode = norm(document.getElementById('packageDisciplineInput')?.value).toUpperCase();
+            const codeInput = document.getElementById('packageCodeInput');
+            let normalizedCode = '';
+            if (isPackageEditMode()) {
+                normalizedCode = norm(codeInput?.value).toUpperCase();
+            } else {
+                normalizedCode = nextPackageCodeForDiscipline(disciplineCode);
+                if (codeInput) codeInput.value = normalizedCode;
+            }
             const payload = {
-                discipline_code: norm(document.getElementById('packageDisciplineInput')?.value).toUpperCase(),
-                package_code: norm(document.getElementById('packageCodeInput')?.value).toUpperCase(),
+                discipline_code: disciplineCode,
+                package_code: normalizedCode,
                 name_e: norm(document.getElementById('packageNameEInput')?.value),
                 name_p: norm(document.getElementById('packageNamePInput')?.value),
             };
             requireVal(payload.discipline_code, 'دیسیپلین');
-            requireVal(payload.package_code, 'کد پکیج');
+            requireVal(payload.package_code, 'کد پکیج خودکار');
             requireVal(payload.name_e, 'نام انگلیسی پکیج');
             await postAndReload('/packages/upsert', payload, ['packages'], 'پکیج ذخیره شد.');
             window.resetPackageForm();
@@ -615,6 +694,12 @@
     };
     window.resetPackageForm = function resetPackageForm() {
         ['packageCodeInput', 'packageNameEInput', 'packageNamePInput'].forEach((id) => (document.getElementById(id).value = ''));
+        setPackageFormMode('new');
+        const discInput = document.getElementById('packageDisciplineInput');
+        const codeInput = document.getElementById('packageCodeInput');
+        if (discInput && codeInput) {
+            codeInput.value = nextPackageCodeForDiscipline(discInput.value);
+        }
     };
     window.openEditPackageByKey = function openEditPackageByKey(d, p) {
         const item = findBy('packages', (x) => x.discipline_code === decoded(d) && x.package_code === decoded(p)); if (!item) return;
@@ -622,6 +707,7 @@
         document.getElementById('packageCodeInput').value = item.package_code || '';
         document.getElementById('packageNameEInput').value = item.name_e || '';
         document.getElementById('packageNamePInput').value = item.name_p || '';
+        setPackageFormMode('edit');
     };
     window.deletePackageSetting = async function deletePackageSetting(d, p) {
         const discipline_code = decoded(d); const package_code = decoded(p);
