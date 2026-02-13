@@ -9,11 +9,11 @@
         <p class="archive-subtitle">ثبت اتمیک هدر/آیتم، شماره‌دهی خودکار، انتخاب مدارک مجاز (Scope)</p>
       </div>
       <div class="header-actions">
-        <button class="btn-secondary" type="button" onclick="loadTransmittals()">
+        <button class="btn-secondary" type="button" data-tr2-action="refresh-list">
           <span class="material-icons-round">refresh</span>
           بازخوانی
         </button>
-        <button class="btn-primary" type="button" onclick="showCreateMode()">
+        <button class="btn-primary" type="button" data-tr2-action="show-create">
           <span class="material-icons-round">add</span>
           صدور جدید
         </button>
@@ -75,11 +75,11 @@
             <input id="tr2-subject" class="form-input" placeholder="موضوع (اختیاری)">
           </div>
           <div class="general-form-actions">
-            <button class="btn btn-secondary" type="button" onclick="refreshTransmittalNumber()">
+            <button class="btn btn-secondary" type="button" data-tr2-action="preview-number">
               <span class="material-icons-round">tag</span>
               پیش‌نمایش شماره
             </button>
-            <button class="btn btn-secondary" type="button" onclick="showListMode()">بازگشت به لیست</button>
+            <button class="btn btn-secondary" type="button" data-tr2-action="show-list">بازگشت به لیست</button>
           </div>
         </div>
 
@@ -90,7 +90,7 @@
           </h3>
           <div class="general-list-toolbar">
             <input id="tr2-doc-search" class="form-input general-search-input" placeholder="شماره/عنوان مدرک...">
-            <button class="btn btn-primary" type="button" onclick="searchEligibleDocs()">جستجو</button>
+            <button class="btn btn-primary" type="button" data-tr2-action="search-docs">جستجو</button>
           </div>
           <div class="table-responsive">
             <table class="archive-table">
@@ -133,11 +133,11 @@
             </table>
           </div>
           <div class="general-form-actions" style="margin-top: 12px;">
-            <button id="tr2-submit-btn" class="btn btn-primary" type="button" onclick="submitTransmittal()">
+            <button id="tr2-submit-btn" class="btn btn-primary" type="button" data-tr2-action="submit-draft">
               <span class="material-icons-round">save</span>
               ذخیره Draft
             </button>
-            <button id="tr2-issue-btn" class="btn btn-primary" type="button" onclick="submitAndIssueTransmittal()">
+            <button id="tr2-issue-btn" class="btn btn-primary" type="button" data-tr2-action="submit-issue">
               <span class="material-icons-round">send</span>
               صدور (Issue)
             </button>

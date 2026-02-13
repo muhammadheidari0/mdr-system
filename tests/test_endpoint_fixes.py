@@ -2,10 +2,13 @@ import uuid
 
 from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.main import app
 from tests.auth_helpers import get_auth_headers
+from tests.auth_helpers import get_test_admin_credentials
 
 client = TestClient(app)
+API_PREFIX = "/api/v1"
 
 
 def _auth_headers() -> dict:
@@ -143,6 +146,62 @@ def test_bulk_register_respects_project_and_mdr_from_manual_format():
     details = body.get("stats", {}).get("details", [])
     assert details, body
     assert any(str(d.get("doc_number", "")).startswith(f"{project_code}-E") for d in details), body
+
+
+def test_system_init_requires_admin_auth():
+    response = client.get(f"{API_PREFIX}/init")
+    assert response.status_code in (401, 403)
+
+
+def test_system_init_disabled_in_production_for_admin(monkeypatch):
+    headers = _auth_headers()
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    response = client.get(f"{API_PREFIX}/init", headers=headers)
+    assert response.status_code == 403, response.text
+
+
+def test_read_only_mode_blocks_write_routes_but_allows_login(monkeypatch):
+    headers = _auth_headers()
+    monkeypatch.setattr(settings, "READ_ONLY_MODE", True)
+
+    write_response = client.post(
+        f"{API_PREFIX}/transmittal/create",
+        headers={**headers, "Content-Type": "application/json"},
+        json={
+            "project_code": "T202",
+            "sender": "O",
+            "receiver": "C",
+            "subject": "read-only-test",
+            "notes": "",
+            "documents": [],
+        },
+    )
+    assert write_response.status_code == 503, write_response.text
+
+    email, password = get_test_admin_credentials()
+    login_response = client.post(
+        f"{API_PREFIX}/auth/login",
+        data={"username": email, "password": password},
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+    # Allowed by read-only middleware; auth itself may return 200/401 depending on credentials.
+    assert login_response.status_code != 503, login_response.text
+
+
+def test_settings_overview_masks_database_url(monkeypatch):
+    headers = _auth_headers()
+    monkeypatch.setattr(settings, "DATABASE_URL", "postgresql+psycopg://user:super-secret@db.example:5432/mdr")
+    response = client.get(f"{API_PREFIX}/settings/overview", headers=headers)
+    if response.status_code == 404 and API_PREFIX != "/api/v1":
+        response = client.get("/api/v1/settings/overview", headers=headers)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload.get("ok") is True
+    db_payload = payload.get("db", {})
+    assert isinstance(db_payload, dict)
+    url_value = str(db_payload.get("url") or "")
+    assert "super-secret" not in url_value
+    assert "***" in url_value
 
 
 def test_transmittal_lifecycle_edit_issue_void_rules():

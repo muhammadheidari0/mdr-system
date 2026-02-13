@@ -10,6 +10,31 @@ if (window.location.pathname.includes('/login')) {
     window.__SKIP_APP_BOOT = true;
 }
 
+const STRICT_BRIDGE_MODE = window.__SKIP_APP_BOOT !== true;
+
+function requireBridge(bridge, name) {
+    if (!STRICT_BRIDGE_MODE) {
+        return bridge || null;
+    }
+    if (!bridge || typeof bridge !== 'object') {
+        throw new Error(`${name} bridge unavailable.`);
+    }
+    return bridge;
+}
+
+const APP_RUNTIME = (window.AppRuntime && typeof window.AppRuntime === 'object')
+    ? window.AppRuntime
+    : null;
+
+const TS_APP_SHELL = requireBridge(APP_RUNTIME?.appShell, 'App shell');
+const TS_APP_BOOT = requireBridge(APP_RUNTIME?.appBoot, 'App boot');
+const TS_APP_ROUTER = requireBridge(APP_RUNTIME?.appRouter, 'App router');
+const TS_EDMS_STATE = requireBridge(APP_RUNTIME?.edmsState, 'EDMS state');
+const TS_MODULE_BOARD = requireBridge(APP_RUNTIME?.moduleBoard, 'Module board');
+const TS_MODULE_TABS = requireBridge(APP_RUNTIME?.moduleTabs, 'Module tabs');
+const TS_VIEW_LOADER = requireBridge(APP_RUNTIME?.viewLoader, 'View loader');
+const TS_APP_DATA = requireBridge(APP_RUNTIME?.appData, 'App data');
+
 const API_BASE = '/api/v1'; 
 window.CACHE = {}; // Ú©Ø´ Ø¨Ø±Ø§ÛŒ Ù†Ú¯Ù‡Ø¯Ø§Ø±ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø§ÛŒÙ‡ (Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§ Ùˆ...)
 let SELECTED_DOC_ID = null; // Ø¨Ø±Ø§ÛŒ Ù…Ù†ÙˆÛŒ Ø±Ø§Ø³Øª Ú©Ù„ÛŒÚ©
@@ -108,15 +133,48 @@ if (window.performance?.mark) {
     window.performance.mark('app_boot_start');
 }
 
+function buildBootDeps() {
+    return {
+        isPublicPage: (pathname) => TS_APP_SHELL?.isPublicPage?.(pathname) || false,
+        toggleLoader: (show) => toggleLoader(show),
+        primeLoadedScriptCache: () => primeLoadedScriptCache(),
+        loadDictionary: () => loadDictionary(),
+        loadEdmsNavigation: () => loadEdmsNavigation(),
+        navigateTo: (viewId) => navigateTo(viewId),
+        markPerf: (name) => markPerf(name),
+        measurePerf: (metricName, startMark, endMark) => measurePerf(metricName, startMark, endMark),
+        renderDevPerformancePanel: () => renderDevPerformancePanel(),
+        setupGlobalListeners: () => setupGlobalListeners(),
+        onDashboardRefresh: () => {
+            console.log("Dashboard refresh requested from iframe.");
+            if (typeof initDashboard === 'function') initDashboard();
+            showToast('عملیات ثبت گروهی با موفقیت انجام شد.', 'success');
+        },
+    };
+}
+
 // ============================================================
 //  0. INITIALIZATION (Ø±Ø§Ù‡â€ŒØ§Ù†Ø¯Ø§Ø²ÛŒ Ø§ÙˆÙ„ÛŒÙ‡)
 // ============================================================
 window.onload = async () => {
+    if (TS_APP_BOOT?.runOnLoad) {
+        try {
+            const handled = await TS_APP_BOOT.runOnLoad(window.location.pathname, buildBootDeps());
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    const path = window.location.pathname;
+
+    if (TS_APP_SHELL?.isPublicPage?.(path)) {
+        console.log("Skipping app init on public page:", path);
+        return;
+    }
+
     // â›” Ù„ÛŒØ³Øª ØµÙØ­Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ Ú©Ù‡ Ù†Ø¨Ø§ÛŒØ¯ Ú†Ú© Ø´ÙˆÙ†Ø¯
     const publicPages = ['/login', '/debug_login'];
-    const path = window.location.pathname;
-    
-    // Ø§Ú¯Ø± Ø¯Ø± ØµÙØ­Ù‡ Ø¹Ù…ÙˆÙ…ÛŒ Ù‡Ø³ØªÛŒÙ…ØŒ Ù‡ÛŒÚ† Ú©Ø§Ø±ÛŒ Ù†Ú©Ù†
     if (publicPages.includes(path)) {
         console.log("Skipping app init on public page:", path);
         return;
@@ -140,7 +198,7 @@ window.onload = async () => {
     // 3. ÙØ¹Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ù„ÛŒØ³Ù†Ø±Ù‡Ø§ (Ú©Ù„ÛŒÚ©â€ŒÙ‡Ø§ÛŒ Ø¹Ù…ÙˆÙ…ÛŒ)
     setupGlobalListeners();
 
-    // 4. Ø¯Ø±ÛŒØ§ÙØª Ù¾ÛŒØ§Ù… Ø§Ø² iframe (Ø¨Ø±Ø§ÛŒ Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ)
+    // 4. Ø¯Ø±ÛŒØ§ÙØª Ù¾ÛŒØ§Ù… Ø§Ø² iframe
     window.addEventListener('message', (event) => {
         if (event.data === 'refreshDashboard') {
             console.log("ðŸ”„ Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø±ÙØ±Ø´ Ø§Ø² Ø³Ù…Øª iframe Ø¯Ø±ÛŒØ§ÙØª Ø´Ø¯.");
@@ -151,6 +209,14 @@ window.onload = async () => {
 };
 
 function setupGlobalListeners() {
+    if (TS_APP_SHELL?.setupGlobalListeners) {
+        TS_APP_SHELL.setupGlobalListeners({
+            navigateTo: (targetView) => navigateTo(targetView),
+            logout: () => window.authManager?.logout?.(),
+        });
+        return;
+    }
+
     document.addEventListener('click', (e) => {
         const navTrigger = e.target.closest('[data-nav-target]');
         if (navTrigger) {
@@ -204,6 +270,16 @@ function setupGlobalListeners() {
 }
 
 function mapToRoutedView(viewId) {
+    if (TS_EDMS_STATE?.mapToRoutedView) {
+        const mapped = TS_EDMS_STATE.mapToRoutedView(viewId);
+        if (mapped) {
+            if (mapped === 'view-edms' && TS_EDMS_STATE?.getPendingEdmsTab) {
+                PENDING_EDMS_TAB = TS_EDMS_STATE.getPendingEdmsTab();
+            }
+            return mapped;
+        }
+    }
+
     const requested = String(viewId || '').trim();
     const mappedTab = EDMS_VIEW_TO_TAB[requested];
     if (mappedTab) {
@@ -214,6 +290,21 @@ function mapToRoutedView(viewId) {
 }
 
 async function ensureXlsxLoaded() {
+    if (TS_APP_DATA?.ensureXlsxLoaded) {
+        try {
+            const result = await TS_APP_DATA.ensureXlsxLoaded({
+                isScriptLoaded: (absoluteSrc) => LOADED_PARTIAL_SCRIPTS.has(absoluteSrc),
+                markScriptLoaded: (absoluteSrc) => LOADED_PARTIAL_SCRIPTS.add(absoluteSrc),
+                getGlobalXlsx: () => window.XLSX,
+            });
+            if (result?.handled) {
+                return result.xlsx;
+            }
+        } catch (error) {
+            throw error;
+        }
+    }
+
     if (window.XLSX) return window.XLSX;
     const src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
     const absoluteSrc = new URL(src, window.location.origin).href;
@@ -234,6 +325,18 @@ async function ensureXlsxLoaded() {
 window.ensureXlsxLoaded = ensureXlsxLoaded;
 
 async function executeScriptsInElement(rootElement) {
+    if (TS_VIEW_LOADER?.executeScriptsInElement) {
+        try {
+            const handled = await TS_VIEW_LOADER.executeScriptsInElement(rootElement, {
+                isScriptLoaded: (absoluteSrc) => LOADED_PARTIAL_SCRIPTS.has(absoluteSrc),
+                markScriptLoaded: (absoluteSrc) => LOADED_PARTIAL_SCRIPTS.add(absoluteSrc),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const scripts = Array.from(rootElement.querySelectorAll('script'));
     for (const oldScript of scripts) {
         const newScript = document.createElement('script');
@@ -263,6 +366,41 @@ async function executeScriptsInElement(rootElement) {
 }
 
 async function loadViewPartial(viewId) {
+    if (TS_VIEW_LOADER?.loadViewPartial) {
+        try {
+            const handled = await TS_VIEW_LOADER.loadViewPartial(viewId, {
+                resolvePartialName: (requestedViewId) => VIEW_PARTIALS[requestedViewId] || null,
+                isViewCached: (requestedViewId) => VIEW_LOAD_CACHE.has(requestedViewId),
+                markViewCached: (requestedViewId) => {
+                    VIEW_LOAD_CACHE.add(requestedViewId);
+                },
+                getViewHost: (requestedViewId) => document.getElementById(requestedViewId),
+                markPerf: (name) => markPerf(name),
+                measurePerf: (metricName, startMark, endMark) => measurePerf(metricName, startMark, endMark),
+                fetchPartialHtml: async (partialName) => {
+                    try {
+                        const res = await fetch(`/ui/partial/${encodeURIComponent(partialName)}`, {
+                            headers: { 'X-Requested-With': 'fetch' },
+                            credentials: 'same-origin',
+                        });
+                        const html = res.ok ? await res.text() : null;
+                        return { ok: !!res.ok, status: Number(res.status || 0), html };
+                    } catch (error) {
+                        console.warn('loadViewPartial fetch failed:', error);
+                        return { ok: false, status: 0, html: null };
+                    }
+                },
+                emitViewLoaded: (loadedViewId, partialName) => {
+                    window.AppEvents?.emit?.('view:loaded', { viewId: loadedViewId, partialName });
+                },
+                showToast: (message, type = 'info') => showToast(message, type),
+            });
+            if (handled) return true;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const partialName = VIEW_PARTIALS[viewId];
     if (!partialName) return true;
     if (VIEW_LOAD_CACHE.has(viewId)) return true;
@@ -317,6 +455,12 @@ function consumePendingSettingsTab() {
 }
 
 function consumePendingEdmsTab() {
+    if (TS_EDMS_STATE?.consumePendingEdmsTab) {
+        const val = TS_EDMS_STATE.consumePendingEdmsTab();
+        PENDING_EDMS_TAB = null;
+        return val;
+    }
+
     const val = PENDING_EDMS_TAB;
     PENDING_EDMS_TAB = null;
     return val;
@@ -326,10 +470,18 @@ window.consumePendingSettingsTab = consumePendingSettingsTab;
 window.consumePendingEdmsTab = consumePendingEdmsTab;
 
 function isEdmsTabVisible(tabName) {
+    if (TS_EDMS_STATE?.isTabVisible) {
+        return TS_EDMS_STATE.isTabVisible(tabName);
+    }
+
     return EDMS_TAB_VISIBILITY[String(tabName || '').trim().toLowerCase()] !== false;
 }
 
 function getFirstVisibleEdmsTab() {
+    if (TS_EDMS_STATE?.getFirstVisibleTab) {
+        return TS_EDMS_STATE.getFirstVisibleTab();
+    }
+
     const order = ['archive', 'transmittal', 'correspondence'];
     return order.find((tab) => isEdmsTabVisible(tab)) || null;
 }
@@ -344,6 +496,11 @@ function getEdmsLastTabStorageKey() {
 }
 
 function saveEdmsLastTab(tabName) {
+    if (TS_EDMS_STATE?.saveLastTab) {
+        TS_EDMS_STATE.saveLastTab(tabName, window.authManager?.user?.id, window.authManager?.user?.role);
+        return;
+    }
+
     try {
         const normalized = String(tabName || '').trim().toLowerCase();
         if (!EDMS_TAB_TO_VIEW[normalized]) return;
@@ -354,6 +511,10 @@ function saveEdmsLastTab(tabName) {
 }
 
 function loadEdmsLastTab() {
+    if (TS_EDMS_STATE?.loadLastTab) {
+        return TS_EDMS_STATE.loadLastTab(window.authManager?.user?.id, window.authManager?.user?.role);
+    }
+
     try {
         const value = localStorage.getItem(getEdmsLastTabStorageKey());
         const normalized = String(value || '').trim().toLowerCase();
@@ -365,6 +526,10 @@ function loadEdmsLastTab() {
 }
 
 function getEffectiveDefaultEdmsTab() {
+    if (TS_EDMS_STATE?.getEffectiveDefaultTab) {
+        return TS_EDMS_STATE.getEffectiveDefaultTab();
+    }
+
     const preferred = String(EDMS_DEFAULT_TAB || '').trim().toLowerCase();
     if (preferred && isEdmsTabVisible(preferred)) {
         return preferred;
@@ -374,6 +539,30 @@ function getEffectiveDefaultEdmsTab() {
 
 function applyEdmsTabVisibility() {
     const navEdms = document.getElementById('nav-edms');
+    if (TS_EDMS_STATE?.applyTabVisibility) {
+        try {
+            const handled = TS_EDMS_STATE.applyTabVisibility({
+                setTabButtonVisible: (tabName, visible) => {
+                    const tabBtn = document.querySelector(`.edms-tab-btn[data-edms-tab="${tabName}"]`);
+                    if (tabBtn) tabBtn.style.display = visible ? '' : 'none';
+                },
+                setPanelVisible: (viewId, visible) => {
+                    const panel = document.getElementById(viewId);
+                    if (panel && !visible) {
+                        panel.style.display = 'none';
+                        panel.classList.remove('active');
+                    }
+                },
+                setNavVisible: (visible) => {
+                    if (navEdms) navEdms.style.display = visible ? '' : 'none';
+                },
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     let hasVisibleTab = false;
 
     Object.entries(EDMS_TAB_TO_VIEW).forEach(([tabName, viewId]) => {
@@ -478,10 +667,42 @@ async function loadEdmsHeaderStats(force = false) {
 
     const now = Date.now();
     const cacheMs = 15000;
-    if (!force && EDMS_STATS_LOADING) return;
-    if (!force && EDMS_STATS_LAST_LOADED_AT && (now - EDMS_STATS_LAST_LOADED_AT) < cacheMs) return;
+    if (TS_EDMS_STATE?.loadHeaderStats) {
+        try {
+            const handled = await TS_EDMS_STATE.loadHeaderStats({
+                force,
+                now,
+                cacheMs,
+                fetchStats: async () => {
+                    try {
+                        const res = (typeof fetchWithAuth === 'function')
+                            ? await fetchWithAuth(`${API_BASE}/dashboard/stats`)
+                            : await fetch(`${API_BASE}/dashboard/stats`);
+                        if (!res || !res.ok) return null;
+                        return await res.json();
+                    } catch (error) {
+                        console.warn('loadEdmsHeaderStats fetch failed:', error);
+                        return null;
+                    }
+                },
+                applyStats: (payload) => setEdmsHeaderStats(payload || {}),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
 
-    EDMS_STATS_LOADING = true;
+    if (TS_EDMS_STATE?.beginHeaderStatsLoad) {
+        const shouldRun = TS_EDMS_STATE.beginHeaderStatsLoad(force, now, cacheMs);
+        if (!shouldRun) return;
+    } else {
+        if (!force && EDMS_STATS_LOADING) return;
+        if (!force && EDMS_STATS_LAST_LOADED_AT && (now - EDMS_STATS_LAST_LOADED_AT) < cacheMs) return;
+        EDMS_STATS_LOADING = true;
+    }
+
+    let loadSucceeded = false;
     try {
         const res = (typeof fetchWithAuth === 'function')
             ? await fetchWithAuth(`${API_BASE}/dashboard/stats`)
@@ -489,61 +710,119 @@ async function loadEdmsHeaderStats(force = false) {
         if (!res || !res.ok) return;
         const data = await res.json();
         setEdmsHeaderStats(data || {});
-        EDMS_STATS_LAST_LOADED_AT = Date.now();
+        loadSucceeded = true;
+        if (!TS_EDMS_STATE?.endHeaderStatsLoad) {
+            EDMS_STATS_LAST_LOADED_AT = Date.now();
+        }
     } catch (error) {
         console.warn('Failed to load EDMS header stats.', error);
     } finally {
-        EDMS_STATS_LOADING = false;
+        if (TS_EDMS_STATE?.endHeaderStatsLoad) {
+            TS_EDMS_STATE.endHeaderStatsLoad(loadSucceeded, Date.now());
+        } else {
+            EDMS_STATS_LOADING = false;
+        }
     }
 }
 
 window.loadEdmsHeaderStats = loadEdmsHeaderStats;
 
 async function loadEdmsNavigation() {
-    const role = String(window.authManager?.user?.role || '').toLowerCase();
-    let fallback = {
-        archive: true,
-        transmittal: true,
-        correspondence: true,
-    };
-
-    if (role === 'viewer') {
-        fallback = {
-            archive: true,
-            transmittal: true,
-            correspondence: true,
-        };
-    }
-
-    EDMS_DEFAULT_TAB = role === 'dcc' || role === 'manager' ? 'transmittal' : 'archive';
-    EDMS_TAB_VISIBILITY = { ...EDMS_TAB_VISIBILITY, ...fallback };
-
-    try {
-        const res = (typeof fetchWithAuth === 'function')
-            ? await fetchWithAuth(`${API_BASE}/auth/navigation`)
-            : await fetch(`${API_BASE}/auth/navigation`);
-        if (res && res.ok) {
-            const body = await res.json();
-            const tabs = body?.edms_tabs || {};
-            EDMS_TAB_VISIBILITY = {
-                ...EDMS_TAB_VISIBILITY,
-                archive: tabs.archive !== false,
-                transmittal: tabs.transmittal !== false,
-                correspondence: tabs.correspondence !== false,
-            };
-            const apiDefaultTab = String(body?.default_edms_tab || '').trim().toLowerCase();
-            if (apiDefaultTab && EDMS_TAB_TO_VIEW[apiDefaultTab]) {
-                EDMS_DEFAULT_TAB = apiDefaultTab;
-            }
+    if (TS_EDMS_STATE?.loadNavigationAndApply) {
+        try {
+            const handled = await TS_EDMS_STATE.loadNavigationAndApply({
+                role: window.authManager?.user?.role,
+                fetchNavigation: async () => {
+                    const res = (typeof fetchWithAuth === 'function')
+                        ? await fetchWithAuth(`${API_BASE}/auth/navigation`)
+                        : await fetch(`${API_BASE}/auth/navigation`);
+                    if (res && res.ok) {
+                        return await res.json();
+                    }
+                    return null;
+                },
+                applyVisibility: () => applyEdmsTabVisibility(),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
         }
-    } catch (error) {
-        console.warn('Failed to load EDMS navigation permissions, using fallback.', error);
     }
 
+    if (!TS_EDMS_STATE?.loadNavigation) {
+        throw new Error('EDMS state bridge does not provide navigation loader.');
+    }
+    await TS_EDMS_STATE.loadNavigation({
+        role: window.authManager?.user?.role,
+        fetchNavigation: async () => {
+            const res = (typeof fetchWithAuth === 'function')
+                ? await fetchWithAuth(`${API_BASE}/auth/navigation`)
+                : await fetch(`${API_BASE}/auth/navigation`);
+            if (res && res.ok) {
+                return await res.json();
+            }
+            return null;
+        },
+    });
     applyEdmsTabVisibility();
 }
 
 function openEdmsTab(tabName, btnEl = null) {
+    if (TS_EDMS_STATE?.openTab) {
+        try {
+            const handled = TS_EDMS_STATE.openTab({
+                tabName,
+                button: btnEl || null,
+                userId: window.authManager?.user?.id,
+                role: window.authManager?.user?.role,
+                showAccessDenied: () => {
+                    showToast('Access denied for this tab.', 'error');
+                },
+                setPanelState: (viewId, active) => {
+                    const panel = document.getElementById(viewId);
+                    if (!panel) return;
+                    panel.style.display = active ? 'block' : 'none';
+                    panel.classList.toggle('active', active);
+                },
+                clearButtons: () => {
+                    document.querySelectorAll('.edms-tab-btn[data-edms-tab]').forEach((button) => {
+                        button.classList.remove('active');
+                    });
+                },
+                activateButton: (normalizedTab, providedButton) => {
+                    const button = providedButton || document.querySelector(`.edms-tab-btn[data-edms-tab="${normalizedTab}"]`);
+                    if (button) button.classList.add('active');
+                },
+                onTabActivated: (normalizedTab) => {
+                    switch (normalizedTab) {
+                        case 'archive':
+                            if (typeof archiveLoadFiles === 'function') archiveLoadFiles();
+                            break;
+                        case 'transmittal':
+                            if (typeof showListMode === 'function') showListMode();
+                            if (typeof loadTransmittals === 'function') {
+                                loadTransmittals();
+                            } else if (typeof toggleTransmittalMode === 'function') {
+                                toggleTransmittalMode('list');
+                            }
+                            break;
+                        case 'correspondence':
+                            if (typeof initCorrespondenceView === 'function') initCorrespondenceView();
+                            break;
+                        default:
+                            break;
+                    }
+                },
+                setLegacyPendingTab: (normalizedTab) => {
+                    PENDING_EDMS_TAB = normalizedTab;
+                },
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const normalized = String(tabName || '').trim().toLowerCase();
     if (!EDMS_TAB_TO_VIEW[normalized]) return;
     if (!isEdmsTabVisible(normalized)) {
@@ -566,6 +845,7 @@ function openEdmsTab(tabName, btnEl = null) {
     const button = btnEl || document.querySelector(`.edms-tab-btn[data-edms-tab="${normalized}"]`);
     if (button) button.classList.add('active');
 
+    if (TS_EDMS_STATE?.setPendingEdmsTab) TS_EDMS_STATE.setPendingEdmsTab(normalized);
     PENDING_EDMS_TAB = normalized;
 
     switch (normalized) {
@@ -597,7 +877,22 @@ window.isEdmsTabVisible = isEdmsTabVisible;
 
 function switchModuleTab(tabName, tabToPanelMap, tabButtonSelector, dataAttrName, btnEl = null) {
     const normalized = String(tabName || '').trim().toLowerCase();
-    if (!tabToPanelMap[normalized]) return;
+    if (!tabToPanelMap[normalized]) return null;
+
+    if (TS_MODULE_TABS?.switchTab) {
+        try {
+            const handled = TS_MODULE_TABS.switchTab(
+                normalized,
+                tabToPanelMap,
+                tabButtonSelector,
+                dataAttrName,
+                btnEl || null
+            );
+            if (handled) return handled;
+        } catch (error) {
+            throw error;
+        }
+    }
 
     Object.entries(tabToPanelMap).forEach(([tab, panelId]) => {
         const panel = document.getElementById(panelId);
@@ -613,29 +908,54 @@ function switchModuleTab(tabName, tabToPanelMap, tabButtonSelector, dataAttrName
 
     const button = btnEl || document.querySelector(`${tabButtonSelector}[${dataAttrName}="${normalized}"]`);
     if (button) button.classList.add('active');
+    return normalized;
 }
 
 function openContractorTab(tabName, btnEl = null) {
-    const normalized = String(tabName || '').trim().toLowerCase();
-    switchModuleTab(normalized, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
+    const normalized = switchModuleTab(tabName, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
+    if (!normalized) return;
     moduleBoardOnTabOpened('contractor', normalized);
 }
 
 function initContractorView() {
     initModuleCrudBoards();
+    if (TS_MODULE_TABS?.resolveInitialTab) {
+        try {
+            const initial = TS_MODULE_TABS.resolveInitialTab('.contractor-tab-btn', 'data-contractor-tab', 'execution');
+            if (initial?.tabName) {
+                openContractorTab(initial.tabName, initial.button || null);
+                return;
+            }
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const currentButton = document.querySelector('.contractor-tab-btn.active');
     const defaultTab = currentButton?.dataset?.contractorTab || 'execution';
     openContractorTab(defaultTab, currentButton || null);
 }
 
 function openConsultantTab(tabName, btnEl = null) {
-    const normalized = String(tabName || '').trim().toLowerCase();
-    switchModuleTab(normalized, CONSULTANT_TAB_TO_PANEL, '.consultant-tab-btn', 'data-consultant-tab', btnEl);
+    const normalized = switchModuleTab(tabName, CONSULTANT_TAB_TO_PANEL, '.consultant-tab-btn', 'data-consultant-tab', btnEl);
+    if (!normalized) return;
     moduleBoardOnTabOpened('consultant', normalized);
 }
 
 function initConsultantView() {
     initModuleCrudBoards();
+    if (TS_MODULE_TABS?.resolveInitialTab) {
+        try {
+            const initial = TS_MODULE_TABS.resolveInitialTab('.consultant-tab-btn', 'data-consultant-tab', 'inspection');
+            if (initial?.tabName) {
+                openConsultantTab(initial.tabName, initial.button || null);
+                return;
+            }
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const currentButton = document.querySelector('.consultant-tab-btn.active');
     const defaultTab = currentButton?.dataset?.consultantTab || 'inspection';
     openConsultantTab(defaultTab, currentButton || null);
@@ -656,10 +976,19 @@ function moduleBoardEsc(value) {
 }
 
 function moduleBoardKey(moduleKey, tabKey) {
+    if (TS_MODULE_BOARD?.key) {
+        const mapped = TS_MODULE_BOARD.key(moduleKey, tabKey);
+        if (mapped) return mapped;
+    }
+
     return `${String(moduleKey || '').trim().toLowerCase()}-${String(tabKey || '').trim().toLowerCase()}`;
 }
 
 function moduleBoardCanEdit() {
+    if (TS_MODULE_BOARD?.canEdit) {
+        return !!TS_MODULE_BOARD.canEdit(window.authManager?.user?.role);
+    }
+
     const role = String(window.authManager?.user?.role || '').trim().toLowerCase();
     return role !== 'viewer';
 }
@@ -856,6 +1185,25 @@ function moduleBoardResolveContext(actionEl) {
 
 function moduleBoardBindActions() {
     if (WORKBOARD_STATE.actionsBound) return;
+    if (TS_MODULE_BOARD?.bindActions) {
+        try {
+            const handled = TS_MODULE_BOARD.bindActions({
+                openForm: (moduleKey, tabKey) => moduleBoardOpenForm(moduleKey, tabKey),
+                closeForm: (moduleKey, tabKey) => moduleBoardCloseForm(moduleKey, tabKey),
+                saveForm: (moduleKey, tabKey) => moduleBoardSave(moduleKey, tabKey),
+                loadItems: (moduleKey, tabKey, force) => moduleBoardLoad(moduleKey, tabKey, force),
+                editItem: (moduleKey, tabKey, itemId) => moduleBoardEdit(moduleKey, tabKey, itemId),
+                deleteItem: (moduleKey, tabKey, itemId) => moduleBoardDelete(moduleKey, tabKey, itemId),
+                debouncedLoad: (moduleKey, tabKey) => moduleBoardDebouncedLoad(moduleKey, tabKey),
+            });
+            if (handled) {
+                WORKBOARD_STATE.actionsBound = true;
+                return;
+            }
+        } catch (error) {
+            throw error;
+        }
+    }
 
     document.addEventListener('click', (event) => {
         const actionEl = event && event.target && event.target.closest
@@ -934,6 +1282,10 @@ function moduleBoardElement(moduleKey, tabKey, name) {
 }
 
 function moduleBoardFormatDate(value, includeTime = false) {
+    if (TS_MODULE_BOARD?.formatDate) {
+        return TS_MODULE_BOARD.formatDate(value, includeTime);
+    }
+
     const raw = String(value || '').trim();
     if (!raw) return '-';
     const dt = new Date(raw);
@@ -945,10 +1297,18 @@ function moduleBoardFormatDate(value, includeTime = false) {
 }
 
 function moduleBoardStatusClass(value) {
+    if (TS_MODULE_BOARD?.statusClass) {
+        return TS_MODULE_BOARD.statusClass(value);
+    }
+
     return String(value || '').trim().toLowerCase().replace(/_/g, '-');
 }
 
 function moduleBoardPriorityClass(value) {
+    if (TS_MODULE_BOARD?.priorityClass) {
+        return TS_MODULE_BOARD.priorityClass(value);
+    }
+
     return String(value || '').trim().toLowerCase();
 }
 
@@ -958,7 +1318,70 @@ function moduleBoardGetRow(moduleKey, tabKey, itemId) {
     return rows.find((row) => Number(row.id) === Number(itemId)) || null;
 }
 
+function moduleBoardRenderRows(moduleKey, tabKey, rows) {
+    const tbody = moduleBoardElement(moduleKey, tabKey, 'tbody');
+    if (!tbody) return;
+    const normalizedRows = Array.isArray(rows) ? rows : [];
+    const canEdit = moduleBoardCanEdit();
+    tbody.innerHTML = normalizedRows.map((row, idx) => {
+        const projectLabel = row.project_code
+            ? `${moduleBoardEsc(row.project_code)}${row.project_name ? ` - ${moduleBoardEsc(row.project_name)}` : ''}`
+            : '-';
+        const disciplineLabel = row.discipline_code
+            ? `${moduleBoardEsc(row.discipline_code)}${row.discipline_name ? ` - ${moduleBoardEsc(row.discipline_name)}` : ''}`
+            : '-';
+        return `
+<tr>
+    <td>${idx + 1}</td>
+    <td>
+        <div style="font-weight:700; color:#0f172a;">${moduleBoardEsc(row.title || '-')}</div>
+        <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">${moduleBoardEsc(row.description || '')}</div>
+    </td>
+    <td>${projectLabel}</td>
+    <td>${disciplineLabel}</td>
+    <td><span class="module-crud-status is-${moduleBoardStatusClass(row.status)}">${moduleBoardEsc(WORKBOARD_STATUS_LABELS[row.status] || row.status || '-')}</span></td>
+    <td><span class="module-crud-priority is-${moduleBoardPriorityClass(row.priority)}">${moduleBoardEsc(WORKBOARD_PRIORITY_LABELS[row.priority] || row.priority || '-')}</span></td>
+    <td>${moduleBoardEsc(moduleBoardFormatDate(row.due_date, false))}</td>
+    <td>${moduleBoardEsc(moduleBoardFormatDate(row.updated_at || row.created_at, true))}</td>
+    <td>
+        <div class="module-crud-actions">
+            ${canEdit ? `<button type="button" class="btn-archive-icon" data-mb-action="edit-item" data-item-id="${Number(row.id)}">ویرایش</button>` : ''}
+            ${canEdit ? `<button type="button" class="btn-archive-icon" data-mb-action="delete-item" data-item-id="${Number(row.id)}">حذف</button>` : ''}
+            ${!canEdit ? '-' : ''}
+        </div>
+    </td>
+</tr>
+`;
+    }).join('');
+}
+
 async function moduleBoardLoad(moduleKey, tabKey, force = false) {
+    if (TS_MODULE_BOARD?.load) {
+        try {
+            const handled = await TS_MODULE_BOARD.load(moduleKey, tabKey, force, {
+                initBoards: () => initModuleCrudBoards(),
+                elementByName: (mKey, tKey, name) => moduleBoardElement(mKey, tKey, name),
+                fetchList: async (query) => {
+                    try {
+                        const res = await fetchWithAuth(`${API_BASE}/workboard/list?${query}`);
+                        const body = await res.json();
+                        return { ok: !!res.ok, body };
+                    } catch (error) {
+                        console.warn('moduleBoardLoad fetch failed:', error);
+                        return { ok: false, body: null };
+                    }
+                },
+                setRowsCache: (mKey, tKey, rows) => {
+                    WORKBOARD_STATE.rowsByKey[moduleBoardKey(mKey, tKey)] = Array.isArray(rows) ? rows : [];
+                },
+                renderRows: (mKey, tKey, rows) => moduleBoardRenderRows(mKey, tKey, rows),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     initModuleCrudBoards();
     const key = moduleBoardKey(moduleKey, tabKey);
     const tbody = moduleBoardElement(moduleKey, tabKey, 'tbody');
@@ -1007,37 +1430,7 @@ async function moduleBoardLoad(moduleKey, tabKey, force = false) {
             return;
         }
 
-        const canEdit = moduleBoardCanEdit();
-        tbody.innerHTML = rows.map((row, idx) => {
-            const projectLabel = row.project_code
-                ? `${moduleBoardEsc(row.project_code)}${row.project_name ? ` - ${moduleBoardEsc(row.project_name)}` : ''}`
-                : '-';
-            const disciplineLabel = row.discipline_code
-                ? `${moduleBoardEsc(row.discipline_code)}${row.discipline_name ? ` - ${moduleBoardEsc(row.discipline_name)}` : ''}`
-                : '-';
-            return `
-<tr>
-    <td>${idx + 1}</td>
-    <td>
-        <div style="font-weight:700; color:#0f172a;">${moduleBoardEsc(row.title || '-')}</div>
-        <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">${moduleBoardEsc(row.description || '')}</div>
-    </td>
-    <td>${projectLabel}</td>
-    <td>${disciplineLabel}</td>
-    <td><span class="module-crud-status is-${moduleBoardStatusClass(row.status)}">${moduleBoardEsc(WORKBOARD_STATUS_LABELS[row.status] || row.status || '-')}</span></td>
-    <td><span class="module-crud-priority is-${moduleBoardPriorityClass(row.priority)}">${moduleBoardEsc(WORKBOARD_PRIORITY_LABELS[row.priority] || row.priority || '-')}</span></td>
-    <td>${moduleBoardEsc(moduleBoardFormatDate(row.due_date, false))}</td>
-    <td>${moduleBoardEsc(moduleBoardFormatDate(row.updated_at || row.created_at, true))}</td>
-    <td>
-        <div class="module-crud-actions">
-            ${canEdit ? `<button type="button" class="btn-archive-icon" data-mb-action="edit-item" data-item-id="${Number(row.id)}">ویرایش</button>` : ''}
-            ${canEdit ? `<button type="button" class="btn-archive-icon" data-mb-action="delete-item" data-item-id="${Number(row.id)}">حذف</button>` : ''}
-            ${!canEdit ? '-' : ''}
-        </div>
-    </td>
-</tr>
-`;
-        }).join('');
+        moduleBoardRenderRows(moduleKey, tabKey, rows);
         emptyEl.style.display = 'none';
     } catch (error) {
         console.error('moduleBoardLoad failed:', error);
@@ -1048,6 +1441,18 @@ async function moduleBoardLoad(moduleKey, tabKey, force = false) {
 }
 
 function moduleBoardDebouncedLoad(moduleKey, tabKey) {
+    if (TS_MODULE_BOARD?.debouncedLoad) {
+        try {
+            TS_MODULE_BOARD.debouncedLoad(moduleKey, tabKey, {
+                delayMs: 420,
+                loadItems: (mKey, tKey, force) => moduleBoardLoad(mKey, tKey, force),
+            });
+            return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const key = moduleBoardKey(moduleKey, tabKey);
     clearTimeout(WORKBOARD_STATE.timers[key]);
     WORKBOARD_STATE.timers[key] = setTimeout(() => {
@@ -1056,6 +1461,18 @@ function moduleBoardDebouncedLoad(moduleKey, tabKey) {
 }
 
 function moduleBoardResetForm(moduleKey, tabKey) {
+    if (TS_MODULE_BOARD?.resetForm) {
+        try {
+            const handled = TS_MODULE_BOARD.resetForm(moduleKey, tabKey, {
+                canEdit: () => moduleBoardCanEdit(),
+                elementByName: (mKey, tKey, name) => moduleBoardElement(mKey, tKey, name),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const idInput = moduleBoardElement(moduleKey, tabKey, 'form-id');
     const titleInput = moduleBoardElement(moduleKey, tabKey, 'form-title');
     const descInput = moduleBoardElement(moduleKey, tabKey, 'form-description');
@@ -1075,6 +1492,18 @@ function moduleBoardResetForm(moduleKey, tabKey) {
 }
 
 function moduleBoardOpenForm(moduleKey, tabKey, item = null) {
+    if (TS_MODULE_BOARD?.openForm) {
+        try {
+            const handled = TS_MODULE_BOARD.openForm(moduleKey, tabKey, item, {
+                canEdit: () => moduleBoardCanEdit(),
+                elementByName: (mKey, tKey, name) => moduleBoardElement(mKey, tKey, name),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     if (!moduleBoardCanEdit()) return;
     const wrap = moduleBoardElement(moduleKey, tabKey, 'form-wrap');
     if (!wrap) return;
@@ -1102,12 +1531,50 @@ function moduleBoardOpenForm(moduleKey, tabKey, item = null) {
 }
 
 function moduleBoardCloseForm(moduleKey, tabKey) {
+    if (TS_MODULE_BOARD?.closeForm) {
+        try {
+            const handled = TS_MODULE_BOARD.closeForm(moduleKey, tabKey, {
+                canEdit: () => moduleBoardCanEdit(),
+                elementByName: (mKey, tKey, name) => moduleBoardElement(mKey, tKey, name),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const wrap = moduleBoardElement(moduleKey, tabKey, 'form-wrap');
     if (wrap) wrap.hidden = true;
     moduleBoardResetForm(moduleKey, tabKey);
 }
 
 async function moduleBoardSave(moduleKey, tabKey) {
+    if (TS_MODULE_BOARD?.save) {
+        try {
+            const handled = await TS_MODULE_BOARD.save(moduleKey, tabKey, {
+                canEdit: () => moduleBoardCanEdit(),
+                elementByName: (mKey, tKey, name) => moduleBoardElement(mKey, tKey, name),
+                fetchJson: async (endpoint, init = {}) => {
+                    try {
+                        const res = await fetchWithAuth(endpoint, init);
+                        const body = await res.json();
+                        return { ok: !!res.ok, body };
+                    } catch (error) {
+                        console.warn('moduleBoardSave fetch failed:', error);
+                        return { ok: false, body: null };
+                    }
+                },
+                showToast: (message, type) => showToast(message, type),
+                closeForm: (mKey, tKey) => moduleBoardCloseForm(mKey, tKey),
+                loadItems: (mKey, tKey, force) => moduleBoardLoad(mKey, tKey, force),
+                refreshSummary: (mKey) => moduleBoardRefreshSummary(mKey),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     if (!moduleBoardCanEdit()) return;
     const idInput = moduleBoardElement(moduleKey, tabKey, 'form-id');
     const titleInput = moduleBoardElement(moduleKey, tabKey, 'form-title');
@@ -1161,6 +1628,20 @@ async function moduleBoardSave(moduleKey, tabKey) {
 }
 
 function moduleBoardEdit(moduleKey, tabKey, itemId) {
+    if (TS_MODULE_BOARD?.edit) {
+        try {
+            const handled = TS_MODULE_BOARD.edit(moduleKey, tabKey, itemId, {
+                canEdit: () => moduleBoardCanEdit(),
+                elementByName: (mKey, tKey, name) => moduleBoardElement(mKey, tKey, name),
+                getRow: (mKey, tKey, id) => moduleBoardGetRow(mKey, tKey, id),
+                showToast: (message, type) => showToast(message, type),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     const row = moduleBoardGetRow(moduleKey, tabKey, itemId);
     if (!row) {
         showToast('آیتم موردنظر یافت نشد.', 'error');
@@ -1170,6 +1651,32 @@ function moduleBoardEdit(moduleKey, tabKey, itemId) {
 }
 
 async function moduleBoardDelete(moduleKey, tabKey, itemId) {
+    if (TS_MODULE_BOARD?.delete) {
+        try {
+            const handled = await TS_MODULE_BOARD.delete(moduleKey, tabKey, itemId, {
+                canEdit: () => moduleBoardCanEdit(),
+                getRow: (mKey, tKey, id) => moduleBoardGetRow(mKey, tKey, id),
+                confirmAction: (message) => confirm(message),
+                fetchJson: async (endpoint, init = {}) => {
+                    try {
+                        const res = await fetchWithAuth(endpoint, init);
+                        const body = await res.json();
+                        return { ok: !!res.ok, body };
+                    } catch (error) {
+                        console.warn('moduleBoardDelete fetch failed:', error);
+                        return { ok: false, body: null };
+                    }
+                },
+                showToast: (message, type) => showToast(message, type),
+                loadItems: (mKey, tKey, force) => moduleBoardLoad(mKey, tKey, force),
+                refreshSummary: (mKey) => moduleBoardRefreshSummary(mKey),
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     if (!moduleBoardCanEdit()) return;
     const row = moduleBoardGetRow(moduleKey, tabKey, itemId);
     const title = row?.title ? `«${row.title}»` : `#${itemId}`;
@@ -1191,6 +1698,22 @@ async function moduleBoardDelete(moduleKey, tabKey, itemId) {
 }
 
 async function moduleBoardRefreshSummary(moduleKey) {
+    if (TS_MODULE_BOARD?.refreshSummary) {
+        const handled = await TS_MODULE_BOARD.refreshSummary(moduleKey, {
+            fetchSummary: async (normalizedModuleKey) => {
+                try {
+                    const res = await fetchWithAuth(`${API_BASE}/workboard/summary?module_key=${encodeURIComponent(String(normalizedModuleKey || '').trim().toLowerCase())}`);
+                    const body = await res.json();
+                    return { ok: !!res.ok, body };
+                } catch (error) {
+                    console.warn('moduleBoardRefreshSummary fetch failed:', error);
+                    return { ok: false, body: null };
+                }
+            },
+        });
+        if (handled) return;
+    }
+
     const normalized = String(moduleKey || '').trim().toLowerCase();
     if (!normalized) return;
     try {
@@ -1224,6 +1747,24 @@ async function moduleBoardRefreshSummary(moduleKey) {
 }
 
 async function moduleBoardOnTabOpened(moduleKey, tabKey) {
+    if (TS_MODULE_BOARD?.onTabOpened) {
+        const handled = await TS_MODULE_BOARD.onTabOpened(moduleKey, tabKey, {
+            initBoards: () => initModuleCrudBoards(),
+            loadItems: (mKey, tKey, force) => moduleBoardLoad(mKey, tKey, force),
+            fetchSummary: async (normalizedModuleKey) => {
+                try {
+                    const res = await fetchWithAuth(`${API_BASE}/workboard/summary?module_key=${encodeURIComponent(String(normalizedModuleKey || '').trim().toLowerCase())}`);
+                    const body = await res.json();
+                    return { ok: !!res.ok, body };
+                } catch (error) {
+                    console.warn('moduleBoardOnTabOpened summary fetch failed:', error);
+                    return { ok: false, body: null };
+                }
+            },
+        });
+        if (handled) return;
+    }
+
     initModuleCrudBoards();
     await moduleBoardLoad(moduleKey, tabKey, true);
     await moduleBoardRefreshSummary(moduleKey);
@@ -1242,102 +1783,97 @@ window.moduleBoardDelete = moduleBoardDelete;
 // ============================================================
 
 async function runViewInitializer(viewId) {
-    const boot = window.ViewBoot?.[viewId];
-    if (boot && typeof boot.init === 'function') {
-        await boot.init();
-        return true;
+    if (TS_APP_ROUTER?.runViewInitializer) {
+        try {
+            return await TS_APP_ROUTER.runViewInitializer(viewId);
+        } catch (error) {
+            throw error;
+        }
     }
     return false;
 }
 
-async function navigateTo(viewId) {
-    const routedViewId = mapToRoutedView(viewId);
-    console.log("Navigating to:", routedViewId);
-
-    if (routedViewId !== 'view-login' && !window.requireAuth()) {
-        return;
+function activateViewSection(viewId) {
+    if (TS_APP_ROUTER?.activateView) {
+        try {
+            return TS_APP_ROUTER.activateView(viewId);
+        } catch (error) {
+            throw error;
+        }
     }
-
-    if (routedViewId === 'view-users' || routedViewId === 'view-bulk') {
-        if (!window.requireAdmin()) return;
-        PENDING_SETTINGS_TAB = routedViewId === 'view-users' ? 'users' : 'bulk';
-        await navigateTo('view-settings');
-        return;
-    }
-    
-    if (ADMIN_ONLY_VIEWS.has(routedViewId) && !window.requireAdmin()) {
-        return;
-    }
-    
-    markPerf('view_switch_start');
-
-    const loaded = await loadViewPartial(routedViewId);
-    if (!loaded) return;
 
     document.querySelectorAll('.view-section').forEach(el => {
         el.style.display = 'none';
         el.classList.remove('active');
     });
 
-    const target = document.getElementById(routedViewId);
-    if (!target) return;
-
+    const target = document.getElementById(viewId);
+    if (!target) return null;
     target.style.display = 'block';
     target.classList.add('active');
-    
-    const handledByModule = await runViewInitializer(routedViewId);
-    if (!handledByModule) {
-        switch(routedViewId) {
-            case 'view-dashboard':
-                if (typeof initDashboard === 'function') initDashboard();
-                break;
+    return target;
+}
 
-            case 'view-edms': {
-                const lastSavedTab = loadEdmsLastTab();
-                const requestedTab = PENDING_EDMS_TAB || lastSavedTab || getEffectiveDefaultEdmsTab() || 'archive';
-                const safeTab = isEdmsTabVisible(requestedTab) ? requestedTab : getFirstVisibleEdmsTab();
-                if (safeTab) {
-                    openEdmsTab(safeTab);
-                    loadEdmsHeaderStats();
-                } else {
-                    showToast('هیچ تب فعالی برای EDMS در دسترس نیست.', 'error');
-                    await navigateTo('view-dashboard');
-                    return;
-                }
-                break;
-            }
+function buildRouterDeps() {
+    return {
+        mapToRoutedView: (requestedViewId) => mapToRoutedView(requestedViewId),
+        requireAuth: () => (typeof window.requireAuth === 'function' ? !!window.requireAuth() : true),
+        requireAdmin: () => (typeof window.requireAdmin === 'function' ? !!window.requireAdmin() : false),
+        isAdminOnlyView: (routedViewId) => ADMIN_ONLY_VIEWS.has(String(routedViewId || '').trim()),
+        setPendingSettingsTab: (tabName) => {
+            PENDING_SETTINGS_TAB = tabName || null;
+        },
+        getPendingSettingsTab: () => PENDING_SETTINGS_TAB,
+        clearPendingSettingsTab: () => {
+            PENDING_SETTINGS_TAB = null;
+        },
+        getPendingEdmsTab: () => (TS_EDMS_STATE?.getPendingEdmsTab ? TS_EDMS_STATE.getPendingEdmsTab() : PENDING_EDMS_TAB),
+        markPerf: (name) => markPerf(name),
+        measurePerf: (metricName, startMark, endMark) => measurePerf(metricName, startMark, endMark),
+        renderDevPerformancePanel: () => renderDevPerformancePanel(),
+        loadViewPartial: (routedViewId) => loadViewPartial(routedViewId),
+        activateView: (routedViewId) => activateViewSection(routedViewId),
+        runViewInitializer: (routedViewId) => runViewInitializer(routedViewId),
+        initDashboard: () => {
+            if (typeof initDashboard === 'function') initDashboard();
+        },
+        loadEdmsLastTab: () => loadEdmsLastTab(),
+        getEffectiveDefaultEdmsTab: () => getEffectiveDefaultEdmsTab(),
+        isEdmsTabVisible: (tabName) => isEdmsTabVisible(tabName),
+        getFirstVisibleEdmsTab: () => getFirstVisibleEdmsTab(),
+        openEdmsTab: (tabName) => openEdmsTab(tabName),
+        loadEdmsHeaderStats: () => loadEdmsHeaderStats(),
+        showToast: (message, type = 'info') => showToast(message, type),
+        initReportsView: () => {
+            if (typeof initReportsView === 'function') initReportsView();
+        },
+        initContractorView: () => {
+            if (typeof initContractorView === 'function') initContractorView();
+        },
+        initConsultantView: () => {
+            if (typeof initConsultantView === 'function') initConsultantView();
+        },
+        openSettingsTab: (tabName) => {
+            if (typeof openSettingsTab === 'function') openSettingsTab(tabName);
+        },
+        initUserSettingsView: () => {
+            if (typeof initUserSettingsView === 'function') initUserSettingsView();
+        },
+        emitViewActivated: (routedViewId) => {
+            window.AppEvents?.emit?.('view:activated', { viewId: routedViewId });
+        },
+        updateSidebarState: (routedViewId) => updateSidebarState(routedViewId),
+    };
+}
 
-            case 'view-reports':
-                if (typeof initReportsView === 'function') initReportsView();
-                break;
-
-            case 'view-contractor':
-                if (typeof initContractorView === 'function') initContractorView();
-                break;
-
-            case 'view-consultant':
-                if (typeof initConsultantView === 'function') initConsultantView();
-                break;
-                
-            case 'view-settings':
-                if (typeof openSettingsTab === 'function') {
-                    const targetTab = PENDING_SETTINGS_TAB || 'general';
-                    PENDING_SETTINGS_TAB = null;
-                    openSettingsTab(targetTab);
-                }
-                break;
-
-            case 'view-profile':
-                if (typeof initUserSettingsView === 'function') initUserSettingsView();
-                break;
-        }
+async function navigateTo(viewId) {
+    if (!TS_APP_ROUTER?.navigateTo) {
+        throw new Error('App router bridge unavailable.');
     }
-
-    markPerf('view_switch_end');
-    measurePerf('view_switch', 'view_switch_start', 'view_switch_end');
-    renderDevPerformancePanel();
-    window.AppEvents?.emit?.('view:activated', { viewId: routedViewId });
-    updateSidebarState(routedViewId);
+    const handled = await TS_APP_ROUTER.navigateTo(viewId, buildRouterDeps());
+    if (!handled) {
+        throw new Error(`App router failed to handle navigation for view: ${String(viewId || '')}`);
+    }
 }
 
 window.navigateTo = navigateTo;
@@ -1346,6 +1882,11 @@ window.App.navigateTo = navigateTo;
 window.App.events = window.AppEvents || null;
 
 function updateSidebarState(activeViewId) {
+    if (TS_APP_SHELL?.updateSidebarState) {
+        TS_APP_SHELL.updateSidebarState(activeViewId);
+        return;
+    }
+
     // Ø­Ø°Ù Ú©Ù„Ø§Ø³ active Ø§Ø² Ù‡Ù…Ù‡ Ø¢ÛŒØªÙ…â€ŒÙ‡Ø§
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
@@ -1413,6 +1954,11 @@ function showToast(message, type = 'info', duration = 3000) {
 // ============================================================
 
 function toggleSidebar() {
+    if (TS_APP_SHELL?.toggleSidebar) {
+        TS_APP_SHELL.toggleSidebar();
+        return;
+    }
+
     const sidebar = document.getElementById('app-sidebar');
     const overlay = document.getElementById('sidebar-overlay');
     
@@ -1432,6 +1978,11 @@ function toggleSidebar() {
 }
 
 function toggleUserMenu() {
+    if (TS_APP_SHELL?.toggleUserMenu) {
+        TS_APP_SHELL.toggleUserMenu();
+        return;
+    }
+
     const dropdown = document.getElementById('user-dropdown');
     if (dropdown) {
         dropdown.classList.toggle('show');
@@ -1467,6 +2018,40 @@ function toggleTransmittalMode(mode) {
 // ============================================================
 
 async function loadDictionary() {
+    if (TS_APP_DATA?.loadDictionary) {
+        try {
+            const handled = await TS_APP_DATA.loadDictionary({
+                apiBase: API_BASE,
+                fetchDictionary: async (url) => {
+                    try {
+                        const res = (typeof fetchWithAuth === 'function')
+                            ? await fetchWithAuth(url)
+                            : await fetch(url);
+                        const body = await res.json();
+                        return {
+                            ok: !!res.ok,
+                            status: Number(res.status || 0),
+                            body,
+                        };
+                    } catch (error) {
+                        console.warn('loadDictionary fetch failed:', error);
+                        return {
+                            ok: false,
+                            status: 0,
+                            body: null,
+                        };
+                    }
+                },
+                setCache: (cache) => {
+                    window.CACHE = cache || {};
+                },
+            });
+            if (handled) return;
+        } catch (error) {
+            throw error;
+        }
+    }
+
     try {
         const url = `${API_BASE}/lookup/dictionary`;
         const res = (typeof fetchWithAuth === 'function')
@@ -1549,4 +2134,5 @@ if (!document.querySelector('#toast-animations')) {
     `;
     document.head.appendChild(style);
 }
+
 

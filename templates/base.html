@@ -17,7 +17,7 @@
 </head>
 <body class="{{ 'sidebar-closed' if request.cookies.get('sidebar_status') == 'closed' else '' }}">
 
-    <div id="sidebar-overlay" class="overlay" onclick="toggleSidebar()"></div>
+    <div id="sidebar-overlay" class="overlay"></div>
 
     {% include 'components/sidebar.html' %}
 
@@ -32,17 +32,17 @@
     </div>
 
     <div class="fab-container">
-        <button class="fab-btn" onclick="navigateTo('view-edms'); setTimeout(() => { if (typeof openEdmsTab === 'function') openEdmsTab('archive'); const archivePanel = document.getElementById('view-archive'); if (archivePanel && archivePanel.style.display !== 'none' && typeof archiveOpenModal === 'function') archiveOpenModal(); }, 220);" title="Ø¢Ù¾Ù„ÙˆØ¯ Ø³Ù†Ø¯ Ø¬Ø¯ÛŒØ¯">
+        <button id="fab-upload-btn" class="fab-btn" title="Ø¢Ù¾Ù„ÙˆØ¯ Ø³Ù†Ø¯ Ø¬Ø¯ÛŒØ¯">
             <span class="material-icons-round">cloud_upload</span>
         </button>
     </div>
 
     <div id="context-menu" class="context-menu">
-        <div class="context-item" onclick="handleAction('view')"><span class="material-icons-round">visibility</span> Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø¬Ø²Ø¦ÛŒØ§Øª</div>
-        <div class="context-item" onclick="handleAction('history')"><span class="material-icons-round">history</span> ØªØ§Ø±ÛŒØ®Ú†Ù‡</div>
-        <div class="context-item" onclick="handleAction('upload')"><span class="material-icons-round">upload</span> Ø¢Ù¾Ù„ÙˆØ¯ ÙØ§ÛŒÙ„ Ø¬Ø¯ÛŒØ¯</div>
+        <div class="context-item" data-context-action="view"><span class="material-icons-round">visibility</span> Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø¬Ø²Ø¦ÛŒØ§Øª</div>
+        <div class="context-item" data-context-action="history"><span class="material-icons-round">history</span> ØªØ§Ø±ÛŒØ®Ú†Ù‡</div>
+        <div class="context-item" data-context-action="upload"><span class="material-icons-round">upload</span> Ø¢Ù¾Ù„ÙˆØ¯ ÙØ§ÛŒÙ„ Ø¬Ø¯ÛŒØ¯</div>
         <div class="divider"></div>
-        <div class="context-item text-danger" onclick="handleAction('delete')"><span class="material-icons-round">delete</span> Ø­Ø°Ù</div>
+        <div class="context-item text-danger" data-context-action="delete"><span class="material-icons-round">delete</span> Ø­Ø°Ù</div>
     </div>
 
     <div id="global-loader" class="loading-overlay" style="display: none;">
@@ -51,16 +51,18 @@
 
     {% include 'components/doc_search.html' %}
     
+    <script type="module" src="/static/dist/app.js?v=20260211a"></script>
     <script src="/static/js/ui.js" defer></script>
     <script src="/static/js/auth.js" defer></script>
     <script src="/static/js/core/events.js?v=20260209a" defer></script>
-    <script src="/static/js/views/bootstrap.js?v=20260209a" defer></script>
     <script src="/static/js/views/dashboard.js?v=20260209a" defer></script>
     <script src="/static/js/views/edms.js?v=20260209a" defer></script>
     <script src="/static/js/views/reports.js?v=20260209a" defer></script>
     <script src="/static/js/views/contractor.js?v=20260209a" defer></script>
     <script src="/static/js/views/consultant.js?v=20260209a" defer></script>
     <script src="/static/js/views/profile.js?v=20260209a" defer></script>
+    <script src="/static/js/views/header.js?v=20260210a" defer></script>
+    <script src="/static/js/views/base_interactions.js?v=20260211a" defer></script>
     <script src="/static/js/views/settings.js?v=20260209a" defer></script>
     <script src="/static/js/app.js?v=20260209a" defer></script>
     

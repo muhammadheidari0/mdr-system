@@ -1,35 +1,38 @@
 (() => {
-    if (typeof window.registerViewBoot !== 'function') return;
+    function bindEdmsUiEvents() {
+        const root = document.getElementById('view-edms');
+        if (!root || root.dataset.edmsUiBound === '1') return;
 
-    window.registerViewBoot('view-edms', {
-        init() {
-            const pending = typeof window.consumePendingEdmsTab === 'function'
-                ? window.consumePendingEdmsTab()
-                : null;
-            const lastSaved = typeof window.loadEdmsLastTab === 'function'
-                ? window.loadEdmsLastTab()
-                : null;
-            const fallback = typeof window.getEffectiveDefaultEdmsTab === 'function'
-                ? window.getEffectiveDefaultEdmsTab()
-                : 'archive';
-            const requestedTab = pending || lastSaved || fallback || 'archive';
-
-            const safeTab = (typeof window.isEdmsTabVisible === 'function' && window.isEdmsTabVisible(requestedTab))
-                ? requestedTab
-                : (typeof window.getFirstVisibleEdmsTab === 'function' ? window.getFirstVisibleEdmsTab() : null);
-
-            if (safeTab) {
-                if (typeof window.openEdmsTab === 'function') window.openEdmsTab(safeTab);
-                if (typeof window.loadEdmsHeaderStats === 'function') window.loadEdmsHeaderStats();
+        root.addEventListener('click', (event) => {
+            const refreshBtn = event.target.closest('[data-edms-action="refresh-stats"]');
+            if (refreshBtn && root.contains(refreshBtn)) {
+                event.preventDefault();
+                if (typeof window.loadEdmsHeaderStats === 'function') {
+                    window.loadEdmsHeaderStats(true);
+                }
                 return;
             }
 
-            if (typeof window.showToast === 'function') {
-                window.showToast('هیچ تب فعالی برای EDMS در دسترس نیست.', 'error');
+            const tabBtn = event.target.closest('[data-edms-tab]');
+            if (!tabBtn || !root.contains(tabBtn)) return;
+            event.preventDefault();
+            const tab = String(tabBtn.getAttribute('data-edms-tab') || '').trim();
+            if (!tab) return;
+            if (typeof window.openEdmsTab === 'function') {
+                window.openEdmsTab(tab, tabBtn);
             }
-            if (typeof window.navigateTo === 'function') {
-                window.navigateTo('view-dashboard');
+        });
+
+        root.dataset.edmsUiBound = '1';
+    }
+
+    bindEdmsUiEvents();
+
+    if (window.AppEvents?.on) {
+        window.AppEvents.on('view:activated', ({ viewId }) => {
+            if (String(viewId || '').trim() === 'view-edms') {
+                bindEdmsUiEvents();
             }
-        },
-    });
+        });
+    }
 })();

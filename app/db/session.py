@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Any, Dict, Generator, List
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker, Session
 
 from app.core.config import settings
@@ -19,34 +19,34 @@ from app.core.organizations import (
 from app.core.roles import ALL_ROLES, ROLE_PERMISSIONS, Role
 from app.db.base import Base
 
-def _normalize_sqlite_url(url: str) -> str:
-    url = (url or "").strip()
-    if not url:
-        raise ValueError("DATABASE_URL is empty. Set it in .env")
 
-    # اگر کاربر فقط مسیر داده بود، تبدیل به sqlite:///...
-    if "://" not in url:
-        # مثال: .\database\mdr_project.db
-        path = url.replace("\\", "/")
-        if not path.startswith("/"):
-            return f"sqlite:///{path}"
-        return f"sqlite://{path}"
-
-    # اگر sqlite:///relative بود، بک‌اسلش‌ها را اصلاح کنیم
-    if url.startswith("sqlite:///"):
-        return url.replace("\\", "/")
-
-    return url
+def _runtime_database_url(url: str) -> str:
+    value = str(url or "").strip()
+    if not value:
+        raise ValueError("DATABASE_URL is empty. Set it in environment.")
+    if not value.lower().startswith("postgresql"):
+        raise ValueError(
+            "Runtime DATABASE_URL must use PostgreSQL. SQLite compatibility is removed."
+        )
+    return value
 
 
-DATABASE_URL = _normalize_sqlite_url(settings.DATABASE_URL)
+DATABASE_URL = _runtime_database_url(settings.DATABASE_URL)
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
-    pool_pre_ping=True,
+_engine_kwargs: dict[str, Any] = {
+    "pool_pre_ping": True,
+    "echo": bool(settings.DB_ECHO),
+}
+_engine_kwargs.update(
+    {
+        "pool_size": max(1, int(settings.DB_POOL_SIZE)),
+        "max_overflow": max(0, int(settings.DB_MAX_OVERFLOW)),
+        "pool_timeout": max(1, int(settings.DB_POOL_TIMEOUT)),
+        "pool_recycle": max(1, int(settings.DB_POOL_RECYCLE)),
+    }
 )
 
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -84,144 +84,6 @@ def _permission_keys() -> List[str]:
             if perm != "*":
                 keys.add(perm)
     return sorted(keys)
-
-
-def _sqlite_column_exists(conn, table_name: str, column_name: str) -> bool:
-    rows = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
-    return any(str(row[1]) == column_name for row in rows)
-
-
-def _sqlite_table_exists(conn, table_name: str) -> bool:
-    row = conn.execute(
-        text(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='table' AND name=:table_name"
-        ),
-        {"table_name": table_name},
-    ).fetchone()
-    return bool(row)
-
-
-def _sqlite_index_exists(conn, index_name: str) -> bool:
-    row = conn.execute(
-        text(
-            "SELECT name FROM sqlite_master "
-            "WHERE type='index' AND name=:index_name"
-        ),
-        {"index_name": index_name},
-    ).fetchone()
-    return bool(row)
-
-
-def _sqlite_add_column_if_missing(conn, table_name: str, column_name: str, column_sql: str) -> None:
-    if not _sqlite_table_exists(conn, table_name):
-        return
-    if _sqlite_column_exists(conn, table_name, column_name):
-        return
-    conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}"))
-
-
-def _sqlite_create_index_if_missing(conn, index_name: str, create_sql: str) -> None:
-    if _sqlite_index_exists(conn, index_name):
-        return
-    try:
-        conn.execute(text(create_sql))
-    except Exception as exc:
-        print(f"[WARN] Failed creating index `{index_name}`: {exc}")
-
-
-def _ensure_sqlite_schema_updates() -> None:
-    if not DATABASE_URL.startswith("sqlite"):
-        return
-    with engine.begin() as conn:
-        if not _sqlite_table_exists(conn, "issuing_entities"):
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE issuing_entities (
-                        code VARCHAR(20) PRIMARY KEY,
-                        name_e VARCHAR(255) NOT NULL,
-                        name_p VARCHAR(255),
-                        project_code VARCHAR(50),
-                        is_active BOOLEAN DEFAULT 1,
-                        sort_order INTEGER DEFAULT 0
-                    )
-                    """
-                )
-            )
-        if not _sqlite_table_exists(conn, "correspondence_categories"):
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE correspondence_categories (
-                        code VARCHAR(20) PRIMARY KEY,
-                        name_e VARCHAR(255) NOT NULL,
-                        name_p VARCHAR(255),
-                        is_active BOOLEAN DEFAULT 1,
-                        sort_order INTEGER DEFAULT 0
-                    )
-                    """
-                )
-            )
-        _sqlite_add_column_if_missing(conn, "transmittals", "lifecycle_status", "VARCHAR(16)")
-        _sqlite_add_column_if_missing(conn, "transmittals", "void_reason", "VARCHAR(500)")
-        _sqlite_add_column_if_missing(conn, "transmittals", "voided_by", "VARCHAR(255)")
-        _sqlite_add_column_if_missing(conn, "transmittals", "voided_at", "DATETIME")
-        _sqlite_add_column_if_missing(conn, "archive_files", "file_kind", "VARCHAR(20) DEFAULT 'pdf'")
-        _sqlite_add_column_if_missing(conn, "archive_files", "is_primary", "BOOLEAN DEFAULT 1")
-        _sqlite_add_column_if_missing(conn, "archive_files", "companion_file_id", "INTEGER")
-        _sqlite_add_column_if_missing(conn, "users", "organization_id", "INTEGER")
-        _sqlite_add_column_if_missing(conn, "users", "organization_role", "VARCHAR(32) DEFAULT 'viewer'")
-        _sqlite_add_column_if_missing(conn, "workboard_items", "organization_id", "INTEGER")
-        _sqlite_add_column_if_missing(
-            conn,
-            "correspondence_attachments",
-            "file_kind",
-            "VARCHAR(20) DEFAULT 'attachment'",
-        )
-        _sqlite_add_column_if_missing(conn, "correspondences", "issuing_code", "VARCHAR(20)")
-        _sqlite_add_column_if_missing(conn, "correspondences", "category_code", "VARCHAR(20)")
-        _sqlite_create_index_if_missing(
-            conn,
-            "ix_correspondences_issuing_code",
-            "CREATE INDEX ix_correspondences_issuing_code ON correspondences(issuing_code)",
-        )
-        _sqlite_create_index_if_missing(
-            conn,
-            "ix_correspondences_category_code",
-            "CREATE INDEX ix_correspondences_category_code ON correspondences(category_code)",
-        )
-        _sqlite_create_index_if_missing(
-            conn,
-            "uq_correspondences_reference_no",
-            "CREATE UNIQUE INDEX uq_correspondences_reference_no "
-            "ON correspondences(reference_no) WHERE reference_no IS NOT NULL",
-        )
-        _sqlite_create_index_if_missing(
-            conn,
-            "ix_users_organization_id",
-            "CREATE INDEX ix_users_organization_id ON users(organization_id)",
-        )
-        _sqlite_create_index_if_missing(
-            conn,
-            "ix_organizations_parent",
-            "CREATE INDEX ix_organizations_parent ON organizations(parent_id)",
-        )
-        _sqlite_create_index_if_missing(
-            conn,
-            "ix_organizations_type",
-            "CREATE INDEX ix_organizations_type ON organizations(org_type)",
-        )
-        _sqlite_create_index_if_missing(
-            conn,
-            "ix_workboard_items_organization_id",
-            "CREATE INDEX ix_workboard_items_organization_id ON workboard_items(organization_id)",
-        )
-        _sqlite_create_index_if_missing(
-            conn,
-            "ix_workboard_org_module_tab",
-            "CREATE INDEX ix_workboard_org_module_tab ON workboard_items(organization_id, module_key, tab_key)",
-        )
 
 
 def _migrate_transmittal_state_from_kv(db: Session) -> None:
@@ -283,17 +145,6 @@ def _normalize_archive_file_kind(value: Any) -> str:
 def _backfill_archive_file_defaults(db: Session) -> None:
     from app.db.models import ArchiveFile
 
-    if DATABASE_URL.startswith("sqlite"):
-        row = db.execute(
-            text(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name=:table_name"
-            ),
-            {"table_name": "archive_files"},
-        ).fetchone()
-        if not row:
-            return
-
     rows = db.query(ArchiveFile).all()
     for row in rows:
         row.file_kind = _normalize_archive_file_kind(getattr(row, "file_kind", None))
@@ -310,17 +161,6 @@ def _normalize_corr_attachment_kind(value: Any) -> str:
 
 def _backfill_correspondence_attachment_defaults(db: Session) -> None:
     from app.db.models import CorrespondenceAttachment
-
-    if DATABASE_URL.startswith("sqlite"):
-        row = db.execute(
-            text(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name=:table_name"
-            ),
-            {"table_name": "correspondence_attachments"},
-        ).fetchone()
-        if not row:
-            return
 
     rows = db.query(CorrespondenceAttachment).all()
     for row in rows:
@@ -862,59 +702,15 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def init_db() -> None:
-    """
-    جداول دیتابیس را می‌سازد.
-    """
-    # ✅ نکته حیاتی: ایمپورت مدل‌ها قبل از create_all
-    # این باعث می‌شود SQLAlchemy تمام جداول تعریف شده در models.py را بشناسد
+def init_db(*, run_data_bootstrap: bool = False) -> None:
+    """Runtime schema initialization is disabled; optional data bootstrap only."""
     import app.db.models  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
-    _ensure_sqlite_schema_updates()
-
-    # ✅ ساخت دستی جدول DocStatus اگر وجود نداشته باشد
-    if DATABASE_URL.startswith("sqlite"):
-        with engine.begin() as conn:
-            # چک می‌کنیم جدول وجود دارد یا نه
-            result = conn.execute(text(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='doc_statuses'"
-            )).fetchone()
-            
-            if not result:
-                print("[INFO] Creating doc_statuses table manually...")
-                conn.execute(text("""
-                    CREATE TABLE doc_statuses (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        code VARCHAR(20) UNIQUE NOT NULL,
-                        name VARCHAR(100) NOT NULL,
-                        description VARCHAR(255),
-                        sort_order INTEGER DEFAULT 0
-                    )
-                """))
-                print("[INFO] doc_statuses table created successfully.")
-
-    # فعال‌سازی FK در SQLite (چون به صورت پیش‌فرض خاموش است)
-    if DATABASE_URL.startswith("sqlite"):
-        with engine.begin() as conn:
-            conn.execute(text("PRAGMA foreign_keys=ON;"))
-
-    _run_smart_migrations()
+    if run_data_bootstrap:
+        _run_smart_migrations()
 
 
 def list_tables() -> List[str]:
-    """
-    لیست جدول‌ها از sqlite_master (بدون جدول‌های داخلی sqlite_)
-    """
-    if not DATABASE_URL.startswith("sqlite"):
-        return []
-
-    with engine.connect() as conn:
-        rows = conn.execute(
-            text(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name NOT LIKE 'sqlite_%' "
-                "ORDER BY name"
-            )
-        ).fetchall()
-    return [r[0] for r in rows]
+    """Return table names in a dialect-agnostic way."""
+    inspector = inspect(engine)
+    return sorted(str(name) for name in inspector.get_table_names())

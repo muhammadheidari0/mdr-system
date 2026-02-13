@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "main"
+      - "release/**"
+      - "hotfix/**"
+      - "feature/**"
+  pull_request:
+
+jobs:
+  backend-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mdr_app
+          POSTGRES_USER: mdr
+          POSTGRES_PASSWORD: mdr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mdr -d mdr_app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://mdr:mdr@localhost:5432/mdr_app
+      SECRET_KEY: test-secret-key
+      READ_ONLY_MODE: "false"
+      TEST_PROFILE: postgres_main
+      ADMIN_EMAIL: admin@mdr.local
+      ADMIN_PASSWORD: ChangeMe#12345
+      TEST_ADMIN_EMAIL: admin@mdr.local
+      TEST_ADMIN_PASSWORD: ChangeMe#12345
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run migrations
+        run: alembic upgrade head
+      - name: Enforce schema drift gate
+        run: |
+          python tools/schema_drift_report.py --database-url "$DATABASE_URL" --out reports/schema_drift_report_ci.json --fail-on-warning
+      - name: Load SQLite baseline into PostgreSQL
+        run: |
+          python tools/sqlite_to_postgres_etl.py --execute --truncate-target --postgres-url "$DATABASE_URL"
+      - name: Seed admin
+        run: python create_admin.py
+      - name: Run backend tests
+        run: pytest -q test_api.py tests/test_endpoint_fixes.py tests/test_regressions.py tests/test_services.py tests/test_schema_sanity.py tests/test_db_runtime_policy.py tests/test_ui_smoke.py tests/test_no_legacy_fallbacks.py
+      - name: Generate ETL + parity reports
+        if: always()
+        run: |
+          python tools/data_parity_report.py --source-url sqlite:///./database/mdr_project.db --target-url "$DATABASE_URL" --report reports/data_parity_report_ci.json
+      - name: Enforce parity gate (PR strict-sensitive)
+        if: |
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'push' &&
+           github.ref_name != 'main' &&
+           !startsWith(github.ref_name, 'release/') &&
+           !startsWith(github.ref_name, 'hotfix/'))
+        run: |
+          python tools/parity_gate.py --report reports/data_parity_report_ci.json --count-mismatch-scope strict --strict-count-table mdr_documents --strict-count-table users --strict-count-table correspondences --max-count-mismatches 0 --max-unique-issues 0 --max-fk-violations 0
+      - name: Enforce parity gate (full strict)
+        if: |
+          github.event_name == 'push' &&
+          (github.ref_name == 'main' || startsWith(github.ref_name, 'release/') || startsWith(github.ref_name, 'hotfix/'))
+        run: |
+          python tools/parity_gate.py --report reports/data_parity_report_ci.json --max-count-mismatches 0 --max-unique-issues 0 --max-fk-violations 0
+      - name: Upload backend reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-postgres-reports
+          path: |
+            reports/sqlite_to_postgres_etl_report.json
+            reports/data_parity_report_ci.json
+            reports/schema_drift_report_ci.json
+
+  frontend:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://mdr:mdr@localhost:5432/mdr_app
+      SECRET_KEY: test-secret-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Install frontend dependencies
+        run: npm install --no-fund --no-audit
+      - name: Generate OpenAPI + TS types
+        run: |
+          npm run gen:openapi
+          npm run gen:types
+      - name: Validate generated API types are not placeholder
+        run: |
+          python -c "from pathlib import Path; import sys; p=Path('frontend/src/types/api.generated.ts'); txt=p.read_text(encoding='utf-8'); needle='Placeholder generated file'; bad=(needle in txt); print('[error] Placeholder API types found' if bad else '[ok] API types generated'); sys.exit(1 if bad else 0)"
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Frontend build
+        run: npm run build
+
+  e2e-browser:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mdr_app
+          POSTGRES_USER: mdr
+          POSTGRES_PASSWORD: mdr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mdr -d mdr_app"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://mdr:mdr@localhost:5432/mdr_app
+      SECRET_KEY: test-secret-key
+      READ_ONLY_MODE: "false"
+      TEST_PROFILE: postgres_main
+      ADMIN_EMAIL: admin@mdr.local
+      ADMIN_PASSWORD: ChangeMe#12345
+      TEST_ADMIN_EMAIL: admin@mdr.local
+      TEST_ADMIN_PASSWORD: ChangeMe#12345
+      E2E_BASE_URL: http://127.0.0.1:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Install frontend dependencies
+        run: npm install --no-fund --no-audit
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Run migrations
+        run: alembic upgrade head
+      - name: Load SQLite baseline into PostgreSQL
+        run: |
+          python tools/sqlite_to_postgres_etl.py --execute --truncate-target --postgres-url "$DATABASE_URL"
+      - name: Seed admin
+        run: python create_admin.py
+      - name: Run browser E2E critical
+        run: npm run e2e:critical
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright-report
+          path: |
+            reports/playwright-html
+            test-results

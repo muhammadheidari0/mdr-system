@@ -443,8 +443,6 @@ class Correspondence(Base):
     __table_args__ = (
         Index("ix_correspondences_project_date", "project_code", "corr_date"),
         Index("ix_correspondences_reference_no", "reference_no"),
-        Index("ix_correspondences_issuing_code", "issuing_code"),
-        Index("ix_correspondences_category_code", "category_code"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

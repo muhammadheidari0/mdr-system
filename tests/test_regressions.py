@@ -8,7 +8,7 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.main import app
@@ -46,8 +46,7 @@ def test_regression_user_update_payload(admin_headers: dict[str, str]) -> None:
     users_res = client.get("/api/v1/users/", headers=admin_headers)
     assert users_res.status_code == 200, users_res.text
     users = users_res.json()
-    if not users:
-        pytest.skip("No users found for update regression test")
+    assert users, "Expected at least one user from deterministic seed."
 
     target_user = next((u for u in users if u.get("role") != "admin"), users[0])
     user_id = target_user["id"]
@@ -74,16 +73,13 @@ def test_regression_settings_init_fallback(admin_headers: dict[str, str]) -> Non
     data = response.json()
     assert data.get("ok") is True
     projects = data.get("data", {}).get("projects", [])
-
-    if projects:
-        project = projects[0]
-        assert any(key in project for key in ("project_name", "name", "name_e"))
+    assert projects, "Expected at least one project from deterministic seed."
+    project = projects[0]
+    assert any(key in project for key in ("project_name", "name", "name_e"))
 
 
 def test_regression_auth_navigation_edms_tabs(admin_headers: dict[str, str]) -> None:
     res = client.get("/api/v1/auth/navigation", headers=admin_headers)
-    if res.status_code == 429:
-        pytest.skip("Rate limit middleware reached during auth navigation test")
     assert res.status_code == 200, res.text
     body = res.json()
     assert body.get("ok") is True
@@ -99,8 +95,6 @@ def test_regression_auth_navigation_edms_tabs(admin_headers: dict[str, str]) -> 
 
 def test_regression_settings_storage_paths_roundtrip(admin_headers: dict[str, str]) -> None:
     get_res = client.get("/api/v1/settings/storage-paths", headers=admin_headers)
-    if get_res.status_code == 429:
-        pytest.skip("Rate limit middleware reached during storage paths test")
     assert get_res.status_code == 200, get_res.text
     before = get_res.json()
     assert before.get("ok") is True
@@ -141,15 +135,9 @@ def test_regression_settings_storage_paths_roundtrip(admin_headers: dict[str, st
 
 
 def test_regression_archive_files_dual_file_columns_exist() -> None:
-    with engine.connect() as conn:
-        table_row = conn.execute(
-            text("SELECT name FROM sqlite_master WHERE type='table' AND name='archive_files'")
-        ).fetchone()
-        if not table_row:
-            pytest.skip("archive_files table is not available in current database")
-
-        columns = conn.execute(text("PRAGMA table_info(archive_files)")).fetchall()
-        column_names = {str(row[1]) for row in columns}
+    inspector = inspect(engine)
+    assert inspector.has_table("archive_files"), "archive_files table must exist after init/migrations."
+    column_names = {str(col["name"]) for col in inspector.get_columns("archive_files")}
 
     assert "file_kind" in column_names
     assert "is_primary" in column_names
@@ -157,13 +145,8 @@ def test_regression_archive_files_dual_file_columns_exist() -> None:
 
 
 def test_regression_correspondence_tables_exist() -> None:
-    with engine.connect() as conn:
-        table_names = {
-            str(row[0])
-            for row in conn.execute(
-                text("SELECT name FROM sqlite_master WHERE type='table'")
-            ).fetchall()
-        }
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
 
     required_tables = {
         "correspondences",
@@ -176,31 +159,22 @@ def test_regression_correspondence_tables_exist() -> None:
         from app.db.session import init_db
 
         init_db()
-        with engine.connect() as conn:
-            table_names = {
-                str(row[0])
-                for row in conn.execute(
-                    text("SELECT name FROM sqlite_master WHERE type='table'")
-                ).fetchall()
-            }
+        inspector = inspect(engine)
+        table_names = set(inspector.get_table_names())
 
-    with engine.connect() as conn:
-        
-        assert required_tables.issubset(table_names)
+    assert required_tables.issubset(table_names)
 
-        corr_columns = {
-            str(row[1]) for row in conn.execute(text("PRAGMA table_info(correspondences)")).fetchall()
-        }
-        action_columns = {
-            str(row[1]) for row in conn.execute(text("PRAGMA table_info(correspondence_actions)")).fetchall()
-        }
-        attachment_columns = {
-            str(row[1]) for row in conn.execute(text("PRAGMA table_info(correspondence_attachments)")).fetchall()
-        }
-        corr_indexes = {
-            str(row[1]): int(row[2])
-            for row in conn.execute(text("PRAGMA index_list(correspondences)")).fetchall()
-        }
+    corr_columns = {str(col["name"]) for col in inspector.get_columns("correspondences")}
+    action_columns = {str(col["name"]) for col in inspector.get_columns("correspondence_actions")}
+    attachment_columns = {
+        str(col["name"]) for col in inspector.get_columns("correspondence_attachments")
+    }
+    corr_indexes = {str(idx["name"]): bool(idx.get("unique", False)) for idx in inspector.get_indexes("correspondences")}
+    corr_uniques = {
+        str(item.get("name"))
+        for item in inspector.get_unique_constraints("correspondences")
+        if item.get("name")
+    }
 
     for required in (
         "project_code",
@@ -234,8 +208,12 @@ def test_regression_correspondence_tables_exist() -> None:
         "uploaded_by_id",
     ):
         assert required in attachment_columns
-    assert "uq_correspondences_reference_no" in corr_indexes
-    assert int(corr_indexes["uq_correspondences_reference_no"]) == 1
+    assert (
+        "uq_correspondences_reference_no" in corr_indexes
+        or "uq_correspondences_reference_no" in corr_uniques
+    )
+    if "uq_correspondences_reference_no" in corr_indexes:
+        assert corr_indexes["uq_correspondences_reference_no"] is True
 
 
 def test_regression_correspondence_c2_router_flow() -> None:
@@ -574,8 +552,6 @@ def test_regression_archive_dual_upload_links_files(admin_headers: dict[str, str
         assert revision_row.file_path == pdf_row.stored_path
 
     list_res = client.get("/api/v1/archive/list?limit=200", headers=admin_headers)
-    if list_res.status_code == 429:
-        pytest.skip("Rate limit middleware reached during archive list verification")
     assert list_res.status_code == 200, list_res.text
     list_body = list_res.json()
     assert list_body.get("ok") is True
@@ -594,16 +570,12 @@ def test_regression_archive_dual_upload_links_files(admin_headers: dict[str, str
         f"/api/v1/archive/list?project_code={project_code}&status=IFA&date_from=2000-01-01&date_to=2100-01-01&limit=200",
         headers=admin_headers,
     )
-    if filtered_res.status_code == 429:
-        pytest.skip("Rate limit middleware reached during archive filters verification")
     assert filtered_res.status_code == 200, filtered_res.text
     filtered_rows = filtered_res.json().get("data", [])
     filtered_for_doc = next((r for r in filtered_rows if r.get("document_id") == doc_id), None)
     assert filtered_for_doc is not None
 
     history_res = client.get(f"/api/v1/archive/revision-history/{doc_id}", headers=admin_headers)
-    if history_res.status_code == 429:
-        pytest.skip("Rate limit middleware reached during revision history verification")
     assert history_res.status_code == 200, history_res.text
     history = history_res.json()
     assert history.get("ok") is True
@@ -623,13 +595,22 @@ def test_regression_archive_dual_upload_links_files(admin_headers: dict[str, str
 
     # cleanup
     with Session(engine) as db:
+        rows_to_delete = []
         if pdf_file_id is not None:
             row = db.query(ArchiveFile).filter(ArchiveFile.id == pdf_file_id).first()
             if row:
-                db.delete(row)
+                rows_to_delete.append(row)
         if native_file_id is not None:
             row = db.query(ArchiveFile).filter(ArchiveFile.id == native_file_id).first()
             if row:
+                rows_to_delete.append(row)
+
+        # Break self-reference link before delete (required by PostgreSQL FK checks).
+        for row in rows_to_delete:
+            row.companion_file_id = None
+        if rows_to_delete:
+            db.flush()
+            for row in rows_to_delete:
                 db.delete(row)
 
         if doc_id is not None:
@@ -699,8 +680,7 @@ def test_regression_user_permissions_scope_roundtrip(admin_headers: dict[str, st
     assert users_res.status_code == 200, users_res.text
     users = users_res.json()
     target_user = next((u for u in users if u.get("role") != "admin"), None)
-    if not target_user:
-        pytest.skip("No non-admin user found for user scope regression test")
+    assert target_user is not None, "Expected at least one non-admin user from deterministic seed."
 
     scope_res = client.get("/api/v1/settings/permissions/scope", headers=admin_headers)
     assert scope_res.status_code == 200, scope_res.text
@@ -739,8 +719,7 @@ def test_regression_permissions_access_report_and_audit(admin_headers: dict[str,
     assert scope_res.status_code == 200, scope_res.text
     scope_body = scope_res.json()
     projects = scope_body.get("projects", [])
-    if not projects:
-        pytest.skip("No projects found for access report test")
+    assert projects, "Expected at least one project from deterministic seed."
     project_code = projects[0]["code"]
 
     report_res = client.get(
@@ -778,8 +757,7 @@ def test_regression_permissions_access_report_csv_and_user_access(admin_headers:
     assert scope_res.status_code == 200, scope_res.text
     scope_body = scope_res.json()
     projects = scope_body.get("projects", [])
-    if not projects:
-        pytest.skip("No projects found for access report csv test")
+    assert projects, "Expected at least one project from deterministic seed."
     project_code = projects[0]["code"]
 
     csv_res = client.get(
@@ -795,8 +773,7 @@ def test_regression_permissions_access_report_csv_and_user_access(admin_headers:
     users_res = client.get("/api/v1/users/", headers=admin_headers)
     assert users_res.status_code == 200, users_res.text
     users = users_res.json()
-    if not users:
-        pytest.skip("No users found for user access report test")
+    assert users, "Expected at least one user from deterministic seed."
 
     target_user = next((u for u in users if u.get("role") != "admin"), users[0])
     user_access_res = client.get(
@@ -852,8 +829,6 @@ def test_regression_settings_audit_server_pagination(admin_headers: dict[str, st
         "/api/v1/settings/audit-logs?action=permissions.scope.save&page=1&page_size=1",
         headers=admin_headers,
     )
-    if page1_res.status_code == 429:
-        pytest.skip("Rate limit middleware reached during pagination test")
     if page1_res.status_code != 200:
         scope_res = client.get("/api/v1/settings/permissions/scope", headers=admin_headers)
         assert scope_res.status_code == 200, scope_res.text

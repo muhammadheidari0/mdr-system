@@ -1,10 +1,19 @@
 (() => {
-    if (typeof window.registerViewBoot !== 'function') return;
-    window.registerViewBoot('view-dashboard', {
-        init() {
-            if (typeof window.initDashboard === 'function') {
-                window.initDashboard();
+    function initDashboardView() {
+        if (typeof window.initDashboard === 'function') {
+            window.initDashboard();
+        }
+    }
+
+    if (window.AppEvents?.on) {
+        window.AppEvents.on('view:activated', ({ viewId }) => {
+            if (String(viewId || '').trim() === 'view-dashboard') {
+                initDashboardView();
             }
-        },
-    });
+        });
+    }
+
+    if (document.getElementById('view-dashboard')?.classList.contains('active')) {
+        initDashboardView();
+    }
 })();

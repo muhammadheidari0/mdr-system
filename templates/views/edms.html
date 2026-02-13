@@ -9,7 +9,7 @@
                     </h2>
                     <p class="edms-shell-subtitle">آرشیو، ترنسمیتال و مکاتبات در یک فضای یکپارچه</p>
                 </div>
-                <button class="edms-stats-refresh" type="button" onclick="loadEdmsHeaderStats(true)" title="به‌روزرسانی آمار">
+                <button class="edms-stats-refresh" type="button" data-edms-action="refresh-stats" title="به‌روزرسانی آمار">
                     <span class="material-icons-round">refresh</span>
                 </button>
             </div>
@@ -40,7 +40,6 @@
                 class="edms-tab-btn active"
                 id="edms-tab-archive"
                 data-edms-tab="archive"
-                onclick="openEdmsTab('archive', this)"
             >
                 <span class="material-icons-round">inventory_2</span>
                 <span>آرشیو مدارک</span>
@@ -51,7 +50,6 @@
                 class="edms-tab-btn"
                 id="edms-tab-transmittal"
                 data-edms-tab="transmittal"
-                onclick="openEdmsTab('transmittal', this)"
             >
                 <span class="material-icons-round">send</span>
                 <span>ترنسمیتال‌ها</span>
@@ -62,7 +60,6 @@
                 class="edms-tab-btn"
                 id="edms-tab-correspondence"
                 data-edms-tab="correspondence"
-                onclick="openEdmsTab('correspondence', this)"
             >
                 <span class="material-icons-round">mail</span>
                 <span>مکاتبات</span>

@@ -1,0 +1,20 @@
+fastapi==0.128.0
+uvicorn[standard]==0.40.0
+sqlalchemy==2.0.46
+pydantic==2.12.5
+pydantic-settings==2.12.0
+python-jose==3.5.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.21
+jinja2==3.1.6
+reportlab==4.4.9
+openpyxl==3.1.5
+pandas==2.3.3
+
+# Migration / PostgreSQL
+alembic==1.13.2
+psycopg[binary]==3.2.1
+
+# Testing / tooling
+pytest==9.0.2
+httpx==0.28.1

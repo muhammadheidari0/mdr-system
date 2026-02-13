@@ -9,13 +9,13 @@
 
     <div style="padding: 20px;">
       <div class="user-settings-nav">
-        <button type="button" class="user-settings-tab-btn active" data-user-tab="account" onclick="openUserSettingsTab('account', this)">
+        <button type="button" class="user-settings-tab-btn active" data-user-tab="account">
           <span class="material-icons-round">account_circle</span> حساب کاربری
         </button>
-        <button type="button" class="user-settings-tab-btn" data-user-tab="password" onclick="openUserSettingsTab('password', this)">
+        <button type="button" class="user-settings-tab-btn" data-user-tab="password">
           <span class="material-icons-round">vpn_key</span> تغییر رمز عبور
         </button>
-        <button type="button" class="user-settings-tab-btn" data-user-tab="security" onclick="openUserSettingsTab('security', this)">
+        <button type="button" class="user-settings-tab-btn" data-user-tab="security">
           <span class="material-icons-round">shield</span> امنیت و نشست
         </button>
       </div>
@@ -57,7 +57,7 @@
             <input id="profile-confirm-password" type="password" class="form-input" autocomplete="new-password">
           </div>
           <div class="modal-footer" style="padding: 0; border-top: 0;">
-            <button id="profile-password-btn" type="button" class="btn btn-primary" onclick="submitUserPasswordChange()">
+            <button id="profile-password-btn" type="button" class="btn btn-primary" data-profile-action="change-password">
               <span class="material-icons-round">check</span> ذخیره رمز عبور
             </button>
           </div>
@@ -75,7 +75,7 @@
             <strong>فعال</strong>
           </div>
           <div class="security-actions">
-            <button type="button" class="btn btn-danger" onclick="window.authManager.logout()">
+            <button type="button" class="btn btn-danger" data-profile-action="logout">
               <span class="material-icons-round">logout</span> خروج از حساب
             </button>
           </div>
@@ -84,127 +84,5 @@
     </div>
   </div>
 
-  <script>
-    function profileNotify(type, message) {
-      if (window.UI && typeof window.UI[type] === 'function') {
-        window.UI[type](message);
-        return;
-      }
-      if (typeof showToast === 'function') {
-        showToast(message, type === 'error' ? 'error' : 'success');
-        return;
-      }
-      alert(message);
-    }
-
-    function openUserSettingsTab(tabName, btnEl) {
-      document.querySelectorAll('#view-profile .user-settings-tab-btn').forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('#view-profile .user-settings-tab-content').forEach((c) => c.classList.remove('active'));
-
-      const button = btnEl || document.querySelector(`#view-profile .user-settings-tab-btn[data-user-tab="${tabName}"]`);
-      if (button) button.classList.add('active');
-
-      const target = document.getElementById(`user-tab-${tabName}`);
-      if (target) target.classList.add('active');
-    }
-
-    async function loadUserProfileData() {
-      try {
-        const response = await fetchWithAuth('/api/v1/auth/me');
-        if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          throw new Error(err.detail || 'خطا در دریافت اطلاعات کاربری');
-        }
-
-        const user = await response.json();
-        const roleMap = {
-          admin: 'مدیر سیستم',
-          manager: 'سرپرست',
-          dcc: 'کنترل مدارک (DCC)',
-          user: 'کاربر',
-          viewer: 'مشاهده‌گر',
-        };
-        const roleLabel = roleMap[String(user.role || '').toLowerCase()] || 'کاربر';
-        const activeLabel = user.is_active ? 'فعال' : 'غیرفعال';
-
-        document.getElementById('profile-email').value = user.email || '-';
-        document.getElementById('profile-full-name').value = user.full_name || '-';
-        document.getElementById('profile-role').value = roleLabel;
-        document.getElementById('profile-status').value = activeLabel;
-        document.getElementById('profile-security-active').textContent = activeLabel;
-      } catch (error) {
-        console.error('loadUserProfileData error:', error);
-        profileNotify('error', 'دریافت اطلاعات کاربری انجام نشد');
-      }
-    }
-
-    async function submitUserPasswordChange() {
-      const currentPasswordEl = document.getElementById('profile-current-password');
-      const newPasswordEl = document.getElementById('profile-new-password');
-      const confirmPasswordEl = document.getElementById('profile-confirm-password');
-      const submitBtn = document.getElementById('profile-password-btn');
-
-      const currentPassword = currentPasswordEl.value.trim();
-      const newPassword = newPasswordEl.value.trim();
-      const confirmPassword = confirmPasswordEl.value.trim();
-
-      if (!currentPassword || !newPassword || !confirmPassword) {
-        profileNotify('error', 'لطفاً همه فیلدهای رمز عبور را تکمیل کنید');
-        return;
-      }
-      if (newPassword.length < 8) {
-        profileNotify('error', 'رمز عبور جدید باید حداقل ۸ کاراکتر باشد');
-        return;
-      }
-      if (newPassword !== confirmPassword) {
-        profileNotify('error', 'تکرار رمز عبور با رمز جدید یکسان نیست');
-        return;
-      }
-
-      if (window.UI && typeof window.UI.setBtnLoading === 'function') {
-        window.UI.setBtnLoading(submitBtn, true);
-      } else {
-        submitBtn.disabled = true;
-      }
-
-      try {
-        const response = await fetchWithAuth('/api/v1/auth/change-password', {
-          method: 'POST',
-          body: JSON.stringify({
-            current_password: currentPassword,
-            new_password: newPassword,
-          }),
-        });
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          profileNotify('error', data.detail || 'تغییر رمز عبور انجام نشد');
-          return;
-        }
-
-        currentPasswordEl.value = '';
-        newPasswordEl.value = '';
-        confirmPasswordEl.value = '';
-        profileNotify('success', data.message || 'رمز عبور با موفقیت تغییر کرد');
-      } catch (error) {
-        console.error('submitUserPasswordChange error:', error);
-        profileNotify('error', 'خطای شبکه در تغییر رمز عبور');
-      } finally {
-        if (window.UI && typeof window.UI.setBtnLoading === 'function') {
-          window.UI.setBtnLoading(submitBtn, false);
-        } else {
-          submitBtn.disabled = false;
-        }
-      }
-    }
-
-    function initUserSettingsView() {
-      openUserSettingsTab('account');
-      loadUserProfileData();
-    }
-
-    window.openUserSettingsTab = openUserSettingsTab;
-    window.initUserSettingsView = initUserSettingsView;
-    window.submitUserPasswordChange = submitUserPasswordChange;
-  </script>
+  <script src="/static/js/views/profile_settings.js?v=20260211a"></script>
 </div>

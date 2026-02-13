@@ -1,9 +1,45 @@
-version: "3.8"
-
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mdr_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mdr_app}
+      POSTGRES_USER: ${POSTGRES_USER:-mdr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mdr}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mdr} -d ${POSTGRES_DB:-mdr_app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   web:
     build: .
     container_name: mdr_app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      API_PREFIX: ${COMPOSE_API_PREFIX:-/api/v1}
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql+psycopg://mdr:mdr@postgres:5432/mdr_app}
+      SECRET_KEY: ${SECRET_KEY}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@mdr.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe#12345}
+      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-System Administrator}
+      READ_ONLY_MODE: ${COMPOSE_READ_ONLY_MODE:-false}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+      DB_ECHO: ${DB_ECHO:-false}
     ports:
       - "8000:8000"
     volumes:
@@ -11,8 +47,7 @@ services:
       - ./data_store:/app/data_store
       - ./archive_storage:/app/archive_storage
       - ./logs:/app/logs
-    environment:
-      SECRET_KEY: ${SECRET_KEY}
-      ADMIN_EMAIL: ${ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-    restart: unless-stopped
+    command: ["/app/docker/start.sh"]
+
+volumes:
+  postgres_data:

@@ -1,11 +1,11 @@
-<div class="archive-card bulk-frame-card">
+﻿<div class="archive-card bulk-frame-card">
   <div class="archive-header" style="padding: 15px 20px; flex-shrink: 0;">
     <div class="archive-title">
       <span class="material-icons-round" style="color:#f59e0b; font-size:28px;">upload_file</span>
-      ثبت گروهی اسناد (Excel Import)
+      Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ Ø§Ø³Ù†Ø§Ø¯ (Excel Import)
     </div>
-    <a class="btn-archive-icon" href="/static/templates/mdr_template.xlsx" target="_blank" rel="noopener" title="دانلود فایل نمونه اکسل">
-      <span class="material-icons-round">download</span> نمونه فایل
+    <a class="btn-archive-icon" href="/static/templates/mdr_template.xlsx" target="_blank" rel="noopener" title="Ø¯Ø§Ù†Ù„ÙˆØ¯ ÙØ§ÛŒÙ„ Ù†Ù…ÙˆÙ†Ù‡ Ø§Ú©Ø³Ù„">
+      <span class="material-icons-round">download</span> Ù†Ù…ÙˆÙ†Ù‡ ÙØ§ÛŒÙ„
     </a>
   </div>
 
@@ -19,25 +19,4 @@
   </div>
 </div>
 
-<script>
-  (function () {
-    if (window.__bulkFrameResizeBound) return;
-    window.__bulkFrameResizeBound = true;
-
-    const frame = document.getElementById('bulkRegisterFrame');
-    if (!frame) return;
-
-    window.addEventListener('message', (event) => {
-      const data = event.data || {};
-      if (data.type !== 'mdr-bulk-height') return;
-
-      const h = Number(data.height || 0);
-      if (!Number.isFinite(h) || h <= 0) return;
-
-      const minHeight = 460;
-      const maxHeight = 1400;
-      const nextHeight = Math.max(minHeight, Math.min(maxHeight, h + 10));
-      frame.style.height = `${nextHeight}px`;
-    });
-  })();
-</script>
+<script src="/static/js/views/settings_bulk_tab.js?v=20260211b"></script>

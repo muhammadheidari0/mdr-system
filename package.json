@@ -1,0 +1,27 @@
+{
+  "name": "mdr-app-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "e2e:smoke": "playwright test tests/e2e/app_smoke.spec.ts",
+    "e2e:critical": "playwright test tests/e2e/critical_flows.spec.ts",
+    "gen:openapi": "node tools/run_python.mjs tools/export_openapi.py --out frontend/openapi.json",
+    "gen:types": "openapi-typescript frontend/openapi.json --output frontend/src/types/api.generated.ts",
+    "gen:api": "npm run gen:openapi && npm run gen:types"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^20.17.30",
+    "openapi-typescript": "^7.6.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.11"
+  }
+}

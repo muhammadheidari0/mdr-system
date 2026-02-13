@@ -54,6 +54,17 @@ DEFAULT_CORRESPONDENCE_STORAGE_PATH = "./files/correspondence"
 
 
 # -----------------------------
+# Helpers
+# -----------------------------
+def _db_overview_payload() -> dict[str, str]:
+    masked = settings.masked_database_url()
+    return {
+        "url": masked,
+        "env": str(settings.APP_ENV or ""),
+    }
+
+
+# -----------------------------
 # Pydantic Schemas
 # -----------------------------
 class ProjectIn(BaseModel):
@@ -704,7 +715,7 @@ def overview(db: Session = Depends(get_db)):
     return {
         "ok": True,
         "app": settings.APP_NAME,
-        "db": {"url": settings.DATABASE_URL},
+        "db": _db_overview_payload(),
         "counts": {
             "projects": _count(db, Project),
             "organizations": _count(db, Organization),

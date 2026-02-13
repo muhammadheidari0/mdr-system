@@ -41,3 +41,8 @@ tree.txt
 tree01.txt
 celerybeat-schedule
 help.txt
+
+# --- Frontend ---
+node_modules/
+test-results/
+reports/

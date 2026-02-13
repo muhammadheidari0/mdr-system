@@ -296,7 +296,7 @@ class DuplicateMetaKeyCache:
         by_subject: Dict[str, str] = {}
         for doc_number, subject in rows:
             key = _normalize_subject(subject)
-            if key not in by_subject:
+            if key and key not in by_subject:
                 by_subject[key] = doc_number
         return by_subject
 
@@ -326,8 +326,11 @@ class DuplicateMetaKeyCache:
         level: str,
         subject: str,
     ) -> str | None:
+        subject_key = _normalize_subject(subject)
+        if not subject_key:
+            return None
         by_subject = self._get_base_map(project, mdr, phase, discipline, package, block, level)
-        return by_subject.get(_normalize_subject(subject))
+        return by_subject.get(subject_key)
 
     def mark_new_doc(
         self,
@@ -341,8 +344,11 @@ class DuplicateMetaKeyCache:
         subject: str,
         doc_number: str,
     ) -> None:
+        subject_key = _normalize_subject(subject)
+        if not subject_key:
+            return
         by_subject = self._get_base_map(project, mdr, phase, discipline, package, block, level)
-        by_subject[_normalize_subject(subject)] = doc_number
+        by_subject[subject_key] = doc_number
 
 
 # ---------------------------------------------------------
@@ -658,6 +664,7 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
         generated_code = not raw_code or len(raw_code) < 10 or "-" not in raw_code
         base_prefix = f"{project_val}-{mdr_code}{phase_val}{pkg_val}"
         subject_norm = _normalize_subject(subject_val)
+        has_subject_meta_key = bool(subject_norm)
         meta_full_key = (
             project_val,
             mdr_code,
@@ -676,29 +683,30 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
                 project_val, phase_val, disc_val, pkg_val, level_val, mdr_code
             )
 
-            existing_doc_by_key = duplicate_meta_cache.find_existing_doc(
-                project_val,
-                mdr_code,
-                phase_val,
-                disc_val,
-                pkg_val,
-                block_val,
-                level_val,
-                subject_val,
-            )
-            if existing_doc_by_key:
-                row_status["doc_number"] = existing_doc_by_key
-                row_status["status"] = "Skipped"
-                row_status["msg"] = f"Duplicate (metadata key exists: {existing_doc_by_key})"
-                results["details"].append(row_status)
-                continue
+            if has_subject_meta_key:
+                existing_doc_by_key = duplicate_meta_cache.find_existing_doc(
+                    project_val,
+                    mdr_code,
+                    phase_val,
+                    disc_val,
+                    pkg_val,
+                    block_val,
+                    level_val,
+                    subject_val,
+                )
+                if existing_doc_by_key:
+                    row_status["doc_number"] = existing_doc_by_key
+                    row_status["status"] = "Skipped"
+                    row_status["msg"] = f"Duplicate (metadata key exists: {existing_doc_by_key})"
+                    results["details"].append(row_status)
+                    continue
 
-            if meta_full_key in batch_meta_keys:
-                row_status["doc_number"] = batch_meta_keys[meta_full_key]
-                row_status["status"] = "Skipped"
-                row_status["msg"] = f"Duplicate (same metadata key in current batch: {batch_meta_keys[meta_full_key]})"
-                results["details"].append(row_status)
-                continue
+                if meta_full_key in batch_meta_keys:
+                    row_status["doc_number"] = batch_meta_keys[meta_full_key]
+                    row_status["status"] = "Skipped"
+                    row_status["msg"] = f"Duplicate (same metadata key in current batch: {batch_meta_keys[meta_full_key]})"
+                    results["details"].append(row_status)
+                    continue
 
             if generated_code:
                 existing_doc_numbers.update(serial_cache.get_existing_doc_numbers(base_prefix))
@@ -743,18 +751,19 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
 
             batch_doc_numbers.add(doc_to_save)
             existing_doc_numbers.add(doc_to_save)
-            batch_meta_keys[meta_full_key] = doc_to_save
-            duplicate_meta_cache.mark_new_doc(
-                project_val,
-                mdr_code,
-                phase_val,
-                disc_val,
-                pkg_val,
-                block_val,
-                level_val,
-                subject_val,
-                doc_to_save,
-            )
+            if has_subject_meta_key:
+                batch_meta_keys[meta_full_key] = doc_to_save
+                duplicate_meta_cache.mark_new_doc(
+                    project_val,
+                    mdr_code,
+                    phase_val,
+                    disc_val,
+                    pkg_val,
+                    block_val,
+                    level_val,
+                    subject_val,
+                    doc_to_save,
+                )
             if generated_code:
                 serial_cache.mark_doc_number(base_prefix, doc_to_save)
 
