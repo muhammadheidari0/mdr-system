@@ -84,6 +84,32 @@ def _normalize_archive_file_kind(value: str | None) -> str:
         return kind
     return "pdf"
 
+
+def _subject_storage(subject_e: str | None, subject_p: str | None) -> str:
+    p = str(subject_p or "").strip()
+    if p:
+        return p
+    return str(subject_e or "").strip()
+
+
+def _refresh_doc_titles_from_subjects(doc: MdrDocument, db: Session, subject_e: str | None, subject_p: str | None) -> None:
+    title_e = str(subject_e or "").strip()
+    title_p = str(subject_p or "").strip()
+    if not title_e and not title_p:
+        return
+    full_e, full_p = mdr_service.build_document_titles(
+        db,
+        discipline_code=str(doc.discipline_code or "").strip().upper(),
+        package_code=str(doc.package_code or "").strip().upper(),
+        block_code=str(doc.block or "").strip().upper(),
+        level_code=str(doc.level_code or "").strip().upper(),
+        subject_e=title_e,
+        subject_p=title_p,
+    )
+    doc.doc_title_e = full_e
+    doc.doc_title_p = full_p
+    doc.subject = _subject_storage(title_e, title_p)
+
 # ---------------------------------------------------------
 # 3. Get Document Info (Main Logic Updated)
 # ---------------------------------------------------------
@@ -351,8 +377,12 @@ def register_and_upload_document(
         # اگر کد وجود دارد، از همان استفاده کن
         doc = existing
         # اختیاری: می‌توانیم عنوان‌ها را آپدیت کنیم
-        if meta_data.get('subject_e'): doc.doc_title_e = meta_data['subject_e']
-        if meta_data.get('subject_p'): doc.doc_title_p = meta_data['subject_p']
+        _refresh_doc_titles_from_subjects(
+            doc,
+            db,
+            meta_data.get("subject_e"),
+            meta_data.get("subject_p"),
+        )
     else:
         # ساخت سند جدید
         doc = mdr_service.create_mdr_document(
@@ -367,7 +397,7 @@ def register_and_upload_document(
             level_code=meta_data['level'],
             title_e=meta_data['subject_e'],
             title_p=meta_data['subject_p'],
-            subject=meta_data['subject_e']
+            subject=_subject_storage(meta_data.get("subject_e"), meta_data.get("subject_p"))
         )
     
     db.flush() # برای گرفتن ID سند
@@ -403,6 +433,9 @@ def register_document_metadata(
     if existing:
         return existing, False
 
+    subject_e = str(meta_data.get("subject_e") or "").strip()
+    subject_p = str(meta_data.get("subject_p") or "").strip()
+
     doc = mdr_service.create_mdr_document(
         db,
         doc_number=doc_number,
@@ -413,9 +446,9 @@ def register_document_metadata(
         package_code=str(meta_data.get("package") or "").strip().upper(),
         block=str(meta_data.get("block") or "").strip().upper(),
         level_code=str(meta_data.get("level") or "GEN").strip().upper() or "GEN",
-        title_e=str(meta_data.get("subject_e") or "").strip(),
-        title_p=str(meta_data.get("subject_p") or "").strip(),
-        subject=str(meta_data.get("subject_e") or "").strip(),
+        title_e=subject_e,
+        title_p=subject_p,
+        subject=_subject_storage(subject_e, subject_p),
     )
     db.commit()
     db.refresh(doc)
@@ -439,10 +472,12 @@ def register_and_upload_dual_document(
 
     if existing:
         doc = existing
-        if meta_data.get("subject_e"):
-            doc.doc_title_e = meta_data["subject_e"]
-        if meta_data.get("subject_p"):
-            doc.doc_title_p = meta_data["subject_p"]
+        _refresh_doc_titles_from_subjects(
+            doc,
+            db,
+            meta_data.get("subject_e"),
+            meta_data.get("subject_p"),
+        )
     else:
         doc = mdr_service.create_mdr_document(
             db,
@@ -456,7 +491,7 @@ def register_and_upload_dual_document(
             level_code=meta_data["level"],
             title_e=meta_data["subject_e"],
             title_p=meta_data["subject_p"],
-            subject=meta_data["subject_e"],
+            subject=_subject_storage(meta_data.get("subject_e"), meta_data.get("subject_p")),
         )
 
     db.flush()

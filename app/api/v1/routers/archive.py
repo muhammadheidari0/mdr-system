@@ -81,6 +81,11 @@ def _extract_serial_from_doc_number(doc_number: str, prefix: str, suffix: str) -
         return None
 
 
+def _subject_key_for_coding(subject_p: str | None) -> str:
+    # Coding/duplicate key follows subject_p only.
+    return str(subject_p or "").strip()
+
+
 @router.get("/check-status")
 async def check_document_status(
     doc_code: str = Query(..., min_length=3),
@@ -188,18 +193,20 @@ async def register_document_only(
         discipline_code=discipline,
     )
 
-    subject_for_key = (str(subject_p or "").strip() or str(subject_e or "").strip())
-    existing_meta_doc = mdr_service.find_document_by_metadata_key(
-        db,
-        project_code=str(project_code or "").strip().upper(),
-        mdr_code=str(mdr_code or "X").strip().upper() or "X",
-        phase_code=str(phase or "X").strip().upper() or "X",
-        discipline_code=str(discipline or "XX").strip().upper() or "XX",
-        package_code=str(package or "").strip().upper(),
-        block=str(block or "").strip().upper(),
-        level_code=str(level or "GEN").strip().upper() or "GEN",
-        subject=subject_for_key,
-    )
+    subject_key = _subject_key_for_coding(subject_p)
+    existing_meta_doc = None
+    if subject_key:
+        existing_meta_doc = mdr_service.find_document_by_metadata_key(
+            db,
+            project_code=str(project_code or "").strip().upper(),
+            mdr_code=str(mdr_code or "X").strip().upper() or "X",
+            phase_code=str(phase or "X").strip().upper() or "X",
+            discipline_code=str(discipline or "XX").strip().upper() or "XX",
+            package_code=str(package or "").strip().upper(),
+            block=str(block or "").strip().upper(),
+            level_code=str(level or "GEN").strip().upper() or "GEN",
+            subject=subject_key,
+        )
     if existing_meta_doc:
         status_info = archive_service.get_document_status_info(db, existing_meta_doc.doc_number)
         return {
@@ -742,18 +749,20 @@ def get_next_serial_preview(
         discipline_code=discipline,
     )
     try:
-        subject_for_key = (str(subject_p or "").strip() or str(subject_e or "").strip())
-        existing_meta_doc = mdr_service.find_document_by_metadata_key(
-            db,
-            project_code=str(project_code or "").strip().upper(),
-            mdr_code=str(mdr_code or "").strip().upper(),
-            phase_code=str(phase or "").strip().upper(),
-            discipline_code=str(discipline or "").strip().upper(),
-            package_code=str(pkg or "").strip().upper(),
-            block=str(block or "").strip().upper(),
-            level_code=str(level or "").strip().upper(),
-            subject=subject_for_key,
-        )
+        subject_key = _subject_key_for_coding(subject_p)
+        existing_meta_doc = None
+        if subject_key:
+            existing_meta_doc = mdr_service.find_document_by_metadata_key(
+                db,
+                project_code=str(project_code or "").strip().upper(),
+                mdr_code=str(mdr_code or "").strip().upper(),
+                phase_code=str(phase or "").strip().upper(),
+                discipline_code=str(discipline or "").strip().upper(),
+                package_code=str(pkg or "").strip().upper(),
+                block=str(block or "").strip().upper(),
+                level_code=str(level or "").strip().upper(),
+                subject=subject_key,
+            )
         if existing_meta_doc:
             prefix = (
                 f"{str(project_code or '').strip().upper()}-"
@@ -780,7 +789,7 @@ def get_next_serial_preview(
             pkg_code=pkg,
             block=block,
             level=level,
-            subject_p=subject_p,
+            subject_p=subject_key,
         )
         return {
             "serial": serial,

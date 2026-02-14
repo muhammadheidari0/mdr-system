@@ -12,8 +12,9 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.db.models import MdrDocument
+from app.db.models import Level, MdrDocument
 from app.db.session import engine
+from app.services import mdr_service
 from tests.auth_helpers import get_auth_headers
 
 client = TestClient(app)
@@ -951,3 +952,168 @@ def test_regression_bulk_empty_subject_does_not_fallback_to_title(admin_headers:
         )
     assert len(rows) == 2
     assert all((r.subject or "") == "" for r in rows)
+
+
+def _archive_seed_values(admin_headers: dict[str, str]) -> dict[str, str]:
+    form_res = client.get("/api/v1/archive/form-data", headers=admin_headers)
+    assert form_res.status_code == 200, form_res.text
+    data = form_res.json()
+
+    projects = data.get("projects") or []
+    disciplines = data.get("disciplines") or []
+    phases = data.get("phases") or []
+    mdr_categories = data.get("mdr_categories") or []
+    packages = data.get("packages") or []
+    blocks = data.get("blocks") or []
+    levels = data.get("levels") or []
+
+    if not projects or not disciplines or not phases or not mdr_categories:
+        pytest.skip("Archive lookup seed is incomplete for regression test.")
+
+    project_code = str(projects[0].get("code") or "").strip().upper()
+    discipline_code = str(disciplines[0].get("code") or "").strip().upper()
+    phase_code = str(phases[0].get("code") or "").strip().upper()
+    mdr_code = str(mdr_categories[0].get("code") or "").strip().upper()
+
+    package_row = next(
+        (p for p in packages if str(p.get("discipline_code") or "").strip().upper() == discipline_code),
+        None,
+    )
+    if not package_row:
+        pytest.skip("No package mapped to selected discipline in archive lookup seed.")
+    package_code = str(package_row.get("code") or "").strip().upper()
+
+    block_row = next(
+        (b for b in blocks if str(b.get("project_code") or "").strip().upper() == project_code),
+        None,
+    )
+    block_code = str((block_row or {}).get("code") or "G").strip().upper() or "G"
+
+    level_code = "GEN"
+    if levels:
+        non_gen = next((str(v).strip().upper() for v in levels if str(v).strip().upper() != "GEN"), "")
+        level_code = non_gen or str(levels[0]).strip().upper()
+
+    return {
+        "project_code": project_code,
+        "discipline": discipline_code,
+        "phase": phase_code,
+        "mdr_code": mdr_code,
+        "pkg": package_code,
+        "block": block_code,
+        "level": level_code or "GEN",
+    }
+
+
+def test_regression_archive_next_serial_ignores_empty_subject_key(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    subject_e = f"EN-{uuid.uuid4().hex[:8]}"
+
+    params = {
+        **seed,
+        "subject_e": subject_e,
+        "subject_p": "",
+    }
+
+    preview_1 = client.get("/api/v1/archive/next-serial", params=params, headers=admin_headers)
+    assert preview_1.status_code == 200, preview_1.text
+    p1 = preview_1.json()
+    doc_1 = str(p1.get("full_doc") or "").strip().upper()
+    assert doc_1
+
+    register_payload = {
+        "doc_number": doc_1,
+        "project_code": seed["project_code"],
+        "mdr_code": seed["mdr_code"],
+        "phase": seed["phase"],
+        "discipline": seed["discipline"],
+        "package": seed["pkg"],
+        "block": seed["block"],
+        "level": seed["level"],
+        "subject_e": subject_e,
+        "subject_p": "",
+    }
+    register_res = client.post("/api/v1/archive/register-document", data=register_payload, headers=admin_headers)
+    assert register_res.status_code == 200, register_res.text
+
+    preview_2 = client.get("/api/v1/archive/next-serial", params=params, headers=admin_headers)
+    assert preview_2.status_code == 200, preview_2.text
+    p2 = preview_2.json()
+    doc_2 = str(p2.get("full_doc") or "").strip().upper()
+    assert doc_2
+    assert doc_2 != doc_1
+    assert p2.get("existing") is False
+
+
+def test_regression_archive_register_document_titles_follow_coding_rule(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    subject_e = f"TitleEN-{uuid.uuid4().hex[:6]}"
+    subject_p = f"موضوع-{uuid.uuid4().hex[:6]}"
+
+    preview = client.get(
+        "/api/v1/archive/next-serial",
+        params={**seed, "subject_e": subject_e, "subject_p": subject_p},
+        headers=admin_headers,
+    )
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    doc_number = str(body.get("full_doc") or "").strip().upper()
+    assert doc_number
+
+    register_res = client.post(
+        "/api/v1/archive/register-document",
+        data={
+            "doc_number": doc_number,
+            "project_code": seed["project_code"],
+            "mdr_code": seed["mdr_code"],
+            "phase": seed["phase"],
+            "discipline": seed["discipline"],
+            "package": seed["pkg"],
+            "block": seed["block"],
+            "level": seed["level"],
+            "subject_e": subject_e,
+            "subject_p": subject_p,
+        },
+        headers=admin_headers,
+    )
+    assert register_res.status_code == 200, register_res.text
+
+    with Session(engine) as db:
+        row = db.query(MdrDocument).filter(MdrDocument.doc_number == doc_number).first()
+        assert row is not None
+        expected_e, expected_p = mdr_service.build_document_titles(
+            db,
+            discipline_code=seed["discipline"],
+            package_code=seed["pkg"],
+            block_code=seed["block"],
+            level_code=seed["level"],
+            subject_e=subject_e,
+            subject_p=subject_p,
+        )
+        assert row.doc_title_e == expected_e
+        assert row.doc_title_p == expected_p
+        assert (row.subject or "") == subject_p
+
+
+def test_regression_build_titles_uses_level_name_p_for_title_p(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    with Session(engine) as db:
+        level = (
+            db.query(Level)
+            .filter(Level.code != "GEN")
+            .filter(Level.name_p.isnot(None))
+            .first()
+        )
+        if level is None or not str(level.name_p or "").strip():
+            pytest.skip("No non-GEN level with Persian name exists.")
+
+        _, title_p = mdr_service.build_document_titles(
+            db,
+            discipline_code=seed["discipline"],
+            package_code=seed["pkg"],
+            block_code=seed["block"],
+            level_code=str(level.code or "").strip().upper(),
+            subject_e="",
+            subject_p="موضوع تست",
+        )
+        assert title_p.startswith(f"{level.name_p}-{seed['block']}-")

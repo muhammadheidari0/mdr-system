@@ -250,19 +250,22 @@ def submit_document(
     proj = _get_project(db, req.project_code)
     mdr_code = _get_mdr_code(req, db)
     phase_code, _ = _resolve_phase(db, req.phase)
-    subject_for_key = req.subjectP or req.subjectE
+    subject_key = str(req.subjectP or "").strip()
+    subject_storage = subject_key or str(req.subjectE or "").strip()
 
-    existing_doc = mdr_service.find_document_by_metadata_key(
-        db,
-        project_code=proj.code,
-        mdr_code=mdr_code,
-        phase_code=phase_code,
-        discipline_code=req.discipline,
-        package_code=req.packageE,
-        block=req.block,
-        level_code=req.location,
-        subject=subject_for_key,
-    )
+    existing_doc = None
+    if subject_key:
+        existing_doc = mdr_service.find_document_by_metadata_key(
+            db,
+            project_code=proj.code,
+            mdr_code=mdr_code,
+            phase_code=phase_code,
+            discipline_code=req.discipline,
+            package_code=req.packageE,
+            block=req.block,
+            level_code=req.location,
+            subject=subject_key,
+        )
     if existing_doc:
         raise HTTPException(
             status_code=409,
@@ -278,14 +281,14 @@ def submit_document(
         req.packageE,
         req.block,
         req.location,
-        subject_for_key,
+        subject_key,
         req.serialNumber,
     )
 
     try:
         new_doc = mdr_service.create_mdr_document(
             db, doc_num, proj.code, mdr_code, phase_code, req.discipline, 
-            req.packageE, req.block, req.location, req.subjectE, req.subjectP, subject_for_key
+            req.packageE, req.block, req.location, req.subjectE, req.subjectP, subject_storage
         )
         db.commit()
         return {"ok": True, "docNumber": doc_num, "id": new_doc.id, "message": "Document created"}

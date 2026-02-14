@@ -62,14 +62,18 @@ class LookupCache:
                 self.discipline_alias_to_code[_normalize_lookup_token(name)] = c
 
         self.level_alias_to_code: Dict[str, str] = {}
-        for code, name in db.query(Level.code, Level.name_e).all():
+        self.level_name_p_by_code: Dict[str, str] = {}
+        for code, name_e, name_p in db.query(Level.code, Level.name_e, Level.name_p).all():
             if not code:
                 continue
             c = str(code).strip().upper()
             self.levels.add(c)
             self.level_alias_to_code[_normalize_lookup_token(c)] = c
-            if name:
-                self.level_alias_to_code[_normalize_lookup_token(name)] = c
+            if name_e:
+                self.level_alias_to_code[_normalize_lookup_token(name_e)] = c
+            if name_p:
+                self.level_alias_to_code[_normalize_lookup_token(name_p)] = c
+                self.level_name_p_by_code[c] = str(name_p).strip()
 
         self.mdr_alias_to_code: Dict[str, str] = {}
         for code, name in db.query(MdrCategory.code, MdrCategory.name_e).all():
@@ -151,6 +155,12 @@ class LookupCache:
             base = pkg_code or "00"
             return base, base
         return self.package_names.get((disc_code, pkg_code), (pkg_code, pkg_code))
+
+    def get_level_name_p(self, level_code: str) -> str:
+        code = str(level_code or "").strip().upper()
+        if not code:
+            return ""
+        return self.level_name_p_by_code.get(code, code)
 
     def _resolve_with_alias_map(
         self,
@@ -414,20 +424,29 @@ def _build_full_titles(
     pkg_code: str | None,
     block: str | None,
     level: str | None,
+    level_name_p: str | None,
     subject: str | None,
 ) -> tuple[str, str]:
-    block_code = block or "G"
-    level_code = level or "GEN"
-    location_part = f"{block_code}{level_code}"
-    safe_subject = (subject or "").strip()
+    block_code = str(block or "").strip().upper() or "G"
+    level_code = str(level or "").strip().upper() or "GEN"
+    is_general = level_code == "GEN"
+    safe_subject = str(subject or "").strip()
 
-    base_e = pkg_name_e or pkg_code or "00"
-    base_p = pkg_name_p or pkg_code or base_e
+    base_e = str(pkg_name_e or pkg_code or "00").strip() or "00"
+    base_p = str(pkg_name_p or pkg_code or base_e).strip() or base_e
 
-    title_e = f"{base_e}-{location_part}"
-    title_p = f"{base_p}-{location_part}"
+    title_e = base_e
+    if not is_general:
+        title_e = f"{title_e}-{block_code}{level_code}"
     if safe_subject:
-        title_e = f"{title_e}-{safe_subject}"
+        title_e = f"{title_e} - {safe_subject}"
+
+    if is_general:
+        title_p = base_p
+    else:
+        location_name_p = str(level_name_p or level_code).strip() or level_code
+        title_p = f"{location_name_p}-{block_code}-{base_p}"
+    if safe_subject:
         title_p = f"{title_p}-{safe_subject}"
     return title_e, title_p
 
@@ -729,8 +748,15 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
                 continue
 
             pkg_name_e, pkg_name_p = lookup_cache.get_package_names(disc_val, pkg_val)
+            level_name_p = lookup_cache.get_level_name_p(level_val)
             title_e, title_p = _build_full_titles(
-                pkg_name_e, pkg_name_p, pkg_val, block_val, level_val, subject_val
+                pkg_name_e,
+                pkg_name_p,
+                pkg_val,
+                block_val,
+                level_val,
+                level_name_p,
+                subject_val,
             )
 
             new_documents.append(
