@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ Ø§Ø³Ù†Ø§Ø¯ | MDR System</title>
+    <title>??? ????? ????? | MDR System</title>
     
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -311,31 +311,31 @@
         <div class="card">
             <h3 style="margin: 0 0 16px 0; color: var(--primary);">
                 <span class="material-icons-round" style="vertical-align: middle; margin-left: 8px;">upload_file</span>
-                Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ Ø§Ø³Ù†Ø§Ø¯ MDR
+                ??? ????? ????? MDR
             </h3>
 
             <div class="tabs" id="bulkTabs">
-                <button class="tab active" data-bulk-tab="excel">Ø¢Ù¾Ù„ÙˆØ¯ Ø§Ú©Ø³Ù„</button>
-                <button class="tab" data-bulk-tab="link">Ù„ÛŒÙ†Ú© Ú¯ÙˆÚ¯Ù„ Ø´ÛŒØª</button>
-                <button class="tab" data-bulk-tab="manual">Ø¯Ø³ØªÛŒ</button>
+                <button class="tab active" data-bulk-tab="excel">????? ????</button>
+                <button class="tab" data-bulk-tab="link">???? ???? ???</button>
+                <button class="tab" data-bulk-tab="manual">????</button>
             </div>
 
             <div id="tab-excel" class="tab-content active">
                 <div class="file-upload" id="bulkFileUploadZone" data-bulk-action="open-file-picker">
                     <span class="material-icons-round" style="font-size: 48px; color: var(--text-muted);">cloud_upload</span>
-                    <p style="margin: 8px 0; color: var(--text-muted);">ÙØ§ÛŒÙ„ Ø§Ú©Ø³Ù„ Ø±Ø§ Ø§ÛŒÙ†Ø¬Ø§ Ø¨Ú©Ø´ÛŒØ¯ ÛŒØ§ Ú©Ù„ÛŒÚ© Ú©Ù†ÛŒØ¯</p>
+                    <p style="margin: 8px 0; color: var(--text-muted);">???? ???? ?? ????? ????? ?? ???? ????</p>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
-                    <p id="fileStatus" style="margin: 8px 0; font-size: 12px; color: var(--text-muted);">Ù‡ÛŒÚ† ÙØ§ÛŒÙ„ÛŒ Ø§Ù†ØªØ®Ø§Ø¨ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª</p>
+                    <p id="fileStatus" style="margin: 8px 0; font-size: 12px; color: var(--text-muted);">??? ????? ?????? ???? ???</p>
                 </div>
             </div>
 
             <div id="tab-link" class="tab-content">
                 <div class="form-group">
-                    <label>Ù„ÛŒÙ†Ú© Ú¯ÙˆÚ¯Ù„ Ø´ÛŒØª (Ø¨Ø§ÛŒØ¯ Public Ø¨Ø§Ø´Ø¯)</label>
+                    <label>???? ???? ??? (???? Public ????)</label>
                     <div style="display: flex; gap: 8px;">
                         <input type="text" id="sheetUrl" class="form-control" style="flex:1; direction:ltr;" placeholder="https://docs.google.com/spreadsheets/d/...">
                         <button class="btn btn-primary" type="button" data-bulk-action="upload-link">
-                            Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ <span id="linkLoader" style="display:none; margin-right:5px;" class="loader"></span>
+                            ???????? <span id="linkLoader" style="display:none; margin-right:5px;" class="loader"></span>
                         </button>
                     </div>
                 </div>
@@ -345,7 +345,7 @@
                 <div class="card manual-toolbar">
                     <div style="flex:1;"></div>
                     <button class="btn btn-primary" type="button" data-bulk-action="add-manual-row">
-                        <span class="material-icons-round">add</span> Ø§ÙØ²ÙˆØ¯Ù† Ø³Ø·Ø± Ø¬Ø¯ÛŒØ¯
+                        <span class="material-icons-round">add</span> ?????? ??? ????
                     </button>
                 </div>
             </div>
@@ -361,8 +361,8 @@
             <div id="tableWrapper" class="table-wrapper" style="display: none;">
                 <div class="table-header-bar">
                     <div>
-                        <span class="badge" id="recordCount">0 Ø³Ù†Ø¯</span>
-                        <span class="text-muted" style="font-size:11px; margin-right:5px;">Ø¢Ù…Ø§Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ø«Ø¨Øª</span>
+                        <span class="badge" id="recordCount">0 ???</span>
+                        <span class="text-muted" style="font-size:11px; margin-right:5px;">????? ???? ???</span>
                     </div>
                     <div class="virtual-tools">
                         <input
@@ -389,29 +389,29 @@
                     </div>
                     <div class="draft-actions">
                         <button class="btn btn-secondary" type="button" data-bulk-action="save-draft">
-                            <span class="material-icons-round">save</span> Ø°Ø®ÛŒØ±Ù‡ Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³
+                            <span class="material-icons-round">save</span> ????? ????????
                         </button>
                         <button class="btn btn-secondary" type="button" data-bulk-action="clear-draft">
-                            <span class="material-icons-round">delete_sweep</span> Ù¾Ø§Ú©â€ŒÚ©Ø±Ø¯Ù† Ù¾ÛŒØ´â€ŒÙ†ÙˆÛŒØ³
+                            <span class="material-icons-round">delete_sweep</span> ???????? ????????
                         </button>
                     </div>
                     <button class="btn btn-success" id="btnSubmit" type="button" data-bulk-action="submit-final">
-                        <span class="material-icons-round">check</span> Ø«Ø¨Øª Ù†Ù‡Ø§ÛŒÛŒ
+                        <span class="material-icons-round">check</span> ??? ?????
                     </button>
                 </div>
                 <div id="tableScroll" class="table-scroll">
                     <table>
                         <thead>
                             <tr>
-                                <th style="width:190px">Ø´Ù…Ø§Ø±Ù‡ Ø³Ù†Ø¯</th>
-                                <th style="width:200px">Ø¹Ù†ÙˆØ§Ù† ÙØ§Ø±Ø³ÛŒ</th>
-                                <th style="width:200px">Ø¹Ù†ÙˆØ§Ù† Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ</th>
+                                <th style="width:190px">????? ???</th>
+                                <th style="width:200px">????? ?????</th>
+                                <th style="width:200px">????? ???????</th>
                                 <th style="width:180px">Subject</th>
                                 <th style="width:180px">PDF</th>
                                 <th style="width:180px">Native</th>
                                 <th style="width:70px">Rev</th>
                                 <th style="width:110px">Status</th>
-                                <th style="width:80px">Ù¾Ø±ÙˆÚ˜Ù‡</th>
+                                <th style="width:80px">?????</th>
                                 <th style="width:50px">MDR</th>
                                 <th style="width:50px">Ph</th>
                                 <th style="width:50px">Disc</th>
@@ -430,7 +430,7 @@
     </div>
     <datalist id="subjectSuggestionsList"></datalist>
 
-<script src="/static/js/views/mdr_bulk_register.js?v=20260211c"></script>
+<script type="module" src="/static/dist/app.js?v=20260214g"></script>
 
 </body>
 </html>

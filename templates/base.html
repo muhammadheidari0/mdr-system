@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}MDR System | Ø³Ø§Ù…Ø§Ù†Ù‡ Ú©Ù†ØªØ±Ù„ Ù…Ø¯Ø§Ø±Ú©{% endblock %}</title>
+    <title>{% block title %}MDR System | سامانه کنترل مدارک{% endblock %}</title>
 
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -32,17 +32,17 @@
     </div>
 
     <div class="fab-container">
-        <button id="fab-upload-btn" class="fab-btn" title="Ø¢Ù¾Ù„ÙˆØ¯ Ø³Ù†Ø¯ Ø¬Ø¯ÛŒØ¯">
+        <button id="fab-upload-btn" class="fab-btn" title="آپلود سند جدید">
             <span class="material-icons-round">cloud_upload</span>
         </button>
     </div>
 
     <div id="context-menu" class="context-menu">
-        <div class="context-item" data-context-action="view"><span class="material-icons-round">visibility</span> Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ø¬Ø²Ø¦ÛŒØ§Øª</div>
-        <div class="context-item" data-context-action="history"><span class="material-icons-round">history</span> ØªØ§Ø±ÛŒØ®Ú†Ù‡</div>
-        <div class="context-item" data-context-action="upload"><span class="material-icons-round">upload</span> Ø¢Ù¾Ù„ÙˆØ¯ ÙØ§ÛŒÙ„ Ø¬Ø¯ÛŒØ¯</div>
+        <div class="context-item" data-context-action="view"><span class="material-icons-round">visibility</span> مشاهده جزئیات</div>
+        <div class="context-item" data-context-action="history"><span class="material-icons-round">history</span> تاریخچه</div>
+        <div class="context-item" data-context-action="upload"><span class="material-icons-round">upload</span> آپلود فایل جدید</div>
         <div class="divider"></div>
-        <div class="context-item text-danger" data-context-action="delete"><span class="material-icons-round">delete</span> Ø­Ø°Ù</div>
+        <div class="context-item text-danger" data-context-action="delete"><span class="material-icons-round">delete</span> حذف</div>
     </div>
 
     <div id="global-loader" class="loading-overlay" style="display: none;">
@@ -51,20 +51,7 @@
 
     {% include 'components/doc_search.html' %}
     
-    <script type="module" src="/static/dist/app.js?v=20260211a"></script>
-    <script src="/static/js/ui.js" defer></script>
-    <script src="/static/js/auth.js" defer></script>
-    <script src="/static/js/core/events.js?v=20260209a" defer></script>
-    <script src="/static/js/views/dashboard.js?v=20260209a" defer></script>
-    <script src="/static/js/views/edms.js?v=20260209a" defer></script>
-    <script src="/static/js/views/reports.js?v=20260209a" defer></script>
-    <script src="/static/js/views/contractor.js?v=20260209a" defer></script>
-    <script src="/static/js/views/consultant.js?v=20260209a" defer></script>
-    <script src="/static/js/views/profile.js?v=20260209a" defer></script>
-    <script src="/static/js/views/header.js?v=20260210a" defer></script>
-    <script src="/static/js/views/base_interactions.js?v=20260211a" defer></script>
-    <script src="/static/js/views/settings.js?v=20260209a" defer></script>
-    <script src="/static/js/app.js?v=20260209a" defer></script>
+    <script type="module" src="/static/dist/app.js?v=20260214g"></script>
     
     {% block scripts %}{% endblock %}
 

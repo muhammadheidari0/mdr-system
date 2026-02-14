@@ -224,7 +224,15 @@ def get_bulk_register_page():
     html_path = settings.BASE_DIR / "templates" / "mdr" / "bulk_register.html"
     if not html_path.exists():
         raise HTTPException(status_code=404, detail="HTML file not found")
-    return FileResponse(html_path)
+    return FileResponse(
+        html_path,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 # 🔒 فقط ادیتورها می‌توانند سند تکی ثبت کنند
 @router.post("/submit")

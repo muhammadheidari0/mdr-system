@@ -2,6 +2,13 @@
 
 This backlog is the route-level scope for Phase 8 (inline scripts and inline handlers extraction).
 
+## 2026-02-13 Phase 2 Completion
+
+- Runtime is now loaded from TypeScript build output only (`/static/dist/app.js`).
+- Legacy runtime files were migrated to `frontend/src/legacy_runtime/*.ts` and bundled by Vite.
+- Legacy asset directory `static/js/` was removed from the repository.
+- Templates no longer reference `/static/js/*`.
+
 ## Current Inventory
 
 - Inline `<script>` in templates: 0 files
