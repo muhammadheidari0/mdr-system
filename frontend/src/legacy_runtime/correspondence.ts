@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { formatShamsiDate } from "../lib/persian_datetime";
+import { initShamsiDateInputs } from "../lib/shamsi_date_input";
 (function () {
   const APP_RUNTIME = (window.AppRuntime && typeof window.AppRuntime === "object")
     ? window.AppRuntime
@@ -20,10 +22,11 @@
     : null;
   const S = { inited: false, bound: false, page: 1, size: 20, total: 0, items: [], loading: false, timer: null, actions: [], atts: [], cat: { issuing: [], categories: [], projects: [], disciplines: [] } };
   const q = (id) => document.getElementById(id);
+  let shamsiDates = null;
   const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   const dIn = (v) => !v ? "" : (String(v).includes("T") ? String(v).split("T")[0] : String(v).slice(0, 10));
   const dIso = (v) => (String(v || "").trim() ? `${String(v).trim()}T00:00:00` : null);
-  const dFa = (v) => { if (!v) return "-"; const d = new Date(v); return Number.isNaN(d.getTime()) ? "-" : d.toLocaleDateString("fa-IR"); };
+  const dFa = (v) => formatShamsiDate(v);
   const dirCode = (v) => ["I", "IN", "INBOUND"].includes(String(v || "").toUpperCase()) ? "I" : "O";
   const dirFa = (v) => dirCode(v) === "I" ? "Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â§ÃƒËœÃ‚Â±ÃƒËœÃ‚Â¯Ãƒâ„¢Ã¢â‚¬Â¡" : "ÃƒËœÃ‚ÂµÃƒËœÃ‚Â§ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡";
   const statusClass = (s) => { const k = String(s || "").toLowerCase(); return k === "closed" ? "is-closed" : (k === "overdue" ? "is-overdue" : "is-open"); };
@@ -32,6 +35,19 @@
   const nowYyMm = (v) => { const d = v ? new Date(`${v}T00:00:00`) : new Date(); return Number.isNaN(d.getTime()) ? "0000" : `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, "0")}`; };
   const curId = () => Number(q("corrIdInput")?.value || 0);
   const getCorrFetchFn = () => (typeof window.fetchWithAuth === "function" ? window.fetchWithAuth : fetch);
+  function ensureShamsiInputs() {
+    if (shamsiDates) return;
+    shamsiDates = initShamsiDateInputs([
+      "corrDateFromFilter",
+      "corrDateToFilter",
+      "corrDateInput",
+      "corrDueDateInput",
+      "corrActionDueInput",
+    ]);
+  }
+  function syncShamsiInputs() {
+    shamsiDates?.syncAll?.();
+  }
   function requireBridge(bridge, bridgeName) {
     if (!bridge || typeof bridge !== "object") {
       throw new Error(`${bridgeName} bridge unavailable.`);
@@ -147,7 +163,7 @@
   }
   function corrApplyFilters(reset = true) { if (reset) S.page = 1; loadList(); }
   function corrDebouncedSearch() { clearTimeout(S.timer); S.timer = setTimeout(() => corrApplyFilters(true), 350); }
-  function corrResetFilters() { ["corrSearchInput", "corrIssuingFilter", "corrCategoryFilter", "corrDirectionFilter", "corrStatusFilter", "corrDateFromFilter", "corrDateToFilter"].forEach((id) => { const e = q(id); if (e) e.value = ""; }); S.page = 1; loadList(); }
+  function corrResetFilters() { ["corrSearchInput", "corrIssuingFilter", "corrCategoryFilter", "corrDirectionFilter", "corrStatusFilter", "corrDateFromFilter", "corrDateToFilter"].forEach((id) => { const e = q(id); if (e) e.value = ""; }); syncShamsiInputs(); S.page = 1; loadList(); }
   function corrPrevPage() { if (S.page <= 1 || S.loading) return; S.page -= 1; loadList(); }
   function corrNextPage() { if (S.loading) return; if (S.page * S.size >= S.total) return; S.page += 1; loadList(); }
   function corrChangePageSize(v) { S.size = Math.max(1, Number(v || 20)); S.page = 1; loadList(); }
@@ -164,6 +180,7 @@
     q("corrActionDueInput").value = String(defaults?.due_date ?? "");
     q("corrActionStatusInput").value = String(defaults?.status ?? "Open");
     q("corrActionDescInput").value = String(defaults?.description ?? "");
+    syncShamsiInputs();
 
     const submitBtn = q("corrActionSubmitBtn");
     if (submitBtn) {
@@ -247,6 +264,7 @@
     q("corrActionDueInput").value = String(editValues?.due_date || "");
     q("corrActionStatusInput").value = String((editValues?.status ?? a.status) || "Open");
     q("corrActionDescInput").value = String((editValues?.description ?? a.description) || "");
+    syncShamsiInputs();
 
     const submitBtn = q("corrActionSubmitBtn");
     if (submitBtn) {
@@ -398,6 +416,7 @@
     q("corrStatusInput").value = String(v.status || "Open");
     q("corrPriorityInput").value = String(v.priority || "Normal");
     q("corrNotesInput").value = String(v.notes || "");
+    syncShamsiInputs();
   }
 
   function formDefaults() {
@@ -492,6 +511,7 @@
   }
 
   async function init() {
+    ensureShamsiInputs();
     bindEvents();
     await loadCatalog();
     if (!S.inited) { S.inited = true; formDefaults(); }

@@ -81,9 +81,16 @@ def _extract_serial_from_doc_number(doc_number: str, prefix: str, suffix: str) -
         return None
 
 
-def _subject_key_for_coding(subject_p: str | None) -> str:
-    # Coding/duplicate key follows subject_p only.
-    return str(subject_p or "").strip()
+def _resolve_single_subject(subject_e: str | None, subject_p: str | None) -> str:
+    p = str(subject_p or "").strip()
+    if p:
+        return p
+    return str(subject_e or "").strip()
+
+
+def _subject_key_for_coding(subject_e: str | None, subject_p: str | None) -> str:
+    # Single-subject policy: if subject_p is empty, fallback to subject_e.
+    return _resolve_single_subject(subject_e, subject_p)
 
 
 @router.get("/check-status")
@@ -193,7 +200,9 @@ async def register_document_only(
         discipline_code=discipline,
     )
 
-    subject_key = _subject_key_for_coding(subject_p)
+    normalized_doc_number = str(doc_number or "").strip().upper()
+    subject_value = _resolve_single_subject(subject_e, subject_p)
+    subject_key = _subject_key_for_coding(subject_e, subject_p)
     existing_meta_doc = None
     if subject_key:
         existing_meta_doc = mdr_service.find_document_by_metadata_key(
@@ -222,7 +231,7 @@ async def register_document_only(
         }
 
     meta_data = {
-        "doc_number": str(doc_number or "").strip().upper(),
+        "doc_number": normalized_doc_number,
         "project_code": str(project_code or "").strip().upper(),
         "mdr_code": str(mdr_code or "X").strip().upper() or "X",
         "phase": str(phase or "X").strip().upper() or "X",
@@ -230,8 +239,8 @@ async def register_document_only(
         "package": str(package or "").strip().upper(),
         "block": str(block or "").strip().upper(),
         "level": str(level or "GEN").strip().upper() or "GEN",
-        "subject_e": str(subject_e or "").strip(),
-        "subject_p": str(subject_p or "").strip(),
+        "subject_e": subject_value,
+        "subject_p": subject_value,
     }
 
     try:
@@ -250,6 +259,8 @@ async def register_document_only(
             "last_status": status_info.get("last_status", "Registered"),
             "next_revision_suggestion": status_info.get("next_revision_suggestion", "00"),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -383,8 +394,8 @@ async def register_and_upload(
             "package": package,
             "block": block,
             "level": level or "XX",
-            "subject_e": subject_e or "",
-            "subject_p": subject_p or "",
+            "subject_e": _resolve_single_subject(subject_e, subject_p),
+            "subject_p": _resolve_single_subject(subject_e, subject_p),
         }
 
         result = archive_service.register_and_upload_document(
@@ -403,6 +414,8 @@ async def register_and_upload(
             "file_id": result.id,
             "doc_number": meta_data["doc_number"],
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Full Register Error: {e}")
         raise HTTPException(status_code=400, detail=f"??? ?? ??? ???: {str(e)}")
@@ -448,8 +461,8 @@ async def register_and_upload_dual(
             "package": package,
             "block": block,
             "level": level or "XX",
-            "subject_e": subject_e or "",
-            "subject_p": subject_p or "",
+            "subject_e": _resolve_single_subject(subject_e, subject_p),
+            "subject_p": _resolve_single_subject(subject_e, subject_p),
         }
 
         pdf_entry, native_entry = archive_service.register_and_upload_dual_document(
@@ -470,6 +483,8 @@ async def register_and_upload_dual(
             "pdf_file_id": pdf_entry.id,
             "native_file_id": native_entry.id,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Full Dual Register Error: {e}")
         raise HTTPException(status_code=400, detail=f"??? ?? ??? ???: {str(e)}")
@@ -749,7 +764,54 @@ def get_next_serial_preview(
         discipline_code=discipline,
     )
     try:
-        subject_key = _subject_key_for_coding(subject_p)
+        subject_key = _subject_key_for_coding(subject_e, subject_p)
+        if not subject_key:
+            subjectless_doc = mdr_service.find_subjectless_document_by_scope(
+                db,
+                project_code=str(project_code or "").strip().upper(),
+                mdr_code=str(mdr_code or "").strip().upper(),
+                phase_code=str(phase or "").strip().upper(),
+                discipline_code=str(discipline or "").strip().upper(),
+                package_code=str(pkg or "").strip().upper(),
+                block=str(block or "").strip().upper(),
+                level_code=str(level or "").strip().upper(),
+            )
+            if subjectless_doc:
+                prefix, suffix = docnum_service.build_doc_number_parts(
+                    project_code=project_code,
+                    mdr_code=mdr_code,
+                    phase_code=phase,
+                    discipline_code=discipline,
+                    pkg_code=pkg,
+                    block=block,
+                    level=level,
+                )
+                serial = _extract_serial_from_doc_number(subjectless_doc.doc_number, prefix, suffix) or "01"
+                return {
+                    "serial": serial,
+                    "full_doc": subjectless_doc.doc_number,
+                    "existing": True,
+                    "existing_document_id": subjectless_doc.id,
+                }
+
+            doc_num, serial = docnum_service.generate_subjectless_doc_number(
+                db,
+                project_code=project_code,
+                mdr_code=mdr_code,
+                phase_code=phase,
+                discipline_code=discipline,
+                pkg_code=pkg,
+                block=block,
+                level=level,
+                start_serial=1,
+            )
+            return {
+                "serial": serial,
+                "full_doc": doc_num,
+                "existing": False,
+                "existing_document_id": None,
+            }
+
         existing_meta_doc = None
         if subject_key:
             existing_meta_doc = mdr_service.find_document_by_metadata_key(
@@ -764,14 +826,15 @@ def get_next_serial_preview(
                 subject=subject_key,
             )
         if existing_meta_doc:
-            prefix = (
-                f"{str(project_code or '').strip().upper()}-"
-                f"{str(mdr_code or '').strip().upper()}"
-                f"{str(phase or '').strip().upper()}"
-                f"{str(discipline or '').strip().upper()}"
-                f"{str(pkg or '').strip().upper()}"
+            prefix, suffix = docnum_service.build_doc_number_parts(
+                project_code=project_code,
+                mdr_code=mdr_code,
+                phase_code=phase,
+                discipline_code=discipline,
+                pkg_code=pkg,
+                block=block,
+                level=level,
             )
-            suffix = f"-{str(block or '').strip().upper()}{str(level or '').strip().upper()}"
             serial = _extract_serial_from_doc_number(existing_meta_doc.doc_number, prefix, suffix) or ""
             return {
                 "serial": serial,

@@ -1,5 +1,6 @@
 // @ts-nocheck
 // Archive page logic
+import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_datetime";
         let isFullMode = false;
         let allPackages = [];
         let allBlocks = [];
@@ -250,6 +251,14 @@
             updateSerialAndPreview();
         }
 
+        function archiveGetUnifiedSubject() {
+            const single = String(document.getElementById('regSubject')?.value || '').trim();
+            if (single) return single;
+            const legacyP = String(document.getElementById('regSubjectP')?.value || '').trim();
+            if (legacyP) return legacyP;
+            return String(document.getElementById('regSubjectE')?.value || '').trim();
+        }
+
         async function updateSerialAndPreview() {
             if (archiveSuspendAutoPreview) return;
             const project = document.getElementById('regProject').value;
@@ -259,8 +268,9 @@
             const disc = document.getElementById('regDisc').value;
             const block = document.getElementById('regBlock').value;
             const level = document.getElementById('regLevel').value;
-            const subjE = document.getElementById('regSubjectE').value.trim();
-            const subjP = document.getElementById('regSubjectP').value.trim();
+            const subjectValue = archiveGetUnifiedSubject();
+            const subjE = subjectValue;
+            const subjP = subjectValue;
             if(!project || !mdr || !phase) {
                 document.getElementById('fullDocNumber').value = '';
                 document.getElementById('realDocId').value = '';
@@ -272,6 +282,19 @@
                 const params = new URLSearchParams({ project_code: project, mdr_code: mdr, phase: phase, pkg: pkg, discipline: disc, block: block, level: level, subject_e: subjE, subject_p: subjP });
                 const res = await window.fetchWithAuth(`/api/v1/archive/next-serial?${params}`);
                 const data = await res.json();
+                const msgEl = document.getElementById('fullDocCheckMsg');
+                const registerBtn = document.getElementById('fullRegisterDocBtn');
+                if (data?.requires_subject) {
+                    document.getElementById('regSerial').value = '';
+                    document.getElementById('fullDocNumber').value = '';
+                    document.getElementById('realDocId').value = '';
+                    if (msgEl) {
+                        msgEl.innerHTML = '<span style="color:#b45309">برای ساخت مدرک جدید باید Subject وارد شود.</span>';
+                    }
+                    if (registerBtn) registerBtn.style.display = 'none';
+                    archiveRefreshSubmitButtonState();
+                    return;
+                }
                 document.getElementById('regSerial').value = data.serial;
                 document.getElementById('fullDocNumber').value = data.full_doc;
                 if (data && data.existing && Number(data.existing_document_id || 0) > 0) {
@@ -483,7 +506,7 @@
                 if(data.ok && data.data.length > 0) {
                     tbody.innerHTML = data.data.map((f,i)=>{
                         const sizeText = f.size ? `${(f.size / 1024).toFixed(1)} KB` : '-';
-                        const uploadedAt = f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString('fa-IR') : '-';
+                        const uploadedAt = formatShamsiDate(f.uploaded_at);
                         const pdfId = Number(f.pdf_file_id || 0);
                         const nativeId = Number(f.native_file_id || 0);
                         const hasNative = nativeId > 0;
@@ -626,6 +649,8 @@
             const msgEl = document.getElementById('fullDocCheckMsg');
             const doc_number = archiveNormalizeDocCode(document.getElementById('fullDocNumber')?.value || '');
             if (!doc_number) return;
+            const subjectValue = archiveGetUnifiedSubject();
+            // Subject can be empty; backend enforces subjectless scope rule (serial 01).
 
             const payload = new FormData();
             payload.set('doc_number', doc_number);
@@ -636,8 +661,8 @@
             payload.set('package', document.getElementById('regPkg')?.value || '');
             payload.set('block', document.getElementById('regBlock')?.value || '');
             payload.set('level', document.getElementById('regLevel')?.value || '');
-            payload.set('subject_e', document.getElementById('regSubjectE')?.value || '');
-            payload.set('subject_p', document.getElementById('regSubjectP')?.value || '');
+            payload.set('subject_e', subjectValue);
+            payload.set('subject_p', subjectValue);
 
             if (btn) btn.disabled = true;
             if (msgEl) msgEl.innerHTML = '<span style="color:#2563eb">Ø¯Ø± Ø­Ø§Ù„ Ø«Ø¨Øª Ù…Ø¯Ø±Ú©...</span>';
@@ -831,7 +856,7 @@
                     const files = Array.isArray(rev.files) ? rev.files : [];
                     const fileRows = files.length ? files.map((item) => {
                         const fileSize = item.size ? `${(item.size / 1024).toFixed(1)} KB` : '-';
-                        const uploadedAt = item.uploaded_at ? new Date(item.uploaded_at).toLocaleString('fa-IR') : '-';
+                        const uploadedAt = formatShamsiDateTime(item.uploaded_at);
                         return `
                             <tr>
                                 <td>${archiveEsc(item.file_kind)}</td>
@@ -852,7 +877,7 @@
                             <div style="padding:8px 10px; background:#f8fafc; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
                                 <span class="file-badge">Rev ${archiveEsc(rev.revision || '-')}</span>
                                 <span style="color:#64748b;">Status: ${archiveEsc(rev.status || '-')}</span>
-                                <span style="color:#94a3b8;">${rev.created_at ? new Date(rev.created_at).toLocaleString('fa-IR') : '-'}</span>
+                                <span style="color:#94a3b8;">${formatShamsiDateTime(rev.created_at)}</span>
                             </div>
                             <div style="padding:10px;">
                                 <table class="archive-table" style="width:100%;">
@@ -989,6 +1014,7 @@
             const regPkg = document.getElementById('regPkg');
             const regBlock = document.getElementById('regBlock');
             const regLevel = document.getElementById('regLevel');
+            const regSubject = document.getElementById('regSubject');
             const regSubjectE = document.getElementById('regSubjectE');
             const regSubjectP = document.getElementById('regSubjectP');
 
@@ -1002,6 +1028,7 @@
                 if (window.archiveSubjectTimer) clearTimeout(window.archiveSubjectTimer);
                 window.archiveSubjectTimer = setTimeout(() => updateSerialAndPreview(), 220);
             };
+            regSubject?.addEventListener('input', onSubjectInput);
             regSubjectE?.addEventListener('input', onSubjectInput);
             regSubjectP?.addEventListener('input', onSubjectInput);
 

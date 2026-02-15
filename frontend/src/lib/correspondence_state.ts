@@ -1,3 +1,5 @@
+import { formatShamsiDate } from "./persian_datetime";
+
 export interface CorrespondenceStateDeps {
   getElementById: (id: string) => HTMLElement | null;
 }
@@ -100,9 +102,7 @@ function toNumber(value: unknown, fallback = 0): number {
 }
 
 function dFa(value: unknown): string {
-  if (!value) return "-";
-  const date = new Date(String(value));
-  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString("fa-IR");
+  return formatShamsiDate(value);
 }
 
 function nowYyMm(dateValue: unknown): string {

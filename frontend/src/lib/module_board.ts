@@ -1,3 +1,5 @@
+import { formatShamsiDate, formatShamsiDateTime } from "./persian_datetime";
+
 type ModuleKey = "contractor" | "consultant" | string;
 
 interface SummaryResponsePayload {
@@ -155,11 +157,7 @@ function priorityClass(value: unknown): string {
 }
 
 function formatDate(value: unknown, includeTime = false): string {
-  const raw = String(value || "").trim();
-  if (!raw) return "-";
-  const dt = new Date(raw);
-  if (Number.isNaN(dt.getTime())) return "-";
-  return includeTime ? dt.toLocaleString("fa-IR") : dt.toLocaleDateString("fa-IR");
+  return includeTime ? formatShamsiDateTime(value) : formatShamsiDate(value);
 }
 
 function elementValue(el: HTMLElement | null): string {

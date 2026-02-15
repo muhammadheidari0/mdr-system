@@ -62,7 +62,6 @@ class LookupCache:
                 self.discipline_alias_to_code[_normalize_lookup_token(name)] = c
 
         self.level_alias_to_code: Dict[str, str] = {}
-        self.level_name_p_by_code: Dict[str, str] = {}
         for code, name_e, name_p in db.query(Level.code, Level.name_e, Level.name_p).all():
             if not code:
                 continue
@@ -73,7 +72,6 @@ class LookupCache:
                 self.level_alias_to_code[_normalize_lookup_token(name_e)] = c
             if name_p:
                 self.level_alias_to_code[_normalize_lookup_token(name_p)] = c
-                self.level_name_p_by_code[c] = str(name_p).strip()
 
         self.mdr_alias_to_code: Dict[str, str] = {}
         for code, name in db.query(MdrCategory.code, MdrCategory.name_e).all():
@@ -156,11 +154,17 @@ class LookupCache:
             return base, base
         return self.package_names.get((disc_code, pkg_code), (pkg_code, pkg_code))
 
-    def get_level_name_p(self, level_code: str) -> str:
-        code = str(level_code or "").strip().upper()
-        if not code:
-            return ""
-        return self.level_name_p_by_code.get(code, code)
+    def split_compound_package(self, compound: str | None) -> tuple[str, str]:
+        raw = str(compound or "").strip().upper()
+        if not raw:
+            return "", ""
+
+        for disc_code in sorted(self.disciplines, key=len, reverse=True):
+            if raw.startswith(disc_code) and len(raw) > len(disc_code):
+                remainder = raw[len(disc_code) :].strip()
+                if remainder:
+                    return disc_code, remainder
+        return "", raw
 
     def _resolve_with_alias_map(
         self,
@@ -214,22 +218,23 @@ class LookupCache:
 
 
 class PrefixSerialCache:
-    """Cache serial calculations per prefix to avoid repeated LIKE scans."""
+    """Cache serial calculations per exact coding scope to avoid repeated LIKE scans."""
 
     def __init__(self, db: Session):
         self.db = db
         self._cache: Dict[str, Dict[str, Any]] = {}
 
-    def _load_prefix(self, base_prefix: str) -> Dict[str, Any]:
+    def _load_scope(self, scope_key: str, prefix_part: str, suffix_part: str) -> Dict[str, Any]:
         rows = (
             self.db.query(MdrDocument.doc_number, MdrDocument.subject)
-            .filter(MdrDocument.doc_number.like(f"{base_prefix}%"))
+            .filter(MdrDocument.doc_number.like(f"{prefix_part}%{suffix_part}"))
             .all()
         )
 
         max_serial = 0
         subject_to_serial: Dict[str, str] = {}
         existing_doc_numbers = set()
+        used_serials: set[int] = set()
 
         for doc_number, subject in rows:
             existing_doc_numbers.add(doc_number)
@@ -237,6 +242,7 @@ class PrefixSerialCache:
             if serial_str is None:
                 continue
             serial_int = int(serial_str)
+            used_serials.add(serial_int)
             if serial_int > max_serial:
                 max_serial = serial_int
 
@@ -248,16 +254,17 @@ class PrefixSerialCache:
             "max_serial": max_serial,
             "subject_to_serial": subject_to_serial,
             "existing_doc_numbers": existing_doc_numbers,
+            "used_serials": used_serials,
         }
-        self._cache[base_prefix] = payload
+        self._cache[scope_key] = payload
         return payload
 
-    def get_existing_doc_numbers(self, base_prefix: str) -> set[str]:
-        data = self._cache.get(base_prefix) or self._load_prefix(base_prefix)
+    def get_existing_doc_numbers(self, scope_key: str, prefix_part: str, suffix_part: str) -> set[str]:
+        data = self._cache.get(scope_key) or self._load_scope(scope_key, prefix_part, suffix_part)
         return data["existing_doc_numbers"]
 
-    def resolve_serial(self, base_prefix: str, subject: str) -> str:
-        data = self._cache.get(base_prefix) or self._load_prefix(base_prefix)
+    def resolve_serial(self, scope_key: str, prefix_part: str, suffix_part: str, subject: str) -> str:
+        data = self._cache.get(scope_key) or self._load_scope(scope_key, prefix_part, suffix_part)
         normalized = _normalize_subject(subject)
         if normalized and normalized in data["subject_to_serial"]:
             return data["subject_to_serial"][normalized]
@@ -268,9 +275,40 @@ class PrefixSerialCache:
             data["subject_to_serial"][normalized] = serial_str
         return serial_str
 
-    def mark_doc_number(self, base_prefix: str, doc_number: str) -> None:
-        data = self._cache.get(base_prefix) or self._load_prefix(base_prefix)
-        data["existing_doc_numbers"].add(doc_number)
+    def mark_doc_number(self, scope_key: str, prefix_part: str, suffix_part: str, doc_number: str) -> None:
+        data = self._cache.get(scope_key) or self._load_scope(scope_key, prefix_part, suffix_part)
+        code = str(doc_number or "").strip().upper()
+        if not code:
+            return
+        data["existing_doc_numbers"].add(code)
+        serial_str = _extract_serial_from_doc_number(code)
+        if serial_str and serial_str.isdigit():
+            serial_int = int(serial_str)
+            data["used_serials"].add(serial_int)
+            if serial_int > data["max_serial"]:
+                data["max_serial"] = serial_int
+
+    def peek_subjectless_serial(self, scope_key: str, prefix_part: str, suffix_part: str, start_serial: int = 1) -> str:
+        data = self._cache.get(scope_key) or self._load_scope(scope_key, prefix_part, suffix_part)
+        serial_int = max(1, int(start_serial or 1))
+        while serial_int in data["used_serials"]:
+            serial_int += 1
+        return f"{serial_int:02d}"
+
+    def allocate_subjectless_serial(
+        self,
+        scope_key: str,
+        prefix_part: str,
+        suffix_part: str,
+        start_serial: int = 1,
+    ) -> str:
+        serial_str = self.peek_subjectless_serial(scope_key, prefix_part, suffix_part, start_serial)
+        data = self._cache.get(scope_key) or self._load_scope(scope_key, prefix_part, suffix_part)
+        serial_int = int(serial_str)
+        data["used_serials"].add(serial_int)
+        if serial_int > data["max_serial"]:
+            data["max_serial"] = serial_int
+        return serial_str
 
 
 class DuplicateMetaKeyCache:
@@ -280,7 +318,7 @@ class DuplicateMetaKeyCache:
 
     def __init__(self, db: Session):
         self.db = db
-        self._cache: Dict[Tuple[str, str, str, str, str, str, str], Dict[str, str]] = {}
+        self._cache: Dict[Tuple[str, str, str, str, str, str, str], Dict[str, Any]] = {}
 
     def _load_base(
         self,
@@ -291,7 +329,7 @@ class DuplicateMetaKeyCache:
         package: str,
         block: str,
         level: str,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         rows = (
             self.db.query(MdrDocument.doc_number, MdrDocument.subject)
             .filter(MdrDocument.project_code == project)
@@ -304,11 +342,17 @@ class DuplicateMetaKeyCache:
             .all()
         )
         by_subject: Dict[str, str] = {}
+        subjectless_doc: str | None = None
         for doc_number, subject in rows:
             key = _normalize_subject(subject)
             if key and key not in by_subject:
                 by_subject[key] = doc_number
-        return by_subject
+            elif not key and not subjectless_doc:
+                subjectless_doc = doc_number
+        return {
+            "by_subject": by_subject,
+            "subjectless_doc": subjectless_doc,
+        }
 
     def _get_base_map(
         self,
@@ -319,7 +363,7 @@ class DuplicateMetaKeyCache:
         package: str,
         block: str,
         level: str,
-    ) -> Dict[str, str]:
+    ) -> Dict[str, Any]:
         base = (project, mdr, phase, discipline, package, block, level)
         if base not in self._cache:
             self._cache[base] = self._load_base(*base)
@@ -337,9 +381,10 @@ class DuplicateMetaKeyCache:
         subject: str,
     ) -> str | None:
         subject_key = _normalize_subject(subject)
+        payload = self._get_base_map(project, mdr, phase, discipline, package, block, level)
         if not subject_key:
-            return None
-        by_subject = self._get_base_map(project, mdr, phase, discipline, package, block, level)
+            return payload.get("subjectless_doc")
+        by_subject = payload.get("by_subject") or {}
         return by_subject.get(subject_key)
 
     def mark_new_doc(
@@ -355,10 +400,14 @@ class DuplicateMetaKeyCache:
         doc_number: str,
     ) -> None:
         subject_key = _normalize_subject(subject)
+        payload = self._get_base_map(project, mdr, phase, discipline, package, block, level)
         if not subject_key:
+            if not payload.get("subjectless_doc"):
+                payload["subjectless_doc"] = doc_number
             return
-        by_subject = self._get_base_map(project, mdr, phase, discipline, package, block, level)
+        by_subject = payload.get("by_subject") or {}
         by_subject[subject_key] = doc_number
+        payload["by_subject"] = by_subject
 
 
 # ---------------------------------------------------------
@@ -393,8 +442,13 @@ def _extract_metadata_from_code(code: str) -> dict:
                 core_pkg = middle[2 : len(middle) - serial_len]
 
                 if core_pkg:
-                    meta["pkg"] = core_pkg
-                    meta["disc"] = core_pkg[:2] if len(core_pkg) >= 2 else "GN"
+                    m = re.match(r"^([A-Z]+?)(\d.*)$", core_pkg)
+                    if m:
+                        meta["disc"] = m.group(1)
+                        meta["pkg"] = m.group(2)
+                    else:
+                        meta["pkg"] = core_pkg
+                        meta["disc"] = core_pkg[:2] if len(core_pkg) >= 2 else "GN"
 
         if len(parts) >= 3:
             suffix = parts[2]
@@ -424,7 +478,6 @@ def _build_full_titles(
     pkg_code: str | None,
     block: str | None,
     level: str | None,
-    level_name_p: str | None,
     subject: str | None,
 ) -> tuple[str, str]:
     block_code = str(block or "").strip().upper() or "G"
@@ -433,19 +486,17 @@ def _build_full_titles(
     safe_subject = str(subject or "").strip()
 
     base_e = str(pkg_name_e or pkg_code or "00").strip() or "00"
-    base_p = str(pkg_name_p or pkg_code or base_e).strip() or base_e
+    # Prefer Package name_p; if missing use name_e before package code.
+    base_p = str(pkg_name_p or pkg_name_e or pkg_code or base_e).strip() or base_e
 
+    location = f"{block_code}{level_code}"
     title_e = base_e
     if not is_general:
-        title_e = f"{title_e}-{block_code}{level_code}"
+        title_e = f"{title_e}-{location}"
     if safe_subject:
         title_e = f"{title_e} - {safe_subject}"
 
-    if is_general:
-        title_p = base_p
-    else:
-        location_name_p = str(level_name_p or level_code).strip() or level_code
-        title_p = f"{location_name_p}-{block_code}-{base_p}"
+    title_p = base_p if is_general else f"{location}-{base_p}"
     if safe_subject:
         title_p = f"{title_p}-{safe_subject}"
     return title_e, title_p
@@ -662,8 +713,16 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
         if explicit_code:
             mdr_code = (parsed.get("mdr") or mdr_raw or "E").strip().upper() or "E"
             phase_val = (parsed.get("phase") or phase_raw or "X").strip().upper() or "X"
-            disc_val = (parsed.get("disc") or disc_raw or "GN").strip().upper() or "GN"
-            pkg_val = (parsed.get("pkg") or pkg_raw or "00").strip().upper() or "00"
+            compound_pkg = (parsed.get("pkg") or pkg_raw or "00").strip().upper() or "00"
+            disc_from_compound, pkg_from_compound = lookup_cache.split_compound_package(compound_pkg)
+            disc_guess = (parsed.get("disc") or disc_from_compound or disc_raw or "GN").strip().upper() or "GN"
+            disc_val = lookup_cache.resolve_discipline_code(disc_guess, fallback=disc_guess)
+            pkg_guess = (pkg_from_compound or parsed.get("pkg") or pkg_raw or "00").strip().upper() or "00"
+            pkg_val = lookup_cache.resolve_package_code(
+                disc_val,
+                pkg_guess,
+                fallback=pkg_guess,
+            )
             block_val = (parsed.get("block") or block_raw or "G").strip().upper() or "G"
             level_val = (parsed.get("level") or level_raw or "GEN").strip().upper() or "GEN"
         else:
@@ -681,7 +740,16 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
         block_val = (block_val[:1] if block_val else "G") or "G"
 
         generated_code = not raw_code or len(raw_code) < 10 or "-" not in raw_code
-        base_prefix = f"{project_val}-{mdr_code}{phase_val}{pkg_val}"
+        prefix_part = f"{project_val}-{mdr_code}{phase_val}{disc_val}{pkg_val}"
+        suffix_part = f"-{block_val}{level_val}"
+        scope_key = "|".join([project_val, mdr_code, phase_val, disc_val, pkg_val, block_val, level_val])
+        subjectless_serial_preview = serial_cache.peek_subjectless_serial(
+            scope_key,
+            prefix_part,
+            suffix_part,
+            start_serial=1,
+        )
+        expected_subjectless_doc = f"{prefix_part}{subjectless_serial_preview}{suffix_part}"
         subject_norm = _normalize_subject(subject_val)
         has_subject_meta_key = bool(subject_norm)
         meta_full_key = (
@@ -696,43 +764,70 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
         )
 
         row_status = {"doc_number": raw_code, "status": "Pending", "msg": ""}
+        doc_to_save = raw_code
 
         try:
             lookup_cache.ensure(
                 project_val, phase_val, disc_val, pkg_val, level_val, mdr_code
             )
 
-            if has_subject_meta_key:
-                existing_doc_by_key = duplicate_meta_cache.find_existing_doc(
-                    project_val,
-                    mdr_code,
-                    phase_val,
-                    disc_val,
-                    pkg_val,
-                    block_val,
-                    level_val,
-                    subject_val,
-                )
-                if existing_doc_by_key:
-                    row_status["doc_number"] = existing_doc_by_key
-                    row_status["status"] = "Skipped"
-                    row_status["msg"] = f"Duplicate (metadata key exists: {existing_doc_by_key})"
-                    results["details"].append(row_status)
-                    continue
+            existing_doc_by_key = duplicate_meta_cache.find_existing_doc(
+                project_val,
+                mdr_code,
+                phase_val,
+                disc_val,
+                pkg_val,
+                block_val,
+                level_val,
+                subject_val,
+            )
+            if existing_doc_by_key:
+                row_status["doc_number"] = existing_doc_by_key
+                row_status["status"] = "Skipped"
+                row_status["msg"] = f"Duplicate (metadata key exists: {existing_doc_by_key})"
+                results["details"].append(row_status)
+                continue
 
-                if meta_full_key in batch_meta_keys:
-                    row_status["doc_number"] = batch_meta_keys[meta_full_key]
-                    row_status["status"] = "Skipped"
-                    row_status["msg"] = f"Duplicate (same metadata key in current batch: {batch_meta_keys[meta_full_key]})"
-                    results["details"].append(row_status)
-                    continue
+            if meta_full_key in batch_meta_keys:
+                row_status["doc_number"] = batch_meta_keys[meta_full_key]
+                row_status["status"] = "Skipped"
+                row_status["msg"] = f"Duplicate (same metadata key in current batch: {batch_meta_keys[meta_full_key]})"
+                results["details"].append(row_status)
+                continue
 
             if generated_code:
-                existing_doc_numbers.update(serial_cache.get_existing_doc_numbers(base_prefix))
-                final_serial = serial_cache.resolve_serial(base_prefix, subject_val)
-                doc_to_save = f"{project_val}-{mdr_code}{phase_val}{pkg_val}{final_serial}-{block_val}{level_val}"
+                if has_subject_meta_key:
+                    existing_doc_numbers.update(
+                        serial_cache.get_existing_doc_numbers(scope_key, prefix_part, suffix_part)
+                    )
+                    final_serial = serial_cache.resolve_serial(
+                        scope_key,
+                        prefix_part,
+                        suffix_part,
+                        subject_val,
+                    )
+                    doc_to_save = f"{prefix_part}{final_serial}{suffix_part}"
+                else:
+                    # Subjectless policy: one document per scope, serial starts from 01.
+                    final_subjectless_serial = serial_cache.allocate_subjectless_serial(
+                        scope_key,
+                        prefix_part,
+                        suffix_part,
+                        start_serial=1,
+                    )
+                    doc_to_save = f"{prefix_part}{final_subjectless_serial}{suffix_part}"
             else:
                 doc_to_save = raw_code
+                if not has_subject_meta_key and doc_to_save != expected_subjectless_doc:
+                    row_status["doc_number"] = doc_to_save
+                    row_status["status"] = "Failed"
+                    row_status["msg"] = (
+                        "Subjectless row serial must start from 01 in this scope. "
+                        f"Expected: {expected_subjectless_doc}"
+                    )
+                    results["failed"] += 1
+                    results["details"].append(row_status)
+                    continue
             row_status["doc_number"] = doc_to_save
 
             if doc_to_save in existing_doc_numbers:
@@ -748,14 +843,12 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
                 continue
 
             pkg_name_e, pkg_name_p = lookup_cache.get_package_names(disc_val, pkg_val)
-            level_name_p = lookup_cache.get_level_name_p(level_val)
             title_e, title_p = _build_full_titles(
                 pkg_name_e,
                 pkg_name_p,
                 pkg_val,
                 block_val,
                 level_val,
-                level_name_p,
                 subject_val,
             )
 
@@ -777,26 +870,24 @@ def process_bulk_text(db: Session, text_data: str) -> Dict[str, Any]:
 
             batch_doc_numbers.add(doc_to_save)
             existing_doc_numbers.add(doc_to_save)
-            if has_subject_meta_key:
-                batch_meta_keys[meta_full_key] = doc_to_save
-                duplicate_meta_cache.mark_new_doc(
-                    project_val,
-                    mdr_code,
-                    phase_val,
-                    disc_val,
-                    pkg_val,
-                    block_val,
-                    level_val,
-                    subject_val,
-                    doc_to_save,
-                )
-            if generated_code:
-                serial_cache.mark_doc_number(base_prefix, doc_to_save)
+            batch_meta_keys[meta_full_key] = doc_to_save
+            duplicate_meta_cache.mark_new_doc(
+                project_val,
+                mdr_code,
+                phase_val,
+                disc_val,
+                pkg_val,
+                block_val,
+                level_val,
+                subject_val,
+                doc_to_save,
+            )
+            serial_cache.mark_doc_number(scope_key, prefix_part, suffix_part, doc_to_save)
 
             row_status["status"] = "Success"
             results["success"] += 1
         except Exception as exc:
-            print(f"Error processing {doc_to_save}: {exc}")
+            print(f"Error processing {row_status.get('doc_number')}: {exc}")
             row_status["status"] = "Failed"
             row_status["msg"] = str(exc)
             results["failed"] += 1

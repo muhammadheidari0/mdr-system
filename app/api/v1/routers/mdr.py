@@ -605,13 +605,29 @@ def subject_suggestions(
         discipline_code=disc,
     )
 
-    prefix = f"{prj}-{mdr}{ph}{package}"
+    pkg_candidates: list[str] = []
+    if package:
+        pkg_candidates.append(package)
+        if disc and package.startswith(disc) and len(package) > len(disc):
+            stripped = package[len(disc) :].strip()
+            if stripped:
+                pkg_candidates.append(stripped)
+        if disc and not package.startswith(disc):
+            pkg_candidates.append(f"{disc}{package}")
+    pkg_candidates = [p for i, p in enumerate(pkg_candidates) if p and p not in pkg_candidates[:i]]
+
     query = (
         db.query(MdrDocument.subject)
-        .filter(MdrDocument.doc_number.like(f"{prefix}%"))
+        .filter(MdrDocument.project_code == prj)
+        .filter(MdrDocument.mdr_code == mdr)
+        .filter(MdrDocument.phase_code == ph)
         .filter(MdrDocument.subject.isnot(None))
         .filter(MdrDocument.subject != "")
     )
+    if disc:
+        query = query.filter(MdrDocument.discipline_code == disc)
+    if pkg_candidates:
+        query = query.filter(MdrDocument.package_code.in_(pkg_candidates))
     term = str(q or "").strip()
     if term:
         query = query.filter(MdrDocument.subject.ilike(f"%{term}%"))

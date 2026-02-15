@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { formatShamsiDate } from "../../lib/persian_datetime";
 let currentDeleteUserId = null;
 let usersCache = new Map();
 
@@ -692,7 +693,7 @@ async function loadUsers(options = {}) {
               <span class="scope-detail">${escapeHtml(scopeStatus.detail)}</span>
             </div>
           </td>
-          <td>${user.created_at ? new Date(user.created_at).toLocaleDateString('fa-IR') : '-'}</td>
+          <td>${formatShamsiDate(user.created_at)}</td>
           <td>
             <div class="users-kebab">
               <button

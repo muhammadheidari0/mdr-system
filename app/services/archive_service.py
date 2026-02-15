@@ -9,7 +9,7 @@ from sqlalchemy import desc
 from fastapi import UploadFile, HTTPException
 
 from app.db.models import ArchiveFile, DocumentRevision, MdrDocument
-from app.services import folder_service, mdr_service
+from app.services import docnum_service, folder_service, mdr_service
 from app.services.storage import StorageManager
 
 # ---------------------------------------------------------
@@ -58,8 +58,13 @@ def _parse_doc_code(doc_number: str) -> dict | None:
         serial_c = serial_match.group(1) if serial_match else ""
         pkg_full = core[:-2] if serial_match else core
         pkg_full = pkg_full or core or "00"
-
-        disc_c = pkg_full[:2] if len(pkg_full) >= 2 else "GN"
+        disc_match = re.match(r"^([A-Z]+?)(\d.*)$", pkg_full)
+        if disc_match:
+            disc_c = disc_match.group(1)
+            pkg_c = disc_match.group(2)
+        else:
+            disc_c = pkg_full[:2] if len(pkg_full) >= 2 else "GN"
+            pkg_c = pkg_full
         block_c = suffix[0]
         level_c = suffix[1:] or "GEN"
 
@@ -68,7 +73,7 @@ def _parse_doc_code(doc_number: str) -> dict | None:
             "mdr_code": mdr_c,
             "phase_code": phase_c,
             "discipline_code": disc_c,
-            "package_code": pkg_full,
+            "package_code": pkg_c,
             "serial": serial_c,
             "block": block_c,
             "level_code": level_c,
@@ -85,16 +90,24 @@ def _normalize_archive_file_kind(value: str | None) -> str:
     return "pdf"
 
 
-def _subject_storage(subject_e: str | None, subject_p: str | None) -> str:
+def _canonical_subject_text(subject_e: str | None, subject_p: str | None) -> str:
     p = str(subject_p or "").strip()
     if p:
         return p
     return str(subject_e or "").strip()
 
 
+def _subject_pair_for_titles(subject_e: str | None, subject_p: str | None) -> tuple[str, str]:
+    subject_value = _canonical_subject_text(subject_e, subject_p)
+    return subject_value, subject_value
+
+
+def _subject_storage(subject_e: str | None, subject_p: str | None) -> str:
+    return _canonical_subject_text(subject_e, subject_p)
+
+
 def _refresh_doc_titles_from_subjects(doc: MdrDocument, db: Session, subject_e: str | None, subject_p: str | None) -> None:
-    title_e = str(subject_e or "").strip()
-    title_p = str(subject_p or "").strip()
+    title_e, title_p = _subject_pair_for_titles(subject_e, subject_p)
     if not title_e and not title_p:
         return
     full_e, full_p = mdr_service.build_document_titles(
@@ -109,6 +122,34 @@ def _refresh_doc_titles_from_subjects(doc: MdrDocument, db: Session, subject_e: 
     doc.doc_title_e = full_e
     doc.doc_title_p = full_p
     doc.subject = _subject_storage(title_e, title_p)
+
+
+def _scope_subjectless_existing_from_meta(db: Session, meta_data: dict) -> MdrDocument | None:
+    return mdr_service.find_subjectless_document_by_scope(
+        db,
+        project_code=str(meta_data.get("project_code") or "").strip().upper(),
+        mdr_code=str(meta_data.get("mdr_code") or "X").strip().upper() or "X",
+        phase_code=str(meta_data.get("phase") or "X").strip().upper() or "X",
+        discipline_code=str(meta_data.get("discipline") or "XX").strip().upper() or "XX",
+        package_code=str(meta_data.get("package") or "").strip().upper(),
+        block=str(meta_data.get("block") or "").strip().upper(),
+        level_code=str(meta_data.get("level") or "GEN").strip().upper() or "GEN",
+    )
+
+
+def _subjectless_expected_doc_number_from_meta(db: Session, meta_data: dict) -> str:
+    doc_number, _ = docnum_service.generate_subjectless_doc_number(
+        db,
+        project_code=str(meta_data.get("project_code") or "").strip().upper(),
+        mdr_code=str(meta_data.get("mdr_code") or "X").strip().upper() or "X",
+        phase_code=str(meta_data.get("phase") or "X").strip().upper() or "X",
+        discipline_code=str(meta_data.get("discipline") or "XX").strip().upper() or "XX",
+        pkg_code=str(meta_data.get("package") or "").strip().upper(),
+        block=str(meta_data.get("block") or "").strip().upper(),
+        level=str(meta_data.get("level") or "GEN").strip().upper() or "GEN",
+        start_serial=1,
+    )
+    return str(doc_number or "").strip().upper()
 
 # ---------------------------------------------------------
 # 3. Get Document Info (Main Logic Updated)
@@ -370,8 +411,36 @@ def register_and_upload_document(
     ثبت کامل مدرک (Master) و آپلود فایل در یک مرحله.
     """
     
+    subject_e, subject_p = _subject_pair_for_titles(
+        meta_data.get("subject_e"),
+        meta_data.get("subject_p"),
+    )
+
     # 1. ابتدا سند را در جدول MDR ثبت می‌کنیم
     existing = db.query(MdrDocument).filter(MdrDocument.doc_number == meta_data['doc_number']).first()
+    if not existing and not (subject_e or subject_p):
+        subjectless_existing = _scope_subjectless_existing_from_meta(db, meta_data)
+        if subjectless_existing:
+            doc = subjectless_existing
+            db.flush()
+            archive_entry = save_upload_file(
+                db=db,
+                file=file,
+                document_id=doc.id,
+                revision_code=revision_code,
+                status_code=status_code,
+                file_kind=file_kind,
+                is_admin=is_admin
+            )
+            return archive_entry
+
+        normalized_doc_number = str(meta_data.get("doc_number") or "").strip().upper()
+        expected_doc_number = _subjectless_expected_doc_number_from_meta(db, meta_data)
+        if normalized_doc_number != expected_doc_number:
+            raise HTTPException(
+                status_code=422,
+                detail=f"برای مدرک بدون Subject سریال باید از 01 شروع شود. کد صحیح: {expected_doc_number}",
+            )
     
     if existing:
         # اگر کد وجود دارد، از همان استفاده کن
@@ -380,8 +449,8 @@ def register_and_upload_document(
         _refresh_doc_titles_from_subjects(
             doc,
             db,
-            meta_data.get("subject_e"),
-            meta_data.get("subject_p"),
+            subject_e,
+            subject_p,
         )
     else:
         # ساخت سند جدید
@@ -395,9 +464,9 @@ def register_and_upload_document(
             package_code=meta_data['package'],
             block=meta_data['block'],
             level_code=meta_data['level'],
-            title_e=meta_data['subject_e'],
-            title_p=meta_data['subject_p'],
-            subject=_subject_storage(meta_data.get("subject_e"), meta_data.get("subject_p"))
+            title_e=subject_e,
+            title_p=subject_p,
+            subject=_subject_storage(subject_e, subject_p)
         )
     
     db.flush() # برای گرفتن ID سند
@@ -433,8 +502,20 @@ def register_document_metadata(
     if existing:
         return existing, False
 
-    subject_e = str(meta_data.get("subject_e") or "").strip()
-    subject_p = str(meta_data.get("subject_p") or "").strip()
+    subject_e, subject_p = _subject_pair_for_titles(
+        meta_data.get("subject_e"),
+        meta_data.get("subject_p"),
+    )
+    if not (subject_e or subject_p):
+        subjectless_existing = _scope_subjectless_existing_from_meta(db, meta_data)
+        if subjectless_existing:
+            return subjectless_existing, False
+        expected_doc_number = _subjectless_expected_doc_number_from_meta(db, meta_data)
+        if doc_number != expected_doc_number:
+            raise HTTPException(
+                status_code=422,
+                detail=f"برای مدرک بدون Subject سریال باید از 01 شروع شود. کد صحیح: {expected_doc_number}",
+            )
 
     doc = mdr_service.create_mdr_document(
         db,
@@ -468,15 +549,41 @@ def register_and_upload_dual_document(
     """
     Register document metadata (if needed) and upload PDF + Native together.
     """
+    subject_e, subject_p = _subject_pair_for_titles(
+        meta_data.get("subject_e"),
+        meta_data.get("subject_p"),
+    )
+
     existing = db.query(MdrDocument).filter(MdrDocument.doc_number == meta_data["doc_number"]).first()
+    if not existing and not (subject_e or subject_p):
+        subjectless_existing = _scope_subjectless_existing_from_meta(db, meta_data)
+        if subjectless_existing:
+            doc = subjectless_existing
+            db.flush()
+            return save_dual_upload_files(
+                db=db,
+                pdf_file=pdf_file,
+                native_file=native_file,
+                document_id=doc.id,
+                revision_code=revision_code,
+                status_code=status_code,
+                is_admin=is_admin,
+            )
+        normalized_doc_number = str(meta_data.get("doc_number") or "").strip().upper()
+        expected_doc_number = _subjectless_expected_doc_number_from_meta(db, meta_data)
+        if normalized_doc_number != expected_doc_number:
+            raise HTTPException(
+                status_code=422,
+                detail=f"برای مدرک بدون Subject سریال باید از 01 شروع شود. کد صحیح: {expected_doc_number}",
+            )
 
     if existing:
         doc = existing
         _refresh_doc_titles_from_subjects(
             doc,
             db,
-            meta_data.get("subject_e"),
-            meta_data.get("subject_p"),
+            subject_e,
+            subject_p,
         )
     else:
         doc = mdr_service.create_mdr_document(
@@ -489,9 +596,9 @@ def register_and_upload_dual_document(
             package_code=meta_data["package"],
             block=meta_data["block"],
             level_code=meta_data["level"],
-            title_e=meta_data["subject_e"],
-            title_p=meta_data["subject_p"],
-            subject=_subject_storage(meta_data.get("subject_e"), meta_data.get("subject_p")),
+            title_e=subject_e,
+            title_p=subject_p,
+            subject=_subject_storage(subject_e, subject_p),
         )
 
     db.flush()

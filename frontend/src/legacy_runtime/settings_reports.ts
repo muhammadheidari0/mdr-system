@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { formatShamsiDateTime } from "../lib/persian_datetime";
 (() => {
     const API_BASE = '/api/v1/settings';
     const ACCESS_REPORT_ENDPOINT = `${API_BASE}/permissions/access-report`;
@@ -315,7 +316,7 @@
 
         tbody.innerHTML = rows.map((row, idx) => `
             <tr>
-                <td>${esc(row.created_at || '-')}</td>
+                <td>${esc(formatShamsiDateTime(row.created_at))}</td>
                 <td>${esc(row.action || '-')}</td>
                 <td>
                     <div>${esc(row.target_type || '-')}</div>
@@ -504,7 +505,7 @@
         }
 
         const title = normalizedField === 'after' ? 'After JSON' : 'Before JSON';
-        const meta = `action=${row.action || '-'} | target=${row.target_type || '-'}:${row.target_key || '-'} | actor=${row.actor_email || '-'} | time=${row.created_at || '-'}`;
+        const meta = `action=${row.action || '-'} | target=${row.target_type || '-'}:${row.target_key || '-'} | actor=${row.actor_email || '-'} | time=${formatShamsiDateTime(row.created_at)}`;
         openJsonModal(title, rawText, meta);
     };
 

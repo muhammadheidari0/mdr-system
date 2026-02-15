@@ -12,9 +12,9 @@ from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.db.models import Level, MdrDocument
+from app.db.models import Level, MdrDocument, Package
 from app.db.session import engine
-from app.services import mdr_service
+from app.services import docnum_service, mdr_service
 from tests.auth_helpers import get_auth_headers
 
 client = TestClient(app)
@@ -887,10 +887,12 @@ def test_regression_settings_audit_server_pagination(admin_headers: dict[str, st
     assert offset_pagination.get("count") == len(offset_body.get("items", []))
 
 
-def test_regression_bulk_empty_subject_does_not_fallback_to_title(admin_headers: dict[str, str]) -> None:
+def test_regression_bulk_empty_subject_uses_single_subjectless_doc_with_one_serial(
+    admin_headers: dict[str, str],
+) -> None:
     """
     Subject is optional in bulk rows.
-    If subject is empty, frontend must not replace it with title_p/title_e.
+    For the same scope, subjectless rows must reuse the single `01` document.
     """
     project_code = f"T{uuid.uuid4().hex[:5].upper()}"
     title_fallback = f"Fallback-{uuid.uuid4().hex[:6]}"
@@ -934,24 +936,66 @@ def test_regression_bulk_empty_subject_does_not_fallback_to_title(admin_headers:
     assert response.status_code == 200, response.text
     body = response.json()
     assert body.get("ok") is True, body
-    assert body.get("stats", {}).get("success") == 2, body
+    stats = body.get("stats", {})
+    assert stats.get("success") == 1, body
+    assert stats.get("failed") == 0, body
 
-    details = body.get("stats", {}).get("details", [])
-    doc_numbers = [d.get("doc_number", "") for d in details if d.get("status") == "Success"]
-    assert len(doc_numbers) == 2, body
-    assert doc_numbers[0] != doc_numbers[1], body
+    details = stats.get("details", [])
+    success_rows = [d for d in details if str(d.get("status", "")).lower() == "success"]
+    skipped_rows = [d for d in details if str(d.get("status", "")).lower() == "skipped"]
+    assert len(success_rows) == 1, body
+    assert len(skipped_rows) == 1, body
+    success_doc = str(success_rows[0].get("doc_number") or "").strip().upper()
+    skipped_doc = str(skipped_rows[0].get("doc_number") or "").strip().upper()
+    assert success_doc
+    assert skipped_doc == success_doc
 
     with Session(engine) as db:
         rows = (
             db.query(MdrDocument)
             .filter(
                 MdrDocument.project_code == project_code,
-                MdrDocument.doc_number.in_(doc_numbers),
+                MdrDocument.doc_number == success_doc,
             )
             .all()
         )
-    assert len(rows) == 2
+    assert len(rows) == 1
     assert all((r.subject or "") == "" for r in rows)
+
+
+def test_regression_bulk_subjectless_explicit_non_one_serial_fails(admin_headers: dict[str, str]) -> None:
+    project_code = f"T{uuid.uuid4().hex[:5].upper()}"
+    bad_code = f"{project_code}-EXGN0006-GGEN"
+    line = "\t".join(
+        [
+            project_code,
+            "E",
+            "X",
+            "GN",
+            "00",
+            "G",
+            "GEN",
+            "",
+            "",
+            "",
+            bad_code,
+        ]
+    )
+
+    response = client.post(
+        "/api/v1/mdr/bulk-register",
+        headers={**admin_headers, "Content-Type": "application/json"},
+        json={"text_data": line},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body.get("ok") is True, body
+    stats = body.get("stats", {})
+    assert stats.get("success") == 0, body
+    assert stats.get("failed") == 1, body
+    detail = (stats.get("details") or [{}])[0]
+    assert str(detail.get("status") or "").lower() == "failed"
+    assert "01" in str(detail.get("msg") or "")
 
 
 def _archive_seed_values(admin_headers: dict[str, str]) -> dict[str, str]:
@@ -1005,7 +1049,27 @@ def _archive_seed_values(admin_headers: dict[str, str]) -> dict[str, str]:
     }
 
 
-def test_regression_archive_next_serial_ignores_empty_subject_key(admin_headers: dict[str, str]) -> None:
+def _archive_seed_with_unused_block(seed: dict[str, str]) -> dict[str, str]:
+    result = dict(seed)
+    with Session(engine) as db:
+        for block_code in "ZYXWVUTSRQPONMLKJIHGFEDCBA":
+            prefix, suffix = docnum_service.build_doc_number_parts(
+                project_code=result["project_code"],
+                mdr_code=result["mdr_code"],
+                phase_code=result["phase"],
+                discipline_code=result["discipline"],
+                pkg_code=result["pkg"],
+                block=block_code,
+                level=result["level"],
+            )
+            exists = db.query(MdrDocument.id).filter(MdrDocument.doc_number.like(f"{prefix}%{suffix}")).first()
+            if not exists:
+                result["block"] = block_code
+                return result
+    return result
+
+
+def test_regression_archive_next_serial_falls_back_to_subject_e(admin_headers: dict[str, str]) -> None:
     seed = _archive_seed_values(admin_headers)
     subject_e = f"EN-{uuid.uuid4().hex[:8]}"
 
@@ -1039,16 +1103,262 @@ def test_regression_archive_next_serial_ignores_empty_subject_key(admin_headers:
     preview_2 = client.get("/api/v1/archive/next-serial", params=params, headers=admin_headers)
     assert preview_2.status_code == 200, preview_2.text
     p2 = preview_2.json()
-    doc_2 = str(p2.get("full_doc") or "").strip().upper()
-    assert doc_2
-    assert doc_2 != doc_1
+    assert p2.get("existing") is True
+    assert str(p2.get("full_doc") or "").strip().upper() == doc_1
+    assert int(p2.get("existing_document_id") or 0) > 0
+
+
+def test_regression_archive_next_serial_subjectless_uses_one_serial(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_with_unused_block(_archive_seed_values(admin_headers))
+    preview = client.get(
+        "/api/v1/archive/next-serial",
+        params={**seed, "subject_e": "", "subject_p": ""},
+        headers=admin_headers,
+    )
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    doc_number = str(body.get("full_doc") or "").strip().upper()
+    serial = str(body.get("serial") or "").strip()
+    assert doc_number
+    assert serial == "01"
+
+    if not body.get("existing"):
+        register_res = client.post(
+            "/api/v1/archive/register-document",
+            data={
+                "doc_number": doc_number,
+                "project_code": seed["project_code"],
+                "mdr_code": seed["mdr_code"],
+                "phase": seed["phase"],
+                "discipline": seed["discipline"],
+                "package": seed["pkg"],
+                "block": seed["block"],
+                "level": seed["level"],
+                "subject_e": "",
+                "subject_p": "",
+            },
+            headers=admin_headers,
+        )
+        assert register_res.status_code == 200, register_res.text
+
+    preview_2 = client.get(
+        "/api/v1/archive/next-serial",
+        params={**seed, "subject_e": "", "subject_p": ""},
+        headers=admin_headers,
+    )
+    assert preview_2.status_code == 200, preview_2.text
+    body2 = preview_2.json()
+    assert body2.get("existing") is True
+    assert str(body2.get("full_doc") or "").strip().upper() == doc_number
+    assert str(body2.get("serial") or "").strip() == "01"
+
+
+def test_regression_archive_next_serial_reuses_same_subject_metadata_key(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    subject_p = f"موضوع-تکرار-{uuid.uuid4().hex[:8]}"
+
+    params = {
+        **seed,
+        "subject_e": "",
+        "subject_p": subject_p,
+    }
+
+    preview_1 = client.get("/api/v1/archive/next-serial", params=params, headers=admin_headers)
+    assert preview_1.status_code == 200, preview_1.text
+    p1 = preview_1.json()
+    doc_1 = str(p1.get("full_doc") or "").strip().upper()
+    serial_1 = str(p1.get("serial") or "").strip()
+    assert doc_1
+    assert serial_1
+
+    register_res = client.post(
+        "/api/v1/archive/register-document",
+        data={
+            "doc_number": doc_1,
+            "project_code": seed["project_code"],
+            "mdr_code": seed["mdr_code"],
+            "phase": seed["phase"],
+            "discipline": seed["discipline"],
+            "package": seed["pkg"],
+            "block": seed["block"],
+            "level": seed["level"],
+            "subject_e": "",
+            "subject_p": subject_p,
+        },
+        headers=admin_headers,
+    )
+    assert register_res.status_code == 200, register_res.text
+
+    preview_2 = client.get("/api/v1/archive/next-serial", params=params, headers=admin_headers)
+    assert preview_2.status_code == 200, preview_2.text
+    p2 = preview_2.json()
+    assert p2.get("existing") is True
+    assert str(p2.get("full_doc") or "").strip().upper() == doc_1
+    assert str(p2.get("serial") or "").strip() == serial_1
+    assert int(p2.get("existing_document_id") or 0) > 0
+
+
+def test_regression_archive_register_document_without_subject_reuses_existing_scope_doc(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_with_unused_block(_archive_seed_values(admin_headers))
+    preview_subjectless = client.get(
+        "/api/v1/archive/next-serial",
+        params={**seed, "subject_e": "", "subject_p": ""},
+        headers=admin_headers,
+    )
+    assert preview_subjectless.status_code == 200, preview_subjectless.text
+    subjectless_body = preview_subjectless.json()
+    subjectless_doc_number = str(subjectless_body.get("full_doc") or "").strip().upper()
+    assert subjectless_doc_number
+    if not subjectless_body.get("existing"):
+        create_subjectless = client.post(
+            "/api/v1/archive/register-document",
+            data={
+                "doc_number": subjectless_doc_number,
+                "project_code": seed["project_code"],
+                "mdr_code": seed["mdr_code"],
+                "phase": seed["phase"],
+                "discipline": seed["discipline"],
+                "package": seed["pkg"],
+                "block": seed["block"],
+                "level": seed["level"],
+                "subject_e": "",
+                "subject_p": "",
+            },
+            headers=admin_headers,
+        )
+        assert create_subjectless.status_code == 200, create_subjectless.text
+
+    candidate_doc_number = ""
+    with Session(engine) as db:
+        for forced_serial in range(99, 0, -1):
+            doc_number, _ = docnum_service.generate_next_doc_number(
+                db,
+                project_code=seed["project_code"],
+                mdr_code=seed["mdr_code"],
+                phase_code=seed["phase"],
+                discipline_code=seed["discipline"],
+                pkg_code=seed["pkg"],
+                block=seed["block"],
+                level=seed["level"],
+                subject_p=None,
+                forced_serial=forced_serial,
+            )
+            exists = db.query(MdrDocument.id).filter(MdrDocument.doc_number == doc_number).first()
+            if not exists:
+                candidate_doc_number = str(doc_number or "").strip().upper()
+                break
+    assert candidate_doc_number
+
+    register_res = client.post(
+        "/api/v1/archive/register-document",
+        data={
+            "doc_number": candidate_doc_number,
+            "project_code": seed["project_code"],
+            "mdr_code": seed["mdr_code"],
+            "phase": seed["phase"],
+            "discipline": seed["discipline"],
+            "package": seed["pkg"],
+            "block": seed["block"],
+            "level": seed["level"],
+            "subject_e": "",
+            "subject_p": "",
+        },
+        headers=admin_headers,
+    )
+    assert register_res.status_code == 200, register_res.text
+    body = register_res.json()
+    assert body.get("created") is False
+    assert str(body.get("doc_number") or "").strip().upper() == subjectless_doc_number
+
+
+def test_regression_archive_register_document_without_subject_rejects_non_zero_serial_when_no_subjectless_exists(
+    admin_headers: dict[str, str],
+) -> None:
+    seed = _archive_seed_with_unused_block(_archive_seed_values(admin_headers))
+
+    with Session(engine) as db:
+        candidate_doc_number, _ = docnum_service.generate_next_doc_number(
+            db,
+            project_code=seed["project_code"],
+            mdr_code=seed["mdr_code"],
+            phase_code=seed["phase"],
+            discipline_code=seed["discipline"],
+            pkg_code=seed["pkg"],
+            block=seed["block"],
+            level=seed["level"],
+            subject_p=None,
+            forced_serial=6,
+        )
+    candidate_doc_number = str(candidate_doc_number or "").strip().upper()
+    assert candidate_doc_number
+
+    register_res = client.post(
+        "/api/v1/archive/register-document",
+        data={
+            "doc_number": candidate_doc_number,
+            "project_code": seed["project_code"],
+            "mdr_code": seed["mdr_code"],
+            "phase": seed["phase"],
+            "discipline": seed["discipline"],
+            "package": seed["pkg"],
+            "block": seed["block"],
+            "level": seed["level"],
+            "subject_e": "",
+            "subject_p": "",
+        },
+        headers=admin_headers,
+    )
+    assert register_res.status_code == 422, register_res.text
+    assert "01" in register_res.text
+
+
+def test_regression_archive_next_serial_increments_for_new_subject(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    subject_p_1 = f"موضوع-جدید-۱-{uuid.uuid4().hex[:8]}"
+    subject_p_2 = f"موضوع-جدید-۲-{uuid.uuid4().hex[:8]}"
+
+    params_1 = {**seed, "subject_e": "", "subject_p": subject_p_1}
+    preview_1 = client.get("/api/v1/archive/next-serial", params=params_1, headers=admin_headers)
+    assert preview_1.status_code == 200, preview_1.text
+    p1 = preview_1.json()
+    doc_1 = str(p1.get("full_doc") or "").strip().upper()
+    serial_1 = str(p1.get("serial") or "").strip()
+    assert doc_1
+    assert serial_1
+
+    register_1 = client.post(
+        "/api/v1/archive/register-document",
+        data={
+            "doc_number": doc_1,
+            "project_code": seed["project_code"],
+            "mdr_code": seed["mdr_code"],
+            "phase": seed["phase"],
+            "discipline": seed["discipline"],
+            "package": seed["pkg"],
+            "block": seed["block"],
+            "level": seed["level"],
+            "subject_e": "",
+            "subject_p": subject_p_1,
+        },
+        headers=admin_headers,
+    )
+    assert register_1.status_code == 200, register_1.text
+
+    params_2 = {**seed, "subject_e": "", "subject_p": subject_p_2}
+    preview_2 = client.get("/api/v1/archive/next-serial", params=params_2, headers=admin_headers)
+    assert preview_2.status_code == 200, preview_2.text
+    p2 = preview_2.json()
     assert p2.get("existing") is False
+    serial_2 = str(p2.get("serial") or "").strip()
+    assert serial_2
+    assert int(serial_2) == int(serial_1) + 1
 
 
 def test_regression_archive_register_document_titles_follow_coding_rule(admin_headers: dict[str, str]) -> None:
     seed = _archive_seed_values(admin_headers)
     subject_e = f"TitleEN-{uuid.uuid4().hex[:6]}"
     subject_p = f"موضوع-{uuid.uuid4().hex[:6]}"
+    canonical_subject = subject_p
 
     preview = client.get(
         "/api/v1/archive/next-serial",
@@ -1087,25 +1397,72 @@ def test_regression_archive_register_document_titles_follow_coding_rule(admin_he
             package_code=seed["pkg"],
             block_code=seed["block"],
             level_code=seed["level"],
-            subject_e=subject_e,
-            subject_p=subject_p,
+            subject_e=canonical_subject,
+            subject_p=canonical_subject,
         )
         assert row.doc_title_e == expected_e
         assert row.doc_title_p == expected_p
-        assert (row.subject or "") == subject_p
+        assert (row.subject or "") == canonical_subject
 
 
-def test_regression_build_titles_uses_level_name_p_for_title_p(admin_headers: dict[str, str]) -> None:
+def test_regression_archive_register_document_uses_single_subject_value(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    single_subject = f"Single-{uuid.uuid4().hex[:8]}"
+
+    preview = client.get(
+        "/api/v1/archive/next-serial",
+        params={**seed, "subject_e": single_subject, "subject_p": ""},
+        headers=admin_headers,
+    )
+    assert preview.status_code == 200, preview.text
+    doc_number = str(preview.json().get("full_doc") or "").strip().upper()
+    assert doc_number
+
+    register_res = client.post(
+        "/api/v1/archive/register-document",
+        data={
+            "doc_number": doc_number,
+            "project_code": seed["project_code"],
+            "mdr_code": seed["mdr_code"],
+            "phase": seed["phase"],
+            "discipline": seed["discipline"],
+            "package": seed["pkg"],
+            "block": seed["block"],
+            "level": seed["level"],
+            "subject_e": single_subject,
+            "subject_p": "",
+        },
+        headers=admin_headers,
+    )
+    assert register_res.status_code == 200, register_res.text
+
+    with Session(engine) as db:
+        row = db.query(MdrDocument).filter(MdrDocument.doc_number == doc_number).first()
+        assert row is not None
+        expected_e, expected_p = mdr_service.build_document_titles(
+            db,
+            discipline_code=seed["discipline"],
+            package_code=seed["pkg"],
+            block_code=seed["block"],
+            level_code=seed["level"],
+            subject_e=single_subject,
+            subject_p=single_subject,
+        )
+        assert row.doc_title_e == expected_e
+        assert row.doc_title_p == expected_p
+        assert (row.subject or "") == single_subject
+
+
+def test_regression_build_titles_uses_block_plus_level_for_title_p(admin_headers: dict[str, str]) -> None:
     seed = _archive_seed_values(admin_headers)
     with Session(engine) as db:
         level = (
             db.query(Level)
             .filter(Level.code != "GEN")
-            .filter(Level.name_p.isnot(None))
             .first()
         )
-        if level is None or not str(level.name_p or "").strip():
-            pytest.skip("No non-GEN level with Persian name exists.")
+        if level is None or not str(level.code or "").strip():
+            pytest.skip("No non-GEN level code exists.")
 
         _, title_p = mdr_service.build_document_titles(
             db,
@@ -1116,4 +1473,81 @@ def test_regression_build_titles_uses_level_name_p_for_title_p(admin_headers: di
             subject_e="",
             subject_p="موضوع تست",
         )
-        assert title_p.startswith(f"{level.name_p}-{seed['block']}-")
+        assert title_p.startswith(f"{seed['block']}{level.code}-")
+
+
+def test_regression_build_titles_normalizes_prefixed_package_code(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    prefixed_pkg = f"{seed['discipline']}{seed['pkg']}"
+
+    with Session(engine) as db:
+        pkg_row = (
+            db.query(Package)
+            .filter(Package.discipline_code == seed["discipline"])
+            .filter(Package.package_code == seed["pkg"])
+            .first()
+        )
+        if pkg_row is None:
+            pytest.skip("No package row found for selected discipline/package.")
+        expected_name_e = str(pkg_row.name_e or "").strip()
+        expected_name_p = str(pkg_row.name_p or expected_name_e).strip()
+        if not expected_name_e:
+            pytest.skip("Package name_e is empty for selected row.")
+
+        title_e, title_p = mdr_service.build_document_titles(
+            db,
+            discipline_code=seed["discipline"],
+            package_code=prefixed_pkg,
+            block_code=seed["block"],
+            level_code=seed["level"],
+            subject_e="",
+            subject_p="",
+        )
+        assert expected_name_e in title_e
+        assert expected_name_p in title_p
+
+
+def test_regression_archive_register_normalizes_prefixed_package_code(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    prefixed_pkg = f"{seed['discipline']}{seed['pkg']}"
+    subject_p = f"بسته-{uuid.uuid4().hex[:6]}"
+
+    preview = client.get(
+        "/api/v1/archive/next-serial",
+        params={**seed, "pkg": prefixed_pkg, "subject_e": "", "subject_p": subject_p},
+        headers=admin_headers,
+    )
+    assert preview.status_code == 200, preview.text
+    doc_number = str(preview.json().get("full_doc") or "").strip().upper()
+    assert doc_number
+
+    register = client.post(
+        "/api/v1/archive/register-document",
+        data={
+            "doc_number": doc_number,
+            "project_code": seed["project_code"],
+            "mdr_code": seed["mdr_code"],
+            "phase": seed["phase"],
+            "discipline": seed["discipline"],
+            "package": prefixed_pkg,
+            "block": seed["block"],
+            "level": seed["level"],
+            "subject_e": "",
+            "subject_p": subject_p,
+        },
+        headers=admin_headers,
+    )
+    assert register.status_code == 200, register.text
+
+    with Session(engine) as db:
+        row = db.query(MdrDocument).filter(MdrDocument.doc_number == doc_number).first()
+        assert row is not None
+        pkg_row = (
+            db.query(Package)
+            .filter(Package.discipline_code == seed["discipline"])
+            .filter(Package.package_code == seed["pkg"])
+            .first()
+        )
+        assert pkg_row is not None
+        assert (row.package_code or "").upper() == seed["pkg"].upper()
+        assert (row.doc_title_e or "").startswith(str(pkg_row.name_e or pkg_row.package_code))

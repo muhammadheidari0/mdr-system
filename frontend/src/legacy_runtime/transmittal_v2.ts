@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime";
 (() => {
     const APP_RUNTIME = (window.AppRuntime && typeof window.AppRuntime === "object")
         ? window.AppRuntime
@@ -147,7 +148,7 @@
         const tooltipParts = [];
         if (item?.void_reason) tooltipParts.push(`Reason: ${item.void_reason}`);
         if (item?.voided_by) tooltipParts.push(`By: ${item.voided_by}`);
-        if (item?.voided_at) tooltipParts.push(`At: ${new Date(item.voided_at).toLocaleString("fa-IR")}`);
+        if (item?.voided_at) tooltipParts.push(`At: ${formatShamsiDateTime(item.voided_at)}`);
         const tooltip = tooltipParts.join(" | ") || "VOID";
         return `<span title="${escapeHtml(tooltip)}" style="cursor: help;">${escapeHtml(statusLabel)}</span>`;
     }
@@ -249,7 +250,7 @@
                     <td>${escapeHtml(t.subject || "-")}</td>
                     <td>${escapeHtml(t.doc_count)}</td>
                     <td>${renderStatusCell(t)}</td>
-                    <td>${t.created_at ? new Date(t.created_at).toLocaleDateString("fa-IR") : "-"}</td>
+                    <td>${formatShamsiDate(t.created_at)}</td>
                     <td>
                         <button class="btn-archive-icon" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(t.id)}">PDF</button>
                         ${t.status === "draft" ? `<button class="btn-archive-icon" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(t.id)}">Edit</button>` : ""}

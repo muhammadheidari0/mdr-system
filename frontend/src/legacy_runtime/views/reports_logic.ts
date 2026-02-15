@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { formatShamsiDate, formatShamsiDateForFileName } from "../../lib/persian_datetime";
 function initReportsView() {
     bindReportsActions();
     if (window.CACHE && window.CACHE.projects) {
@@ -98,7 +99,7 @@ function renderReportTable(items) {
             <td class="center-text"><span class="rev-badge">${item.revision}</span></td>
             <td class="center-text">${item.status}</td>
             <td class="center-text" style="font-size:0.8rem;">
-                ${item.created_at ? new Date(item.created_at).toLocaleDateString('fa-IR') : '-'}
+                ${formatShamsiDate(item.created_at)}
             </td>
         </tr>
     `).join('');
@@ -146,7 +147,7 @@ async function exportReportToExcel() {
             throw new Error('XLSX library not available');
         }
         const wb = window.XLSX.utils.table_to_book(table, { sheet: 'Report' });
-        window.XLSX.writeFile(wb, `MDR_Report_${new Date().toLocaleDateString('fa-IR')}.xlsx`);
+        window.XLSX.writeFile(wb, `MDR_Report_${formatShamsiDateForFileName(new Date())}.xlsx`);
     } catch (error) {
         console.error(error);
         if (typeof showToast === 'function') {

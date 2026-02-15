@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime";
 /**
  * MDR System - Main Application Logic
  * Path: frontend/src/legacy_runtime/app.ts
@@ -1315,15 +1316,7 @@ function moduleBoardFormatDate(value, includeTime = false) {
     if (TS_MODULE_BOARD?.formatDate) {
         return TS_MODULE_BOARD.formatDate(value, includeTime);
     }
-
-    const raw = String(value || '').trim();
-    if (!raw) return '-';
-    const dt = new Date(raw);
-    if (Number.isNaN(dt.getTime())) return '-';
-    if (includeTime) {
-        return dt.toLocaleString('fa-IR');
-    }
-    return dt.toLocaleDateString('fa-IR');
+    return includeTime ? formatShamsiDateTime(value) : formatShamsiDate(value);
 }
 
 function moduleBoardStatusClass(value) {

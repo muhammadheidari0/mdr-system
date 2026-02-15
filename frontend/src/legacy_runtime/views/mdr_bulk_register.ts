@@ -257,13 +257,21 @@ const MAX_FILE_SIZE_MB = 15;
         const phase = middle.substring(1, 2) || 'X';
 
         let pkg = '00';
+        let disc = '';
         const packageAndSerial = middle.substring(2);
         if (packageAndSerial) {
             const serialMatch = packageAndSerial.match(/(\d{2})$/);
-            pkg = serialMatch ? (packageAndSerial.slice(0, -2) || '00') : packageAndSerial;
+            const corePkg = serialMatch ? (packageAndSerial.slice(0, -2) || '00') : packageAndSerial;
+            const discMatch = String(corePkg || '').match(/^([A-Z]+?)(\d.*)$/);
+            if (discMatch) {
+                disc = String(discMatch[1] || '').trim().toUpperCase();
+                pkg = String(discMatch[2] || '').trim().toUpperCase() || '00';
+            } else {
+                pkg = String(corePkg || '').trim().toUpperCase() || '00';
+                disc = pkg.length >= 2 ? pkg.substring(0, 2) : '';
+            }
         }
 
-        const disc = pkg.length >= 2 ? pkg.substring(0, 2) : '';
         const block = suffix.substring(0, 1) || 'G';
         const level = suffix.substring(1) || 'GEN';
 
@@ -286,13 +294,15 @@ const MAX_FILE_SIZE_MB = 15;
         if (!serialMatch) return null;
 
         const parsed = parseCodeToData(doc);
-        if (!parsed.proj || !parsed.mdr || !parsed.phase || !parsed.pkg) return null;
+        if (!parsed.proj || !parsed.mdr || !parsed.phase || !parsed.disc || !parsed.pkg || !parsed.block || !parsed.level) return null;
 
         const serialInt = Number(serialMatch[1]);
         if (!Number.isFinite(serialInt)) return null;
 
-        const prefix = `${parsed.proj}-${parsed.mdr}${parsed.phase}${parsed.pkg}`;
-        return { prefix, serialInt, serialStr: serialMatch[1] };
+        const prefix = `${parsed.proj}-${parsed.mdr}${parsed.phase}${parsed.disc}${parsed.pkg}`;
+        const suffix = `${parsed.block}${parsed.level}`;
+        const scope = `${prefix}-${suffix}`;
+        return { prefix, suffix, scope, serialInt, serialStr: serialMatch[1] };
     }
 
     function formatSerialInt(value) {
@@ -307,12 +317,12 @@ const MAX_FILE_SIZE_MB = 15;
     }
 
     function buildDocCode(row, serialStr) {
-        const prefix = `${row.project}-${row.mdr}${row.phase}${row.pkg}`;
+        const prefix = `${row.project}-${row.mdr}${row.phase}${row.disc}${row.pkg}`;
         return `${prefix}${serialStr}-${row.block}${row.level}`;
     }
 
     function rebuildAutoCodes() {
-        const maxSerialByPrefix = new Map();
+        const maxSerialByScope = new Map();
         const serialBySubjectKey = new Map();
 
         rowStore.forEach((row) => {
@@ -320,12 +330,12 @@ const MAX_FILE_SIZE_MB = 15;
             const parsed = parseSerialFromDocCode(row.code);
             if (!parsed) return;
 
-            const currentMax = maxSerialByPrefix.get(parsed.prefix) || 0;
-            if (parsed.serialInt > currentMax) maxSerialByPrefix.set(parsed.prefix, parsed.serialInt);
+            const currentMax = maxSerialByScope.get(parsed.scope) || 0;
+            if (parsed.serialInt > currentMax) maxSerialByScope.set(parsed.scope, parsed.serialInt);
 
             const subjectNorm = normalizeSubjectForSerial(row.subject);
             if (subjectNorm) {
-                const key = `${parsed.prefix}__${subjectNorm}`;
+                const key = `${parsed.scope}__${subjectNorm}`;
                 if (!serialBySubjectKey.has(key)) serialBySubjectKey.set(key, parsed.serialStr);
             }
         });
@@ -343,23 +353,23 @@ const MAX_FILE_SIZE_MB = 15;
                 return;
             }
 
-            const prefix = `${row.project}-${row.mdr}${row.phase}${row.pkg}`;
+            const prefix = `${row.project}-${row.mdr}${row.phase}${row.disc}${row.pkg}`;
+            const scope = `${prefix}-${row.block}${row.level}`;
             const subjectNorm = normalizeSubjectForSerial(row.subject);
             let serialStr = '';
 
             if (subjectNorm) {
-                const subjectKey = `${prefix}__${subjectNorm}`;
+                const subjectKey = `${scope}__${subjectNorm}`;
                 serialStr = serialBySubjectKey.get(subjectKey) || '';
                 if (!serialStr) {
-                    const next = (maxSerialByPrefix.get(prefix) || 0) + 1;
-                    maxSerialByPrefix.set(prefix, next);
+                    const next = (maxSerialByScope.get(scope) || 0) + 1;
+                    maxSerialByScope.set(scope, next);
                     serialStr = formatSerialInt(next);
                     serialBySubjectKey.set(subjectKey, serialStr);
                 }
             } else {
-                const next = (maxSerialByPrefix.get(prefix) || 0) + 1;
-                maxSerialByPrefix.set(prefix, next);
-                serialStr = formatSerialInt(next);
+                // Subjectless policy: only serial 01 for each exact coding scope.
+                serialStr = '01';
             }
 
             const nextCode = buildDocCode(row, serialStr);
@@ -411,9 +421,10 @@ const MAX_FILE_SIZE_MB = 15;
         const project = String(row.project || '').trim().toUpperCase();
         const mdr = String(row.mdr || '').trim().toUpperCase();
         const phase = String(row.phase || '').trim().toUpperCase();
+        const disc = String(row.disc || '').trim().toUpperCase();
         const pkg = String(row.pkg || '').trim().toUpperCase();
-        if (!project || !mdr || !phase || !pkg) return '';
-        return `${project}-${mdr}${phase}${pkg}`;
+        if (!project || !mdr || !phase || !disc || !pkg) return '';
+        return `${project}-${mdr}${phase}${disc}${pkg}`;
     }
 
     function collectLocalSubjectSuggestions(prefix, query = '') {
@@ -679,8 +690,8 @@ const MAX_FILE_SIZE_MB = 15;
     }
 
     function buildAutoTitles(row) {
-        const block = String(row?.block || '').trim();
-        const level = String(row?.level || '').trim();
+        const block = String(row?.block || '').trim().toUpperCase();
+        const level = String(row?.level || '').trim().toUpperCase();
         const subject = String(row?.subject || '').trim();
         const pkg = String(row?.pkg || '').trim();
         const disc = String(row?.disc || '').trim();
@@ -688,14 +699,17 @@ const MAX_FILE_SIZE_MB = 15;
             return { titleE: '', titleP: '' };
         }
         const pkgNames = getPackageNames(disc, pkg);
+        const isGeneral = level === 'GEN';
         const locationPart = `${block}${level}`;
 
-        let titleE = `${pkgNames.nameE}-${locationPart}`;
-        let titleP = `${pkgNames.nameP}-${locationPart}`;
+        let titleE = pkgNames.nameE;
+        if (!isGeneral) titleE = `${titleE}-${locationPart}`;
         if (subject) {
-            titleE += `-${subject}`;
-            titleP += `-${subject}`;
+            titleE += ` - ${subject}`;
         }
+
+        let titleP = isGeneral ? pkgNames.nameP : `${locationPart}-${pkgNames.nameP}`;
+        if (subject) titleP += `-${subject}`;
         return { titleE, titleP };
     }
 

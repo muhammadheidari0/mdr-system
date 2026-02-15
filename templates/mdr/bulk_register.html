@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>??? ????? ????? | MDR System</title>
+    <title>ثبت گروهی مدارک | MDR System</title>
     
     <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
@@ -108,7 +108,7 @@
 
         .table-wrapper { overflow: visible; }
         .table-scroll {
-            max-height: 420px;
+            max-height: min(66vh, 760px);
             overflow: auto;
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -311,31 +311,31 @@
         <div class="card">
             <h3 style="margin: 0 0 16px 0; color: var(--primary);">
                 <span class="material-icons-round" style="vertical-align: middle; margin-left: 8px;">upload_file</span>
-                ??? ????? ????? MDR
+                ثبت گروهی مدارک MDR
             </h3>
 
             <div class="tabs" id="bulkTabs">
-                <button class="tab active" data-bulk-tab="excel">????? ????</button>
-                <button class="tab" data-bulk-tab="link">???? ???? ???</button>
-                <button class="tab" data-bulk-tab="manual">????</button>
+                <button class="tab active" data-bulk-tab="excel">فایل اکسل</button>
+                <button class="tab" data-bulk-tab="link">لینک گوگل‌شیت</button>
+                <button class="tab" data-bulk-tab="manual">ثبت دستی</button>
             </div>
 
             <div id="tab-excel" class="tab-content active">
                 <div class="file-upload" id="bulkFileUploadZone" data-bulk-action="open-file-picker">
                     <span class="material-icons-round" style="font-size: 48px; color: var(--text-muted);">cloud_upload</span>
-                    <p style="margin: 8px 0; color: var(--text-muted);">???? ???? ?? ????? ????? ?? ???? ????</p>
+                    <p style="margin: 8px 0; color: var(--text-muted);">فایل اکسل را اینجا رها کنید یا کلیک کنید</p>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
-                    <p id="fileStatus" style="margin: 8px 0; font-size: 12px; color: var(--text-muted);">??? ????? ?????? ???? ???</p>
+                    <p id="fileStatus" style="margin: 8px 0; font-size: 12px; color: var(--text-muted);">هنوز فایلی انتخاب نشده است</p>
                 </div>
             </div>
 
             <div id="tab-link" class="tab-content">
                 <div class="form-group">
-                    <label>???? ???? ??? (???? Public ????)</label>
+                    <label>لینک گوگل‌شیت (حالت Public باشد)</label>
                     <div style="display: flex; gap: 8px;">
                         <input type="text" id="sheetUrl" class="form-control" style="flex:1; direction:ltr;" placeholder="https://docs.google.com/spreadsheets/d/...">
                         <button class="btn btn-primary" type="button" data-bulk-action="upload-link">
-                            ???????? <span id="linkLoader" style="display:none; margin-right:5px;" class="loader"></span>
+                            بارگذاری <span id="linkLoader" style="display:none; margin-right:5px;" class="loader"></span>
                         </button>
                     </div>
                 </div>
@@ -345,7 +345,7 @@
                 <div class="card manual-toolbar">
                     <div style="flex:1;"></div>
                     <button class="btn btn-primary" type="button" data-bulk-action="add-manual-row">
-                        <span class="material-icons-round">add</span> ?????? ??? ????
+                        <span class="material-icons-round">add</span> افزودن ردیف دستی
                     </button>
                 </div>
             </div>
@@ -361,8 +361,8 @@
             <div id="tableWrapper" class="table-wrapper" style="display: none;">
                 <div class="table-header-bar">
                     <div>
-                        <span class="badge" id="recordCount">0 ???</span>
-                        <span class="text-muted" style="font-size:11px; margin-right:5px;">????? ???? ???</span>
+                        <span class="badge" id="recordCount">0 ردیف</span>
+                        <span class="text-muted" style="font-size:11px; margin-right:5px;">رکورد آماده ثبت</span>
                     </div>
                     <div class="virtual-tools">
                         <input
@@ -389,29 +389,29 @@
                     </div>
                     <div class="draft-actions">
                         <button class="btn btn-secondary" type="button" data-bulk-action="save-draft">
-                            <span class="material-icons-round">save</span> ????? ????????
+                            <span class="material-icons-round">save</span> ذخیره پیش‌نویس
                         </button>
                         <button class="btn btn-secondary" type="button" data-bulk-action="clear-draft">
-                            <span class="material-icons-round">delete_sweep</span> ???????? ????????
+                            <span class="material-icons-round">delete_sweep</span> پاک‌سازی پیش‌نویس
                         </button>
                     </div>
                     <button class="btn btn-success" id="btnSubmit" type="button" data-bulk-action="submit-final">
-                        <span class="material-icons-round">check</span> ??? ?????
+                        <span class="material-icons-round">check</span> ثبت نهایی
                     </button>
                 </div>
                 <div id="tableScroll" class="table-scroll">
                     <table>
                         <thead>
                             <tr>
-                                <th style="width:190px">????? ???</th>
-                                <th style="width:200px">????? ?????</th>
-                                <th style="width:200px">????? ???????</th>
+                                <th style="width:190px">شماره سند</th>
+                                <th style="width:200px">عنوان فارسی</th>
+                                <th style="width:200px">عنوان انگلیسی</th>
                                 <th style="width:180px">Subject</th>
                                 <th style="width:180px">PDF</th>
                                 <th style="width:180px">Native</th>
                                 <th style="width:70px">Rev</th>
                                 <th style="width:110px">Status</th>
-                                <th style="width:80px">?????</th>
+                                <th style="width:80px">پروژه</th>
                                 <th style="width:50px">MDR</th>
                                 <th style="width:50px">Ph</th>
                                 <th style="width:50px">Disc</th>
@@ -430,7 +430,7 @@
     </div>
     <datalist id="subjectSuggestionsList"></datalist>
 
-<script type="module" src="/static/dist/app.js?v=20260214g"></script>
+<script type="module" src="/static/dist/app.js?v=20260215a"></script>
 
 </body>
 </html>
