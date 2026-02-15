@@ -82,6 +82,8 @@ docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --
 
 The override binds app/database ports to localhost and exposes only `80/443` via Caddy.
 Frontend assets are built inside Docker (multi-stage Dockerfile), so deploy does not require committing `static/dist`.
+Production override also maps persistent data to `${MDR_DATA_ROOT:-/opt/mdr_data}` for DB/files/logs durability.
+Default compose port bindings are localhost-only (`WEB_PORT_BIND` / `POSTGRES_PORT_BIND`) unless explicitly changed.
 
 ## TypeScript Pipeline
 

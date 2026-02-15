@@ -128,13 +128,20 @@ Inside Ubuntu:
 
 ```bash
 sudo mkdir -p /opt/mdr_app
-sudo chown -R $USER:$USER /opt/mdr_app
+sudo mkdir -p /opt/mdr_data/postgres /opt/mdr_data/database /opt/mdr_data/data_store /opt/mdr_data/archive_storage /opt/mdr_data/logs /opt/mdr_data/backups
+sudo chown -R $USER:$USER /opt/mdr_app /opt/mdr_data
 git clone git@github.com:<ORG>/<REPO>.git /opt/mdr_app
 cd /opt/mdr_app
 git fetch origin --tags --prune
 git checkout --detach vX.Y.Z
 cp /path/to/.env.production /opt/mdr_app/.env
 ```
+
+Set this in `.env` (or keep default):
+
+- `MDR_DATA_ROOT=/opt/mdr_data`
+- `POSTGRES_PORT_BIND=127.0.0.1:5432:5432`
+- `WEB_PORT_BIND=127.0.0.1:8000:8000`
 
 Update domain in Caddy config:
 
@@ -239,7 +246,7 @@ Keep `restart: unless-stopped` for containers.
 2. On server backup DB:
 
 ```bash
-docker exec -t mdr_postgres pg_dump -U mdr -d mdr_app -Fc > /opt/mdr_app/backup_$(date +%F_%H%M).dump
+docker exec -t mdr_postgres pg_dump -U mdr -d mdr_app -Fc > /opt/mdr_data/backups/backup_$(date +%F_%H%M).dump
 ```
 
 3. Deploy new tag:
@@ -274,7 +281,7 @@ docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --
 Data rollback (if needed):
 
 ```bash
-cat /opt/mdr_app/<backup>.dump | docker exec -i mdr_postgres pg_restore -U mdr -d mdr_app --clean --if-exists
+cat /opt/mdr_data/backups/<backup>.dump | docker exec -i mdr_postgres pg_restore -U mdr -d mdr_app --clean --if-exists
 ```
 
 Then validate:

@@ -1,15 +1,18 @@
 services:
   postgres:
-    ports:
-      - "127.0.0.1:5432:5432"
+    volumes:
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/postgres:/var/lib/postgresql/data
 
   web:
     environment:
       APP_ENV: ${APP_ENV:-production}
       DEBUG: ${DEBUG:-false}
       API_PREFIX: ${API_PREFIX:-/api/v1}
-    ports:
-      - "127.0.0.1:8000:8000"
+    volumes:
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/database:/app/database
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/data_store:/app/data_store
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/archive_storage:/app/archive_storage
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/logs:/app/logs
 
   caddy:
     image: caddy:2.8-alpine

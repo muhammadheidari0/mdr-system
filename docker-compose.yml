@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-mdr}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mdr}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT_BIND:-127.0.0.1:5432:5432}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -41,7 +41,7 @@ services:
       DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
       DB_ECHO: ${DB_ECHO:-false}
     ports:
-      - "8000:8000"
+      - "${WEB_PORT_BIND:-127.0.0.1:8000:8000}"
     volumes:
       - ./database:/app/database
       - ./data_store:/app/data_store

@@ -2,9 +2,9 @@ FROM node:20-alpine AS frontend_builder
 
 WORKDIR /src
 
-COPY package*.json vite.config.ts tsconfig.json ./
-COPY frontend ./frontend
+COPY package*.json ./
 RUN npm ci
+COPY . .
 RUN npm run build
 
 FROM python:3.10-slim
