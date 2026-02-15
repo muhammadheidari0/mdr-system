@@ -520,15 +520,22 @@ def get_correspondence_catalog(
     del user
     issuing_rows = (
         db.query(IssuingEntity)
+        .filter(IssuingEntity.is_active.is_(True))
         .order_by(IssuingEntity.sort_order.asc(), IssuingEntity.code.asc())
         .all()
     )
     category_rows = (
         db.query(CorrespondenceCategory)
+        .filter(CorrespondenceCategory.is_active.is_(True))
         .order_by(CorrespondenceCategory.sort_order.asc(), CorrespondenceCategory.code.asc())
         .all()
     )
-    project_rows = db.query(Project).order_by(Project.code.asc()).all()
+    project_rows = (
+        db.query(Project)
+        .filter(Project.is_active.is_(True))
+        .order_by(Project.code.asc())
+        .all()
+    )
     discipline_rows = db.query(Discipline).order_by(Discipline.code.asc()).all()
 
     return {

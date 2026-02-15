@@ -1,7 +1,7 @@
 // @ts-nocheck
 (() => {
     const API_BASE = '/api/v1/settings';
-    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses'];
+    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories'];
 
     const STORE = {
         initialized: false,
@@ -9,6 +9,7 @@
         storagePathsLoaded: false,
         actionsBound: false,
         activePage: 'db',
+        activeDomain: 'all',
         data: {
             projects: [],
             mdr: [],
@@ -18,6 +19,8 @@
             blocks: [],
             levels: [],
             statuses: [],
+            corr_issuing: [],
+            corr_categories: [],
         },
         paging: {},
     };
@@ -35,6 +38,8 @@
         blocks: { url: '/blocks', tbodyId: 'settingsBlocksRows', pagerId: 'blocksPager', colspan: 5 },
         levels: { url: '/levels', tbodyId: 'settingsLevelsRows', pagerId: 'levelsPager', colspan: 5 },
         statuses: { url: '/statuses', tbodyId: 'settingsStatusesRows', pagerId: 'statusesPager', colspan: 5 },
+        corr_issuing: { url: '/correspondence-issuing', tbodyId: 'settingsCorrIssuingRows', pagerId: 'corrIssuingPager', colspan: 5 },
+        corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
     };
 
     function tSuccess(msg) { if (window.UI?.success) window.UI.success(msg); else alert(msg); }
@@ -83,6 +88,10 @@
                 return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''}`;
             case 'statuses':
                 return `${row.code || ''} ${row.name || ''} ${row.description || ''}`;
+            case 'corr_issuing':
+                return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''} ${row.project_code || ''}`;
+            case 'corr_categories':
+                return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''}`;
             default:
                 return JSON.stringify(row || {});
         }
@@ -239,6 +248,32 @@
                     `)}</td>
                 </tr>
             `).join('');
+        } else if (entity === 'corr_issuing') {
+            html = info.rows.map((s) => `
+                <tr>
+                    <td>${esc(s.code)}</td>
+                    <td>${esc(s.name_e || s.name_p || '-')}</td>
+                    <td>${esc(s.project_code || '-')}</td>
+                    <td>${boolBadge(Boolean(s.is_active))}</td>
+                    <td>${rowActions(`
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-issuing" data-code="${esc(encoded(s.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-issuing" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                    `)}</td>
+                </tr>
+            `).join('');
+        } else if (entity === 'corr_categories') {
+            html = info.rows.map((s) => `
+                <tr>
+                    <td>${esc(s.code)}</td>
+                    <td>${esc(s.name_e || s.name_p || '-')}</td>
+                    <td>${boolBadge(Boolean(s.is_active))}</td>
+                    <td>${esc(s.sort_order ?? 0)}</td>
+                    <td>${rowActions(`
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-category" data-code="${esc(encoded(s.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-category" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                    `)}</td>
+                </tr>
+            `).join('');
         }
 
         tbody.innerHTML = html;
@@ -308,17 +343,42 @@
     async function loadOverview() {
         const box = document.getElementById('settingsOverviewStats');
         if (!box) return;
-        box.innerHTML = '<div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>';
+        box.innerHTML = '<div class="text-muted">در حال بارگذاری...</div>';
         const data = await request(`${API_BASE}/overview`);
         const counts = data.counts || {};
         const cards = [
-            ['projects', 'Ù¾Ø±ÙˆÚ˜Ù‡'], ['mdr_categories', 'MDR'], ['phases', 'ÙØ§Ø²'],
-            ['disciplines', 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†'], ['packages', 'Ù¾Ú©ÛŒØ¬'], ['blocks', 'Ø¨Ù„ÙˆÚ©'],
-            ['levels', 'Ø³Ø·Ø­'], ['statuses', 'ÙˆØ¶Ø¹ÛŒØª'],
+            ['projects', 'پروژه'],
+            ['mdr_categories', 'MDR'],
+            ['phases', 'فاز'],
+            ['disciplines', 'دیسیپلین'],
+            ['packages', 'پکیج'],
+            ['blocks', 'بلوک'],
+            ['levels', 'سطح'],
+            ['statuses', 'وضعیت'],
+            ['issuing_entities', 'مرجع صدور'],
+            ['correspondence_categories', 'دسته مکاتبات'],
         ];
         box.innerHTML = cards.map(([k, label]) => `
             <div class="general-overview-card">
                 <div class="general-overview-value">${Number(counts[k] || 0)}</div>
+                <div class="general-overview-label">${label}</div>
+            </div>
+        `).join('');
+    }
+
+    function refreshTransmittalConfigSummary() {
+        const box = document.getElementById('transmittalConfigSummary');
+        if (!box) return;
+        const cards = [
+            ['projects', 'پروژه'],
+            ['mdr', 'MDR'],
+            ['phases', 'فاز'],
+            ['disciplines', 'دیسیپلین'],
+            ['statuses', 'وضعیت'],
+        ];
+        box.innerHTML = cards.map(([entity, label]) => `
+            <div class="general-overview-card">
+                <div class="general-overview-value">${Number((STORE.data[entity] || []).length || 0)}</div>
                 <div class="general-overview-label">${label}</div>
             </div>
         `).join('');
@@ -414,6 +474,23 @@
         if (!STORE.data.disciplines.length) await loadEntity('disciplines', true);
         fillSelect('blockProjectInput', STORE.data.projects, (p) => `${p.code} - ${p.project_name || '-'}`, (p) => p.code);
         fillSelect('packageDisciplineInput', STORE.data.disciplines, (d) => `${d.code} - ${d.name_e || '-'}`, (d) => d.code);
+        const issuingProjectInput = document.getElementById('issuingProjectCodeInput');
+        if (issuingProjectInput) {
+            const prev = issuingProjectInput.value;
+            const options = ['<option value="">Auto / No Project</option>']
+                .concat(
+                    (STORE.data.projects || []).map(
+                        (p) => `<option value="${esc(p.code)}">${esc(`${p.code} - ${p.project_name || '-'}`)}</option>`
+                    )
+                )
+                .join('');
+            issuingProjectInput.innerHTML = options;
+            if (prev && (STORE.data.projects || []).some((p) => String(p.code || '') === prev)) {
+                issuingProjectInput.value = prev;
+            } else {
+                issuingProjectInput.value = '';
+            }
+        }
 
         const packageDiscInput = document.getElementById('packageDisciplineInput');
         const packageCodeInput = document.getElementById('packageCodeInput');
@@ -440,6 +517,27 @@
         return el.id.replace('general-page-', '');
     }
 
+    function isGeneralButtonVisibleForDomain(buttonEl, domain) {
+        const buttonDomain = norm(buttonEl?.dataset?.generalDomain || 'common').toLowerCase();
+        if (domain === 'all') return true;
+        return buttonDomain === domain || buttonDomain === 'common';
+    }
+
+    function applyGeneralDomainVisibility(domain = 'all') {
+        const buttons = Array.from(document.querySelectorAll('.general-settings-btn[data-general-tab]'));
+        let firstVisible = null;
+        let firstDomainVisible = null;
+        buttons.forEach((button) => {
+            const visible = isGeneralButtonVisibleForDomain(button, domain);
+            const buttonDomain = norm(button?.dataset?.generalDomain || 'common').toLowerCase();
+            button.classList.toggle('is-hidden', !visible);
+            button.setAttribute('aria-hidden', visible ? 'false' : 'true');
+            if (visible && !firstVisible) firstVisible = button;
+            if (visible && domain !== 'all' && buttonDomain === domain && !firstDomainVisible) firstDomainVisible = button;
+        });
+        return firstDomainVisible || firstVisible;
+    }
+
     async function loadGeneralPageData(page, force = false) {
         STORE.activePage = page;
         if (page === 'db') {
@@ -449,8 +547,17 @@
             refreshProjectCards();
             return;
         }
+        if (page === 'transmittal_config') {
+            await loadEntity('projects', force);
+            await loadEntity('mdr', force);
+            await loadEntity('phases', force);
+            await loadEntity('disciplines', force);
+            await loadEntity('statuses', force);
+            refreshTransmittalConfigSummary();
+            return;
+        }
         await loadEntity(page, force);
-        if (['projects', 'disciplines', 'packages', 'blocks'].includes(page)) await ensureSelects();
+        if (['projects', 'disciplines', 'packages', 'blocks', 'corr_issuing'].includes(page)) await ensureSelects();
     }
 
     function bindGeneralActions() {
@@ -468,6 +575,9 @@
             switch (action) {
                 case 'switch-page':
                     window.switchGeneralSettingsPage(actionEl.dataset.generalTab || '', actionEl);
+                    break;
+                case 'switch-domain':
+                    window.switchGeneralSettingsDomain(actionEl.dataset.generalDomain || 'all', actionEl);
                     break;
                 case 'run-seed':
                     window.localRunSeed();
@@ -574,6 +684,30 @@
                 case 'delete-status':
                     window.deleteStatusSetting(actionEl.dataset.code || '');
                     break;
+                case 'save-corr-issuing':
+                    window.saveCorrespondenceIssuingSetting();
+                    break;
+                case 'reset-corr-issuing':
+                    window.resetCorrespondenceIssuingForm();
+                    break;
+                case 'open-edit-corr-issuing':
+                    window.openEditCorrespondenceIssuingByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-corr-issuing':
+                    window.deleteCorrespondenceIssuingSetting(actionEl.dataset.code || '');
+                    break;
+                case 'save-corr-category':
+                    window.saveCorrespondenceCategorySetting();
+                    break;
+                case 'reset-corr-category':
+                    window.resetCorrespondenceCategoryForm();
+                    break;
+                case 'open-edit-corr-category':
+                    window.openEditCorrespondenceCategoryByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-corr-category':
+                    window.deleteCorrespondenceCategorySetting(actionEl.dataset.code || '');
+                    break;
                 default:
                     break;
             }
@@ -616,7 +750,7 @@
                     await ensureSelects();
                     STORE.initialized = true;
                 }
-                await loadGeneralPageData(activeGeneralPage(), force);
+                await window.switchGeneralSettingsDomain(STORE.activeDomain || 'all', null, force);
             } catch (err) {
                 tError(`Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ: ${err.message}`);
             }
@@ -700,14 +834,41 @@
         await loadOverview();
     }
 
-    window.switchGeneralSettingsPage = async function switchGeneralSettingsPage(page, btnEl = null) {
+    window.switchGeneralSettingsPage = async function switchGeneralSettingsPage(page, btnEl = null, force = false) {
+        if (!page) return;
         document.querySelectorAll('.general-settings-btn').forEach((b) => b.classList.remove('active'));
         document.querySelectorAll('.general-settings-page').forEach((p) => p.classList.remove('active'));
         const btn = btnEl || document.querySelector(`.general-settings-btn[data-general-tab="${page}"]`);
         if (btn) btn.classList.add('active');
         const tab = document.getElementById(`general-page-${page}`);
-        if (tab) tab.classList.add('active');
-        await loadGeneralPageData(page);
+        if (!tab) return;
+        tab.classList.add('active');
+        await loadGeneralPageData(page, force);
+    };
+
+    window.switchGeneralSettingsDomain = async function switchGeneralSettingsDomain(domain = 'all', btnEl = null, force = false) {
+        const normalizedDomain = norm(domain).toLowerCase() || 'all';
+        STORE.activeDomain = normalizedDomain;
+
+        document.querySelectorAll('.general-module-btn').forEach((b) => b.classList.remove('active'));
+        const moduleBtn = btnEl || document.querySelector(`.general-module-btn[data-general-domain="${normalizedDomain}"]`);
+        if (moduleBtn) moduleBtn.classList.add('active');
+
+        const preferredVisible = applyGeneralDomainVisibility(normalizedDomain);
+        const activeBtn = document.querySelector('.general-settings-btn.active');
+        const activeBtnDomain = norm(activeBtn?.dataset?.generalDomain || 'common').toLowerCase();
+        const keepCurrentActive = Boolean(
+            activeBtn &&
+            !activeBtn.classList.contains('is-hidden') &&
+            (normalizedDomain === 'all' || activeBtnDomain === normalizedDomain)
+        );
+        if (keepCurrentActive) {
+            await loadGeneralPageData(activeGeneralPage(), force);
+            return;
+        }
+        if (preferredVisible?.dataset?.generalTab) {
+            await window.switchGeneralSettingsPage(preferredVisible.dataset.generalTab, preferredVisible, force);
+        }
     };
 
     window.updateSettingsSearch = function updateSettingsSearch(entity, value) {
@@ -1041,6 +1202,104 @@
         const code = decoded(c);
         if (!confirm(`ÙˆØ¶Ø¹ÛŒØª ${code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
         try { await postAndReload('/statuses/delete', { code }, ['statuses'], 'ÙˆØ¶Ø¹ÛŒØª Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
+    };
+
+    window.saveCorrespondenceIssuingSetting = async function saveCorrespondenceIssuingSetting() {
+        try {
+            const payload = {
+                code: norm(document.getElementById('issuingCodeInput')?.value).toUpperCase(),
+                name_e: norm(document.getElementById('issuingNameEInput')?.value) || norm(document.getElementById('issuingNamePInput')?.value),
+                name_p: norm(document.getElementById('issuingNamePInput')?.value),
+                project_code: norm(document.getElementById('issuingProjectCodeInput')?.value).toUpperCase() || null,
+                sort_order: Number(document.getElementById('issuingSortInput')?.value || 0),
+                is_active: Boolean(document.getElementById('issuingActiveInput')?.checked),
+            };
+            requireVal(payload.code, 'Issuing code');
+            requireVal(payload.name_e, 'Issuing name');
+            await postAndReload('/correspondence-issuing/upsert', payload, ['corr_issuing'], 'Issuing entity saved.');
+            window.resetCorrespondenceIssuingForm();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+    window.resetCorrespondenceIssuingForm = function resetCorrespondenceIssuingForm() {
+        ['issuingCodeInput', 'issuingNameEInput', 'issuingNamePInput'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const projectInput = document.getElementById('issuingProjectCodeInput');
+        if (projectInput) projectInput.value = '';
+        const sortInput = document.getElementById('issuingSortInput');
+        if (sortInput) sortInput.value = '0';
+        const activeInput = document.getElementById('issuingActiveInput');
+        if (activeInput) activeInput.checked = true;
+    };
+    window.openEditCorrespondenceIssuingByCode = function openEditCorrespondenceIssuingByCode(c) {
+        const code = decoded(c);
+        const item = findBy('corr_issuing', (x) => x.code === code);
+        if (!item) return;
+        document.getElementById('issuingCodeInput').value = item.code || '';
+        document.getElementById('issuingNameEInput').value = item.name_e || '';
+        document.getElementById('issuingNamePInput').value = item.name_p || '';
+        document.getElementById('issuingProjectCodeInput').value = item.project_code || '';
+        document.getElementById('issuingSortInput').value = item.sort_order ?? 0;
+        document.getElementById('issuingActiveInput').checked = Boolean(item.is_active);
+    };
+    window.deleteCorrespondenceIssuingSetting = async function deleteCorrespondenceIssuingSetting(c) {
+        const code = decoded(c);
+        if (!confirm(`Disable issuing entity ${code}?`)) return;
+        try {
+            await postAndReload('/correspondence-issuing/delete', { code, hard_delete: false }, ['corr_issuing'], 'Issuing entity disabled.');
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.saveCorrespondenceCategorySetting = async function saveCorrespondenceCategorySetting() {
+        try {
+            const payload = {
+                code: norm(document.getElementById('corrCategoryCodeInput')?.value).toUpperCase(),
+                name_e: norm(document.getElementById('corrCategoryNameEInput')?.value) || norm(document.getElementById('corrCategoryNamePInput')?.value),
+                name_p: norm(document.getElementById('corrCategoryNamePInput')?.value),
+                sort_order: Number(document.getElementById('corrCategorySortInput')?.value || 0),
+                is_active: Boolean(document.getElementById('corrCategoryActiveInput')?.checked),
+            };
+            requireVal(payload.code, 'Category code');
+            requireVal(payload.name_e, 'Category name');
+            await postAndReload('/correspondence-categories/upsert', payload, ['corr_categories'], 'Correspondence category saved.');
+            window.resetCorrespondenceCategoryForm();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+    window.resetCorrespondenceCategoryForm = function resetCorrespondenceCategoryForm() {
+        ['corrCategoryCodeInput', 'corrCategoryNameEInput', 'corrCategoryNamePInput'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const sortInput = document.getElementById('corrCategorySortInput');
+        if (sortInput) sortInput.value = '0';
+        const activeInput = document.getElementById('corrCategoryActiveInput');
+        if (activeInput) activeInput.checked = true;
+    };
+    window.openEditCorrespondenceCategoryByCode = function openEditCorrespondenceCategoryByCode(c) {
+        const code = decoded(c);
+        const item = findBy('corr_categories', (x) => x.code === code);
+        if (!item) return;
+        document.getElementById('corrCategoryCodeInput').value = item.code || '';
+        document.getElementById('corrCategoryNameEInput').value = item.name_e || '';
+        document.getElementById('corrCategoryNamePInput').value = item.name_p || '';
+        document.getElementById('corrCategorySortInput').value = item.sort_order ?? 0;
+        document.getElementById('corrCategoryActiveInput').checked = Boolean(item.is_active);
+    };
+    window.deleteCorrespondenceCategorySetting = async function deleteCorrespondenceCategorySetting(c) {
+        const code = decoded(c);
+        if (!confirm(`Disable correspondence category ${code}?`)) return;
+        try {
+            await postAndReload('/correspondence-categories/delete', { code, hard_delete: false }, ['corr_categories'], 'Correspondence category disabled.');
+        } catch (err) {
+            tError(err.message);
+        }
     };
 
     window.initGeneralSettings = initGeneralSettings;

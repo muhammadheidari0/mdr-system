@@ -33,6 +33,7 @@ from app.db.models import (
     UserProjectScope, UserDisciplineScope,
     SettingsAuditLog,
     Correspondence, CorrespondenceAction, CorrespondenceAttachment,
+    CorrespondenceCategory, IssuingEntity,
 )
 
 # ✅ استفاده از سرویس Seed
@@ -156,6 +157,29 @@ class DocStatusIn(BaseModel):
 
 class DocStatusDeleteIn(BaseModel):
     code: str
+
+class CorrespondenceIssuingIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=20)
+    name_e: str = Field(..., min_length=1, max_length=255)
+    name_p: Optional[str] = Field(default=None, max_length=255)
+    project_code: Optional[str] = Field(default=None, max_length=50)
+    is_active: bool = True
+    sort_order: int = 0
+
+class CorrespondenceIssuingDeleteIn(BaseModel):
+    code: str
+    hard_delete: bool = False
+
+class CorrespondenceCategoryIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=20)
+    name_e: str = Field(..., min_length=1, max_length=255)
+    name_p: Optional[str] = Field(default=None, max_length=255)
+    is_active: bool = True
+    sort_order: int = 0
+
+class CorrespondenceCategoryDeleteIn(BaseModel):
+    code: str
+    hard_delete: bool = False
 
 
 class OrganizationIn(BaseModel):
@@ -739,6 +763,8 @@ def overview(db: Session = Depends(get_db)):
             "correspondences": _count(db, Correspondence),
             "correspondence_actions": _count(db, CorrespondenceAction),
             "correspondence_attachments": _count(db, CorrespondenceAttachment),
+            "issuing_entities": _count(db, IssuingEntity),
+            "correspondence_categories": _count(db, CorrespondenceCategory),
         },
     }
 
@@ -1578,6 +1604,242 @@ def delete_status_settings(
     db.delete(row)
     db.commit()
     return {"ok": True, "message": "Status deleted", "code": code}
+
+
+# --- Correspondence Parameters ---
+@router.get("/correspondence-issuing")
+def list_correspondence_issuing_settings(db: Session = Depends(get_db)):
+    rows = (
+        db.query(IssuingEntity)
+        .order_by(IssuingEntity.sort_order.asc(), IssuingEntity.code.asc())
+        .all()
+    )
+    return {
+        "ok": True,
+        "items": [
+            {
+                "code": row.code,
+                "name_e": row.name_e,
+                "name_p": row.name_p,
+                "project_code": row.project_code,
+                "is_active": bool(row.is_active),
+                "sort_order": int(row.sort_order or 0),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/correspondence-issuing/upsert")
+def upsert_correspondence_issuing_settings(
+    payload: CorrespondenceIssuingIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    code = _upper(payload.code)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+
+    project_code = _upper(payload.project_code) or None
+    if project_code:
+        project = db.query(Project).filter(Project.code == project_code).first()
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project not found: {project_code}")
+
+    name_e = _norm(payload.name_e) or _norm(payload.name_p)
+    if not name_e:
+        raise HTTPException(status_code=400, detail="name_e is required")
+
+    row = db.query(IssuingEntity).filter(IssuingEntity.code == code).first()
+    before = _as_dict(row, ["code", "name_e", "name_p", "project_code", "is_active", "sort_order"])
+    if row:
+        row.name_e = name_e
+        row.name_p = _norm(payload.name_p) or None
+        row.project_code = project_code
+        row.is_active = bool(payload.is_active)
+        row.sort_order = int(payload.sort_order or 0)
+    else:
+        row = IssuingEntity(
+            code=code,
+            name_e=name_e,
+            name_p=_norm(payload.name_p) or None,
+            project_code=project_code,
+            is_active=bool(payload.is_active),
+            sort_order=int(payload.sort_order or 0),
+        )
+        db.add(row)
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="correspondence_issuing.upsert",
+        target_type="correspondence_issuing",
+        target_key=code,
+        before=before,
+        after=_as_dict(row, ["code", "name_e", "name_p", "project_code", "is_active", "sort_order"]),
+    )
+    db.commit()
+    return {"ok": True, "message": "Correspondence issuing upserted", "code": code}
+
+
+@router.post("/correspondence-issuing/delete")
+def delete_correspondence_issuing_settings(
+    payload: CorrespondenceIssuingDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    code = _upper(payload.code)
+    row = db.query(IssuingEntity).filter(IssuingEntity.code == code).first()
+    if not row:
+        return {"ok": True, "message": "Issuing entity not found (noop)"}
+
+    before = _as_dict(row, ["code", "name_e", "name_p", "project_code", "is_active", "sort_order"])
+    if payload.hard_delete:
+        try:
+            _audit_log(
+                db,
+                actor=current_user,
+                action="correspondence_issuing.delete.hard",
+                target_type="correspondence_issuing",
+                target_key=code,
+                before=before,
+                after=None,
+            )
+            db.delete(row)
+            db.commit()
+            return {"ok": True, "message": "Issuing entity deleted", "code": code}
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=f"Issuing entity {code} is in use by correspondences and cannot be hard deleted.",
+            )
+
+    row.is_active = False
+    _audit_log(
+        db,
+        actor=current_user,
+        action="correspondence_issuing.delete.soft",
+        target_type="correspondence_issuing",
+        target_key=code,
+        before=before,
+        after=_as_dict(row, ["code", "name_e", "name_p", "project_code", "is_active", "sort_order"]),
+    )
+    db.commit()
+    return {"ok": True, "message": "Issuing entity disabled", "code": code}
+
+
+@router.get("/correspondence-categories")
+def list_correspondence_categories_settings(db: Session = Depends(get_db)):
+    rows = (
+        db.query(CorrespondenceCategory)
+        .order_by(CorrespondenceCategory.sort_order.asc(), CorrespondenceCategory.code.asc())
+        .all()
+    )
+    return {
+        "ok": True,
+        "items": [
+            {
+                "code": row.code,
+                "name_e": row.name_e,
+                "name_p": row.name_p,
+                "is_active": bool(row.is_active),
+                "sort_order": int(row.sort_order or 0),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/correspondence-categories/upsert")
+def upsert_correspondence_categories_settings(
+    payload: CorrespondenceCategoryIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    code = _upper(payload.code)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+
+    name_e = _norm(payload.name_e) or _norm(payload.name_p)
+    if not name_e:
+        raise HTTPException(status_code=400, detail="name_e is required")
+
+    row = db.query(CorrespondenceCategory).filter(CorrespondenceCategory.code == code).first()
+    before = _as_dict(row, ["code", "name_e", "name_p", "is_active", "sort_order"])
+    if row:
+        row.name_e = name_e
+        row.name_p = _norm(payload.name_p) or None
+        row.is_active = bool(payload.is_active)
+        row.sort_order = int(payload.sort_order or 0)
+    else:
+        row = CorrespondenceCategory(
+            code=code,
+            name_e=name_e,
+            name_p=_norm(payload.name_p) or None,
+            is_active=bool(payload.is_active),
+            sort_order=int(payload.sort_order or 0),
+        )
+        db.add(row)
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="correspondence_category.upsert",
+        target_type="correspondence_category",
+        target_key=code,
+        before=before,
+        after=_as_dict(row, ["code", "name_e", "name_p", "is_active", "sort_order"]),
+    )
+    db.commit()
+    return {"ok": True, "message": "Correspondence category upserted", "code": code}
+
+
+@router.post("/correspondence-categories/delete")
+def delete_correspondence_categories_settings(
+    payload: CorrespondenceCategoryDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    code = _upper(payload.code)
+    row = db.query(CorrespondenceCategory).filter(CorrespondenceCategory.code == code).first()
+    if not row:
+        return {"ok": True, "message": "Correspondence category not found (noop)"}
+
+    before = _as_dict(row, ["code", "name_e", "name_p", "is_active", "sort_order"])
+    if payload.hard_delete:
+        try:
+            _audit_log(
+                db,
+                actor=current_user,
+                action="correspondence_category.delete.hard",
+                target_type="correspondence_category",
+                target_key=code,
+                before=before,
+                after=None,
+            )
+            db.delete(row)
+            db.commit()
+            return {"ok": True, "message": "Correspondence category deleted", "code": code}
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=f"Correspondence category {code} is in use and cannot be hard deleted.",
+            )
+
+    row.is_active = False
+    _audit_log(
+        db,
+        actor=current_user,
+        action="correspondence_category.delete.soft",
+        target_type="correspondence_category",
+        target_key=code,
+        before=before,
+        after=_as_dict(row, ["code", "name_e", "name_p", "is_active", "sort_order"]),
+    )
+    db.commit()
+    return {"ok": True, "message": "Correspondence category disabled", "code": code}
 
 
 # --- KV ---

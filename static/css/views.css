@@ -1230,8 +1230,8 @@ tr:hover {
 .archive-header { padding: 20px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
 .archive-title { font-size: 1.1rem; font-weight: 700; color: #1f2937; display: flex; align-items: center; gap: 10px; }
 .archive-toolbar { padding: 15px 20px; background: #f9fafb; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; }
-.bulk-frame-card { min-height: auto; overflow: hidden; }
-.bulk-frame-body { flex-grow: 1; position: relative; background: #f9fafb; overflow: hidden; }
+.bulk-frame-card { min-height: auto; overflow: visible; }
+.bulk-frame-body { flex-grow: 1; position: relative; background: #f9fafb; overflow: visible; min-height: 460px; }
 .archive-search-box { position: relative; flex: 1; max-width: 400px; }
 .archive-search-input { width: 100%; padding: 10px 40px 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
 .archive-search-input:focus { border-color: #3b82f6; }
@@ -2715,11 +2715,52 @@ tr:hover {
     color: #fff;
 }
 
+.general-module-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.general-module-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #334155;
+    border-radius: 999px;
+    padding: 7px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: all 0.2s;
+}
+
+.general-module-btn:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.general-module-btn.active {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #fff;
+}
+
+.general-module-btn .material-icons-round {
+    font-size: 17px;
+}
+
 .general-settings-nav {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 14px;
+}
+
+.general-settings-btn.is-hidden {
+    display: none !important;
 }
 
 .general-settings-btn {
@@ -2964,6 +3005,15 @@ tr:hover {
 }
 
 /* --- General Settings Visual Polish --- */
+#tab-general .general-module-nav {
+    margin-bottom: 12px;
+    gap: 8px;
+}
+
+#tab-general .general-module-btn {
+    min-height: 34px;
+}
+
 #tab-general .general-settings-nav {
     margin-bottom: 16px;
     gap: 10px;
@@ -3195,6 +3245,16 @@ tr:hover {
     .general-settings-btn {
         font-size: 0.85rem;
         padding: 7px 9px;
+    }
+
+    .general-module-nav {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .general-module-btn {
+        justify-content: center;
+        width: 100%;
     }
 
     .general-list-toolbar {
