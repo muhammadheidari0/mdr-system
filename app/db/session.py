@@ -150,6 +150,12 @@ def _backfill_archive_file_defaults(db: Session) -> None:
         row.file_kind = _normalize_archive_file_kind(getattr(row, "file_kind", None))
         if row.is_primary is None:
             row.is_primary = True
+        if hasattr(row, "storage_backend") and not str(getattr(row, "storage_backend", "") or "").strip():
+            row.storage_backend = "local"
+        if hasattr(row, "mirror_status") and not str(getattr(row, "mirror_status", "") or "").strip():
+            row.mirror_status = "pending"
+        if hasattr(row, "validation_status") and not str(getattr(row, "validation_status", "") or "").strip():
+            row.validation_status = "legacy"
 
 
 def _normalize_corr_attachment_kind(value: Any) -> str:
@@ -165,6 +171,12 @@ def _backfill_correspondence_attachment_defaults(db: Session) -> None:
     rows = db.query(CorrespondenceAttachment).all()
     for row in rows:
         row.file_kind = _normalize_corr_attachment_kind(getattr(row, "file_kind", None))
+        if hasattr(row, "storage_backend") and not str(getattr(row, "storage_backend", "") or "").strip():
+            row.storage_backend = "local"
+        if hasattr(row, "mirror_status") and not str(getattr(row, "mirror_status", "") or "").strip():
+            row.mirror_status = "pending"
+        if hasattr(row, "validation_status") and not str(getattr(row, "validation_status", "") or "").strip():
+            row.validation_status = "legacy"
 
 
 def _corr_category_code_from_doc_type(value: Any) -> str:

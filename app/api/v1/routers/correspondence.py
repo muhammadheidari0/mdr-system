@@ -31,6 +31,8 @@ from app.db.models import (
 )
 from app.services.folder_service import safe_name
 from app.services.storage import StorageManager
+from app.services.storage_policy import get_storage_integrations
+from app.services.storage_sync import enqueue_correspondence_mirror_job
 
 router = APIRouter(prefix="/correspondence", tags=["Correspondence"])
 AUTO_REFERENCE_MAX_RETRIES = 8
@@ -364,7 +366,17 @@ def _serialize_attachment(row: CorrespondenceAttachment) -> dict:
         "file_name": row.file_name,
         "file_kind": _attachment_kind(row.file_kind),
         "mime_type": row.mime_type,
+        "detected_mime": row.detected_mime,
+        "validation_status": row.validation_status,
+        "sha256": row.sha256,
         "size_bytes": row.size_bytes,
+        "storage_backend": row.storage_backend,
+        "gdrive_file_id": row.gdrive_file_id,
+        "mirror_status": row.mirror_status,
+        "openproject_sync_status": "pending"
+        if str(row.mirror_status or "").strip().lower() in {"pending", "mirrored"}
+        else "disabled",
+        "mirror_updated_at": row.mirror_updated_at.isoformat() if row.mirror_updated_at else None,
         "uploaded_by_id": row.uploaded_by_id,
         "uploaded_by_name": getattr(getattr(row, "uploaded_by", None), "full_name", None),
         "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
@@ -1056,6 +1068,7 @@ def upload_correspondence_attachment(
     correspondence_id: int,
     file: UploadFile = File(...),
     file_kind: str = Form("attachment"),
+    openproject_work_package_id: Optional[int] = Form(default=None),
     action_id: Optional[int] = Form(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(allow_editor),
@@ -1078,12 +1091,18 @@ def upload_correspondence_attachment(
     original_name = safe_name(file.filename)
     unique_name = safe_name(f"{now.strftime('%Y%m%d%H%M%S%f')}_{original_name}")
     folder = _corr_storage_dir(db, corr, normalized_kind)
-    stored_path = StorageManager.save_upload(file, str(folder), unique_name)
-    path_obj = Path(stored_path)
-    try:
-        size_bytes = int(path_obj.stat().st_size)
-    except Exception:
-        size_bytes = None
+    storage_manager = StorageManager(db)
+    saved = storage_manager.save_upload_secure(
+        file=file,
+        destination_folder=str(folder),
+        new_name=unique_name,
+        file_kind="attachment",
+    )
+    path_obj = Path(saved.stored_path)
+
+    integrations = get_storage_integrations(db)
+    gdrive_enabled = bool(integrations.get("google_drive", {}).get("enabled"))
+    mirror_status = "pending" if gdrive_enabled else "disabled"
 
     row = CorrespondenceAttachment(
         correspondence_id=correspondence_id,
@@ -1091,11 +1110,25 @@ def upload_correspondence_attachment(
         file_name=original_name,
         stored_path=str(path_obj),
         file_kind=normalized_kind,
-        mime_type=_norm(file.content_type) or None,
-        size_bytes=size_bytes,
+        mime_type=saved.declared_mime or _norm(file.content_type) or None,
+        detected_mime=saved.detected_mime,
+        validation_status=saved.validation_status,
+        sha256=saved.sha256,
+        size_bytes=saved.size_bytes,
+        storage_backend="local",
+        gdrive_file_id=None,
+        mirror_status=mirror_status,
+        mirror_updated_at=datetime.utcnow(),
         uploaded_by_id=getattr(user, "id", None),
     )
     db.add(row)
+    db.flush()
+    if gdrive_enabled:
+        enqueue_correspondence_mirror_job(
+            db,
+            attachment_id=row.id,
+            work_package_id=openproject_work_package_id,
+        )
     db.commit()
     db.refresh(row)
     return {"ok": True, "data": _serialize_attachment(row)}

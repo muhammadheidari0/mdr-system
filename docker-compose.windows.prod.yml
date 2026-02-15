@@ -14,6 +14,16 @@ services:
       - ${MDR_DATA_ROOT:-/opt/mdr_data}/archive_storage:/app/archive_storage
       - ${MDR_DATA_ROOT:-/opt/mdr_data}/logs:/app/logs
 
+  worker:
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DEBUG: ${DEBUG:-false}
+    volumes:
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/database:/app/database
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/data_store:/app/data_store
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/archive_storage:/app/archive_storage
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/logs:/app/logs
+
   caddy:
     image: caddy:2.8-alpine
     container_name: mdr_caddy

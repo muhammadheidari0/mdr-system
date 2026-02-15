@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.models import SettingsKV
+from app.services.file_integrity import SavedFileInfo, save_upload_with_integrity
 from app.services.folder_service import safe_name
+from app.services.storage_policy import get_storage_policy
 
 
 class StorageManager:
@@ -111,3 +113,23 @@ class StorageManager:
             raise
 
         return str(file_path)
+
+    def save_upload_secure(
+        self,
+        *,
+        file: UploadFile,
+        destination_folder: str,
+        new_name: str | None = None,
+        file_kind: str = "attachment",
+    ) -> SavedFileInfo:
+        filename = safe_name(new_name) if new_name else safe_name(file.filename)
+        if not filename:
+            raise ValueError("File name is empty after normalization.")
+        policy = get_storage_policy(self.db)
+        return save_upload_with_integrity(
+            file=file,
+            destination_folder=destination_folder,
+            new_name=filename,
+            file_kind=file_kind,
+            policy=policy,
+        )

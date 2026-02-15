@@ -11,6 +11,8 @@ from fastapi import UploadFile, HTTPException
 from app.db.models import ArchiveFile, DocumentRevision, MdrDocument
 from app.services import docnum_service, folder_service, mdr_service
 from app.services.storage import StorageManager
+from app.services.storage_policy import get_storage_integrations
+from app.services.storage_sync import enqueue_archive_mirror_job
 
 # ---------------------------------------------------------
 # 1. Helper: Calculate Next Revision
@@ -222,21 +224,21 @@ def save_upload_file(
     file_kind: str = "pdf",
     is_primary: bool = True,
     companion_file_id: int | None = None,
+    openproject_work_package_id: int | None = None,
     commit: bool = True,
-    is_admin: bool = False
+    is_admin: bool = False,
 ) -> ArchiveFile:
+    del is_admin
     storage = StorageManager(db)
 
     doc = db.query(MdrDocument).filter(MdrDocument.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    # مدیریت ریویژن (ساخت یا آپدیت)
     rev = db.query(DocumentRevision).filter(
         DocumentRevision.document_id == document_id,
-        DocumentRevision.revision == revision_code
+        DocumentRevision.revision == revision_code,
     ).first()
-
     if rev:
         rev.status = status_code
         rev.created_at = datetime.utcnow()
@@ -245,90 +247,98 @@ def save_upload_file(
             document_id=document_id,
             revision=revision_code,
             status=status_code,
-            notes="Created via Upload"
+            notes="Created via Upload",
         )
         db.add(rev)
-        db.flush() 
+        db.flush()
 
-    # --- ساخت مسیر ذخیره‌سازی ---
     proj_name = doc.project.name_e if doc.project else doc.project_code
     mdr_folder = folder_service.get_mdr_folder_name(db, doc.mdr_code)
-    
+
     phase_name = doc.phase_code
-    if doc.phase: phase_name = doc.phase.name_e or doc.phase_code
-    
+    if doc.phase:
+        phase_name = doc.phase.name_e or doc.phase_code
+
     disc_name = "General"
     disc_code = doc.discipline_code or "GN"
-    if doc.discipline: disc_name = doc.discipline.name_e
-    
+    if doc.discipline:
+        disc_name = doc.discipline.name_e
+
     pkg_name = "General"
     pkg_code = doc.package_code or "00"
-    if doc.package: pkg_name = doc.package.name_e
+    if doc.package:
+        pkg_name = doc.package.name_e
 
     target_folder = storage.get_mdr_path(
         project_code=doc.project_code,
         project_name=proj_name,
         mdr_folder_name=mdr_folder,
         phase_name=phase_name,
-        disc_name=disc_name, disc_code=disc_code,
-        pkg_name=pkg_name, pkg_code=pkg_code,
+        disc_name=disc_name,
+        disc_code=disc_code,
+        pkg_name=pkg_name,
+        pkg_code=pkg_code,
     )
 
-    # --- استانداردسازی نام فایل ---
-    # فرمت: [DocNumber]_[EnglishTitle]_Rev[XX].[ext]
-    
     _, file_extension = os.path.splitext(file.filename)
-    
-    # عنوان انگلیسی را تمیز می‌کنیم (حذف کاراکترهای غیرمجاز)
     raw_title = doc.doc_title_e or doc.subject or "Untitled"
-    safe_title = folder_service.safe_name(raw_title) # حذف / \ : * ? " < > |
-    
-    # اگر عنوان خیلی طولانی بود، کوتاه می‌کنیم (اختیاری)
+    safe_title = folder_service.safe_name(raw_title)
     if len(safe_title) > 100:
         safe_title = safe_title[:100]
 
-    # ساخت نام نهایی
     clean_name = f"{doc.doc_number}_{safe_title}_Rev{revision_code}{file_extension}"
-    
-    # ذخیره فایل فیزیکی
-    saved_path = storage.save_upload(
-        file=file, 
-        destination_folder=target_folder, 
-        new_name=clean_name
-    )
-    
-    file_size = 0
-    if os.path.exists(saved_path):
-        file_size = os.path.getsize(saved_path)
+    normalized_kind = _normalize_archive_file_kind(file_kind)
 
-    # بروزرسانی دیتابیس
-    rev.file_path = saved_path
+    saved = storage.save_upload_secure(
+        file=file,
+        destination_folder=target_folder,
+        new_name=clean_name,
+        file_kind=normalized_kind,
+    )
+
+    rev.file_path = saved.stored_path
     rev.file_name = clean_name
+
+    integrations = get_storage_integrations(db)
+    gdrive_enabled = bool(integrations.get("google_drive", {}).get("enabled"))
+    mirror_status = "pending" if gdrive_enabled else "disabled"
 
     archive_entry = ArchiveFile(
         revision_id=rev.id,
-        original_name=clean_name, 
-        stored_path=saved_path,
-        mime_type=file.content_type,
-        size_bytes=file_size,
-        file_kind=_normalize_archive_file_kind(file_kind),
+        original_name=clean_name,
+        stored_path=saved.stored_path,
+        mime_type=saved.declared_mime or file.content_type,
+        detected_mime=saved.detected_mime,
+        validation_status=saved.validation_status,
+        sha256=saved.sha256,
+        size_bytes=saved.size_bytes,
+        storage_backend="local",
+        gdrive_file_id=None,
+        mirror_status=mirror_status,
+        mirror_updated_at=datetime.utcnow(),
+        file_kind=normalized_kind,
         is_primary=bool(is_primary),
         companion_file_id=companion_file_id,
         revision=revision_code,
         status=status_code,
         uploaded_by="User",
-        uploaded_at=datetime.utcnow()
+        uploaded_at=datetime.utcnow(),
     )
-    
+
     db.add(archive_entry)
+    db.flush()
+    if gdrive_enabled:
+        enqueue_archive_mirror_job(
+            db,
+            archive_file_id=archive_entry.id,
+            work_package_id=openproject_work_package_id,
+        )
+
     if commit:
         db.commit()
         db.refresh(archive_entry)
-    else:
-        db.flush()
-    
-    return archive_entry
 
+    return archive_entry
 
 def save_dual_upload_files(
     db: Session,
@@ -338,6 +348,7 @@ def save_dual_upload_files(
     document_id: int,
     revision_code: str,
     status_code: str = "Uploaded",
+    openproject_work_package_id: int | None = None,
     is_admin: bool = False,
 ) -> tuple[ArchiveFile, ArchiveFile]:
     """
@@ -355,6 +366,7 @@ def save_dual_upload_files(
             status_code=status_code,
             file_kind="pdf",
             is_primary=True,
+            openproject_work_package_id=openproject_work_package_id,
             commit=False,
             is_admin=is_admin,
         )
@@ -368,6 +380,7 @@ def save_dual_upload_files(
             status_code=status_code,
             file_kind="native",
             is_primary=False,
+            openproject_work_package_id=openproject_work_package_id,
             commit=False,
             is_admin=is_admin,
         )
@@ -405,6 +418,7 @@ def register_and_upload_document(
     revision_code: str,
     status_code: str,
     file_kind: str = "pdf",
+    openproject_work_package_id: int | None = None,
     is_admin: bool = False
 ) -> ArchiveFile:
     """
@@ -430,6 +444,7 @@ def register_and_upload_document(
                 revision_code=revision_code,
                 status_code=status_code,
                 file_kind=file_kind,
+                openproject_work_package_id=openproject_work_package_id,
                 is_admin=is_admin
             )
             return archive_entry
@@ -479,6 +494,7 @@ def register_and_upload_document(
         revision_code=revision_code,
         status_code=status_code,
         file_kind=file_kind,
+        openproject_work_package_id=openproject_work_package_id,
         is_admin=is_admin
     )
     
@@ -544,6 +560,7 @@ def register_and_upload_dual_document(
     meta_data: dict,
     revision_code: str,
     status_code: str,
+    openproject_work_package_id: int | None = None,
     is_admin: bool = False,
 ) -> tuple[ArchiveFile, ArchiveFile]:
     """
@@ -567,6 +584,7 @@ def register_and_upload_dual_document(
                 document_id=doc.id,
                 revision_code=revision_code,
                 status_code=status_code,
+                openproject_work_package_id=openproject_work_package_id,
                 is_admin=is_admin,
             )
         normalized_doc_number = str(meta_data.get("doc_number") or "").strip().upper()
@@ -610,6 +628,8 @@ def register_and_upload_dual_document(
         document_id=doc.id,
         revision_code=revision_code,
         status_code=status_code,
+        openproject_work_package_id=openproject_work_package_id,
         is_admin=is_admin,
     )
+
 

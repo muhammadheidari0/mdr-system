@@ -67,6 +67,7 @@ For Windows Server deployment with WSL2, Docker Engine, and Caddy TLS proxy, use
 - `docker/Caddyfile`
 - `.env.production.example`
 - `docs/windows_server_docker_caddy_runbook.md`
+- `docs/storage_upgrade_runbook.md`
 
 Production deploy model:
 

@@ -38,6 +38,14 @@ from app.db.models import (
 
 # ✅ استفاده از سرویس Seed
 from app.services import seed_service
+from app.services.storage_policy import (
+    DEFAULT_STORAGE_INTEGRATIONS,
+    DEFAULT_STORAGE_POLICY,
+    get_storage_integrations,
+    get_storage_policy,
+    set_storage_integrations,
+    set_storage_policy,
+)
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(allow_admin)])
 
@@ -109,6 +117,20 @@ class KvIn(BaseModel):
 class StoragePathsIn(BaseModel):
     mdr_storage_path: str = Field(..., min_length=1, max_length=1024)
     correspondence_storage_path: str = Field(..., min_length=1, max_length=1024)
+
+class StoragePolicyIn(BaseModel):
+    enforcement_mode: Optional[str] = Field(default=None, max_length=20)
+    allowed_mimes: Optional[List[str]] = None
+    allowed_mimes_by_kind: Optional[Dict[str, List[str]]] = None
+    blocked_extensions: Optional[List[str]] = None
+    dangerous_mimes: Optional[List[str]] = None
+    max_size_mb: Optional[Dict[str, int]] = None
+
+
+class StorageIntegrationsIn(BaseModel):
+    google_drive: Optional[Dict[str, Any]] = None
+    openproject: Optional[Dict[str, Any]] = None
+    local_cache: Optional[Dict[str, Any]] = None
 
 class BlockIn(BaseModel):
     project_code: str = Field(..., min_length=1, max_length=50)
@@ -1933,6 +1955,89 @@ def save_storage_paths(
     )
     db.commit()
     return {"ok": True, "message": "Storage paths updated", **after}
+
+
+@router.get("/storage-policy")
+def get_storage_policy_settings(db: Session = Depends(get_db)):
+    policy = get_storage_policy(db)
+    return {
+        "ok": True,
+        "policy": policy,
+        "defaults": DEFAULT_STORAGE_POLICY,
+    }
+
+
+@router.post("/storage-policy")
+def save_storage_policy_settings(
+    payload: StoragePolicyIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    before = get_storage_policy(db)
+    incoming = payload.model_dump(exclude_unset=True)
+    merged = dict(before)
+    merged.update(incoming)
+    policy = set_storage_policy(db, merged)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="storage_policy.update",
+        target_type="storage_policy",
+        target_key=None,
+        before=before,
+        after=policy,
+    )
+    db.commit()
+    return {"ok": True, "policy": policy}
+
+
+@router.get("/storage-integrations")
+def get_storage_integrations_settings(db: Session = Depends(get_db)):
+    integrations = get_storage_integrations(db)
+    masked = dict(integrations)
+    openproject = dict(masked.get("openproject", {}))
+    if str(settings.OPENPROJECT_API_TOKEN or "").strip():
+        openproject["api_token_configured"] = True
+    if "api_token" in openproject:
+        openproject["api_token"] = "***"
+    masked["openproject"] = openproject
+    if str(settings.GDRIVE_SERVICE_ACCOUNT_JSON or "").strip():
+        gdrive = dict(masked.get("google_drive", {}))
+        gdrive["service_account_configured"] = True
+        masked["google_drive"] = gdrive
+    return {
+        "ok": True,
+        "integrations": masked,
+        "defaults": DEFAULT_STORAGE_INTEGRATIONS,
+    }
+
+
+@router.post("/storage-integrations")
+def save_storage_integrations_settings(
+    payload: StorageIntegrationsIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    before = get_storage_integrations(db)
+    incoming = payload.model_dump(exclude_unset=True)
+    merged = dict(before)
+    for key in ("google_drive", "openproject", "local_cache"):
+        if isinstance(incoming.get(key), dict):
+            current = dict(merged.get(key) or {})
+            current.update(incoming.get(key) or {})
+            merged[key] = current
+    integrations = set_storage_integrations(db, merged)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="storage_integrations.update",
+        target_type="storage_integrations",
+        target_key=None,
+        before=before,
+        after=integrations,
+    )
+    db.commit()
+    return {"ok": True, "integrations": integrations}
 
 
 @router.get("/permissions/matrix")

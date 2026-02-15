@@ -6,3 +6,5 @@ from . import mdr_service
 from . import seed_service
 from . import smart_import_service
 from . import storage
+from . import storage_policy
+from . import storage_sync

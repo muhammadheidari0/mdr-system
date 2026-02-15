@@ -363,7 +363,15 @@ class ArchiveFile(Base):
     original_name: Mapped[str] = mapped_column(String(255))
     stored_path: Mapped[str] = mapped_column(String(1024))
     mime_type: Mapped[str | None] = mapped_column(String(128))
+    detected_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer)
+    storage_backend: Mapped[str] = mapped_column(String(32), default="local", nullable=False, index=True)
+    gdrive_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    mirror_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    mirror_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     file_kind: Mapped[str] = mapped_column(String(20), default="pdf", nullable=False, index=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     companion_file_id: Mapped[int | None] = mapped_column(
@@ -548,7 +556,15 @@ class CorrespondenceAttachment(Base):
     stored_path: Mapped[str] = mapped_column(String(1024))
     file_kind: Mapped[str] = mapped_column(String(20), default="attachment")
     mime_type: Mapped[str | None] = mapped_column(String(128))
+    detected_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     size_bytes: Mapped[int | None] = mapped_column(Integer)
+    storage_backend: Mapped[str] = mapped_column(String(32), default="local", nullable=False, index=True)
+    gdrive_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    mirror_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    mirror_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     uploaded_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -608,6 +624,74 @@ class WorkboardItem(Base):
     organization: Mapped[Optional["Organization"]] = relationship("Organization")
     created_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by_id])
     updated_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[updated_by_id])
+
+
+class StorageJob(Base):
+    __tablename__ = "storage_jobs"
+    __table_args__ = (
+        Index("ix_storage_jobs_status_next_retry", "status", "next_retry_at"),
+        Index("ix_storage_jobs_job_type", "job_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    file_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    payload_json: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class OpenProjectLink(Base):
+    __tablename__ = "openproject_links"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "work_package_id", name="uq_openproject_entity_wp"),
+        Index("ix_openproject_links_sync_status", "sync_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    entity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    work_package_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    openproject_attachment_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sync_status: Mapped[str] = mapped_column(String(32), default="pending", nullable=False, index=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+
+class LocalSyncManifest(Base):
+    __tablename__ = "local_sync_manifest"
+    __table_args__ = (
+        UniqueConstraint("file_id", "policy_scope", name="uq_local_sync_manifest_file_scope"),
+        Index("ix_local_sync_manifest_scope", "policy_scope", "is_pinned"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    file_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    version_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_modified_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+    policy_scope: Mapped[str] = mapped_column(String(64), nullable=False, default="global", index=True)
+
 
 class SettingsKV(Base):
     __tablename__ = "settings_kv"

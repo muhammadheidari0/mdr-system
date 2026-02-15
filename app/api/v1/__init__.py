@@ -9,6 +9,7 @@ from app.api.v1.routers.dashboard import router as dashboard_router
 from app.api.v1.routers.lookup import router as lookup_router
 from app.api.v1.routers.mdr import router as mdr_router
 from app.api.v1.routers.settings import router as settings_router
+from app.api.v1.routers.storage import router as storage_router
 from app.api.v1.routers.transmittal import router as transmittal_router
 from app.api.v1.routers.users import router as users_router
 from app.api.v1.routers.workboard import router as workboard_router
@@ -17,6 +18,7 @@ api_router = APIRouter()
 
 api_router.include_router(lookup_router)
 api_router.include_router(settings_router)
+api_router.include_router(storage_router)
 api_router.include_router(mdr_router)
 api_router.include_router(archive_router)
 api_router.include_router(transmittal_router)

@@ -271,6 +271,7 @@ async def upload_file(
     revision: str = Form(...),
     status: str = Form("IFA"),
     file_kind: str = Form("pdf"),
+    openproject_work_package_id: Optional[int] = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:update")),
@@ -293,6 +294,7 @@ async def upload_file(
             revision_code=revision,
             status_code=status,
             file_kind=file_kind,
+            openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
         return {
@@ -301,7 +303,16 @@ async def upload_file(
             "file_id": result.id,
             "new_name": result.original_name,
             "revision": result.revision,
+            "sha256": result.sha256,
+            "detected_mime": result.detected_mime,
+            "validation_status": result.validation_status,
+            "mirror_status": result.mirror_status,
+            "openproject_sync_status": "pending"
+            if str(result.mirror_status or "").strip().lower() in {"pending", "mirrored"}
+            else "disabled",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Upload Error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -312,6 +323,7 @@ async def upload_dual_files(
     document_id: int = Form(...),
     revision: str = Form(...),
     status: str = Form("IFA"),
+    openproject_work_package_id: Optional[int] = Form(None),
     pdf_file: UploadFile = File(...),
     native_file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -335,6 +347,7 @@ async def upload_dual_files(
             document_id=document_id,
             revision_code=revision,
             status_code=status,
+            openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
         return {
@@ -346,7 +359,17 @@ async def upload_dual_files(
             "native_file_id": native_entry.id,
             "pdf_name": pdf_entry.original_name,
             "native_name": native_entry.original_name,
+            "pdf_sha256": pdf_entry.sha256,
+            "native_sha256": native_entry.sha256,
+            "pdf_validation_status": pdf_entry.validation_status,
+            "native_validation_status": native_entry.validation_status,
+            "mirror_status": {
+                "pdf": pdf_entry.mirror_status,
+                "native": native_entry.mirror_status,
+            },
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Dual Upload Error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -358,6 +381,7 @@ async def register_and_upload(
     revision: str = Form(...),
     status: str = Form("IFA"),
     file_kind: str = Form("pdf"),
+    openproject_work_package_id: Optional[int] = Form(None),
     doc_number: Optional[str] = Form(None),
     project_code: Optional[str] = Form(None),
     mdr_code: Optional[str] = Form(None),
@@ -405,6 +429,7 @@ async def register_and_upload(
             revision_code=revision,
             status_code=status,
             file_kind=file_kind,
+            openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
 
@@ -413,6 +438,13 @@ async def register_and_upload(
             "message": "???? ?? ?????? ??? ? ???? ????? ??.",
             "file_id": result.id,
             "doc_number": meta_data["doc_number"],
+            "sha256": result.sha256,
+            "detected_mime": result.detected_mime,
+            "validation_status": result.validation_status,
+            "mirror_status": result.mirror_status,
+            "openproject_sync_status": "pending"
+            if str(result.mirror_status or "").strip().lower() in {"pending", "mirrored"}
+            else "disabled",
         }
     except HTTPException:
         raise
@@ -427,6 +459,7 @@ async def register_and_upload_dual(
     native_file: UploadFile = File(...),
     revision: str = Form(...),
     status: str = Form("IFA"),
+    openproject_work_package_id: Optional[int] = Form(None),
     doc_number: Optional[str] = Form(None),
     project_code: Optional[str] = Form(None),
     mdr_code: Optional[str] = Form(None),
@@ -472,6 +505,7 @@ async def register_and_upload_dual(
             meta_data=meta_data,
             revision_code=revision,
             status_code=status,
+            openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
 
@@ -482,6 +516,14 @@ async def register_and_upload_dual(
             "revision": revision,
             "pdf_file_id": pdf_entry.id,
             "native_file_id": native_entry.id,
+            "pdf_sha256": pdf_entry.sha256,
+            "native_sha256": native_entry.sha256,
+            "pdf_validation_status": pdf_entry.validation_status,
+            "native_validation_status": native_entry.validation_status,
+            "mirror_status": {
+                "pdf": pdf_entry.mirror_status,
+                "native": native_entry.mirror_status,
+            },
         }
     except HTTPException:
         raise
@@ -584,6 +626,13 @@ async def list_archives(
                 "status": f.status,
                 "uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None,
                 "type": f.mime_type,
+                "detected_mime": f.detected_mime,
+                "validation_status": f.validation_status,
+                "sha256": f.sha256,
+                "storage_backend": f.storage_backend,
+                "gdrive_file_id": f.gdrive_file_id,
+                "mirror_status": f.mirror_status,
+                "mirror_updated_at": f.mirror_updated_at.isoformat() if f.mirror_updated_at else None,
                 "file_kind": f.file_kind or "pdf",
                 "is_primary": True if f.is_primary is None else bool(f.is_primary),
                 "companion_file_id": f.companion_file_id,
@@ -636,6 +685,13 @@ async def revision_history(
                     "file_kind": _file_kind(af.file_kind),
                     "size": af.size_bytes,
                     "mime_type": af.mime_type,
+                    "detected_mime": af.detected_mime,
+                    "validation_status": af.validation_status,
+                    "sha256": af.sha256,
+                    "storage_backend": af.storage_backend,
+                    "gdrive_file_id": af.gdrive_file_id,
+                    "mirror_status": af.mirror_status,
+                    "mirror_updated_at": af.mirror_updated_at.isoformat() if af.mirror_updated_at else None,
                     "status": af.status,
                     "is_primary": True if af.is_primary is None else bool(af.is_primary),
                     "companion_file_id": af.companion_file_id,
@@ -690,6 +746,38 @@ async def download_file(
         filename=file_record.original_name,
         media_type=file_record.mime_type,
     )
+
+
+@router.get("/files/{file_id}/integrity")
+async def get_file_integrity(
+    file_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    file_record = db.query(ArchiveFile).filter(ArchiveFile.id == file_id).first()
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found")
+    if file_record.document_revision and file_record.document_revision.document:
+        doc = file_record.document_revision.document
+        enforce_scope_access(
+            db,
+            user,
+            project_code=doc.project_code,
+            discipline_code=doc.discipline_code,
+        )
+    return {
+        "ok": True,
+        "file_id": file_record.id,
+        "sha256": file_record.sha256,
+        "declared_mime": file_record.mime_type,
+        "detected_mime": file_record.detected_mime,
+        "validation_status": file_record.validation_status,
+        "storage_backend": file_record.storage_backend,
+        "mirror_status": file_record.mirror_status,
+        "mirror_updated_at": file_record.mirror_updated_at.isoformat()
+        if file_record.mirror_updated_at
+        else None,
+    }
 
 
 @router.get("/form-data")

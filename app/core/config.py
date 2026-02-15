@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Storage Integrations
+    GDRIVE_SERVICE_ACCOUNT_JSON: str = ""
+    GDRIVE_SHARED_DRIVE_ID: str = ""
+    OPENPROJECT_BASE_URL: str = ""
+    OPENPROJECT_API_TOKEN: str = ""
+    OPENPROJECT_DEFAULT_PROJECT_ID: str = ""
+
     # Test auth (read from .env or process environment)
     TEST_ADMIN_EMAIL: str | None = None
     TEST_ADMIN_PASSWORD: str | None = None
