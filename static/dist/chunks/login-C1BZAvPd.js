@@ -1,6 +1,0 @@
-import"./auth-CNbfLw9M.js";function l(){const t=document.getElementById("loginForm"),n=document.getElementById("loginBtn"),a=document.getElementById("message-container");if(!t||!n||!a||t.dataset.bound==="1")return;t.dataset.bound="1";function o(i,r="error"){a.innerHTML=`
-            <div class="${r}-message">
-                ${i}
-            </div>
-        `,setTimeout(()=>{a.innerHTML=""},5e3)}t.addEventListener("submit",async i=>{var d,c;i.preventDefault();const r=String(((d=document.getElementById("email"))==null?void 0:d.value)||"").trim(),s=String(((c=document.getElementById("password"))==null?void 0:c.value)||"").trim();if(!r||!s){o("لطفاً ایمیل و رمز عبور را وارد کنید","error");return}n.disabled=!0,n.innerHTML='<span class="material-icons-round">hourglass_empty</span> در حال ورود...';try{const e=await window.authManager.login(r,s);if(e!=null&&e.success){o("ورود با موفقیت انجام شد","success"),setTimeout(()=>{window.location.href="/"},800);return}o((e==null?void 0:e.error)||"ورود ناموفق بود. اطلاعات را بررسی کنید.","error")}catch(e){console.error("Login error:",e),o("خطا در ارتباط با سرور","error")}finally{n.disabled=!1,n.innerHTML='<span class="material-icons-round">login</span> ورود به سیستم'}})}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",l,{once:!0}):l();
-//# sourceMappingURL=login-C1BZAvPd.js.map

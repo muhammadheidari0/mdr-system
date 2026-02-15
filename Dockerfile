@@ -1,3 +1,12 @@
+FROM node:20-alpine AS frontend_builder
+
+WORKDIR /src
+
+COPY package*.json vite.config.ts tsconfig.json ./
+COPY frontend ./frontend
+RUN npm ci
+RUN npm run build
+
 FROM python:3.10-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -9,6 +18,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+RUN rm -rf /app/static/dist
+COPY --from=frontend_builder /src/static/dist /app/static/dist
 RUN chmod +x /app/docker/start.sh
 RUN test -f /app/data_sources/master_data.xlsx || (echo "ERROR: required seed file missing: /app/data_sources/master_data.xlsx" && exit 1)
 

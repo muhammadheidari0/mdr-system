@@ -10,6 +10,8 @@ This runbook deploys MDR App on Windows Server using Linux containers under WSL2
 - Database: PostgreSQL container
 - Public ports: `80`, `443`
 - Private/local-only ports: `8000`, `5432`
+- Deploy model: Git tag pull on server (`git fetch --tags` + `git checkout --detach vX.Y.Z`)
+- Frontend build model: Docker multi-stage (no need to commit `static/dist`)
 
 ## 1) Desktop Release Steps
 
@@ -18,36 +20,26 @@ Run from your workstation:
 ```powershell
 git checkout main
 git pull --ff-only
+npm ci
 npm run typecheck
-npm run build
 ```
 
 Create and push release tag:
 
 ```powershell
-git tag -a v2.1.3 -m "Release: Windows Server + Docker baseline"
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main
-git push origin v2.1.3
+git push origin vX.Y.Z
 ```
 
-Create release artifact:
+Notes:
 
-```powershell
-git archive --format=tar.gz --output mdr_app_v2.1.3.tar.gz v2.1.3
-```
-
-Prepare a production env file outside git, for example:
-
-- `.env.production`
-
-Transfer these files to Windows Server (example destination `C:\deploy\`):
-
-- `mdr_app_v2.1.3.tar.gz`
-- `.env.production`
+- `npm run build` is not required for deployment.
+- `static/dist` is built inside Docker image on server.
 
 ## 2) One-Time Windows Server Preparation
 
-Open **elevated PowerShell**:
+Open elevated PowerShell:
 
 ```powershell
 wsl --install -d Ubuntu-22.04
@@ -64,7 +56,7 @@ Inside Ubuntu:
 
 ```bash
 sudo apt update
-sudo apt install -y ca-certificates curl gnupg lsb-release
+sudo apt install -y ca-certificates curl gnupg lsb-release git openssh-client
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
@@ -99,18 +91,49 @@ sudo systemctl enable docker
 sudo systemctl start docker
 docker --version
 docker compose version
+git --version
 ```
 
-## 3) Deploy Project on Server
+## 3) One-Time Git Access Setup (WSL -> origin)
+
+Generate deploy key:
+
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+ssh-keygen -t ed25519 -f ~/.ssh/mdr_deploy -C "mdr-prod-wsl"
+cat ~/.ssh/mdr_deploy.pub
+```
+
+Add the printed public key to your Git provider as a read-only deploy key.
+
+Configure SSH:
+
+```bash
+cat > ~/.ssh/config << 'EOF'
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/mdr_deploy
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+ssh-keyscan github.com >> ~/.ssh/known_hosts
+chmod 644 ~/.ssh/known_hosts
+ssh -T git@github.com
+```
+
+## 4) Initial Deploy on Server
 
 Inside Ubuntu:
 
 ```bash
 sudo mkdir -p /opt/mdr_app
 sudo chown -R $USER:$USER /opt/mdr_app
+git clone git@github.com:<ORG>/<REPO>.git /opt/mdr_app
 cd /opt/mdr_app
-tar -xzf /mnt/c/deploy/mdr_app_v2.1.3.tar.gz -C /opt/mdr_app
-cp /mnt/c/deploy/.env.production /opt/mdr_app/.env
+git fetch origin --tags --prune
+git checkout --detach vX.Y.Z
+cp /path/to/.env.production /opt/mdr_app/.env
 ```
 
 Update domain in Caddy config:
@@ -126,21 +149,18 @@ docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --
 docker compose ps
 ```
 
-## 4) Windows Firewall
+## 5) Windows Firewall
 
-Use included helper script (elevated PowerShell):
+Open elevated PowerShell on Windows host:
 
 ```powershell
-cd C:\deploy\mdr_app
-.\docker\windows\Configure-MdrFirewall.ps1
+New-NetFirewallRule -DisplayName "MDR-HTTP-80" -Direction Inbound -Protocol TCP -LocalPort 80 -Action Allow
+New-NetFirewallRule -DisplayName "MDR-HTTPS-443" -Direction Inbound -Protocol TCP -LocalPort 443 -Action Allow
+New-NetFirewallRule -DisplayName "MDR-BLOCK-8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Block
+New-NetFirewallRule -DisplayName "MDR-BLOCK-5432" -Direction Inbound -Protocol TCP -LocalPort 5432 -Action Block
 ```
 
-This creates rules:
-
-- Allow `80` / `443`
-- Block `8000` / `5432` inbound
-
-## 5) DNS + TLS
+## 6) DNS + TLS
 
 Set DNS:
 
@@ -157,7 +177,7 @@ Check TLS logs:
 docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml logs -f caddy
 ```
 
-## 6) Post-Deploy Checks
+## 7) Post-Deploy Checks
 
 From Ubuntu (local container check):
 
@@ -185,7 +205,7 @@ UI sanity:
 - a write flow
 - correspondence form loads dropdowns correctly
 
-## 7) Acceptance Tests
+## 8) Acceptance Tests
 
 Smoke:
 
@@ -203,40 +223,37 @@ Minimal regression:
 docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec web pytest -q tests/test_regressions.py
 ```
 
-## 8) Auto-Start After Reboot
+## 9) Auto-Start After Reboot
 
 Register startup scheduled task from elevated PowerShell:
 
 ```powershell
-cd C:\deploy\mdr_app
-.\docker\windows\Register-MdrDockerStartupTask.ps1
-```
-
-Default task runs:
-
-```text
 wsl -d Ubuntu-22.04 --cd /opt/mdr_app -e sh -lc "docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d"
 ```
 
-## 9) Upgrade Procedure
+Keep `restart: unless-stopped` for containers.
 
-1. Build and send new artifact + env if needed.
-2. Backup DB:
+## 10) Upgrade Procedure (Tag Pull)
+
+1. Push new tag from desktop.
+2. On server backup DB:
 
 ```bash
 docker exec -t mdr_postgres pg_dump -U mdr -d mdr_app -Fc > /opt/mdr_app/backup_$(date +%F_%H%M).dump
 ```
 
-3. Deploy new version:
+3. Deploy new tag:
 
 ```bash
-tar -xzf /mnt/c/deploy/mdr_app_vX.Y.Z.tar.gz -C /opt/mdr_app
+cd /opt/mdr_app
+git fetch origin --tags --prune
+git checkout --detach vX.Y.Z
 docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --build
 ```
 
 4. Run health + smoke checks.
 
-## 10) Rollback Procedure
+## 11) Rollback Procedure
 
 Trigger rollback on:
 
@@ -246,8 +263,13 @@ Trigger rollback on:
 
 Code rollback:
 
-- redeploy previous artifact
-- run `docker compose ... up -d --build`
+- checkout previous tag and rebuild:
+
+```bash
+cd /opt/mdr_app
+git checkout --detach vPREVIOUS
+docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --build
+```
 
 Data rollback (if needed):
 
@@ -264,5 +286,6 @@ Then validate:
 ## Security Notes
 
 - Keep secrets only in server-side `.env` files, never in git.
+- Use read-only deploy keys for server repo access.
 - Rotate any exposed/pasted tokens immediately.
 - Keep `DEBUG=false` and a strong `SECRET_KEY` in production.

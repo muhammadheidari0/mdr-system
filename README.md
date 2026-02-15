@@ -68,6 +68,12 @@ For Windows Server deployment with WSL2, Docker Engine, and Caddy TLS proxy, use
 - `.env.production.example`
 - `docs/windows_server_docker_caddy_runbook.md`
 
+Production deploy model:
+
+- push version tag from desktop
+- pull/checkout tag on server (`git fetch --tags`, `git checkout --detach vX.Y.Z`)
+- deploy with Docker compose build
+
 Start stack in production mode:
 
 ```bash
@@ -75,6 +81,7 @@ docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --
 ```
 
 The override binds app/database ports to localhost and exposes only `80/443` via Caddy.
+Frontend assets are built inside Docker (multi-stage Dockerfile), so deploy does not require committing `static/dist`.
 
 ## TypeScript Pipeline
 
@@ -87,7 +94,8 @@ npm run typecheck
 npm run build
 ```
 
-Build output is generated under `static/dist`.
+Build output is generated under `static/dist` (local development workflow).
+For production Docker deployments, frontend build is executed inside Docker image build.
 Minimum recommended Node runtime is `20.x`.
 `npm run gen:api` now prefers project `.venv` Python automatically (with fallback to `python`/`python3`).
 

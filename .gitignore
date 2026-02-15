@@ -46,6 +46,7 @@ celerybeat-schedule
 
 # --- Frontend / test artifacts ---
 node_modules/
+static/dist/
 test-results/
 playwright-report/
 reports/
