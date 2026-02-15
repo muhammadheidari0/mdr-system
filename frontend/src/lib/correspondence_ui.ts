@@ -21,6 +21,7 @@ export interface CorrespondenceUiDeps {
   deleteAction: (id: number) => Promise<void> | void;
   downloadAttachment: (id: number) => Promise<void> | void;
   deleteAttachment: (id: number) => Promise<void> | void;
+  toggleAttachmentPin: (id: number, isPinned: boolean) => Promise<void> | void;
   toggleActionClosed: (id: number, checked: boolean) => Promise<void> | void;
 }
 
@@ -163,6 +164,14 @@ function bindEvents(root: HTMLElement | null, deps: CorrespondenceUiDeps): boole
         break;
       case "delete-attachment":
         void invoke(() => deps.deleteAttachment(toInt(actionEl.getAttribute("data-attachment-id"))));
+        break;
+      case "toggle-attachment-pin":
+        void invoke(() =>
+          deps.toggleAttachmentPin(
+            toInt(actionEl.getAttribute("data-attachment-id")),
+            String(actionEl.getAttribute("data-pinned") || "0") === "1"
+          )
+        );
         break;
       default:
         break;

@@ -30,6 +30,12 @@ from app.db.models import (
     Project,
 )
 from app.services.folder_service import safe_name
+from app.services.openproject_status import (
+    ENTITY_CORRESPONDENCE_ATTACHMENT,
+    default_openproject_sync_status,
+    get_openproject_status_map,
+    is_openproject_integration_enabled,
+)
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
 from app.services.storage_sync import enqueue_correspondence_mirror_job
@@ -37,6 +43,30 @@ from app.services.storage_sync import enqueue_correspondence_mirror_job
 router = APIRouter(prefix="/correspondence", tags=["Correspondence"])
 AUTO_REFERENCE_MAX_RETRIES = 8
 AUTO_REFERENCE_SERIAL_WIDTH = 3
+
+
+def _attachment_openproject_status_map(db: Session, attachment_ids: list[int]) -> tuple[dict[tuple[str, int], dict], str]:
+    clean_ids = [int(attachment_id) for attachment_id in attachment_ids if int(attachment_id or 0) > 0]
+    integration_enabled = is_openproject_integration_enabled(db)
+    fallback_status = default_openproject_sync_status(integration_enabled=integration_enabled)
+    if not clean_ids:
+        return {}, fallback_status
+    status_map = get_openproject_status_map(
+        db,
+        [(ENTITY_CORRESPONDENCE_ATTACHMENT, attachment_id) for attachment_id in clean_ids],
+        integration_enabled=integration_enabled,
+    )
+    return status_map, fallback_status
+
+
+def _attachment_openproject_payload(status_map: dict[tuple[str, int], dict], fallback_status: str, attachment_id: int) -> dict:
+    row = status_map.get((ENTITY_CORRESPONDENCE_ATTACHMENT, int(attachment_id or 0)), {})
+    return {
+        "openproject_sync_status": str(row.get("sync_status") or fallback_status),
+        "openproject_work_package_id": row.get("work_package_id"),
+        "openproject_attachment_id": row.get("openproject_attachment_id"),
+        "openproject_last_synced_at": row.get("last_synced_at"),
+    }
 
 
 def _norm(value: Optional[str]) -> str:
@@ -358,7 +388,12 @@ def _serialize_action(row: CorrespondenceAction) -> dict:
     }
 
 
-def _serialize_attachment(row: CorrespondenceAttachment) -> dict:
+def _serialize_attachment(
+    row: CorrespondenceAttachment,
+    *,
+    openproject_payload: dict | None = None,
+) -> dict:
+    openproject_payload = openproject_payload or {}
     return {
         "id": row.id,
         "correspondence_id": row.correspondence_id,
@@ -373,13 +408,11 @@ def _serialize_attachment(row: CorrespondenceAttachment) -> dict:
         "storage_backend": row.storage_backend,
         "gdrive_file_id": row.gdrive_file_id,
         "mirror_status": row.mirror_status,
-        "openproject_sync_status": "pending"
-        if str(row.mirror_status or "").strip().lower() in {"pending", "mirrored"}
-        else "disabled",
         "mirror_updated_at": row.mirror_updated_at.isoformat() if row.mirror_updated_at else None,
         "uploaded_by_id": row.uploaded_by_id,
         "uploaded_by_name": getattr(getattr(row, "uploaded_by", None), "full_name", None),
         "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
+        **openproject_payload,
     }
 
 
@@ -1060,7 +1093,21 @@ def list_correspondence_attachments(
         .order_by(CorrespondenceAttachment.uploaded_at.desc(), CorrespondenceAttachment.id.desc())
         .all()
     )
-    return {"ok": True, "data": [_serialize_attachment(row) for row in rows]}
+    status_map, fallback_status = _attachment_openproject_status_map(
+        db, [int(row.id or 0) for row in rows]
+    )
+    return {
+        "ok": True,
+        "data": [
+            _serialize_attachment(
+                row,
+                openproject_payload=_attachment_openproject_payload(
+                    status_map, fallback_status, int(row.id or 0)
+                ),
+            )
+            for row in rows
+        ],
+    }
 
 
 @router.post("/{correspondence_id}/attachments/upload")
@@ -1131,7 +1178,16 @@ def upload_correspondence_attachment(
         )
     db.commit()
     db.refresh(row)
-    return {"ok": True, "data": _serialize_attachment(row)}
+    status_map, fallback_status = _attachment_openproject_status_map(db, [int(row.id or 0)])
+    return {
+        "ok": True,
+        "data": _serialize_attachment(
+            row,
+            openproject_payload=_attachment_openproject_payload(
+                status_map, fallback_status, int(row.id or 0)
+            ),
+        ),
+    }
 
 
 @router.get("/attachments/{attachment_id}/download")

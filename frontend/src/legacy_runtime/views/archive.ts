@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 // Archive page logic
 import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_datetime";
         let isFullMode = false;
@@ -18,6 +18,303 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
         const ARCHIVE_NATIVE_BLOCKED_EXTENSIONS = new Set([
             'exe', 'msi', 'bat', 'cmd', 'ps1', 'vbs', 'js', 'jse', 'hta', 'scr', 'com', 'dll', 'reg'
         ]);
+        const ARCHIVE_ENTITY_TYPE = 'archive_file';
+        let archivePinnedSet = new Set();
+        let archiveSiteContext = {
+            loaded: false,
+            active: false,
+            siteCode: '',
+            siteScope: '',
+            localRootPath: '',
+            fallbackMode: 'local_first',
+            matchedCidr: '',
+        };
+        const ARCHIVE_VALIDATION_BADGES = {
+            valid: { cls: 'storage-badge is-valid', label: 'Valid' },
+            warning: { cls: 'storage-badge is-warning', label: 'Needs review' },
+            rejected: { cls: 'storage-badge is-rejected', label: 'Rejected' },
+            legacy: { cls: 'storage-badge is-legacy', label: 'Legacy' },
+            default: { cls: 'storage-badge is-legacy', label: '-' },
+        };
+        const ARCHIVE_MIRROR_BADGES = {
+            mirrored: { cls: 'storage-badge is-synced', label: 'Drive: synced' },
+            synced: { cls: 'storage-badge is-synced', label: 'Drive: synced' },
+            pending: { cls: 'storage-badge is-pending', label: 'Drive: pending' },
+            queued: { cls: 'storage-badge is-pending', label: 'Drive: queued' },
+            failed: { cls: 'storage-badge is-failed', label: 'Drive: failed' },
+            disabled: { cls: 'storage-badge is-disabled', label: 'Drive: disabled' },
+            not_linked: { cls: 'storage-badge is-disabled', label: 'Drive: not linked' },
+            default: { cls: 'storage-badge is-disabled', label: 'Drive: -' },
+        };
+        const ARCHIVE_OPENPROJECT_BADGES = {
+            synced: { cls: 'storage-badge is-synced', label: 'OpenProject: synced' },
+            pending: { cls: 'storage-badge is-pending', label: 'OpenProject: pending' },
+            failed: { cls: 'storage-badge is-failed', label: 'OpenProject: failed' },
+            disabled: { cls: 'storage-badge is-disabled', label: 'OpenProject: disabled' },
+            not_linked: { cls: 'storage-badge is-disabled', label: 'OpenProject: not linked' },
+            default: { cls: 'storage-badge is-disabled', label: 'OpenProject: -' },
+        };
+
+        function archiveToFileUrl(pathValue) {
+            const normalized = String(pathValue || '').replace(/\\/g, '/');
+            if (!normalized) return '';
+            if (normalized.startsWith('//')) {
+                return `file:${encodeURI(normalized)}`;
+            }
+            return `file:///${encodeURI(normalized)}`;
+        }
+
+        function archiveBuildLocalPath(relativePath) {
+            const root = String(archiveSiteContext?.localRootPath || '').trim();
+            const rel = String(relativePath || '').trim();
+            if (!root || !rel) return '';
+            const rootNoSlash = root.replace(/[\\/]+$/g, '');
+            const relNoSlash = rel.replace(/^[\\/]+/g, '');
+            return `${rootNoSlash}\\${relNoSlash.replace(/\//g, '\\')}`;
+        }
+
+        async function archiveTryOpenLocal(relativePath, fileName = '') {
+            const localPath = archiveBuildLocalPath(relativePath);
+            if (!localPath) return false;
+            const fileUrl = archiveToFileUrl(localPath);
+            if (!fileUrl) return false;
+            try {
+                const opened = window.open(fileUrl, '_blank');
+                if (opened) {
+                    return true;
+                }
+            } catch (_) {}
+            try {
+                await navigator.clipboard.writeText(localPath);
+                alert(`مسیر محلی باز نشد. مسیر کپی شد:\n${localPath}`);
+            } catch (_) {
+                alert(`مسیر محلی:\n${localPath}`);
+            }
+            return false;
+        }
+
+        async function archiveLoadSiteContext(projectCode = '', force = false) {
+            if (archiveSiteContext.loaded && !force) return archiveSiteContext;
+            const params = new URLSearchParams();
+            const project = String(projectCode || '').trim();
+            if (project) params.set('project_code', project);
+            const url = `/api/v1/storage/site-context${params.toString() ? `?${params.toString()}` : ''}`;
+            try {
+                const payload = await archiveRequestJson(url);
+                const profile = payload?.profile || {};
+                archiveSiteContext = {
+                    loaded: true,
+                    active: Boolean(payload?.site_active),
+                    siteCode: String(profile?.code || ''),
+                    siteScope: String(payload?.site_scope || ''),
+                    localRootPath: String(profile?.local_root_path || ''),
+                    fallbackMode: String(profile?.fallback_mode || 'local_first'),
+                    matchedCidr: String(payload?.matched_cidr || ''),
+                };
+                return archiveSiteContext;
+            } catch (error) {
+                console.error('Failed to load site context', error);
+                archiveSiteContext = {
+                    loaded: true,
+                    active: false,
+                    siteCode: '',
+                    siteScope: '',
+                    localRootPath: '',
+                    fallbackMode: 'local_first',
+                    matchedCidr: '',
+                };
+                return archiveSiteContext;
+            }
+        }
+
+        async function archiveReadJsonSafe(response) {
+            try {
+                return await response.json();
+            } catch (_) {
+                return null;
+            }
+        }
+
+        async function archiveRequestJson(url, init = null) {
+            const response = await window.fetchWithAuth(url, init || undefined);
+            const payload = await archiveReadJsonSafe(response);
+            if (!response.ok || !payload?.ok) {
+                const detail = String(payload?.detail || payload?.message || `Request failed (${response.status})`).trim();
+                const error = new Error(detail || `Request failed (${response.status})`);
+                error.statusCode = Number(response.status || 0);
+                error.detail = detail;
+                throw error;
+            }
+            return payload;
+        }
+
+        function archiveStatusBadge(metaMap, statusValue) {
+            const key = String(statusValue || '').trim().toLowerCase();
+            const meta = metaMap[key] || metaMap.default;
+            return `<span class="${meta.cls}">${archiveEsc(meta.label)}</span>`;
+        }
+
+        function archiveStatusLabel(metaMap, statusValue) {
+            const key = String(statusValue || '').trim().toLowerCase();
+            const meta = metaMap[key] || metaMap.default;
+            return String(meta?.label || '-');
+        }
+
+        function archiveValidationTone(statusValue) {
+            const key = String(statusValue || '').trim().toLowerCase();
+            if (key === 'valid') return 'success';
+            if (key === 'warning') return 'warning';
+            if (key === 'rejected') return 'error';
+            return 'muted';
+        }
+
+        function archiveSyncTone(statusValue) {
+            const key = String(statusValue || '').trim().toLowerCase();
+            if (key === 'synced' || key === 'mirrored') return 'success';
+            if (key === 'pending' || key === 'queued') return 'syncing';
+            if (key === 'failed') return 'error';
+            return 'muted';
+        }
+
+        function archiveBuildSecurityIcons(fileRow) {
+            const validationLabel = archiveStatusLabel(ARCHIVE_VALIDATION_BADGES, fileRow?.validation_status);
+            const mirrorLabel = archiveStatusLabel(ARCHIVE_MIRROR_BADGES, fileRow?.mirror_status);
+            const openprojectLabel = archiveStatusLabel(
+                ARCHIVE_OPENPROJECT_BADGES,
+                fileRow?.openproject_sync_status
+            );
+            const mirrorTime = fileRow?.mirror_updated_at
+                ? `\nLast update: ${formatShamsiDateTime(fileRow.mirror_updated_at)}`
+                : '';
+            const openprojectTime = fileRow?.openproject_last_synced_at
+                ? `\nLast update: ${formatShamsiDateTime(fileRow.openproject_last_synced_at)}`
+                : '';
+            const validationTone = archiveValidationTone(fileRow?.validation_status);
+            const mirrorTone = archiveSyncTone(fileRow?.mirror_status);
+            const openprojectTone = archiveSyncTone(fileRow?.openproject_sync_status);
+            const mirrorSpin = mirrorTone === 'syncing' ? ' archive-sync-spin' : '';
+            const openprojectSpin = openprojectTone === 'syncing' ? ' archive-sync-spin' : '';
+            return `
+                <div class="archive-sync-icons">
+                    <span class="archive-sync-icon archive-sync-icon--${validationTone}" title="${archiveEsc(`Validation: ${validationLabel}`)}">
+                        <span class="material-icons-round">verified</span>
+                    </span>
+                    <span class="archive-sync-icon archive-sync-icon--${mirrorTone}" title="${archiveEsc(`Google Drive: ${mirrorLabel}${mirrorTime}`)}">
+                        <span class="material-icons-round${mirrorSpin}">cloud</span>
+                    </span>
+                    <span class="archive-sync-icon archive-sync-icon--${openprojectTone}" title="${archiveEsc(`OpenProject: ${openprojectLabel}${openprojectTime}`)}">
+                        <span class="material-icons-round${openprojectSpin}">hub</span>
+                    </span>
+                </div>`;
+        }
+
+        function archiveFriendlyUploadMessage(error) {
+            const statusCode = Number(error?.statusCode || 0);
+            const detail = String(error?.detail || error?.message || '').trim();
+            const lower = detail.toLowerCase();
+            let friendly = 'Ø®Ø·Ø§ Ø¯Ø± Ø¢Ù¾Ù„ÙˆØ¯ ÙØ§ÛŒÙ„.';
+            if (statusCode === 413 || lower.includes('too large') || lower.includes('size')) {
+                friendly = 'Ø­Ø¬Ù… ÙØ§ÛŒÙ„ Ø¨ÛŒØ´ØªØ± Ø§Ø² Ø­Ø¯ Ù…Ø¬Ø§Ø² Ø§Ø³Øª.';
+            } else if (lower.includes('magic') || lower.includes('mime') || lower.includes('content type')) {
+                friendly = 'Ù†ÙˆØ¹ ÙˆØ§Ù‚Ø¹ÛŒ ÙØ§ÛŒÙ„ Ø¨Ø§ ÙØ±Ù…Øª Ù…Ø¬Ø§Ø² ØªØ·Ø§Ø¨Ù‚ Ù†Ø¯Ø§Ø±Ø¯.';
+            } else if (lower.includes('blocked extension') || lower.includes('extension')) {
+                friendly = 'Ù¾Ø³ÙˆÙ†Ø¯ ÙØ§ÛŒÙ„ Ù…Ø¬Ø§Ø² Ù†ÛŒØ³Øª.';
+            } else if (lower.includes('validation') || lower.includes('invalid')) {
+                friendly = 'ÙØ§ÛŒÙ„ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª ÛŒØ§ Ø¨Ø§ Ø³ÛŒØ§Ø³Øª Ø§Ù…Ù†ÛŒØªÛŒ Ø³Ø§Ø²Ú¯Ø§Ø± Ù†ÛŒØ³Øª.';
+            } else if (lower.includes('document') || lower.includes('revision')) {
+                friendly = 'Ø«Ø¨Øª ÙØ§ÛŒÙ„ Ø±ÙˆÛŒ Ù…Ø¯Ø±Ú© Ø§Ù†ØªØ®Ø§Ø¨â€ŒØ´Ø¯Ù‡ Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯.';
+            }
+            return detail ? `${friendly}\nØ¬Ø²Ø¦ÛŒØ§Øª: ${detail}` : friendly;
+        }
+
+        async function archiveLoadPinManifest() {
+            try {
+                const payload = await archiveRequestJson(
+                    '/api/v1/storage/local-cache/manifest?entity_type=archive_file&only_pinned=true'
+                );
+                const items = Array.isArray(payload?.items) ? payload.items : [];
+                archivePinnedSet = new Set(
+                    items
+                        .map((item) => Number(item?.file_id || 0))
+                        .filter((fileId) => Number.isFinite(fileId) && fileId > 0)
+                );
+            } catch (error) {
+                console.error('Failed to load archive pin manifest', error);
+                archivePinnedSet = new Set();
+            }
+        }
+
+        async function archiveTogglePin(fileId, shouldPin) {
+            const id = Number(fileId || 0);
+            if (!id) return;
+            const endpoint = shouldPin ? '/api/v1/storage/local-cache/pin' : '/api/v1/storage/local-cache/unpin';
+            await archiveRequestJson(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_id: id, entity_type: ARCHIVE_ENTITY_TYPE }),
+            });
+            if (shouldPin) {
+                archivePinnedSet.add(id);
+            } else {
+                archivePinnedSet.delete(id);
+            }
+        }
+
+        async function archiveEnrichOpenProjectStatus(rows) {
+            const list = Array.isArray(rows) ? rows : [];
+            const items = list
+                .map((row) => ({ entity_type: ARCHIVE_ENTITY_TYPE, entity_id: Number(row?.id || 0) }))
+                .filter((item) => item.entity_id > 0);
+            if (!items.length) return list;
+            try {
+                const payload = await archiveRequestJson('/api/v1/storage/openproject/status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items }),
+                });
+                const resultItems = Array.isArray(payload?.items) ? payload.items : [];
+                const map = new Map(
+                    resultItems.map((item) => [Number(item?.entity_id || 0), item || {}])
+                );
+                return list.map((row) => {
+                    const key = Number(row?.id || 0);
+                    const resolved = map.get(key);
+                    if (!resolved) return row;
+                    return {
+                        ...row,
+                        openproject_sync_status: resolved.sync_status ?? row.openproject_sync_status,
+                        openproject_work_package_id:
+                            resolved.work_package_id ?? row.openproject_work_package_id ?? null,
+                        openproject_attachment_id:
+                            resolved.openproject_attachment_id ?? row.openproject_attachment_id ?? null,
+                        openproject_last_synced_at:
+                            resolved.last_synced_at ?? row.openproject_last_synced_at ?? null,
+                    };
+                });
+            } catch (error) {
+                console.error('Failed to fetch OpenProject status map for archive files', error);
+                return list;
+            }
+        }
+
+        async function archiveShowIntegrity(fileId, fileName) {
+            const id = Number(fileId || 0);
+            if (!id) return;
+            try {
+                const payload = await archiveRequestJson(`/api/v1/archive/files/${id}/integrity`);
+                const lines = [
+                    `File: ${String(fileName || '-')}`,
+                    `SHA-256: ${String(payload?.sha256 || '-')}`,
+                    `Validation: ${String(payload?.validation_status || '-')}`,
+                    `Detected MIME: ${String(payload?.detected_mime || '-')}`,
+                    `Mirror: ${String(payload?.mirror_status || '-')}`,
+                    `OpenProject: ${String(payload?.openproject_sync_status || '-')}`,
+                ];
+                alert(lines.join('\n'));
+            } catch (error) {
+                alert(`Ø®Ø·Ø§ Ø¯Ø± Ø¯Ø±ÛŒØ§ÙØª Ø§Ø·Ù„Ø§Ø¹Ø§Øª ÛŒÚ©Ù¾Ø§Ø±Ú†Ú¯ÛŒ ÙØ§ÛŒÙ„.\nØ¬Ø²Ø¦ÛŒØ§Øª: ${String(error?.message || '')}`);
+            }
+        }
 
         function archiveFileExtension(fileName = '') {
             const name = String(fileName || '').trim();
@@ -289,7 +586,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                     document.getElementById('fullDocNumber').value = '';
                     document.getElementById('realDocId').value = '';
                     if (msgEl) {
-                        msgEl.innerHTML = '<span style="color:#b45309">برای ساخت مدرک جدید باید Subject وارد شود.</span>';
+                        msgEl.innerHTML = '<span style="color:#b45309">Ø¨Ø±Ø§ÛŒ Ø³Ø§Ø®Øª Ù…Ø¯Ø±Ú© Ø¬Ø¯ÛŒØ¯ Ø¨Ø§ÛŒØ¯ Subject ÙˆØ§Ø±Ø¯ Ø´ÙˆØ¯.</span>';
                     }
                     if (registerBtn) registerBtn.style.display = 'none';
                     archiveRefreshSubmitButtonState();
@@ -477,6 +774,34 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 .replace(/'/g, '&#39;');
         }
 
+        function archiveFormatCodeName(code, name) {
+            const cleanCode = String(code || '').trim();
+            const cleanName = String(name || '').trim();
+            if (cleanCode && cleanName) return `${archiveEsc(cleanCode)} - ${archiveEsc(cleanName)}`;
+            if (cleanCode) return archiveEsc(cleanCode);
+            if (cleanName) return archiveEsc(cleanName);
+            return '-';
+        }
+
+        function archiveCloseRowMenus() {
+            document.querySelectorAll('[data-archive-row-menu].is-open').forEach((menuEl) => {
+                menuEl.classList.remove('is-open');
+                const trigger = menuEl.querySelector('[data-archive-action="toggle-row-menu"]');
+                if (trigger) trigger.setAttribute('aria-expanded', 'false');
+            });
+        }
+
+        function archiveToggleRowMenu(triggerEl) {
+            const menuEl = triggerEl?.closest?.('[data-archive-row-menu]');
+            if (!menuEl) return;
+            const shouldOpen = !menuEl.classList.contains('is-open');
+            archiveCloseRowMenus();
+            if (shouldOpen) {
+                menuEl.classList.add('is-open');
+                triggerEl.setAttribute('aria-expanded', 'true');
+            }
+        }
+
         async function archiveLoadFiles(searchValue = null) {
             const tbody = document.getElementById('archiveTableBody');
             const loader = document.getElementById('archiveLoader');
@@ -500,50 +825,113 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 if (statusFilter?.value) params.set('status', statusFilter.value);
                 if (dateFromFilter?.value) params.set('date_from', dateFromFilter.value);
                 if (dateToFilter?.value) params.set('date_to', dateToFilter.value);
+                const siteContext = await archiveLoadSiteContext(projectFilter?.value || '', true);
+                if (siteContext?.active && siteContext?.siteCode) {
+                    params.set('site_code', siteContext.siteCode);
+                }
                 const url = `/api/v1/archive/list${params.toString() ? `?${params.toString()}` : ''}`;
-                const res = await window.fetchWithAuth(url);
-                const data = await res.json();
-                if(data.ok && data.data.length > 0) {
-                    tbody.innerHTML = data.data.map((f,i)=>{
-                        const sizeText = f.size ? `${(f.size / 1024).toFixed(1)} KB` : '-';
+                await archiveLoadPinManifest();
+                const data = await archiveRequestJson(url);
+                let rows = Array.isArray(data?.data) ? data.data : [];
+                rows = await archiveEnrichOpenProjectStatus(rows);
+
+                if (rows.length > 0) {
+                    tbody.innerHTML = rows.map((f, i) => {
+                        const fileId = Number(f.id || 0);
+                        const sizeText = archiveFormatFileSize(f.size);
                         const uploadedAt = formatShamsiDate(f.uploaded_at);
                         const pdfId = Number(f.pdf_file_id || 0);
                         const nativeId = Number(f.native_file_id || 0);
                         const hasNative = nativeId > 0;
                         const hasPdf = pdfId > 0;
+                        const isPinned = archivePinnedSet.has(fileId);
+                        const pinLabel = isPinned
+                            ? '\u0644\u063a\u0648 \u0647\u0645\u06af\u0627\u0645\u200c\u0633\u0627\u0632\u06cc \u0628\u0627 \u062f\u0633\u06a9\u062a\u0627\u067e'
+                            : '\u0647\u0645\u06af\u0627\u0645\u200c\u0633\u0627\u0632\u06cc \u0628\u0627 \u062f\u0633\u06a9\u062a\u0627\u067e';
+                        const pinClass = isPinned
+                            ? 'archive-pin-btn is-pinned'
+                            : 'archive-pin-btn is-unpinned';
+                        const projectText = archiveFormatCodeName(f.project_code, f.project_name);
+                        const disciplineText = archiveFormatCodeName(f.discipline_code, f.discipline_name);
+                        const packageText = archiveFormatCodeName(f.package_code, f.package_name);
+                        const titleP = archiveEsc(f.doc_title_p || '-');
+                        const titleE = archiveEsc(f.doc_title_e || '-');
+                        const pdfTooltip = archiveEsc(f.pdf_file_name || f.name || '-');
+                        const nativeTooltip = archiveEsc(f.native_file_name || '-');
+                        const pdfRelativePath = String(f.pdf_relative_path || f.site_relative_path || '').trim();
+                        const nativeRelativePath = String(f.native_relative_path || '').trim();
+                        const hasLocalContext = Boolean(archiveSiteContext?.active && archiveSiteContext?.localRootPath);
+                        const localMenuItem = hasLocalContext && pdfRelativePath
+                            ? `
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="open-local" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath))}" data-file-name="${archiveEsc(f.pdf_file_name || f.name || '')}">
+                                                <span class="material-icons-round">folder_open</span>
+                                                Open Local
+                                            </button>
+                            `
+                            : '';
+                        const securityIcons = archiveBuildSecurityIcons(f);
+
                         return `
                             <tr>
                                 <td style="color:#9ca3af;">${i+1}</td>
-                                <td style="direction:ltr;text-align:right;">${archiveEsc(f.name)}</td>
-                                <td style="font-family:monospace;color:#3b82f6;">${archiveEsc(f.doc_number)}</td>
-                                <td><span class="file-badge">${archiveEsc(f.revision)}</span></td>
+                                <td style="text-align:center;">
+                                    <button class="${pinClass}" type="button" title="${pinLabel}" data-archive-action="toggle-pin" data-file-id="${fileId}" data-pinned="${isPinned ? '1' : '0'}">
+                                        <span class="material-icons-round">push_pin</span>
+                                    </button>
+                                </td>
+                                <td class="archive-doc-number">${archiveEsc(f.doc_number)}</td>
+                                <td>${titleP}</td>
+                                <td class="archive-title-e">${titleE}</td>
+                                <td>${projectText}</td>
+                                <td>${disciplineText}</td>
+                                <td>${packageText}</td>
+                                <td><span class="archive-revision-badge">${archiveEsc(f.revision)}</span></td>
                                 <td><span class="file-badge" style="background:#fef3c7;color:#92400e;">${archiveEsc(f.status)}</span></td>
                                 <td>${sizeText}</td>
                                 <td>${uploadedAt}</td>
+                                <td style="text-align:center;">${securityIcons}</td>
                                 <td style="text-align:center;">
-                                    <button class="btn-archive-icon archive-download-btn is-pdf" title="Ø¯Ø§Ù†Ù„ÙˆØ¯ PDF" ${hasPdf ? '' : 'disabled'} data-archive-action="download-kind" data-kind="pdf" data-pdf-id="${pdfId}" data-native-id="${nativeId}">
-                                        <span class="material-icons-round" style="font-size:18px;">picture_as_pdf</span>
-                                    </button>
-                                </td>
-                                <td style="text-align:center;">
-                                    <button class="btn-archive-icon archive-download-btn is-native" title="Ø¯Ø§Ù†Ù„ÙˆØ¯ ÙØ§ÛŒÙ„ Ø§ØµÙ„ÛŒ" ${hasNative ? '' : 'disabled'} data-archive-action="download-kind" data-kind="native" data-pdf-id="${pdfId}" data-native-id="${nativeId}">
-                                        <span class="material-icons-round" style="font-size:18px;">description</span>
-                                    </button>
-                                </td>
-                                <td>
-                                    <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                                        <button class="btn-archive-icon" title="Copy Doc Number" data-archive-action="copy-doc" data-doc-number="${archiveEsc(f.doc_number)}">
-                                            <span class="material-icons-round" style="font-size:18px;">content_copy</span>
+                                    <div class="archive-files-group">
+                                        <button class="btn-archive-icon archive-download-btn is-pdf" title="${pdfTooltip}" ${hasPdf ? '' : 'disabled'} data-archive-action="download-kind" data-kind="pdf" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath))}" data-file-name="${archiveEsc(f.pdf_file_name || f.name || '')}">
+                                            <span class="material-icons-round" style="font-size:18px;">picture_as_pdf</span>
                                         </button>
-                                        <button class="btn-archive-icon" title="Revision History" data-archive-action="open-history" data-document-id="${Number(f.document_id || 0)}" data-doc-number="${archiveEsc(f.doc_number)}">
-                                            <span class="material-icons-round" style="font-size:18px;">history</span>
+                                        <button class="btn-archive-icon archive-download-btn is-native" title="${nativeTooltip}" ${hasNative ? '' : 'disabled'} data-archive-action="download-kind" data-kind="native" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(nativeRelativePath))}" data-file-name="${archiveEsc(f.native_file_name || '')}">
+                                            <span class="material-icons-round" style="font-size:18px;">description</span>
                                         </button>
+                                    </div>
+                                </td>
+                                <td class="archive-row-actions-cell">
+                                    <div class="archive-row-menu" data-archive-row-menu>
+                                        <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="Actions" data-archive-action="toggle-row-menu" aria-expanded="false">
+                                            <span class="material-icons-round" style="font-size:18px;">more_vert</span>
+                                        </button>
+                                        <div class="archive-row-menu-dropdown">
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="copy-doc" data-doc-number="${archiveEsc(f.doc_number)}">
+                                                <span class="material-icons-round">content_copy</span>
+                                                Copy Doc Number
+                                            </button>
+                                            ${localMenuItem}
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="show-integrity" data-file-id="${fileId}" data-file-name="${archiveEsc(f.name)}">
+                                                <span class="material-icons-round">verified</span>
+                                                Integrity
+                                            </button>
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="open-history" data-document-id="${Number(f.document_id || 0)}" data-doc-number="${archiveEsc(f.doc_number)}">
+                                                <span class="material-icons-round">history</span>
+                                                Revision History
+                                            </button>
+                                        </div>
                                     </div>
                                 </td>
                             </tr>`;
                     }).join('');
-                } else { empty.style.display='block'; }
-            } catch(e){console.error(e);} finally {loader.style.display='none';}
+                } else {
+                    empty.style.display='block';
+                }
+            } catch(e) {
+                console.error(e);
+            } finally {
+                loader.style.display='none';
+            }
         }
 
         function archiveApplyFilters() {
@@ -741,11 +1129,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                     dualData.set('status', status);
                     dualData.set('pdf_file', pdfFile);
                     dualData.set('native_file', nativeFile);
-                    const dualRes = await window.fetchWithAuth('/api/v1/archive/upload-dual', { method: 'POST', body: dualData });
-                    const dualPayload = await dualRes.json();
-                    if (!dualPayload?.ok) {
-                        throw new Error(dualPayload?.detail || dualPayload?.message || 'Ø®Ø·Ø§ Ø¯Ø± Ø¢Ù¾Ù„ÙˆØ¯ Ø¯ÙˆÚ¯Ø§Ù†Ù‡');
-                    }
+                    await archiveRequestJson('/api/v1/archive/upload-dual', { method: 'POST', body: dualData });
                 } else {
                     const singleData = new FormData();
                     singleData.set('document_id', String(docId));
@@ -753,11 +1137,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                     singleData.set('status', status);
                     singleData.set('file', pdfFile);
                     singleData.set('file_kind', 'pdf');
-                    const singleRes = await window.fetchWithAuth('/api/v1/archive/upload', { method: 'POST', body: singleData });
-                    const singlePayload = await singleRes.json();
-                    if (!singlePayload?.ok) {
-                        throw new Error(singlePayload?.detail || singlePayload?.message || 'Ø®Ø·Ø§ Ø¯Ø± Ø¢Ù¾Ù„ÙˆØ¯ PDF');
-                    }
+                    await archiveRequestJson('/api/v1/archive/upload', { method: 'POST', body: singleData });
                 }
 
                 alert("Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§Ù†Ø¬Ø§Ù… Ø´Ø¯");
@@ -765,14 +1145,20 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 archiveLoadFiles();
             } catch (err) {
                 console.error(err);
-                alert(err?.message || "Ø®Ø·Ø§ÛŒ Ø¹Ù…Ù„ÛŒØ§Øª");
+                alert(archiveFriendlyUploadMessage(err));
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = submitText;
             }
         }
 
-        async function archiveDownloadFile(fileId) {
+        async function archiveDownloadFile(fileId, options = {}) {
+            const relativePath = String(options?.relativePath || '').trim();
+            const preferLocal = options?.preferLocal !== false;
+            if (preferLocal && archiveSiteContext?.active && relativePath) {
+                const localOpened = await archiveTryOpenLocal(relativePath, options?.fileName || '');
+                if (localOpened) return;
+            }
             try {
                 const response = await window.fetchWithAuth(`/api/v1/archive/download/${fileId}`);
                 if (!response || !response.ok) {
@@ -804,13 +1190,18 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             }
         }
 
-        async function archiveDownloadByKind(pdfFileId, nativeFileId, kind) {
+        async function archiveDownloadByKind(pdfFileId, nativeFileId, kind, relativePath = '', fileName = '') {
             const targetId = kind === 'native' ? Number(nativeFileId || 0) : Number(pdfFileId || 0);
             if (!targetId) {
                 alert(kind === 'native' ? 'Native file not found.' : 'PDF file not found.');
                 return;
             }
-            await archiveDownloadFile(targetId);
+            const canTryLocal = kind === 'pdf' ? true : Boolean(relativePath);
+            await archiveDownloadFile(targetId, {
+                relativePath: canTryLocal ? relativePath : '',
+                fileName,
+                preferLocal: true,
+            });
         }
 
         function archiveCopyDocNumber(docNumber) {
@@ -957,11 +1348,11 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             archiveSetValidationMessage(kind, check.message, 'success');
 
             if (kind === 'native') {
-                document.getElementById('archiveNativeFileName').innerText = `${file.name} ï¿½ ${archiveFormatFileSize(file.size)}`;
+                document.getElementById('archiveNativeFileName').innerText = `${file.name} - ${archiveFormatFileSize(file.size)}`;
                 return;
             }
 
-            document.getElementById('archivePdfFileName').innerText = `${file.name} ï¿½ ${archiveFormatFileSize(file.size)}`;
+            document.getElementById('archivePdfFileName').innerText = `${file.name} - ${archiveFormatFileSize(file.size)}`;
             if (!isFullMode) {
                 const m = file.name.match(/[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+/);
                 if (m) {
@@ -1037,7 +1428,13 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 if (!actionEl || !root.contains(actionEl)) return;
 
                 const action = String(actionEl.getAttribute('data-archive-action') || '').trim();
+                if (action && action !== 'toggle-row-menu') {
+                    archiveCloseRowMenus();
+                }
                 switch (action) {
+                    case 'toggle-row-menu':
+                        archiveToggleRowMenu(actionEl);
+                        break;
                     case 'open-modal':
                         archiveOpenModal();
                         break;
@@ -1066,7 +1463,10 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                         const pdfId = Number(actionEl.getAttribute('data-pdf-id') || 0);
                         const nativeId = Number(actionEl.getAttribute('data-native-id') || 0);
                         const kind = String(actionEl.getAttribute('data-kind') || 'pdf');
-                        archiveDownloadByKind(pdfId, nativeId, kind);
+                        const encodedRel = String(actionEl.getAttribute('data-site-relative-path') || '');
+                        const relativePath = encodedRel ? decodeURIComponent(encodedRel) : '';
+                        const fileName = String(actionEl.getAttribute('data-file-name') || '');
+                        archiveDownloadByKind(pdfId, nativeId, kind, relativePath, fileName);
                         break;
                     }
                     case 'copy-doc':
@@ -1081,8 +1481,42 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                     case 'download-file':
                         archiveDownloadFile(Number(actionEl.getAttribute('data-file-id') || 0));
                         break;
+                    case 'open-local': {
+                        const encodedRel = String(actionEl.getAttribute('data-site-relative-path') || '');
+                        const relativePath = encodedRel ? decodeURIComponent(encodedRel) : '';
+                        archiveTryOpenLocal(relativePath, actionEl.getAttribute('data-file-name') || '');
+                        break;
+                    }
+                    case 'toggle-pin': {
+                        const fileId = Number(actionEl.getAttribute('data-file-id') || 0);
+                        const isPinned = String(actionEl.getAttribute('data-pinned') || '0') === '1';
+                        archiveTogglePin(fileId, !isPinned).then(() => {
+                            archiveLoadFiles();
+                        }).catch((error) => {
+                            alert(`Ø®Ø·Ø§ Ø¯Ø± ØªØºÛŒÛŒØ± ÙˆØ¶Ø¹ÛŒØª Pin.\nØ¬Ø²Ø¦ÛŒØ§Øª: ${String(error?.message || '')}`);
+                        });
+                        break;
+                    }
+                    case 'show-integrity':
+                        archiveShowIntegrity(
+                            Number(actionEl.getAttribute('data-file-id') || 0),
+                            actionEl.getAttribute('data-file-name') || ''
+                        );
+                        break;
                     default:
                         break;
+                }
+            });
+
+            root.addEventListener('click', (event) => {
+                if (!event.target?.closest?.('[data-archive-row-menu]')) {
+                    archiveCloseRowMenus();
+                }
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!root.contains(event.target)) {
+                    archiveCloseRowMenus();
                 }
             });
 
@@ -1124,4 +1558,5 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
         }
 
         initArchiveView(false);
+
 

@@ -54,23 +54,23 @@
   <div class="general-settings-grid">
     <div class="general-settings-card">
       <h3 class="general-settings-title">
-        <span class="material-icons-round">sync</span> Ù‡Ù…Ú¯Ø§Ù…â€ŒØ³Ø§Ø²ÛŒ Ø¯ÛŒØªØ§Ø¨ÛŒØ³
+        <span class="material-icons-round">sync</span> همگام‌سازی دیتابیس
       </h3>
       <div class="general-settings-note">
-        Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø§ÛŒÙ‡ (Ù¾Ø±ÙˆÚ˜Ù‡ØŒ MDRØŒ ÙØ§Ø²ØŒ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†ØŒ Ù¾Ú©ÛŒØ¬ØŒ Ø¨Ù„ÙˆÚ©ØŒ Ø³Ø·Ø­ØŒ ÙˆØ¶Ø¹ÛŒØª)
-        Ø§Ø² ÙØ§ÛŒÙ„ <code>master_data.xlsx</code> Ø®ÙˆØ§Ù†Ø¯Ù‡ Ùˆ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…ÛŒâ€ŒØ´ÙˆØ¯.
+        اطلاعات پایه (پروژه، MDR، فاز، دیسیپلین، پکیج، بلوک، سطح، وضعیت)
+        از فایل <code>master_data.xlsx</code> خوانده و بروزرسانی می‌شود.
       </div>
       <button class="btn btn-warning" type="button" data-general-action="run-seed">
-        <span class="material-icons-round">sync</span> Ø§Ø¬Ø±Ø§ÛŒ Seed
+        <span class="material-icons-round">sync</span> اجرای Seed
       </button>
     </div>
 
     <div class="general-settings-card">
       <h3 class="general-settings-title">
-        <span class="material-icons-round">monitoring</span> Ù†Ù…Ø§ÛŒ Ú©Ù„ÛŒ Ø³ÛŒØ³ØªÙ…
+        <span class="material-icons-round">monitoring</span> نمای کلی سیستم
       </h3>
       <div id="settingsOverviewStats" class="general-overview-grid">
-        <div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>
+        <div class="text-muted">در حال بارگذاری...</div>
       </div>
     </div>
   </div>
@@ -82,40 +82,178 @@
     <div class="general-settings-note general-settings-note-info">
       <span class="material-icons-round">info</span>
       <div>
-        Ø§ÛŒÙ† Ù…Ø³ÛŒØ±Ù‡Ø§ Ù…Ø­Ù„ Ø°Ø®ÛŒØ±Ù‡ ÙÛŒØ²ÛŒÚ©ÛŒ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ Ù‡Ø³ØªÙ†Ø¯. Ù…Ø³ÛŒØ± Ù†Ø³Ø¨ÛŒ Ù†Ø³Ø¨Øª Ø¨Ù‡ Ù¾ÙˆØ´Ù‡ Ø§ØµÙ„ÛŒ Ø¨Ø±Ù†Ø§Ù…Ù‡
-        <code>(BASE_DIR)</code> Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.
+        این مسیرها محل ذخیره فیزیکی فایل‌ها هستند. مسیر نسبی نسبت به پوشه اصلی برنامه
+        <code>(BASE_DIR)</code> محاسبه می‌شود.
       </div>
     </div>
     <div class="general-form-grid">
       <div class="storage-path-field-group">
-        <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ (MDR / Archive)</div>
+        <div class="storage-path-field-title">مسیر مدارک مهندسی (MDR / Archive)</div>
         <input id="mdrStoragePathInput" class="form-input" placeholder="MDR storage path (e.g. ./files/technical)">
-        <div class="storage-path-example">Ù†Ù…ÙˆÙ†Ù‡ Ù…Ø³ÛŒØ± Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯: <code>./files/technical</code></div>
-        <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ø¢Ø±Ø´ÛŒÙˆ Ù…Ø¯Ø§Ø±Ú©ØŒ Ù†Ø³Ø®Ù‡â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ MDR</span>
+        <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/technical</code></div>
+        <span class="form-help storage-path-help">برای فایل‌های آرشیو مدارک، نسخه‌ها و پیوست‌های MDR</span>
       </div>
       <div class="storage-path-field-group">
-        <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ú©Ø§ØªØ¨Ø§Øª (Correspondence)</div>
+        <div class="storage-path-field-title">مسیر مکاتبات (Correspondence)</div>
         <input id="correspondenceStoragePathInput" class="form-input" placeholder="Correspondence path (e.g. ./files/correspondence)">
-        <div class="storage-path-example">Ù†Ù…ÙˆÙ†Ù‡ Ù…Ø³ÛŒØ± Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯: <code>./files/correspondence</code></div>
-        <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ Ù†Ø§Ù…Ù‡â€ŒÙ‡Ø§ØŒ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ Ù…Ú©Ø§ØªØ¨Ø§Øª (Correspondence)</span>
+        <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/correspondence</code></div>
+        <span class="form-help storage-path-help">برای نامه‌ها، اکشن‌ها و پیوست‌های مکاتبات (Correspondence)</span>
       </div>
     </div>
     <div id="storagePathsConflictError" class="storage-path-inline-error" style="display:none;"></div>
     <div class="general-settings-note storage-path-warning">
       <span class="material-icons-round">warning_amber</span>
-      <div>Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ Ù…ÛŒâ€ŒØ´ÙˆØ¯ Ø§ÛŒÙ† Ø¯Ùˆ Ù…Ø³ÛŒØ± ÛŒÚ©Ø³Ø§Ù† Ù†Ø¨Ø§Ø´Ù†Ø¯ ØªØ§ Ø§Ø®ØªÙ„Ø§Ø· ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ Ø±Ø® Ù†Ø¯Ù‡Ø¯.</div>
+      <div>پیشنهاد می‌شود این دو مسیر یکسان نباشند تا اختلاط فایل‌ها رخ ندهد.</div>
     </div>
     <div class="general-form-actions">
       <button class="btn btn-primary" type="button" data-general-action="save-storage-paths">Save Paths</button>
     </div>
   </div>
 
+  
+  <div class="general-settings-grid" style="margin-top:16px;">
+    <div class="general-settings-card">
+      <h3 class="general-settings-title">
+        <span class="material-icons-round">policy</span> Storage Policy
+      </h3>
+      <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+        <div>
+          <label class="form-label-sm">Enforcement Mode</label>
+          <select id="storagePolicyModeInput" class="form-input">
+            <option value="warning">warning</option>
+            <option value="enforce">enforce</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label-sm">Blocked Extensions (comma separated)</label>
+          <input id="storageBlockedExtensionsInput" class="form-input" placeholder="exe,bat,cmd,ps1,js,vbs,sh">
+        </div>
+        <div>
+          <label class="form-label-sm">Allowed MIME (comma separated)</label>
+          <textarea id="storageAllowedMimesInput" class="form-input" rows="3" placeholder="application/pdf,image/png,image/jpeg"></textarea>
+        </div>
+        <div>
+          <label class="form-label-sm">Max Size MB (json)</label>
+          <textarea id="storageMaxSizeInput" class="form-input" rows="3" placeholder='{"pdf":100,"native":250,"attachment":100}'></textarea>
+        </div>
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-storage-policy">Save Storage Policy</button>
+      </div>
+    </div>
+
+    <div class="general-settings-card">
+      <h3 class="general-settings-title">
+        <span class="material-icons-round">hub</span> Storage Integrations
+      </h3>
+      <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+        <label class="checkbox-label"><input id="storageGoogleDriveEnabledInput" type="checkbox"><span class="checkmark"></span>Google Drive Enabled</label>
+        <label class="checkbox-label"><input id="storageOpenProjectEnabledInput" type="checkbox"><span class="checkmark"></span>OpenProject Enabled</label>
+        <label class="checkbox-label"><input id="storageLocalCacheEnabledInput" type="checkbox"><span class="checkmark"></span>Local Cache Enabled</label>
+        <div>
+          <label class="form-label-sm">OpenProject Default Work Package</label>
+          <input id="storageOpenProjectDefaultWpInput" class="form-input" placeholder="e.g. 321">
+        </div>
+        <div>
+          <label class="form-label-sm">Google Drive Shared Drive ID</label>
+          <input id="storageGoogleDriveDriveIdInput" class="form-input" placeholder="shared drive id">
+        </div>
+      </div>
+      <div class="general-form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-primary" type="button" data-general-action="save-storage-integrations">Save Integrations</button>
+        <button class="btn btn-secondary" type="button" data-general-action="run-storage-google-drive-sync">Run Google Drive Sync</button>
+        <button class="btn btn-secondary" type="button" data-general-action="run-storage-openproject-sync">Run OpenProject Sync</button>
+      </div>
+      <div id="storageSyncResult" class="general-settings-note" style="margin-top:10px; display:none;"></div>
+    </div>
+  </div>
   <div class="general-settings-card" style="margin-top:16px;">
     <h3 class="general-settings-title">
-      <span class="material-icons-round">apartment</span> Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„
+      <span class="material-icons-round">dns</span> Site Cache (HQ -&gt; Site)
+    </h3>
+    <div class="general-settings-note general-settings-note-info">
+      <span class="material-icons-round">info</span>
+      <div>
+        Manage site profiles, CIDR matching, pin rules, and agent tokens for one-way site cache sync.
+      </div>
+    </div>
+    <div class="general-settings-grid" style="margin-top:10px;">
+      <div class="general-settings-card">
+        <h4 class="general-settings-title"><span class="material-icons-round">apartment</span> Profiles</h4>
+        <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+          <input id="siteCacheProfileCodeInput" class="form-input" placeholder="Site code (e.g. SITE_A)">
+          <input id="siteCacheProfileNameInput" class="form-input" placeholder="Profile name">
+          <input id="siteCacheProfileProjectInput" class="form-input" placeholder="Project code (optional)">
+          <input id="siteCacheProfileRootInput" class="form-input" placeholder="Local root path (UNC/local)">
+          <select id="siteCacheProfileFallbackInput" class="form-input">
+            <option value="local_first">local_first</option>
+            <option value="hq_first">hq_first</option>
+          </select>
+          <label class="checkbox-label">
+            <input id="siteCacheProfileActiveInput" type="checkbox" checked>
+            <span class="checkmark"></span>
+            Active
+          </label>
+        </div>
+        <div class="general-form-actions">
+          <button class="btn btn-primary" type="button" data-general-action="save-site-cache-profile">Save Profile</button>
+          <button class="btn btn-secondary" type="button" data-general-action="reset-site-cache-profile">New</button>
+        </div>
+        <div class="table-responsive">
+          <table class="archive-table">
+            <thead>
+              <tr><th>Code</th><th>Name</th><th>Project</th><th>Active</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="settingsSiteCacheProfilesRows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="general-settings-card">
+        <h4 class="general-settings-title"><span class="material-icons-round">settings_ethernet</span> CIDR + Rules + Tokens</h4>
+        <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+          <select id="siteCacheProfileSelect" class="form-input"></select>
+          <button class="btn btn-secondary" type="button" data-general-action="refresh-site-cache">Refresh</button>
+          <input id="siteCacheCidrInput" class="form-input" placeholder="CIDR (e.g. 10.88.0.0/16)">
+          <button class="btn btn-primary" type="button" data-general-action="save-site-cache-cidr">Add CIDR</button>
+          <input id="siteCacheRuleNameInput" class="form-input" placeholder="Rule name">
+          <input id="siteCacheRuleStatusInput" class="form-input" placeholder="Status codes (e.g. IFA,IFC)">
+          <input id="siteCacheRuleProjectInput" class="form-input" placeholder="Rule project (optional)">
+          <input id="siteCacheRuleDisciplineInput" class="form-input" placeholder="Rule discipline (optional)">
+          <label class="checkbox-label"><input id="siteCacheRulePrimaryOnlyInput" type="checkbox" checked><span class="checkmark"></span>Primary only</label>
+          <label class="checkbox-label"><input id="siteCacheRuleLatestOnlyInput" type="checkbox" checked><span class="checkmark"></span>Latest revision only</label>
+          <label class="checkbox-label"><input id="siteCacheRuleIncludeNativeInput" type="checkbox"><span class="checkmark"></span>Include native</label>
+          <input id="siteCacheRulePriorityInput" class="form-input" type="number" value="100" placeholder="Priority">
+        </div>
+        <div class="general-form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary" type="button" data-general-action="save-site-cache-rule">Add Rule</button>
+          <button class="btn btn-warning" type="button" data-general-action="rebuild-site-cache-pins">Rebuild Pins</button>
+          <button class="btn btn-secondary" type="button" data-general-action="mint-site-cache-token">Mint Token</button>
+        </div>
+        <div id="siteCacheTokenPlain" class="general-settings-note" style="display:none; margin-bottom:10px;"></div>
+        <div class="table-responsive" style="margin-top:8px;">
+          <table class="archive-table">
+            <thead>
+              <tr><th>CIDRs</th><th>Rules</th><th>Tokens</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div id="settingsSiteCacheCidrsRows" class="general-inline-list"></div></td>
+                <td><div id="settingsSiteCacheRulesRows" class="general-inline-list"></div></td>
+                <td><div id="settingsSiteCacheTokensRows" class="general-inline-list"></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="general-settings-card" style="margin-top:16px;">
+    <h3 class="general-settings-title">
+      <span class="material-icons-round">apartment</span> پروژه‌های فعال
     </h3>
     <div id="tbl-projects" class="general-project-cards">
-      <div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>
+      <div class="text-muted">در حال بارگذاری...</div>
     </div>
   </div>
 </div>
@@ -123,28 +261,28 @@
 <div id="general-page-projects" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ Ù¾Ø±ÙˆÚ˜Ù‡</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش پروژه</h3>
       <div class="general-form-grid">
-        <input id="projectCodeInput" class="form-input" placeholder="Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ (Ù…Ø«Ø§Ù„: T202)">
-        <input id="projectNameInput" class="form-input" placeholder="Ù†Ø§Ù… Ù¾Ø±ÙˆÚ˜Ù‡">
-        <input id="projectRootInput" class="form-input" placeholder="Root Path (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)">
-        <input id="projectTemplateInput" class="form-input" placeholder="Doc Number Template (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)">
+        <input id="projectCodeInput" class="form-input" placeholder="کد پروژه (مثال: T202)">
+        <input id="projectNameInput" class="form-input" placeholder="نام پروژه">
+        <input id="projectRootInput" class="form-input" placeholder="Root Path (اختیاری)">
+        <input id="projectTemplateInput" class="form-input" placeholder="Doc Number Template (اختیاری)">
         <label class="checkbox-label">
           <input id="projectActiveInput" type="checkbox" checked>
           <span class="checkmark"></span>
-          ÙØ¹Ø§Ù„
+          فعال
         </label>
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-project">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-project">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-project">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-project">جدید</button>
       </div>
     </div>
 
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست پروژه‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchProjectsInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§..." data-general-action="search-entity" data-entity="projects">
+        <input id="searchProjectsInput" class="form-input general-search-input" placeholder="جستجو در پروژه‌ها..." data-general-action="search-entity" data-entity="projects">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="projects">
           <option value="5">5</option>
           <option value="10" selected>10</option>
@@ -154,7 +292,7 @@
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ú©Ø¯</th><th>Ù†Ø§Ù…</th><th>ÙØ¹Ø§Ù„</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>کد</th><th>نام</th><th>فعال</th><th>عملیات</th></tr></thead>
           <tbody id="settingsProjectsRows"></tbody>
         </table>
       </div>
@@ -166,31 +304,31 @@
 <div id="general-page-mdr" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ MDR</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش MDR</h3>
       <div class="general-form-grid">
-        <input id="mdrCodeInput" class="form-input" placeholder="Ú©Ø¯ MDR (Ù…Ø«Ø§Ù„: E)">
-        <input id="mdrNameEInput" class="form-input" placeholder="Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ">
-        <input id="mdrNamePInput" class="form-input" placeholder="Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ">
-        <input id="mdrFolderInput" class="form-input" placeholder="Ù†Ø§Ù… ÙÙˆÙ„Ø¯Ø± (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)">
-        <input id="mdrSortInput" class="form-input" type="number" value="0" placeholder="ØªØ±ØªÛŒØ¨">
-        <label class="checkbox-label"><input id="mdrActiveInput" type="checkbox" checked><span class="checkmark"></span>ÙØ¹Ø§Ù„</label>
+        <input id="mdrCodeInput" class="form-input" placeholder="کد MDR (مثال: E)">
+        <input id="mdrNameEInput" class="form-input" placeholder="نام انگلیسی">
+        <input id="mdrNamePInput" class="form-input" placeholder="نام فارسی">
+        <input id="mdrFolderInput" class="form-input" placeholder="نام فولدر (اختیاری)">
+        <input id="mdrSortInput" class="form-input" type="number" value="0" placeholder="ترتیب">
+        <label class="checkbox-label"><input id="mdrActiveInput" type="checkbox" checked><span class="checkmark"></span>فعال</label>
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-mdr">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-mdr">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-mdr">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-mdr">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª MDR</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست MDR</h3>
       <div class="general-list-toolbar">
-        <input id="searchMdrInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± MDR..." data-general-action="search-entity" data-entity="mdr">
+        <input id="searchMdrInput" class="form-input general-search-input" placeholder="جستجو در MDR..." data-general-action="search-entity" data-entity="mdr">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="mdr">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ú©Ø¯</th><th>Ù†Ø§Ù…</th><th>ÙØ¹Ø§Ù„</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>کد</th><th>نام</th><th>فعال</th><th>عملیات</th></tr></thead>
           <tbody id="settingsMdrRows"></tbody>
         </table>
       </div>
@@ -202,28 +340,28 @@
 <div id="general-page-phases" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ ÙØ§Ø²</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش فاز</h3>
       <div class="general-form-grid">
-        <input id="phaseCodeInput" class="form-input" placeholder="Ú©Ø¯ ÙØ§Ø² (Ù…Ø«Ø§Ù„: X)">
-        <input id="phaseNameEInput" class="form-input" placeholder="Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ">
-        <input id="phaseNamePInput" class="form-input" placeholder="Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ">
+        <input id="phaseCodeInput" class="form-input" placeholder="کد فاز (مثال: X)">
+        <input id="phaseNameEInput" class="form-input" placeholder="نام انگلیسی">
+        <input id="phaseNamePInput" class="form-input" placeholder="نام فارسی">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-phase">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-phase">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-phase">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-phase">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª ÙØ§Ø²Ù‡Ø§</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست فازها</h3>
       <div class="general-list-toolbar">
-        <input id="searchPhasesInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± ÙØ§Ø²Ù‡Ø§..." data-general-action="search-entity" data-entity="phases">
+        <input id="searchPhasesInput" class="form-input general-search-input" placeholder="جستجو در فازها..." data-general-action="search-entity" data-entity="phases">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="phases">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ú©Ø¯</th><th>Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ</th><th>Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>کد</th><th>نام انگلیسی</th><th>نام فارسی</th><th>عملیات</th></tr></thead>
           <tbody id="settingsPhasesRows"></tbody>
         </table>
       </div>
@@ -235,28 +373,28 @@
 <div id="general-page-disciplines" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش دیسیپلین</h3>
       <div class="general-form-grid">
-        <input id="disciplineCodeInput" class="form-input" placeholder="Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†">
-        <input id="disciplineNameEInput" class="form-input" placeholder="Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ">
-        <input id="disciplineNamePInput" class="form-input" placeholder="Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ">
+        <input id="disciplineCodeInput" class="form-input" placeholder="کد دیسیپلین">
+        <input id="disciplineNameEInput" class="form-input" placeholder="نام انگلیسی">
+        <input id="disciplineNamePInput" class="form-input" placeholder="نام فارسی">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-discipline">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-discipline">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-discipline">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-discipline">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست دیسیپلین‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchDisciplinesInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§..." data-general-action="search-entity" data-entity="disciplines">
+        <input id="searchDisciplinesInput" class="form-input general-search-input" placeholder="جستجو در دیسیپلین‌ها..." data-general-action="search-entity" data-entity="disciplines">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="disciplines">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ú©Ø¯</th><th>Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ</th><th>Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>کد</th><th>نام انگلیسی</th><th>نام فارسی</th><th>عملیات</th></tr></thead>
           <tbody id="settingsDisciplinesRows"></tbody>
         </table>
       </div>
@@ -268,29 +406,29 @@
 <div id="general-page-packages" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ Ù¾Ú©ÛŒØ¬</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش پکیج</h3>
       <div class="general-form-grid">
         <select id="packageDisciplineInput" class="form-input"></select>
-        <input id="packageCodeInput" class="form-input" placeholder="Ú©Ø¯ Ù¾Ú©ÛŒØ¬ (Ø®ÙˆØ¯Ú©Ø§Ø±)" readonly>
-        <input id="packageNameEInput" class="form-input" placeholder="Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ Ù¾Ú©ÛŒØ¬">
-        <input id="packageNamePInput" class="form-input" placeholder="Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ Ù¾Ú©ÛŒØ¬">
+        <input id="packageCodeInput" class="form-input" placeholder="کد پکیج (خودکار)" readonly>
+        <input id="packageNameEInput" class="form-input" placeholder="نام انگلیسی پکیج">
+        <input id="packageNamePInput" class="form-input" placeholder="نام فارسی پکیج">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-package">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-package">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-package">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-package">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª Ù¾Ú©ÛŒØ¬â€ŒÙ‡Ø§</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست پکیج‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchPackagesInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ù¾Ú©ÛŒØ¬â€ŒÙ‡Ø§..." data-general-action="search-entity" data-entity="packages">
+        <input id="searchPackagesInput" class="form-input general-search-input" placeholder="جستجو در پکیج‌ها..." data-general-action="search-entity" data-entity="packages">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="packages">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†</th><th>Ú©Ø¯ Ù¾Ú©ÛŒØ¬</th><th>Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ</th><th>Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>دیسیپلین</th><th>کد پکیج</th><th>نام انگلیسی</th><th>نام فارسی</th><th>عملیات</th></tr></thead>
           <tbody id="settingsPackagesRows"></tbody>
         </table>
       </div>
@@ -302,31 +440,31 @@
 <div id="general-page-blocks" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ Ø¨Ù„ÙˆÚ©</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش بلوک</h3>
       <div class="general-form-grid">
         <select id="blockProjectInput" class="form-input"></select>
-        <input id="blockCodeInput" class="form-input" placeholder="Ú©Ø¯ Ø¨Ù„ÙˆÚ©">
-        <input id="blockNameEInput" class="form-input" placeholder="Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ Ø¨Ù„ÙˆÚ©">
-        <input id="blockNamePInput" class="form-input" placeholder="Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ Ø¨Ù„ÙˆÚ©">
-        <input id="blockSortInput" class="form-input" type="number" value="0" placeholder="ØªØ±ØªÛŒØ¨">
-        <label class="checkbox-label"><input id="blockActiveInput" type="checkbox" checked><span class="checkmark"></span>ÙØ¹Ø§Ù„</label>
+        <input id="blockCodeInput" class="form-input" placeholder="کد بلوک">
+        <input id="blockNameEInput" class="form-input" placeholder="نام انگلیسی بلوک">
+        <input id="blockNamePInput" class="form-input" placeholder="نام فارسی بلوک">
+        <input id="blockSortInput" class="form-input" type="number" value="0" placeholder="ترتیب">
+        <label class="checkbox-label"><input id="blockActiveInput" type="checkbox" checked><span class="checkmark"></span>فعال</label>
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-block">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-block">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-block">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-block">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª Ø¨Ù„ÙˆÚ©â€ŒÙ‡Ø§</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست بلوک‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchBlocksInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ø¨Ù„ÙˆÚ©â€ŒÙ‡Ø§..." data-general-action="search-entity" data-entity="blocks">
+        <input id="searchBlocksInput" class="form-input general-search-input" placeholder="جستجو در بلوک‌ها..." data-general-action="search-entity" data-entity="blocks">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="blocks">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ù¾Ø±ÙˆÚ˜Ù‡</th><th>Ú©Ø¯</th><th>Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ</th><th>ÙØ¹Ø§Ù„</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>پروژه</th><th>کد</th><th>نام انگلیسی</th><th>فعال</th><th>عملیات</th></tr></thead>
           <tbody id="settingsBlocksRows"></tbody>
         </table>
       </div>
@@ -338,29 +476,29 @@
 <div id="general-page-levels" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ Ø³Ø·Ø­</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش سطح</h3>
       <div class="general-form-grid">
-        <input id="levelCodeInput" class="form-input" placeholder="Ú©Ø¯ Ø³Ø·Ø­">
-        <input id="levelNameEInput" class="form-input" placeholder="Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ Ø³Ø·Ø­">
-        <input id="levelNamePInput" class="form-input" placeholder="Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ Ø³Ø·Ø­">
-        <input id="levelSortInput" class="form-input" type="number" value="0" placeholder="ØªØ±ØªÛŒØ¨">
+        <input id="levelCodeInput" class="form-input" placeholder="کد سطح">
+        <input id="levelNameEInput" class="form-input" placeholder="نام انگلیسی سطح">
+        <input id="levelNamePInput" class="form-input" placeholder="نام فارسی سطح">
+        <input id="levelSortInput" class="form-input" type="number" value="0" placeholder="ترتیب">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-level">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-level">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-level">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-level">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª Ø³Ø·ÙˆØ­</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست سطوح</h3>
       <div class="general-list-toolbar">
-        <input id="searchLevelsInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ø³Ø·ÙˆØ­..." data-general-action="search-entity" data-entity="levels">
+        <input id="searchLevelsInput" class="form-input general-search-input" placeholder="جستجو در سطوح..." data-general-action="search-entity" data-entity="levels">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="levels">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ú©Ø¯</th><th>Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ</th><th>Ù†Ø§Ù… ÙØ§Ø±Ø³ÛŒ</th><th>ØªØ±ØªÛŒØ¨</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>کد</th><th>نام انگلیسی</th><th>نام فارسی</th><th>ترتیب</th><th>عملیات</th></tr></thead>
           <tbody id="settingsLevelsRows"></tbody>
         </table>
       </div>
@@ -372,29 +510,29 @@
 <div id="general-page-statuses" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> Ø§ÙØ²ÙˆØ¯Ù† / ÙˆÛŒØ±Ø§ÛŒØ´ ÙˆØ¶Ø¹ÛŒØª</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش وضعیت</h3>
       <div class="general-form-grid">
-        <input id="statusCodeInput" class="form-input" placeholder="Ú©Ø¯ ÙˆØ¶Ø¹ÛŒØª">
-        <input id="statusNameInput" class="form-input" placeholder="Ù†Ø§Ù… ÙˆØ¶Ø¹ÛŒØª">
-        <input id="statusDescInput" class="form-input" placeholder="ØªÙˆØ¶ÛŒØ­ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)">
-        <input id="statusSortInput" class="form-input" type="number" value="0" placeholder="ØªØ±ØªÛŒØ¨">
+        <input id="statusCodeInput" class="form-input" placeholder="کد وضعیت">
+        <input id="statusNameInput" class="form-input" placeholder="نام وضعیت">
+        <input id="statusDescInput" class="form-input" placeholder="توضیح (اختیاری)">
+        <input id="statusSortInput" class="form-input" type="number" value="0" placeholder="ترتیب">
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-status">Ø°Ø®ÛŒØ±Ù‡</button>
-        <button class="btn btn-secondary" type="button" data-general-action="reset-status">Ø¬Ø¯ÛŒØ¯</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-status">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-status">جدید</button>
       </div>
     </div>
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">list</span> Ù„ÛŒØ³Øª ÙˆØ¶Ø¹ÛŒØªâ€ŒÙ‡Ø§</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست وضعیت‌ها</h3>
       <div class="general-list-toolbar">
-        <input id="searchStatusesInput" class="form-input general-search-input" placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± ÙˆØ¶Ø¹ÛŒØªâ€ŒÙ‡Ø§..." data-general-action="search-entity" data-entity="statuses">
+        <input id="searchStatusesInput" class="form-input general-search-input" placeholder="جستجو در وضعیت‌ها..." data-general-action="search-entity" data-entity="statuses">
         <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="statuses">
           <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
         </select>
       </div>
       <div class="table-responsive">
         <table class="archive-table">
-          <thead><tr><th>Ú©Ø¯</th><th>Ù†Ø§Ù…</th><th>ØªÙˆØ¶ÛŒØ­</th><th>ØªØ±ØªÛŒØ¨</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr></thead>
+          <thead><tr><th>کد</th><th>نام</th><th>توضیح</th><th>ترتیب</th><th>عملیات</th></tr></thead>
           <tbody id="settingsStatusesRows"></tbody>
         </table>
       </div>
@@ -491,4 +629,3 @@
     </div>
   </div>
 </div>
-

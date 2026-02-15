@@ -42,6 +42,13 @@ export interface CorrespondenceAttachmentItem {
   file_kind?: string | null;
   action_id?: number | null;
   uploaded_at?: string | null;
+  detected_mime?: string | null;
+  validation_status?: string | null;
+  sha256?: string | null;
+  mirror_status?: string | null;
+  openproject_sync_status?: string | null;
+  mirror_updated_at?: string | null;
+  is_pinned?: boolean | null;
 }
 
 export interface CorrespondenceCatalogItem {
@@ -89,10 +96,10 @@ export interface CorrespondenceStateBridge {
 
 function esc(value: unknown): string {
   return String(value ?? "")
-    .replace(/&/g, "&amp;")
+    .replace(/&/g, "&")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+    .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
 
@@ -131,6 +138,37 @@ function kindFa(kind: unknown): string {
   if (normalized === "letter") return "فایل نامه";
   if (normalized === "original") return "فایل اصلی";
   return "پیوست";
+}
+
+function storageBadge(label: string, cssClass: string): string {
+  return `<span class="storage-badge ${cssClass}">${esc(label)}</span>`;
+}
+
+function validationBadge(status: unknown): string {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "valid") return storageBadge("معتبر", "is-valid");
+  if (normalized === "warning") return storageBadge("نیازمند بررسی", "is-warning");
+  if (normalized === "rejected") return storageBadge("رد شده", "is-rejected");
+  if (normalized === "legacy") return storageBadge("قدیمی", "is-legacy");
+  return storageBadge("-", "is-legacy");
+}
+
+function mirrorBadge(status: unknown): string {
+  const normalized = String(status || "").toLowerCase();
+  if (["synced", "mirrored"].includes(normalized)) return storageBadge("Drive: synced", "is-synced");
+  if (["pending", "queued"].includes(normalized)) return storageBadge("Drive: pending", "is-pending");
+  if (normalized === "failed") return storageBadge("Drive: failed", "is-failed");
+  if (["disabled", "not_linked"].includes(normalized)) return storageBadge("Drive: disabled", "is-disabled");
+  return storageBadge("Drive: -", "is-disabled");
+}
+
+function openProjectBadge(status: unknown): string {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "synced") return storageBadge("OpenProject: synced", "is-synced");
+  if (normalized === "pending") return storageBadge("OpenProject: pending", "is-pending");
+  if (normalized === "failed") return storageBadge("OpenProject: failed", "is-failed");
+  if (["disabled", "not_linked"].includes(normalized)) return storageBadge("OpenProject: disabled", "is-disabled");
+  return storageBadge("OpenProject: -", "is-disabled");
 }
 
 function fillSelect(
@@ -300,7 +338,7 @@ function renderAttachments(
 
   const list = Array.isArray(attachments) ? attachments : [];
   if (!list.length) {
-    body.innerHTML = `<tr><td colspan="5" class="corr-empty-row">فایلی ثبت نشده است.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="corr-empty-row">فایلی ثبت نشده است.</td></tr>`;
     return true;
   }
 
@@ -317,7 +355,17 @@ function renderAttachments(
       const related = actionsById.get(toNumber(attachment?.action_id, 0));
       const relatedTitle = esc(related?.title || "-");
       const uploadedAt = dFa(attachment?.uploaded_at);
-      return `<tr><td>${fileName}</td><td>${fileKind}</td><td>${relatedTitle}</td><td>${uploadedAt}</td><td><div class="corr-row-actions"><button class="btn-archive-icon" type="button" data-corr-action="download-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">download</span></button><button class="btn-archive-icon" type="button" data-corr-action="delete-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">delete</span></button></div></td></tr>`;
+      const syncHtml = `<div class="archive-status-stack">${validationBadge(
+        attachment?.validation_status
+      )}${mirrorBadge(attachment?.mirror_status)}${openProjectBadge(
+        attachment?.openproject_sync_status
+      )}</div>`;
+      const isPinned = Boolean(attachment?.is_pinned);
+      const pinIcon = isPinned ? "push_pin" : "keep_off";
+      const pinClass = isPinned
+        ? "btn-archive-icon archive-pin-btn is-pinned"
+        : "btn-archive-icon archive-pin-btn";
+      return `<tr><td>${fileName}</td><td>${fileKind}</td><td>${relatedTitle}</td><td>${syncHtml}</td><td>${uploadedAt}</td><td><button class="${pinClass}" type="button" data-corr-action="toggle-attachment-pin" data-attachment-id="${attachmentId}" data-pinned="${isPinned ? "1" : "0"}"><span class="material-icons-round">${pinIcon}</span></button></td><td><div class="corr-row-actions"><button class="btn-archive-icon" type="button" data-corr-action="download-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">download</span></button><button class="btn-archive-icon" type="button" data-corr-action="delete-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">delete</span></button></div></td></tr>`;
     })
     .join("");
   return true;

@@ -693,6 +693,143 @@ class LocalSyncManifest(Base):
     policy_scope: Mapped[str] = mapped_column(String(64), nullable=False, default="global", index=True)
 
 
+class SiteCacheProfile(Base):
+    __tablename__ = "site_cache_profiles"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_cache_profiles_code"),
+        Index("ix_site_cache_profiles_project", "project_code"),
+        Index("ix_site_cache_profiles_active", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    project_code: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="SET NULL"), nullable=True
+    )
+    local_root_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    fallback_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="local_first")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_heartbeat_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    project: Mapped["Project | None"] = relationship("Project")
+    cidrs: Mapped[List["SiteCacheProfileCIDR"]] = relationship(
+        back_populates="profile",
+        cascade="all, delete-orphan",
+    )
+    pin_rules: Mapped[List["SiteCachePinRule"]] = relationship(
+        back_populates="profile",
+        cascade="all, delete-orphan",
+    )
+    agent_tokens: Mapped[List["SiteCacheAgentToken"]] = relationship(
+        back_populates="profile",
+        cascade="all, delete-orphan",
+    )
+
+
+class SiteCacheProfileCIDR(Base):
+    __tablename__ = "site_cache_profile_cidrs"
+    __table_args__ = (
+        UniqueConstraint("profile_id", "cidr", name="uq_site_cache_profile_cidr"),
+        Index("ix_site_cache_profile_cidrs_cidr", "cidr"),
+        Index("ix_site_cache_profile_cidrs_active", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("site_cache_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cidr: Mapped[str] = mapped_column(String(64), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+    profile: Mapped["SiteCacheProfile"] = relationship(back_populates="cidrs")
+
+
+class SiteCachePinRule(Base):
+    __tablename__ = "site_cache_pin_rules"
+    __table_args__ = (
+        Index("ix_site_cache_pin_rules_profile", "profile_id", "is_active"),
+        Index("ix_site_cache_pin_rules_project", "project_code"),
+        Index("ix_site_cache_pin_rules_discipline", "discipline_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("site_cache_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    project_code: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="SET NULL"), nullable=True
+    )
+    discipline_code: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="SET NULL"), nullable=True
+    )
+    status_codes: Mapped[str] = mapped_column(String(255), nullable=False, default="IFA,IFC")
+    include_native: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    primary_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    latest_revision_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    profile: Mapped["SiteCacheProfile"] = relationship(back_populates="pin_rules")
+    project: Mapped["Project | None"] = relationship("Project")
+    discipline: Mapped["Discipline | None"] = relationship("Discipline")
+
+
+class SiteCacheAgentToken(Base):
+    __tablename__ = "site_cache_agent_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_site_cache_agent_tokens_hash"),
+        Index("ix_site_cache_agent_tokens_profile_active", "profile_id", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    profile_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("site_cache_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    token_hint: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    profile: Mapped["SiteCacheProfile"] = relationship(back_populates="agent_tokens")
+    created_by: Mapped["User | None"] = relationship("User")
+
+
 class SettingsKV(Base):
     __tablename__ = "settings_kv"
 

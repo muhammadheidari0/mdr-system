@@ -7,6 +7,9 @@
         initialized: false,
         loadingPromise: null,
         storagePathsLoaded: false,
+        storagePolicyLoaded: false,
+        storageIntegrationsLoaded: false,
+        siteCacheLoaded: false,
         actionsBound: false,
         activePage: 'db',
         activeDomain: 'all',
@@ -21,6 +24,10 @@
             statuses: [],
             corr_issuing: [],
             corr_categories: [],
+        },
+        siteCache: {
+            profiles: [],
+            activeProfileId: 0,
         },
         paging: {},
     };
@@ -59,11 +66,11 @@
 
     function boolBadge(value) {
         return value
-            ? '<span class="status-badge active">ÙØ¹Ø§Ù„</span>'
-            : '<span class="status-badge inactive">ØºÛŒØ±ÙØ¹Ø§Ù„</span>';
+            ? '<span class="status-badge active">فعال</span>'
+            : '<span class="status-badge inactive">غیرفعال</span>';
     }
 
-    function setLoadingRows(entity, message = 'Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...') {
+    function setLoadingRows(entity, message = 'در حال بارگذاری...') {
         const meta = LIST_META[entity];
         const tbody = document.getElementById(meta.tbodyId);
         if (!tbody) return;
@@ -122,11 +129,11 @@
         const pager = document.getElementById(LIST_META[entity].pagerId);
         if (!pager) return;
         pager.innerHTML = `
-            <div class="general-pager-left">Ù†Ù…Ø§ÛŒØ´ ${info.from}-${info.to} Ø§Ø² ${info.total}</div>
+            <div class="general-pager-left">نمایش ${info.from}-${info.to} از ${info.total}</div>
             <div class="general-pager-right">
-                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page - 1}">Ù‚Ø¨Ù„ÛŒ</button>
-                <span>ØµÙØ­Ù‡ ${info.page} Ø§Ø² ${info.totalPages}</span>
-                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page + 1}">Ø¨Ø¹Ø¯ÛŒ</button>
+                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page - 1}">قبلی</button>
+                <span>صفحه ${info.page} از ${info.totalPages}</span>
+                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page + 1}">بعدی</button>
             </div>
         `;
     }
@@ -142,7 +149,7 @@
 
         const info = getFilteredAndPaged(entity);
         if (!info.rows.length) {
-            tbody.innerHTML = `<tr><td class="text-center muted" colspan="${meta.colspan}">Ù…ÙˆØ±Ø¯ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯</td></tr>`;
+            tbody.innerHTML = `<tr><td class="text-center muted" colspan="${meta.colspan}">موردی یافت نشد</td></tr>`;
             renderPager(entity, info);
             return;
         }
@@ -155,8 +162,8 @@
                     <td>${esc(p.project_name || p.name_e || '-')}</td>
                     <td>${boolBadge(Boolean(p.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-project" data-code="${esc(encoded(p.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-project" data-code="${esc(encoded(p.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-project" data-code="${esc(encoded(p.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-project" data-code="${esc(encoded(p.code))}">غیرفعال</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -167,8 +174,8 @@
                     <td>${esc(m.name_e || m.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(m.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-mdr" data-code="${esc(encoded(m.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-mdr" data-code="${esc(encoded(m.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-mdr" data-code="${esc(encoded(m.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-mdr" data-code="${esc(encoded(m.code))}">غیرفعال</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -179,8 +186,8 @@
                     <td>${esc(p.name_e || '-')}</td>
                     <td>${esc(p.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-phase" data-code="${esc(encoded(p.ph_code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-phase" data-code="${esc(encoded(p.ph_code))}">Ø­Ø°Ù</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-phase" data-code="${esc(encoded(p.ph_code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-phase" data-code="${esc(encoded(p.ph_code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -191,8 +198,8 @@
                     <td>${esc(d.name_e || '-')}</td>
                     <td>${esc(d.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-discipline" data-code="${esc(encoded(d.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-discipline" data-code="${esc(encoded(d.code))}">Ø­Ø°Ù</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-discipline" data-code="${esc(encoded(d.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-discipline" data-code="${esc(encoded(d.code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -204,8 +211,8 @@
                     <td>${esc(p.name_e || '-')}</td>
                     <td>${esc(p.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">Ø­Ø°Ù</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -217,8 +224,8 @@
                     <td>${esc(b.name_e || b.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(b.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">غیرفعال</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -230,8 +237,8 @@
                     <td>${esc(l.name_p || '-')}</td>
                     <td>${esc(l.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-level" data-code="${esc(encoded(l.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-level" data-code="${esc(encoded(l.code))}">Ø­Ø°Ù</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-level" data-code="${esc(encoded(l.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-level" data-code="${esc(encoded(l.code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -243,8 +250,8 @@
                     <td>${esc(s.description || '-')}</td>
                     <td>${esc(s.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-status" data-code="${esc(encoded(s.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-status" data-code="${esc(encoded(s.code))}">Ø­Ø°Ù</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-status" data-code="${esc(encoded(s.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-status" data-code="${esc(encoded(s.code))}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -284,7 +291,7 @@
         const fn = typeof window.fetchWithAuth === 'function' ? window.fetchWithAuth : fetch;
         const res = await fn(url, options);
         if (!res.ok) {
-            let message = `Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯ (${res.status})`;
+            let message = `درخواست ناموفق بود (${res.status})`;
             try {
                 const j = await res.clone().json();
                 message = j.detail || j.message || message;
@@ -329,7 +336,7 @@
         if (!box) return;
         const items = STORE.data.projects || [];
         if (!items.length) {
-            box.innerHTML = '<div class="text-muted">Ù¾Ø±ÙˆÚ˜Ù‡â€ŒØ§ÛŒ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</div>';
+            box.innerHTML = '<div class="text-muted">پروژه‌ای ثبت نشده است.</div>';
             return;
         }
         box.innerHTML = items.map((p) => `
@@ -404,6 +411,481 @@
         STORE.storagePathsLoaded = true;
     }
 
+    function parseCommaSeparatedList(value) {
+        return String(value || '')
+            .split(/[\n,]+/g)
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+    }
+
+    function safeParseJsonObject(value, fieldLabel) {
+        const raw = String(value || '').trim();
+        if (!raw) return {};
+        try {
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error(`${fieldLabel} must be a JSON object.`);
+            }
+            return parsed;
+        } catch (err) {
+            throw new Error(`${fieldLabel} format is invalid. Expected JSON object.`);
+        }
+    }
+
+    function setStorageSyncResult(message = '', level = 'info') {
+        const box = document.getElementById('storageSyncResult');
+        if (!box) return;
+        if (!message) {
+            box.textContent = '';
+            box.style.display = 'none';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.textContent = message;
+        box.style.display = 'block';
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function applyStoragePolicyToForm(policy = {}) {
+        const modeInput = document.getElementById('storagePolicyModeInput');
+        const blockedInput = document.getElementById('storageBlockedExtensionsInput');
+        const allowedInput = document.getElementById('storageAllowedMimesInput');
+        const maxSizeInput = document.getElementById('storageMaxSizeInput');
+        if (modeInput) modeInput.value = String(policy?.enforcement_mode || 'warning');
+        if (blockedInput) blockedInput.value = Array.isArray(policy?.blocked_extensions) ? policy.blocked_extensions.join(',') : '';
+        if (allowedInput) allowedInput.value = Array.isArray(policy?.allowed_mimes) ? policy.allowed_mimes.join(',') : '';
+        if (maxSizeInput) maxSizeInput.value = JSON.stringify(policy?.max_size_mb || {}, null, 2);
+    }
+
+    async function loadStoragePolicy(force = false) {
+        const modeInput = document.getElementById('storagePolicyModeInput');
+        if (!modeInput) return;
+        if (STORE.storagePolicyLoaded && !force) return;
+        const payload = await request(`${API_BASE}/storage-policy`);
+        applyStoragePolicyToForm(payload?.policy || {});
+        STORE.storagePolicyLoaded = true;
+    }
+
+    async function saveStoragePolicy() {
+        const modeInput = document.getElementById('storagePolicyModeInput');
+        const blockedInput = document.getElementById('storageBlockedExtensionsInput');
+        const allowedInput = document.getElementById('storageAllowedMimesInput');
+        const maxSizeInput = document.getElementById('storageMaxSizeInput');
+        if (!modeInput || !blockedInput || !allowedInput || !maxSizeInput) return;
+
+        const enforcement_mode = String(modeInput.value || 'warning').trim().toLowerCase() === 'enforce' ? 'enforce' : 'warning';
+        const blocked_extensions = parseCommaSeparatedList(blockedInput.value);
+        const allowed_mimes = parseCommaSeparatedList(allowedInput.value).map((v) => v.toLowerCase());
+        const max_size_mb = safeParseJsonObject(maxSizeInput.value, 'Max Size MB');
+
+        const payload = await request(`${API_BASE}/storage-policy`, {
+            method: 'POST',
+            body: JSON.stringify({
+                enforcement_mode,
+                blocked_extensions,
+                allowed_mimes,
+                max_size_mb,
+            }),
+        });
+        applyStoragePolicyToForm(payload?.policy || {});
+        STORE.storagePolicyLoaded = true;
+        setStorageSyncResult('');
+        tSuccess('Storage policy saved.');
+    }
+
+    function applyStorageIntegrationsToForm(integrations = {}) {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
+        const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
+        const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+
+        const gdrive = integrations?.google_drive || {};
+        const openproject = integrations?.openproject || {};
+        const localCache = integrations?.local_cache || {};
+
+        if (gdriveEnabled) gdriveEnabled.checked = Boolean(gdrive.enabled);
+        if (openprojectEnabled) openprojectEnabled.checked = Boolean(openproject.enabled);
+        if (localCacheEnabled) localCacheEnabled.checked = Boolean(localCache.enabled);
+        if (openprojectWp) openprojectWp.value = String(openproject.default_project_id || '');
+        if (gdriveDriveId) gdriveDriveId.value = String(gdrive.shared_drive_id || '');
+    }
+
+    async function loadStorageIntegrations(force = false) {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        if (!gdriveEnabled) return;
+        if (STORE.storageIntegrationsLoaded && !force) return;
+        const payload = await request(`${API_BASE}/storage-integrations`);
+        applyStorageIntegrationsToForm(payload?.integrations || {});
+        STORE.storageIntegrationsLoaded = true;
+    }
+
+    async function saveStorageIntegrations() {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
+        const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
+        const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        if (!gdriveEnabled || !openprojectEnabled || !localCacheEnabled || !openprojectWp || !gdriveDriveId) return;
+
+        const payload = await request(`${API_BASE}/storage-integrations`, {
+            method: 'POST',
+            body: JSON.stringify({
+                google_drive: {
+                    enabled: Boolean(gdriveEnabled.checked),
+                    shared_drive_id: norm(gdriveDriveId.value),
+                },
+                openproject: {
+                    enabled: Boolean(openprojectEnabled.checked),
+                    default_project_id: norm(openprojectWp.value),
+                },
+                local_cache: {
+                    enabled: Boolean(localCacheEnabled.checked),
+                },
+            }),
+        });
+        applyStorageIntegrationsToForm(payload?.integrations || {});
+        STORE.storageIntegrationsLoaded = true;
+        setStorageSyncResult('');
+        tSuccess('Storage integrations saved.');
+    }
+
+    async function runStorageSyncJob(kind) {
+        const endpoint = kind === 'openproject'
+            ? '/api/v1/storage/sync/openproject/run'
+            : '/api/v1/storage/sync/google-drive/run';
+        const payload = await request(endpoint, { method: 'POST' });
+        const processed = Number(payload?.processed || 0);
+        const succeeded = Number(payload?.success || payload?.succeeded || 0);
+        const failed = Number(payload?.failed || 0);
+        const dead = Number(payload?.dead || 0);
+        const title = kind === 'openproject' ? 'OpenProject' : 'Google Drive';
+        const summary = `${title} sync: processed=${processed}, succeeded=${succeeded}, failed=${failed}, dead=${dead}`;
+        setStorageSyncResult(summary, failed > 0 || dead > 0 ? 'error' : 'success');
+        if (failed > 0 || dead > 0) {
+            tError(summary);
+            return;
+        }
+        tSuccess(summary);
+    }
+
+    function setSiteCacheTokenMessage(message = '', level = 'info') {
+        const box = document.getElementById('siteCacheTokenPlain');
+        if (!box) return;
+        if (!message) {
+            box.style.display = 'none';
+            box.textContent = '';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.style.display = 'block';
+        box.textContent = message;
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function currentSiteCacheProfile() {
+        const activeId = Number(STORE.siteCache.activeProfileId || 0);
+        return (STORE.siteCache.profiles || []).find((item) => Number(item?.id || 0) === activeId) || null;
+    }
+
+    function renderSiteCacheProfiles() {
+        const tbody = document.getElementById('settingsSiteCacheProfilesRows');
+        const profileSelect = document.getElementById('siteCacheProfileSelect');
+        if (!tbody || !profileSelect) return;
+        const profiles = Array.isArray(STORE.siteCache.profiles) ? STORE.siteCache.profiles : [];
+        if (!profiles.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center muted">No site cache profile.</td></tr>';
+            profileSelect.innerHTML = '<option value="">Select profile</option>';
+            return;
+        }
+
+        if (!STORE.siteCache.activeProfileId || !profiles.some((item) => Number(item?.id || 0) === Number(STORE.siteCache.activeProfileId || 0))) {
+            STORE.siteCache.activeProfileId = Number(profiles[0]?.id || 0);
+        }
+
+        tbody.innerHTML = profiles.map((item) => {
+            const pid = Number(item?.id || 0);
+            return `
+                <tr>
+                    <td>${esc(item?.code || '-')}</td>
+                    <td>${esc(item?.name || '-')}</td>
+                    <td>${esc(item?.project_code || '-')}</td>
+                    <td>${boolBadge(Boolean(item?.is_active))}</td>
+                    <td>${rowActions(`
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-site-cache-profile" data-profile-id="${pid}">Edit</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-site-cache-profile" data-profile-id="${pid}">Disable</button>
+                    `)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        profileSelect.innerHTML = profiles
+            .map((item) => `<option value="${Number(item?.id || 0)}">${esc(`${item?.code || '-'} - ${item?.name || '-'}`)}</option>`)
+            .join('');
+        profileSelect.value = String(STORE.siteCache.activeProfileId || '');
+    }
+
+    function renderSiteCacheProfileDetails(profile) {
+        const cidrBox = document.getElementById('settingsSiteCacheCidrsRows');
+        const ruleBox = document.getElementById('settingsSiteCacheRulesRows');
+        const tokenBox = document.getElementById('settingsSiteCacheTokensRows');
+        if (!cidrBox || !ruleBox || !tokenBox) return;
+
+        const cidrs = Array.isArray(profile?.cidrs) ? profile.cidrs : [];
+        const rules = Array.isArray(profile?.rules) ? profile.rules : [];
+
+        cidrBox.innerHTML = cidrs.length
+            ? cidrs.map((item) => `
+                <div class="general-inline-chip">
+                    <span class="material-icons-round">network_check</span>
+                    <span>${esc(item?.cidr || '-')}</span>
+                    <button type="button" data-general-action="delete-site-cache-cidr" data-cidr-id="${Number(item?.id || 0)}" title="Delete">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+            `).join('')
+            : '<div class="text-muted">No CIDR</div>';
+
+        ruleBox.innerHTML = rules.length
+            ? rules.map((item) => `
+                <div class="general-inline-chip">
+                    <span class="material-icons-round">rule</span>
+                    <span>${esc(item?.name || '-')} [${esc(item?.status_codes || '-')} ]</span>
+                    <button type="button" data-general-action="delete-site-cache-rule" data-rule-id="${Number(item?.id || 0)}" title="Delete">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+            `).join('')
+            : '<div class="text-muted">No rule</div>';
+
+        tokenBox.innerHTML = '<div class="text-muted">Loading...</div>';
+    }
+
+    async function loadSiteCacheTokens(profileId) {
+        const tokenBox = document.getElementById('settingsSiteCacheTokensRows');
+        if (!tokenBox || !profileId) return;
+        try {
+            const payload = await request(`${API_BASE}/site-cache/tokens?profile_id=${Number(profileId)}`);
+            const tokens = Array.isArray(payload?.items) ? payload.items : [];
+            tokenBox.innerHTML = tokens.length
+                ? tokens.map((item) => `
+                    <div class="general-inline-chip">
+                        <span class="material-icons-round">vpn_key</span>
+                        <span>${esc(item?.token_hint || '-')}</span>
+                        <button type="button" data-general-action="revoke-site-cache-token" data-token-id="${Number(item?.id || 0)}" title="Revoke">
+                            <span class="material-icons-round">close</span>
+                        </button>
+                    </div>
+                `).join('')
+                : '<div class="text-muted">No active token</div>';
+        } catch (err) {
+            tokenBox.innerHTML = `<div class="text-danger">${esc(err?.message || 'Failed to load tokens')}</div>`;
+        }
+    }
+
+    async function loadSiteCache(force = false) {
+        const profileCodeInput = document.getElementById('siteCacheProfileCodeInput');
+        if (!profileCodeInput) return;
+        if (STORE.siteCacheLoaded && !force) {
+            renderSiteCacheProfiles();
+            const profile = currentSiteCacheProfile();
+            renderSiteCacheProfileDetails(profile);
+            if (profile?.id) await loadSiteCacheTokens(profile.id);
+            return;
+        }
+
+        const payload = await request(`${API_BASE}/site-cache/profiles?include_inactive=true`);
+        STORE.siteCache.profiles = Array.isArray(payload?.items) ? payload.items : [];
+        STORE.siteCacheLoaded = true;
+        renderSiteCacheProfiles();
+        const profile = currentSiteCacheProfile();
+        renderSiteCacheProfileDetails(profile);
+        if (profile?.id) await loadSiteCacheTokens(profile.id);
+    }
+
+    function resetSiteCacheProfileForm() {
+        const ids = [
+            'siteCacheProfileCodeInput',
+            'siteCacheProfileNameInput',
+            'siteCacheProfileProjectInput',
+            'siteCacheProfileRootInput',
+        ];
+        ids.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const fallback = document.getElementById('siteCacheProfileFallbackInput');
+        if (fallback) fallback.value = 'local_first';
+        const active = document.getElementById('siteCacheProfileActiveInput');
+        if (active) active.checked = true;
+        const codeInput = document.getElementById('siteCacheProfileCodeInput');
+        if (codeInput) delete codeInput.dataset.editId;
+    }
+
+    async function saveSiteCacheProfile() {
+        const codeInput = document.getElementById('siteCacheProfileCodeInput');
+        const nameInput = document.getElementById('siteCacheProfileNameInput');
+        if (!codeInput || !nameInput) return;
+        const code = norm(codeInput.value).toUpperCase();
+        const name = norm(nameInput.value);
+        requireVal(code, 'Site code');
+        requireVal(name, 'Site name');
+
+        const editId = Number(codeInput.dataset.editId || 0);
+        const payload = {
+            id: editId > 0 ? editId : null,
+            code,
+            name,
+            project_code: norm(document.getElementById('siteCacheProfileProjectInput')?.value).toUpperCase() || null,
+            local_root_path: norm(document.getElementById('siteCacheProfileRootInput')?.value) || null,
+            fallback_mode: norm(document.getElementById('siteCacheProfileFallbackInput')?.value) || 'local_first',
+            is_active: Boolean(document.getElementById('siteCacheProfileActiveInput')?.checked),
+        };
+        await request(`${API_BASE}/site-cache/profiles/upsert`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        setSiteCacheTokenMessage('');
+        await loadSiteCache(true);
+        resetSiteCacheProfileForm();
+        tSuccess('Site cache profile saved.');
+    }
+
+    function openEditSiteCacheProfile(profileId) {
+        const item = (STORE.siteCache.profiles || []).find((row) => Number(row?.id || 0) === Number(profileId || 0));
+        if (!item) return;
+        const codeInput = document.getElementById('siteCacheProfileCodeInput');
+        if (!codeInput) return;
+        codeInput.value = item.code || '';
+        codeInput.dataset.editId = String(Number(item.id || 0));
+        document.getElementById('siteCacheProfileNameInput').value = item.name || '';
+        document.getElementById('siteCacheProfileProjectInput').value = item.project_code || '';
+        document.getElementById('siteCacheProfileRootInput').value = item.local_root_path || '';
+        document.getElementById('siteCacheProfileFallbackInput').value = item.fallback_mode || 'local_first';
+        document.getElementById('siteCacheProfileActiveInput').checked = Boolean(item.is_active);
+        STORE.siteCache.activeProfileId = Number(item.id || 0);
+        renderSiteCacheProfiles();
+        renderSiteCacheProfileDetails(item);
+        loadSiteCacheTokens(item.id);
+    }
+
+    async function disableSiteCacheProfile(profileId) {
+        if (!confirm('Disable this site cache profile?')) return;
+        await request(`${API_BASE}/site-cache/profiles/delete`, {
+            method: 'POST',
+            body: JSON.stringify({ id: Number(profileId || 0), hard_delete: false }),
+        });
+        await loadSiteCache(true);
+        tSuccess('Profile disabled.');
+    }
+
+    async function addSiteCacheCidr() {
+        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
+        if (!profileId) throw new Error('Select profile first.');
+        const cidr = norm(document.getElementById('siteCacheCidrInput')?.value);
+        requireVal(cidr, 'CIDR');
+        await request(`${API_BASE}/site-cache/cidrs/upsert`, {
+            method: 'POST',
+            body: JSON.stringify({ profile_id: profileId, cidr, is_active: true }),
+        });
+        const input = document.getElementById('siteCacheCidrInput');
+        if (input) input.value = '';
+        await loadSiteCache(true);
+        tSuccess('CIDR added.');
+    }
+
+    async function deleteSiteCacheCidr(cidrId) {
+        await request(`${API_BASE}/site-cache/cidrs/delete`, {
+            method: 'POST',
+            body: JSON.stringify({ id: Number(cidrId || 0) }),
+        });
+        await loadSiteCache(true);
+        tSuccess('CIDR deleted.');
+    }
+
+    async function addSiteCacheRule() {
+        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
+        if (!profileId) throw new Error('Select profile first.');
+        const name = norm(document.getElementById('siteCacheRuleNameInput')?.value);
+        requireVal(name, 'Rule name');
+        const payload = {
+            profile_id: profileId,
+            name,
+            status_codes: norm(document.getElementById('siteCacheRuleStatusInput')?.value) || 'IFA,IFC',
+            project_code: norm(document.getElementById('siteCacheRuleProjectInput')?.value).toUpperCase() || null,
+            discipline_code: norm(document.getElementById('siteCacheRuleDisciplineInput')?.value).toUpperCase() || null,
+            include_native: Boolean(document.getElementById('siteCacheRuleIncludeNativeInput')?.checked),
+            primary_only: Boolean(document.getElementById('siteCacheRulePrimaryOnlyInput')?.checked),
+            latest_revision_only: Boolean(document.getElementById('siteCacheRuleLatestOnlyInput')?.checked),
+            priority: Number(document.getElementById('siteCacheRulePriorityInput')?.value || 100),
+            is_active: true,
+        };
+        await request(`${API_BASE}/site-cache/rules/upsert`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        ['siteCacheRuleNameInput', 'siteCacheRuleStatusInput', 'siteCacheRuleProjectInput', 'siteCacheRuleDisciplineInput'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const priorityInput = document.getElementById('siteCacheRulePriorityInput');
+        if (priorityInput) priorityInput.value = '100';
+        await loadSiteCache(true);
+        tSuccess('Rule added.');
+    }
+
+    async function deleteSiteCacheRule(ruleId) {
+        await request(`${API_BASE}/site-cache/rules/delete`, {
+            method: 'POST',
+            body: JSON.stringify({ id: Number(ruleId || 0) }),
+        });
+        await loadSiteCache(true);
+        tSuccess('Rule deleted.');
+    }
+
+    async function mintSiteCacheToken() {
+        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
+        if (!profileId) throw new Error('Select profile first.');
+        const payload = await request(`${API_BASE}/site-cache/tokens/mint`, {
+            method: 'POST',
+            body: JSON.stringify({ profile_id: profileId }),
+        });
+        const token = String(payload?.token || '').trim();
+        if (token) {
+            setSiteCacheTokenMessage(`Token (show once): ${token}`, 'success');
+        }
+        await loadSiteCacheTokens(profileId);
+    }
+
+    async function revokeSiteCacheToken(tokenId) {
+        await request(`${API_BASE}/site-cache/tokens/revoke`, {
+            method: 'POST',
+            body: JSON.stringify({ token_id: Number(tokenId || 0) }),
+        });
+        await loadSiteCache(true);
+        setSiteCacheTokenMessage('');
+        tSuccess('Token revoked.');
+    }
+
+    async function rebuildSiteCachePins() {
+        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
+        if (!profileId) throw new Error('Select profile first.');
+        const payload = await request(`${API_BASE}/site-cache/rebuild-pins`, {
+            method: 'POST',
+            body: JSON.stringify({ profile_id: profileId, dry_run: false }),
+        });
+        const result = payload?.result || {};
+        const summary = `Rebuild done: selected=${Number(result.selected_count || 0)}, enabled=${Number(result.to_enable_count || 0)}, disabled=${Number(result.to_disable_count || 0)}`;
+        setSiteCacheTokenMessage(summary, 'info');
+        tSuccess(summary);
+    }
+
     function normalizeStoragePathForCompare(value) {
         return norm(value).replace(/[\\/]+$/g, '');
     }
@@ -441,7 +923,7 @@
 
         if (hasConflict) {
             if (showError) {
-                setStoragePathConflictError('Ù…Ø³ÛŒØ± MDR Ùˆ Ù…Ø³ÛŒØ± Ù…Ú©Ø§ØªØ¨Ø§Øª Ù†Ø¨Ø§ÛŒØ¯ ÛŒÚ©Ø³Ø§Ù† Ø¨Ø§Ø´Ù†Ø¯.');
+                setStoragePathConflictError('مسیر MDR و مسیر مکاتبات نباید یکسان باشند.');
             }
             return false;
         }
@@ -543,6 +1025,9 @@
         if (page === 'db') {
             await loadOverview();
             await loadStoragePaths(force);
+            await loadStoragePolicy(force);
+            await loadStorageIntegrations(force);
+            await loadSiteCache(force);
             await loadEntity('projects', force);
             refreshProjectCards();
             return;
@@ -584,6 +1069,54 @@
                     break;
                 case 'save-storage-paths':
                     window.saveStoragePaths();
+                    break;
+                case 'save-storage-policy':
+                    window.saveStoragePolicySettings();
+                    break;
+                case 'save-storage-integrations':
+                    window.saveStorageIntegrationsSettings();
+                    break;
+                case 'run-storage-google-drive-sync':
+                    window.runStorageGoogleDriveSync();
+                    break;
+                case 'run-storage-openproject-sync':
+                    window.runStorageOpenProjectSync();
+                    break;
+                case 'save-site-cache-profile':
+                    window.saveSiteCacheProfileSetting();
+                    break;
+                case 'reset-site-cache-profile':
+                    window.resetSiteCacheProfileSetting();
+                    break;
+                case 'open-edit-site-cache-profile':
+                    window.openEditSiteCacheProfileById(actionEl.dataset.profileId || '');
+                    break;
+                case 'delete-site-cache-profile':
+                    window.deleteSiteCacheProfileById(actionEl.dataset.profileId || '');
+                    break;
+                case 'refresh-site-cache':
+                    window.refreshSiteCacheSettings();
+                    break;
+                case 'save-site-cache-cidr':
+                    window.saveSiteCacheCidrSetting();
+                    break;
+                case 'delete-site-cache-cidr':
+                    window.deleteSiteCacheCidrSetting(actionEl.dataset.cidrId || '');
+                    break;
+                case 'save-site-cache-rule':
+                    window.saveSiteCacheRuleSetting();
+                    break;
+                case 'delete-site-cache-rule':
+                    window.deleteSiteCacheRuleSetting(actionEl.dataset.ruleId || '');
+                    break;
+                case 'mint-site-cache-token':
+                    window.mintSiteCacheTokenSetting();
+                    break;
+                case 'revoke-site-cache-token':
+                    window.revokeSiteCacheTokenSetting(actionEl.dataset.tokenId || '');
+                    break;
+                case 'rebuild-site-cache-pins':
+                    window.rebuildSiteCachePinsSetting();
                     break;
                 case 'save-project':
                     window.saveProjectSetting();
@@ -727,7 +1260,17 @@
             const actionEl = event && event.target && event.target.closest
                 ? event.target.closest('[data-general-action]')
                 : null;
-            if (!actionEl) return;
+            if (!actionEl) {
+                const target = event?.target;
+                if (target?.id === 'siteCacheProfileSelect') {
+                    const profileId = Number(target.value || 0);
+                    STORE.siteCache.activeProfileId = profileId;
+                    const profile = currentSiteCacheProfile();
+                    renderSiteCacheProfileDetails(profile);
+                    loadSiteCacheTokens(profileId);
+                }
+                return;
+            }
             const action = String(actionEl.dataset.generalAction || '').trim();
             if (action !== 'page-size-entity') return;
             window.updateSettingsPageSize(actionEl.dataset.entity || '', actionEl.value || 10);
@@ -752,7 +1295,7 @@
                 }
                 await window.switchGeneralSettingsDomain(STORE.activeDomain || 'all', null, force);
             } catch (err) {
-                tError(`Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ: ${err.message}`);
+                tError(`خطا در بارگذاری تنظیمات عمومی: ${err.message}`);
             }
         })();
 
@@ -763,7 +1306,7 @@
     }
 
     function requireVal(value, label) {
-        if (!norm(value)) throw new Error(`${label} Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª`);
+        if (!norm(value)) throw new Error(`${label} الزامی است`);
     }
 
     function extractPackageSequence(code, disciplineCode = '') {
@@ -892,14 +1435,14 @@
     };
 
     window.localRunSeed = async function localRunSeed() {
-        if (!confirm('Seed Ø§Ø¬Ø±Ø§ Ø´ÙˆØ¯ØŸ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾Ø§ÛŒÙ‡ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯.')) return;
+        if (!confirm('Seed اجرا شود؟ داده‌های پایه بروزرسانی می‌شوند.')) return;
         try {
             await request(`${API_BASE}/seed`, { method: 'POST' });
-            tSuccess('Seed Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§Ø¬Ø±Ø§ Ø´Ø¯.');
+            tSuccess('Seed با موفقیت اجرا شد.');
             STORE.initialized = false;
             await initGeneralSettings(true);
         } catch (err) {
-            tError(`Seed Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯: ${err.message}`);
+            tError(`Seed ناموفق بود: ${err.message}`);
         }
     };
 
@@ -931,10 +1474,46 @@
         }
     };
 
+    window.saveStoragePolicySettings = async function saveStoragePolicySettings() {
+        try {
+            await saveStoragePolicy();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.saveStorageIntegrationsSettings = async function saveStorageIntegrationsSettings() {
+        try {
+            await saveStorageIntegrations();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.runStorageGoogleDriveSync = async function runStorageGoogleDriveSync() {
+        try {
+            await runStorageSyncJob('google_drive');
+        } catch (err) {
+            const detail = String(err?.message || 'Google Drive sync failed.');
+            setStorageSyncResult(detail, 'error');
+            tError(detail);
+        }
+    };
+
+    window.runStorageOpenProjectSync = async function runStorageOpenProjectSync() {
+        try {
+            await runStorageSyncJob('openproject');
+        } catch (err) {
+            const detail = String(err?.message || 'OpenProject sync failed.');
+            setStorageSyncResult(detail, 'error');
+            tError(detail);
+        }
+    };
+
     window.saveProjectSetting = async function saveProjectSetting() {
         try {
             const code = norm(document.getElementById('projectCodeInput')?.value).toUpperCase();
-            requireVal(code, 'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡');
+            requireVal(code, 'کد پروژه');
             const payload = {
                 code,
                 project_name: norm(document.getElementById('projectNameInput')?.value),
@@ -942,7 +1521,7 @@
                 docnum_template: norm(document.getElementById('projectTemplateInput')?.value),
                 is_active: Boolean(document.getElementById('projectActiveInput')?.checked),
             };
-            await postAndReload('/projects/upsert', payload, ['projects'], 'Ù¾Ø±ÙˆÚ˜Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            await postAndReload('/projects/upsert', payload, ['projects'], 'پروژه ذخیره شد.');
             window.resetProjectForm();
         } catch (err) { tError(err.message); }
     };
@@ -963,8 +1542,8 @@
     };
     window.deleteProjectSetting = async function deleteProjectSetting(encodedCode) {
         const code = decoded(encodedCode);
-        if (!confirm(`Ù¾Ø±ÙˆÚ˜Ù‡ ${code} ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/projects/delete', { code, hard_delete: false }, ['projects'], 'Ù¾Ø±ÙˆÚ˜Ù‡ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.'); }
+        if (!confirm(`پروژه ${code} غیرفعال شود؟`)) return;
+        try { await postAndReload('/projects/delete', { code, hard_delete: false }, ['projects'], 'پروژه غیرفعال شد.'); }
         catch (err) { tError(err.message); }
     };
 
@@ -978,8 +1557,8 @@
                 sort_order: Number(document.getElementById('mdrSortInput')?.value || 0),
                 is_active: Boolean(document.getElementById('mdrActiveInput')?.checked),
             };
-            requireVal(payload.code, 'Ú©Ø¯ MDR');
-            await postAndReload('/mdr-categories/upsert', payload, ['mdr'], 'MDR Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            requireVal(payload.code, 'کد MDR');
+            await postAndReload('/mdr-categories/upsert', payload, ['mdr'], 'MDR ذخیره شد.');
             window.resetMdrForm();
         } catch (err) { tError(err.message); }
     };
@@ -999,8 +1578,8 @@
     };
     window.deleteMdrSetting = async function deleteMdrSetting(c) {
         const code = decoded(c);
-        if (!confirm(`MDR ${code} ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/mdr-categories/delete', { code, hard_delete: false }, ['mdr'], 'MDR ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.'); }
+        if (!confirm(`MDR ${code} غیرفعال شود؟`)) return;
+        try { await postAndReload('/mdr-categories/delete', { code, hard_delete: false }, ['mdr'], 'MDR غیرفعال شد.'); }
         catch (err) { tError(err.message); }
     };
 
@@ -1011,9 +1590,9 @@
                 name_e: norm(document.getElementById('phaseNameEInput')?.value),
                 name_p: norm(document.getElementById('phaseNamePInput')?.value),
             };
-            requireVal(payload.ph_code, 'Ú©Ø¯ ÙØ§Ø²');
-            requireVal(payload.name_e, 'Ù†Ø§Ù… ÙØ§Ø²');
-            await postAndReload('/phases/upsert', payload, ['phases'], 'ÙØ§Ø² Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            requireVal(payload.ph_code, 'کد فاز');
+            requireVal(payload.name_e, 'نام فاز');
+            await postAndReload('/phases/upsert', payload, ['phases'], 'فاز ذخیره شد.');
             window.resetPhaseForm();
         } catch (err) { tError(err.message); }
     };
@@ -1028,8 +1607,8 @@
     };
     window.deletePhaseSetting = async function deletePhaseSetting(c) {
         const ph_code = decoded(c);
-        if (!confirm(`ÙØ§Ø² ${ph_code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/phases/delete', { ph_code }, ['phases'], 'ÙØ§Ø² Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
+        if (!confirm(`فاز ${ph_code} حذف شود؟`)) return;
+        try { await postAndReload('/phases/delete', { ph_code }, ['phases'], 'فاز حذف شد.'); } catch (err) { tError(err.message); }
     };
 
     window.saveDisciplineSetting = async function saveDisciplineSetting() {
@@ -1039,9 +1618,9 @@
                 name_e: norm(document.getElementById('disciplineNameEInput')?.value),
                 name_p: norm(document.getElementById('disciplineNamePInput')?.value),
             };
-            requireVal(payload.code, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†');
-            requireVal(payload.name_e, 'Ù†Ø§Ù… Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†');
-            await postAndReload('/disciplines/upsert', payload, ['disciplines', 'packages'], 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            requireVal(payload.code, 'کد دیسیپلین');
+            requireVal(payload.name_e, 'نام دیسیپلین');
+            await postAndReload('/disciplines/upsert', payload, ['disciplines', 'packages'], 'دیسیپلین ذخیره شد.');
             window.resetDisciplineForm();
         } catch (err) { tError(err.message); }
     };
@@ -1056,8 +1635,8 @@
     };
     window.deleteDisciplineSetting = async function deleteDisciplineSetting(c) {
         const code = decoded(c);
-        if (!confirm(`Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† ${code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/disciplines/delete', { code }, ['disciplines', 'packages'], 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
+        if (!confirm(`دیسیپلین ${code} حذف شود؟`)) return;
+        try { await postAndReload('/disciplines/delete', { code }, ['disciplines', 'packages'], 'دیسیپلین حذف شد.'); } catch (err) { tError(err.message); }
     };
 
     window.savePackageSetting = async function savePackageSetting() {
@@ -1077,10 +1656,10 @@
                 name_e: norm(document.getElementById('packageNameEInput')?.value),
                 name_p: norm(document.getElementById('packageNamePInput')?.value),
             };
-            requireVal(payload.discipline_code, 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†');
-            requireVal(payload.package_code, 'Ú©Ø¯ Ù¾Ú©ÛŒØ¬ Ø®ÙˆØ¯Ú©Ø§Ø±');
-            requireVal(payload.name_e, 'Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ Ù¾Ú©ÛŒØ¬');
-            await postAndReload('/packages/upsert', payload, ['packages'], 'Ù¾Ú©ÛŒØ¬ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            requireVal(payload.discipline_code, 'دیسیپلین');
+            requireVal(payload.package_code, 'کد پکیج خودکار');
+            requireVal(payload.name_e, 'نام انگلیسی پکیج');
+            await postAndReload('/packages/upsert', payload, ['packages'], 'پکیج ذخیره شد.');
             window.resetPackageForm();
         } catch (err) { tError(err.message); }
     };
@@ -1103,8 +1682,8 @@
     };
     window.deletePackageSetting = async function deletePackageSetting(d, p) {
         const discipline_code = decoded(d); const package_code = decoded(p);
-        if (!confirm(`Ù¾Ú©ÛŒØ¬ ${package_code} Ø¯Ø± ${discipline_code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/packages/delete', { discipline_code, package_code }, ['packages'], 'Ù¾Ú©ÛŒØ¬ Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
+        if (!confirm(`پکیج ${package_code} در ${discipline_code} حذف شود؟`)) return;
+        try { await postAndReload('/packages/delete', { discipline_code, package_code }, ['packages'], 'پکیج حذف شد.'); } catch (err) { tError(err.message); }
     };
 
     window.saveBlockSetting = async function saveBlockSetting() {
@@ -1117,9 +1696,9 @@
                 sort_order: Number(document.getElementById('blockSortInput')?.value || 0),
                 is_active: Boolean(document.getElementById('blockActiveInput')?.checked),
             };
-            requireVal(payload.project_code, 'Ù¾Ø±ÙˆÚ˜Ù‡');
-            requireVal(payload.code, 'Ú©Ø¯ Ø¨Ù„ÙˆÚ©');
-            await postAndReload('/blocks/upsert', payload, ['blocks'], 'Ø¨Ù„ÙˆÚ© Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            requireVal(payload.project_code, 'پروژه');
+            requireVal(payload.code, 'کد بلوک');
+            await postAndReload('/blocks/upsert', payload, ['blocks'], 'بلوک ذخیره شد.');
             window.resetBlockForm();
         } catch (err) { tError(err.message); }
     };
@@ -1139,8 +1718,8 @@
     };
     window.deleteBlockSetting = async function deleteBlockSetting(p, c) {
         const project_code = decoded(p); const code = decoded(c);
-        if (!confirm(`Ø¨Ù„ÙˆÚ© ${code} Ø¯Ø± Ù¾Ø±ÙˆÚ˜Ù‡ ${project_code} ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/blocks/delete', { project_code, code, hard_delete: false }, ['blocks'], 'Ø¨Ù„ÙˆÚ© ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.'); } catch (err) { tError(err.message); }
+        if (!confirm(`بلوک ${code} در پروژه ${project_code} غیرفعال شود؟`)) return;
+        try { await postAndReload('/blocks/delete', { project_code, code, hard_delete: false }, ['blocks'], 'بلوک غیرفعال شد.'); } catch (err) { tError(err.message); }
     };
 
     window.saveLevelSetting = async function saveLevelSetting() {
@@ -1151,8 +1730,8 @@
                 name_p: norm(document.getElementById('levelNamePInput')?.value),
                 sort_order: Number(document.getElementById('levelSortInput')?.value || 0),
             };
-            requireVal(payload.code, 'Ú©Ø¯ Ø³Ø·Ø­');
-            await postAndReload('/levels/upsert', payload, ['levels'], 'Ø³Ø·Ø­ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            requireVal(payload.code, 'کد سطح');
+            await postAndReload('/levels/upsert', payload, ['levels'], 'سطح ذخیره شد.');
             window.resetLevelForm();
         } catch (err) { tError(err.message); }
     };
@@ -1169,8 +1748,8 @@
     };
     window.deleteLevelSetting = async function deleteLevelSetting(c) {
         const code = decoded(c);
-        if (!confirm(`Ø³Ø·Ø­ ${code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/levels/delete', { code }, ['levels'], 'Ø³Ø·Ø­ Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
+        if (!confirm(`سطح ${code} حذف شود؟`)) return;
+        try { await postAndReload('/levels/delete', { code }, ['levels'], 'سطح حذف شد.'); } catch (err) { tError(err.message); }
     };
 
     window.saveStatusSetting = async function saveStatusSetting() {
@@ -1181,9 +1760,9 @@
                 description: norm(document.getElementById('statusDescInput')?.value),
                 sort_order: Number(document.getElementById('statusSortInput')?.value || 0),
             };
-            requireVal(payload.code, 'Ú©Ø¯ ÙˆØ¶Ø¹ÛŒØª');
-            requireVal(payload.name, 'Ù†Ø§Ù… ÙˆØ¶Ø¹ÛŒØª');
-            await postAndReload('/statuses/upsert', payload, ['statuses'], 'ÙˆØ¶Ø¹ÛŒØª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+            requireVal(payload.code, 'کد وضعیت');
+            requireVal(payload.name, 'نام وضعیت');
+            await postAndReload('/statuses/upsert', payload, ['statuses'], 'وضعیت ذخیره شد.');
             window.resetStatusForm();
         } catch (err) { tError(err.message); }
     };
@@ -1200,8 +1779,8 @@
     };
     window.deleteStatusSetting = async function deleteStatusSetting(c) {
         const code = decoded(c);
-        if (!confirm(`ÙˆØ¶Ø¹ÛŒØª ${code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
-        try { await postAndReload('/statuses/delete', { code }, ['statuses'], 'ÙˆØ¶Ø¹ÛŒØª Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
+        if (!confirm(`وضعیت ${code} حذف شود؟`)) return;
+        try { await postAndReload('/statuses/delete', { code }, ['statuses'], 'وضعیت حذف شد.'); } catch (err) { tError(err.message); }
     };
 
     window.saveCorrespondenceIssuingSetting = async function saveCorrespondenceIssuingSetting() {

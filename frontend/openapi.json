@@ -1860,6 +1860,230 @@
         ]
       }
     },
+    "/api/v1/settings/correspondence-issuing": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "List Correspondence Issuing Settings",
+        "operationId": "list_correspondence_issuing_settings_api_v1_settings_correspondence_issuing_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/correspondence-issuing/upsert": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Upsert Correspondence Issuing Settings",
+        "operationId": "upsert_correspondence_issuing_settings_api_v1_settings_correspondence_issuing_upsert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrespondenceIssuingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/correspondence-issuing/delete": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Delete Correspondence Issuing Settings",
+        "operationId": "delete_correspondence_issuing_settings_api_v1_settings_correspondence_issuing_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrespondenceIssuingDeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/correspondence-categories": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "List Correspondence Categories Settings",
+        "operationId": "list_correspondence_categories_settings_api_v1_settings_correspondence_categories_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/correspondence-categories/upsert": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Upsert Correspondence Categories Settings",
+        "operationId": "upsert_correspondence_categories_settings_api_v1_settings_correspondence_categories_upsert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrespondenceCategoryIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/correspondence-categories/delete": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Delete Correspondence Categories Settings",
+        "operationId": "delete_correspondence_categories_settings_api_v1_settings_correspondence_categories_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrespondenceCategoryDeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/kv": {
       "get": {
         "tags": [
@@ -1984,6 +2208,138 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/StoragePathsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/storage-policy": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Storage Policy Settings",
+        "operationId": "get_storage_policy_settings_api_v1_settings_storage_policy_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Save Storage Policy Settings",
+        "operationId": "save_storage_policy_settings_api_v1_settings_storage_policy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoragePolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/storage-integrations": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Storage Integrations Settings",
+        "operationId": "get_storage_integrations_settings_api_v1_settings_storage_integrations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Save Storage Integrations Settings",
+        "operationId": "save_storage_integrations_settings_api_v1_settings_storage_integrations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageIntegrationsIn"
               }
             }
           },
@@ -2798,6 +3154,1099 @@
                 }
               ],
               "title": "Target Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/site-cache/profiles": {
+      "get": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "List Profiles",
+        "operationId": "list_profiles_api_v1_settings_site_cache_profiles_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Inactive"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/site-cache/profiles/upsert": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Upsert Profile",
+        "operationId": "upsert_profile_api_v1_settings_site_cache_profiles_upsert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheProfileIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/profiles/delete": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Delete Profile",
+        "operationId": "delete_profile_api_v1_settings_site_cache_profiles_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheProfileDeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/cidrs": {
+      "get": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "List Profile Cidrs",
+        "operationId": "list_profile_cidrs_api_v1_settings_site_cache_cidrs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Profile Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/site-cache/cidrs/upsert": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Upsert Profile Cidr",
+        "operationId": "upsert_profile_cidr_api_v1_settings_site_cache_cidrs_upsert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheCIDRIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/cidrs/delete": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Delete Profile Cidr",
+        "operationId": "delete_profile_cidr_api_v1_settings_site_cache_cidrs_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheCIDRDeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/rules": {
+      "get": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "List Pin Rules",
+        "operationId": "list_pin_rules_api_v1_settings_site_cache_rules_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Profile Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/site-cache/rules/upsert": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Upsert Pin Rule",
+        "operationId": "upsert_pin_rule_api_v1_settings_site_cache_rules_upsert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheRuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/rules/delete": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Delete Pin Rule",
+        "operationId": "delete_pin_rule_api_v1_settings_site_cache_rules_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheRuleDeleteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/tokens": {
+      "get": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "List Agent Tokens",
+        "operationId": "list_agent_tokens_api_v1_settings_site_cache_tokens_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Profile Id"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/site-cache/tokens/mint": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Mint Agent Token",
+        "operationId": "mint_agent_token_api_v1_settings_site_cache_tokens_mint_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheTokenMintIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/tokens/revoke": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Revoke Agent Token",
+        "operationId": "revoke_agent_token_api_v1_settings_site_cache_tokens_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheTokenRevokeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/site-cache/rebuild-pins": {
+      "post": {
+        "tags": [
+          "settings-site-cache"
+        ],
+        "summary": "Rebuild Site Pins",
+        "operationId": "rebuild_site_pins_api_v1_settings_site_cache_rebuild_pins_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteCacheRebuildPinsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/sync/google-drive/run": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Run Google Drive Jobs",
+        "operationId": "run_google_drive_jobs_api_v1_storage_sync_google_drive_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/sync/openproject/run": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Run Openproject Jobs",
+        "operationId": "run_openproject_jobs_api_v1_storage_sync_openproject_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/openproject/status": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Get Openproject Sync Status",
+        "operationId": "get_openproject_sync_status_api_v1_storage_openproject_status_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenProjectStatusIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/site-manifest": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Get Site Manifest",
+        "operationId": "get_site_manifest_api_v1_storage_site_manifest_get",
+        "parameters": [
+          {
+            "name": "site_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64,
+              "title": "Site Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 20000,
+              "minimum": 1,
+              "default": 5000,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/site-agent/download/{file_id}": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Site Agent Download File",
+        "operationId": "site_agent_download_file_api_v1_storage_site_agent_download__file_id__get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "File Id"
+            }
+          },
+          {
+            "name": "site_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64,
+              "title": "Site Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/site-agent/heartbeat": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Post Site Agent Heartbeat",
+        "operationId": "post_site_agent_heartbeat_api_v1_storage_site_agent_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteAgentHeartbeatIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/site-context": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Get Site Context",
+        "operationId": "get_site_context_api_v1_storage_site_context_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/local-cache/pin": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Pin Local Cache File",
+        "operationId": "pin_local_cache_file_api_v1_storage_local_cache_pin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCachePinIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/local-cache/unpin": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Unpin Local Cache File",
+        "operationId": "unpin_local_cache_file_api_v1_storage_local_cache_unpin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCacheUnpinIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/local-cache/manifest": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Get Local Cache Manifest",
+        "operationId": "get_local_cache_manifest_api_v1_storage_local_cache_manifest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "policy_scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Policy Scope"
+            }
+          },
+          {
+            "name": "only_pinned",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Only Pinned"
+            }
+          },
+          {
+            "name": "entity_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
             }
           }
         ],
@@ -3827,6 +5276,22 @@
               ],
               "title": "Date To"
             }
+          },
+          {
+            "name": "site_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site Code"
+            }
           }
         ],
         "responses": {
@@ -3903,6 +5368,51 @@
         ],
         "summary": "Download File",
         "operationId": "download_file_api_v1_archive_download__file_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/archive/files/{file_id}/integrity": {
+      "get": {
+        "tags": [
+          "Archive"
+        ],
+        "summary": "Get File Integrity",
+        "operationId": "get_file_integrity_api_v1_archive_files__file_id__integrity_get",
         "security": [
           {
             "HTTPBearer": []
@@ -6777,6 +8287,17 @@
             "title": "File Kind",
             "default": "pdf"
           },
+          "openproject_work_package_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openproject Work Package Id"
+          },
           "doc_number": {
             "anyOf": [
               {
@@ -6915,6 +8436,17 @@
             "type": "string",
             "title": "Status",
             "default": "IFA"
+          },
+          "openproject_work_package_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openproject Work Package Id"
           },
           "doc_number": {
             "anyOf": [
@@ -7153,6 +8685,17 @@
             "title": "File Kind",
             "default": "attachment"
           },
+          "openproject_work_package_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openproject Work Package Id"
+          },
           "action_id": {
             "anyOf": [
               {
@@ -7185,6 +8728,17 @@
             "type": "string",
             "title": "Status",
             "default": "IFA"
+          },
+          "openproject_work_package_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openproject Work Package Id"
           },
           "pdf_file": {
             "type": "string",
@@ -7225,6 +8779,17 @@
             "type": "string",
             "title": "File Kind",
             "default": "pdf"
+          },
+          "openproject_work_package_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openproject Work Package Id"
           },
           "file": {
             "type": "string",
@@ -7411,6 +8976,68 @@
         "type": "object",
         "title": "CorrespondenceActionUpdateIn"
       },
+      "CorrespondenceCategoryDeleteIn": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "hard_delete": {
+            "type": "boolean",
+            "title": "Hard Delete",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "CorrespondenceCategoryDeleteIn"
+      },
+      "CorrespondenceCategoryIn": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "name_e": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name E"
+          },
+          "name_p": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name P"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name_e"
+        ],
+        "title": "CorrespondenceCategoryIn"
+      },
       "CorrespondenceCreateIn": {
         "properties": {
           "project_code": {
@@ -7570,6 +9197,80 @@
           "subject"
         ],
         "title": "CorrespondenceCreateIn"
+      },
+      "CorrespondenceIssuingDeleteIn": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code"
+          },
+          "hard_delete": {
+            "type": "boolean",
+            "title": "Hard Delete",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "title": "CorrespondenceIssuingDeleteIn"
+      },
+      "CorrespondenceIssuingIn": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Code"
+          },
+          "name_e": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name E"
+          },
+          "name_p": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name P"
+          },
+          "project_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Code"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name_e"
+        ],
+        "title": "CorrespondenceIssuingIn"
       },
       "CorrespondenceUpdateIn": {
         "properties": {
@@ -8070,6 +9771,84 @@
         ],
         "title": "LevelIn"
       },
+      "LocalCachePinIn": {
+        "properties": {
+          "file_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "File Id"
+          },
+          "policy_scope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Scope"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type",
+            "default": "archive_file"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id"
+        ],
+        "title": "LocalCachePinIn"
+      },
+      "LocalCacheUnpinIn": {
+        "properties": {
+          "file_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "File Id"
+          },
+          "policy_scope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Scope"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type",
+            "default": "archive_file"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id"
+        ],
+        "title": "LocalCacheUnpinIn"
+      },
       "MdrCategoryDeleteIn": {
         "properties": {
           "code": {
@@ -8143,6 +9922,40 @@
           "name_e"
         ],
         "title": "MdrCategoryIn"
+      },
+      "OpenProjectStatusIn": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OpenProjectStatusItemIn"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "title": "OpenProjectStatusIn"
+      },
+      "OpenProjectStatusItemIn": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Entity Type",
+            "default": "archive_file"
+          },
+          "entity_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Entity Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id"
+        ],
+        "title": "OpenProjectStatusItemIn"
       },
       "OrganizationDeleteIn": {
         "properties": {
@@ -8618,6 +10431,438 @@
         ],
         "title": "Role"
       },
+      "SiteAgentHeartbeatIn": {
+        "properties": {
+          "site_code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Site Code"
+          },
+          "hostname": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostname"
+          },
+          "app_version": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Version"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          }
+        },
+        "type": "object",
+        "required": [
+          "site_code"
+        ],
+        "title": "SiteAgentHeartbeatIn"
+      },
+      "SiteCacheCIDRDeleteIn": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "SiteCacheCIDRDeleteIn"
+      },
+      "SiteCacheCIDRIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "profile_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Profile Id"
+          },
+          "cidr": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 3,
+            "title": "Cidr"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_id",
+          "cidr"
+        ],
+        "title": "SiteCacheCIDRIn"
+      },
+      "SiteCacheProfileDeleteIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "hard_delete": {
+            "type": "boolean",
+            "title": "Hard Delete",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "SiteCacheProfileDeleteIn"
+      },
+      "SiteCacheProfileIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 2,
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "project_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Code"
+          },
+          "local_root_path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Root Path"
+          },
+          "fallback_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Mode",
+            "default": "local_first"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "SiteCacheProfileIn"
+      },
+      "SiteCacheRebuildPinsIn": {
+        "properties": {
+          "profile_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Profile Id"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_id"
+        ],
+        "title": "SiteCacheRebuildPinsIn"
+      },
+      "SiteCacheRuleDeleteIn": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "SiteCacheRuleDeleteIn"
+      },
+      "SiteCacheRuleIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "profile_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Profile Id"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "project_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Code"
+          },
+          "discipline_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discipline Code"
+          },
+          "status_codes": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Codes",
+            "default": "IFA,IFC"
+          },
+          "include_native": {
+            "type": "boolean",
+            "title": "Include Native",
+            "default": false
+          },
+          "primary_only": {
+            "type": "boolean",
+            "title": "Primary Only",
+            "default": true
+          },
+          "latest_revision_only": {
+            "type": "boolean",
+            "title": "Latest Revision Only",
+            "default": true
+          },
+          "priority": {
+            "type": "integer",
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "default": 100
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_id",
+          "name"
+        ],
+        "title": "SiteCacheRuleIn"
+      },
+      "SiteCacheTokenMintIn": {
+        "properties": {
+          "profile_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Profile Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "profile_id"
+        ],
+        "title": "SiteCacheTokenMintIn"
+      },
+      "SiteCacheTokenRevokeIn": {
+        "properties": {
+          "token_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Token Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token_id"
+        ],
+        "title": "SiteCacheTokenRevokeIn"
+      },
+      "StorageIntegrationsIn": {
+        "properties": {
+          "google_drive": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Google Drive"
+          },
+          "openproject": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openproject"
+          },
+          "local_cache": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Cache"
+          }
+        },
+        "type": "object",
+        "title": "StorageIntegrationsIn"
+      },
       "StoragePathsIn": {
         "properties": {
           "mdr_storage_path": {
@@ -8639,6 +10884,97 @@
           "correspondence_storage_path"
         ],
         "title": "StoragePathsIn"
+      },
+      "StoragePolicyIn": {
+        "properties": {
+          "enforcement_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enforcement Mode"
+          },
+          "allowed_mimes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Mimes"
+          },
+          "allowed_mimes_by_kind": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Mimes By Kind"
+          },
+          "blocked_extensions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Extensions"
+          },
+          "dangerous_mimes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dangerous Mimes"
+          },
+          "max_size_mb": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Size Mb"
+          }
+        },
+        "type": "object",
+        "title": "StoragePolicyIn"
       },
       "Token": {
         "properties": {
