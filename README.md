@@ -59,6 +59,23 @@ docker compose up -d --build
 
 The web service runs `alembic upgrade head` before starting Uvicorn.
 
+## Windows Server Production (Docker + Caddy)
+
+For Windows Server deployment with WSL2, Docker Engine, and Caddy TLS proxy, use:
+
+- `docker-compose.windows.prod.yml`
+- `docker/Caddyfile`
+- `.env.production.example`
+- `docs/windows_server_docker_caddy_runbook.md`
+
+Start stack in production mode:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --build
+```
+
+The override binds app/database ports to localhost and exposes only `80/443` via Caddy.
+
 ## TypeScript Pipeline
 
 Frontend source tree is under `frontend/src`.

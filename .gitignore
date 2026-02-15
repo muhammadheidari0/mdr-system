@@ -1,48 +1,60 @@
-# --- Python & System Files ---
+﻿# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
 venv/
 env/
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 
-# --- Security (بسیار مهم) ---
-# فایل .env حاوی تنظیمات محرمانه است و نباید در گیت باشد
+# --- Secrets / env ---
 .env
 .env.local
+.env.*
+!.env.example
+!.env.production.example
 
-# --- Database ---
-# دیتابیس‌های SQLite و فایل‌های ژورنال نباید آپلود شوند
+# --- Databases / backups ---
 *.db
-*.sqlite3
 *.sqlite
+*.sqlite3
 *.db-journal
-
-# پوشه دیتابیس: فقط فایل‌های SQL (ساختار) آپلود شوند، نه خود دیتابیس‌های سنگین
-mdr_app/database/*.db
-mdr_app/database/backups/
 database/backups/
+database/*.db
+database/*.sqlite*
+*.dump
 
-# --- User Files & Media (فایل‌های سنگین) ---
-# پوشه files شما حاوی PDFها و نقشه‌های فنی است (T202 - Almas Tower...)
-# این‌ها حجم گیت را منفجر می‌کنند و نباید آپلود شوند.
-mdr_app/files/
+# --- Runtime files / user uploads ---
 files/
 uploads/
 archive_files/
-
-# --- Logs & Temp Files ---
-*.log
-tree.txt
-tree01.txt
+archive_storage/
+data_store/
+logs/
 celerybeat-schedule
-help.txt
 
-# --- Frontend ---
+# --- Frontend / test artifacts ---
 node_modules/
 test-results/
+playwright-report/
 reports/
+
+# --- Local helper artifacts ---
+tree.txt
+tree01.txt
+help.txt
+*.log
+*.tmp
+*.temp
+*.tar.gz

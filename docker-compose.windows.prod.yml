@@ -1,0 +1,30 @@
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  web:
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DEBUG: ${DEBUG:-false}
+      API_PREFIX: ${API_PREFIX:-/api/v1}
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: mdr_caddy
+    restart: unless-stopped
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
