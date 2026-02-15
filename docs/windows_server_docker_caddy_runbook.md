@@ -1,6 +1,7 @@
 # Windows Server + Docker + Caddy Runbook (Production)
 
 This runbook deploys MDR App on Windows Server using Linux containers under WSL2.
+For direct Ubuntu Server deployments (no WSL), use `docs/ubuntu_server_docker_caddy_runbook.md`.
 
 ## Target Architecture
 
@@ -142,6 +143,8 @@ Set this in `.env` (or keep default):
 - `MDR_DATA_ROOT=/opt/mdr_data`
 - `POSTGRES_PORT_BIND=127.0.0.1:5432:5432`
 - `WEB_PORT_BIND=127.0.0.1:8000:8000`
+- `DATABASE_URL=postgresql+psycopg://mdr:<password>@postgres:5432/mdr_app`
+- `COMPOSE_DATABASE_URL=postgresql+psycopg://mdr:<password>@postgres:5432/mdr_app`
 
 Update domain in Caddy config:
 

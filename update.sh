@@ -4,7 +4,12 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PROJECT_DIR"
 
-COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.windows.prod.yml)
+COMPOSE_BASE_FILE="${COMPOSE_BASE_FILE:-docker-compose.yml}"
+COMPOSE_OVERRIDE_FILE="${COMPOSE_OVERRIDE_FILE:-docker-compose.windows.prod.yml}"
+COMPOSE_FILES=(-f "$COMPOSE_BASE_FILE")
+if [[ -n "$COMPOSE_OVERRIDE_FILE" ]]; then
+  COMPOSE_FILES+=(-f "$COMPOSE_OVERRIDE_FILE")
+fi
 DB_CONTAINER="${DB_CONTAINER:-mdr_postgres}"
 POSTGRES_USER="${POSTGRES_USER:-mdr}"
 POSTGRES_DB="${POSTGRES_DB:-mdr_app}"
@@ -24,13 +29,39 @@ Behavior:
   1) Fetch tags from origin
   2) Backup PostgreSQL (if DB container is running)
   3) Checkout requested tag (detached)
-  4) Rebuild and start stack with Docker Compose
-  5) Run local health check
+  4) Validate DATABASE_URL/COMPOSE_DATABASE_URL consistency
+  5) Rebuild and start stack with Docker Compose
+  6) Run local health check
 EOF
 }
 
 run_compose() {
   docker compose "${COMPOSE_FILES[@]}" "$@"
+}
+
+validate_env_contract() {
+  if [[ ! -f .env ]]; then
+    echo "[warn] .env not found. Compose may rely on exported environment variables."
+    return 0
+  fi
+
+  local database_url compose_database_url
+  database_url="$(grep -E '^DATABASE_URL=' .env | head -n1 | cut -d= -f2- || true)"
+  compose_database_url="$(grep -E '^COMPOSE_DATABASE_URL=' .env | head -n1 | cut -d= -f2- || true)"
+
+  if [[ -z "$compose_database_url" ]]; then
+    echo "[warn] COMPOSE_DATABASE_URL is empty or missing in .env."
+    echo "[warn] Set COMPOSE_DATABASE_URL equal to DATABASE_URL to avoid DSN mismatch."
+    return 0
+  fi
+
+  if [[ -n "$database_url" && "$database_url" != "$compose_database_url" ]]; then
+    echo "[error] DATABASE_URL and COMPOSE_DATABASE_URL are different."
+    echo "[error] DATABASE_URL        = $database_url"
+    echo "[error] COMPOSE_DATABASE_URL= $compose_database_url"
+    echo "[error] Fix .env and rerun."
+    exit 3
+  fi
 }
 
 if [[ "${1:-}" == "" ]] || [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
@@ -64,6 +95,9 @@ fi
 
 echo "[update] checking out tag $TAG (detached HEAD)..."
 git checkout --detach "$TAG"
+
+echo "[update] validating env contract..."
+validate_env_contract
 
 echo "[update] rebuilding and starting stack..."
 run_compose up -d --build

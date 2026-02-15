@@ -59,15 +59,20 @@ docker compose up -d --build
 
 The web service runs `alembic upgrade head` before starting Uvicorn.
 
-## Windows Server Production (Docker + Caddy)
+## Ubuntu Server Production (Docker + Caddy, Recommended)
 
-For Windows Server deployment with WSL2, Docker Engine, and Caddy TLS proxy, use:
+For direct Ubuntu Server deployment with Docker Engine and Caddy TLS proxy, use:
 
-- `docker-compose.windows.prod.yml`
+- `docker-compose.windows.prod.yml` (production hardening override; name is historical)
 - `docker/Caddyfile`
 - `.env.production.example`
-- `docs/windows_server_docker_caddy_runbook.md`
+- `docs/ubuntu_server_docker_caddy_runbook.md`
 - `docs/storage_upgrade_runbook.md`
+
+Current stable release anchor:
+
+- Tag: `v3.2.0`
+- Commit: `d106bddddc3b34bd1d46fc8ed7ad20d641c1ee5b`
 
 Production deploy model:
 
@@ -83,8 +88,22 @@ docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --
 
 The override binds app/database ports to localhost and exposes only `80/443` via Caddy.
 Frontend assets are built inside Docker (multi-stage Dockerfile), so deploy does not require committing `static/dist`.
-Production override also maps persistent data to `${MDR_DATA_ROOT:-/opt/mdr_data}` for DB/files/logs durability.
+Production override maps persistent data to `${MDR_DATA_ROOT:-/opt/mdr_data}` for DB/files/logs durability.
 Default compose port bindings are localhost-only (`WEB_PORT_BIND` / `POSTGRES_PORT_BIND`) unless explicitly changed.
+
+Important env contract for production:
+
+- set both `DATABASE_URL` and `COMPOSE_DATABASE_URL` to the same PostgreSQL DSN
+
+## Windows Server Production (Docker + Caddy)
+
+For Windows Server deployment with WSL2, Docker Engine, and Caddy TLS proxy, use:
+
+- `docker-compose.windows.prod.yml`
+- `docker/Caddyfile`
+- `.env.production.example`
+- `docs/windows_server_docker_caddy_runbook.md`
+- `docs/storage_upgrade_runbook.md`
 
 ## TypeScript Pipeline
 
