@@ -1,118 +1,132 @@
-﻿# Manual E2E - Storage Frontend (Archive + Correspondence + Settings)
+# Manual E2E - Storage Management UX V1 (Workflow Focus)
 
 ## Scope
-- Archive
-- Correspondence (attachments)
-- Settings > General (Storage Policy, Storage Integrations)
+- Settings > Storage Management (3-step workflow):
+  - Step 1: Paths
+  - Step 2: Policy
+  - Step 3: Integrations + Sync
+- Quick regression check for other settings tabs.
+
+## Out of Scope (V1)
+- Full Site Cache admin forms and operations.
+- Backend contract changes (all checks use existing APIs).
 
 ## Preconditions
 - Admin user is available.
 - API `/api/v1/health` is OK.
-- At least one active project/document exists for archive upload.
-- Browser cache is clear for current session.
+- Browser cache is clear.
+- User has access to `Settings`.
 
-## 1) Archive - Valid Upload + Status Badges
-1. Open `Archive` page.
-2. Upload a valid file (PDF or allowed type).
-3. Confirm upload success message.
-4. In file list row, confirm badges are visible:
-   - `validation_status`
-   - `mirror_status`
-   - `openproject_sync_status`
-5. Click `Integrity` action and verify details show:
-   - `sha256`
-   - `detected_mime`
-   - validation and sync statuses.
+## 1) Open Storage Management
+1. Open `Settings`.
+2. Open `Storage Management` (top nav card).
+3. Confirm Step 1 is active by default.
 
 Expected:
-- No generic `Error` message.
-- Friendly message is shown with exact detail if backend returns detail.
+- Storage page opens on `Paths`.
+- Stepper is visible with 3 steps.
 
-## 2) Archive - Rejected Upload (Magic/MIME mismatch)
-1. Try uploading a file with allowed extension but invalid binary content.
-2. Observe error toast/message.
-
-Expected:
-- Friendly Persian error text is shown.
-- Backend detail is appended (`جزئیات: ...`).
-- Request returns validation error (for example `422`).
-
-## 3) Archive - Pin / Unpin
-1. In archive list, click `Pin` for one file.
-2. Refresh list.
-3. Verify file stays pinned.
-4. Click `Unpin`.
-5. Refresh list again.
+## 2) Stepper Navigation + Unsaved Guard
+1. In Step 1, edit one path field (do not save).
+2. Click Step 2 button, or `Next Step`.
 
 Expected:
-- Button state changes immediately.
-- Pinned state persists via manifest.
+- Unsaved confirmation dialog appears.
+- Choosing `Cancel` keeps user in current step.
+- Choosing `OK` moves to next step.
 
-## 4) Correspondence - Attachment Upload + Status Badges
-1. Open `Correspondence` and create or edit a correspondence record.
-2. Upload an attachment.
-3. In attachments table, verify columns:
-   - Security / Sync badges
-   - Pin action
-4. Confirm badges display values for:
-   - validation
-   - drive mirror
-   - openproject sync.
+## 3) Step 1 - Paths
+1. Set `MDR path` and `Correspondence path` to different values.
+2. Confirm normalized preview updates live under each input.
+3. Set both paths equal (same value).
 
 Expected:
-- Upload succeeds without generic error.
-- If upload fails, friendly + exact detail is shown.
+- Inline red conflict error appears immediately.
+- Both fields show error style.
 
-## 5) Correspondence - Attachment Pin / Unpin
-1. Click pin for one attachment.
-2. Refresh or reopen workflow modal.
-3. Verify pinned state remains.
-4. Unpin and verify state updates.
+4. Set different values again.
+5. Click `Save Paths`.
 
 Expected:
-- Pin state uses local-cache manifest for `correspondence_attachment`.
+- Save succeeds without full page reload.
+- Success note appears in same step.
+- `Last saved` timestamp is updated.
 
-## 6) Settings - Storage Policy
-1. Open `Settings > General > DB`.
-2. In `Storage Policy` card, change:
-   - enforcement mode
-   - blocked extensions
-   - allowed mimes
-   - max size json.
-3. Save.
-4. Refresh page.
+## 4) Step 2 - Policy Presets + Numeric Sizes
+1. Go to Step 2.
+2. Click preset `Warning`, then `Standard`, then `Strict`.
 
 Expected:
-- Saved values reload correctly.
-- No regression in other settings tabs.
+- Mode, blocked extensions, allowed MIME and size fields update each time.
 
-## 7) Settings - Storage Integrations + Run Sync
-1. In `Storage Integrations` card, toggle integration flags.
-2. Save integrations.
-3. Click `Run Google Drive Sync`.
-4. Click `Run OpenProject Sync`.
-
-Expected:
-- Summary appears with `processed/success/failed/dead`.
-- Success and failure states are visually distinct.
-
-## 8) Non-Regression - Correspondence Settings Tabs
-1. Open `Settings > General > corr_issuing`.
-2. Add/Edit/Disable one row.
-3. Open `Settings > General > corr_categories`.
-4. Add/Edit/Disable one row.
+3. Edit numeric size fields:
+  - PDF (MB)
+  - Native (MB)
+  - Attachment (MB)
+4. Save policy.
+5. Refresh page and return to Storage Management Step 2.
 
 Expected:
-- Existing behavior remains unchanged.
-- Changes reflect in correspondence form dropdowns.
+- Saved values are reloaded correctly.
+- Max size values persist as numbers (no raw JSON input in UI).
 
-## 9) Smoke Recheck
+## 5) Step 3 - Integrations + Sync
+1. Go to Step 3.
+2. Toggle `Google Drive` OFF.
+
+Expected:
+- Google Drive dependent input is disabled.
+- `Run Google Drive Sync` button is disabled.
+
+3. Toggle `OpenProject` OFF.
+
+Expected:
+- OpenProject default WP input is disabled.
+- `Run OpenProject Sync` button is disabled.
+
+4. Re-enable providers and click `Save Integrations`.
+
+Expected:
+- Save success message is shown.
+
+5. Click `Run Google Drive Sync`.
+6. Click `Run OpenProject Sync`.
+
+Expected:
+- Result panel first shows in-progress text.
+- Then final state is visible as success or error.
+- Error case should show friendly text plus short technical detail.
+
+## 6) Action Bar Behavior
+1. In each step, verify bottom sticky action bar is visible:
+  - `Previous Step`
+  - `Next Step`
+  - `Save Current Step`
+2. Verify:
+  - In Step 1, `Previous` is disabled.
+  - In Step 3, `Next` is disabled.
+
+Expected:
+- Buttons state matches current step.
+- Save action stores the current step only.
+
+## 7) Regression - General Settings Tabs
+1. Open `General > DB Sync`.
+2. Open `General > Projects`.
+3. Open `Correspondence > Issuing`.
+4. Open `Correspondence > Categories`.
+5. Open `MDR > Disciplines/Packages`.
+
+Expected:
+- Tabs load without JS errors.
+- Existing CRUD behavior is unchanged.
+
+## 8) Final Smoke
 1. Login
-2. Dashboard
-3. Archive upload
-4. Correspondence attachment upload
-5. Settings save + run sync
+2. Open Settings
+3. Complete one full pass: Paths -> Policy -> Integrations
+4. Save each step
 
 Expected:
-- All flows complete successfully.
-- No generic error dialogs.
+- No generic `Error` dialogs.
+- No broken tab navigation.

@@ -11,8 +11,16 @@
         storageIntegrationsLoaded: false,
         siteCacheLoaded: false,
         actionsBound: false,
-        activePage: 'db',
-        activeDomain: 'all',
+        activePage: 'db_sync',
+        activeDomain: 'common',
+        storageWizard: {
+            activeStep: 'paths',
+            dirty: {
+                paths: false,
+                policy: false,
+                integrations: false,
+            },
+        },
         data: {
             projects: [],
             mdr: [],
@@ -47,6 +55,37 @@
         statuses: { url: '/statuses', tbodyId: 'settingsStatusesRows', pagerId: 'statusesPager', colspan: 5 },
         corr_issuing: { url: '/correspondence-issuing', tbodyId: 'settingsCorrIssuingRows', pagerId: 'corrIssuingPager', colspan: 5 },
         corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
+    };
+
+    const STORAGE_WIZARD_STEPS = ['paths', 'policy', 'integrations'];
+    const STORAGE_POLICY_DEFAULT_ALLOWED_MIMES = [
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/zip',
+    ];
+    const STORAGE_POLICY_DEFAULT_BLOCKED = ['exe', 'bat', 'cmd', 'ps1', 'js', 'vbs', 'sh'];
+    const STORAGE_POLICY_PRESETS = {
+        warning: {
+            enforcement_mode: 'warning',
+            blocked_extensions: STORAGE_POLICY_DEFAULT_BLOCKED,
+            allowed_mimes: STORAGE_POLICY_DEFAULT_ALLOWED_MIMES,
+            max_size_mb: { pdf: 100, native: 250, attachment: 100 },
+        },
+        standard: {
+            enforcement_mode: 'enforce',
+            blocked_extensions: STORAGE_POLICY_DEFAULT_BLOCKED,
+            allowed_mimes: STORAGE_POLICY_DEFAULT_ALLOWED_MIMES,
+            max_size_mb: { pdf: 100, native: 250, attachment: 100 },
+        },
+        strict: {
+            enforcement_mode: 'enforce',
+            blocked_extensions: STORAGE_POLICY_DEFAULT_BLOCKED.concat(['zip']),
+            allowed_mimes: ['application/pdf', 'image/png', 'image/jpeg'],
+            max_size_mb: { pdf: 50, native: 150, attachment: 50 },
+        },
     };
 
     function tSuccess(msg) { if (window.UI?.success) window.UI.success(msg); else alert(msg); }
@@ -391,6 +430,191 @@
         `).join('');
     }
 
+    function formatFaDateTime(now = new Date()) {
+        try {
+            return now.toLocaleString('fa-IR');
+        } catch (err) {
+            return now.toLocaleString();
+        }
+    }
+
+    function markStorageStepDirty(step) {
+        if (!STORAGE_WIZARD_STEPS.includes(step)) return;
+        STORE.storageWizard.dirty[step] = true;
+        updateStorageActionBarState();
+    }
+
+    function clearStorageStepDirty(step) {
+        if (!STORAGE_WIZARD_STEPS.includes(step)) return;
+        STORE.storageWizard.dirty[step] = false;
+        updateStorageActionBarState();
+    }
+
+    function updateStoragePathPreview() {
+        const mdrInput = document.getElementById('mdrStoragePathInput');
+        const corrInput = document.getElementById('correspondenceStoragePathInput');
+        const mdrPreview = document.getElementById('storagePathMdrPreview');
+        const corrPreview = document.getElementById('storagePathCorrespondencePreview');
+        if (mdrPreview && mdrInput) {
+            mdrPreview.textContent = normalizeStoragePathForCompare(mdrInput.value) || '-';
+        }
+        if (corrPreview && corrInput) {
+            corrPreview.textContent = normalizeStoragePathForCompare(corrInput.value) || '-';
+        }
+    }
+
+    function showStorageStepSaved(step, message) {
+        if (step !== 'paths') return;
+        const note = document.getElementById('storagePathsSavedNote');
+        const ts = document.getElementById('storagePathsLastSavedAt');
+        if (note) {
+            note.textContent = message;
+            note.style.display = 'block';
+        }
+        if (ts) {
+            ts.textContent = formatFaDateTime();
+        }
+    }
+
+    function hideStorageStepSaved(step) {
+        if (step !== 'paths') return;
+        const note = document.getElementById('storagePathsSavedNote');
+        if (note) {
+            note.textContent = '';
+            note.style.display = 'none';
+        }
+    }
+
+    function updateStorageActionBarState() {
+        const step = STORE.storageWizard.activeStep || 'paths';
+        const idx = STORAGE_WIZARD_STEPS.indexOf(step);
+        const prevBtn = document.querySelector('[data-general-action="storage-step-prev"]');
+        const nextBtn = document.querySelector('[data-general-action="storage-step-next"]');
+        const saveBtn = document.querySelector('[data-general-action="storage-save-current"]');
+        if (prevBtn) prevBtn.disabled = idx <= 0;
+        if (nextBtn) nextBtn.disabled = idx < 0 || idx >= STORAGE_WIZARD_STEPS.length - 1;
+        if (saveBtn) {
+            const dirty = Boolean(STORE.storageWizard.dirty[step]);
+            saveBtn.textContent = dirty ? 'ذخیره مرحله جاری *' : 'ذخیره مرحله جاری';
+        }
+    }
+
+    function setStorageWizardStep(step, opts = {}) {
+        const targetStep = STORAGE_WIZARD_STEPS.includes(step) ? step : 'paths';
+        const force = Boolean(opts.force);
+        const currentStep = STORE.storageWizard.activeStep || 'paths';
+        if (!force && currentStep !== targetStep && STORE.storageWizard.dirty[currentStep]) {
+            const ok = confirm('تغییرات این مرحله ذخیره نشده است. آیا مایل به تغییر مرحله هستید؟');
+            if (!ok) return false;
+        }
+        STORE.storageWizard.activeStep = targetStep;
+
+        document.querySelectorAll('[data-storage-step-panel]').forEach((panel) => {
+            const isActive = String(panel?.dataset?.storageStepPanel || '') === targetStep;
+            panel.classList.toggle('active', isActive);
+        });
+
+        document.querySelectorAll('.storage-step-btn[data-storage-step]').forEach((btn) => {
+            const isActive = String(btn?.dataset?.storageStep || '') === targetStep;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+
+        updateStorageActionBarState();
+        return true;
+    }
+
+    function moveStorageWizardStep(direction) {
+        const currentStep = STORE.storageWizard.activeStep || 'paths';
+        const idx = STORAGE_WIZARD_STEPS.indexOf(currentStep);
+        if (idx < 0) return;
+        const nextIndex = Math.max(0, Math.min(STORAGE_WIZARD_STEPS.length - 1, idx + Number(direction || 0)));
+        setStorageWizardStep(STORAGE_WIZARD_STEPS[nextIndex]);
+    }
+
+    async function saveCurrentStorageWizardStep() {
+        const step = STORE.storageWizard.activeStep || 'paths';
+        if (step === 'paths') {
+            await window.saveStoragePaths();
+            return;
+        }
+        if (step === 'policy') {
+            await window.saveStoragePolicySettings();
+            return;
+        }
+        if (step === 'integrations') {
+            await window.saveStorageIntegrationsSettings();
+            return;
+        }
+    }
+
+    function updateStorageIntegrationsFieldState() {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
+        const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        const openprojectWrap = document.getElementById('storageOpenProjectDefaultWpWrap');
+        const gdriveWrap = document.getElementById('storageGoogleDriveDriveIdWrap');
+        const openprojectSyncBtn = document.getElementById('storageOpenProjectSyncRunBtn');
+        const gdriveSyncBtn = document.getElementById('storageGoogleDriveSyncRunBtn');
+
+        const gdriveOn = Boolean(gdriveEnabled?.checked);
+        const openprojectOn = Boolean(openprojectEnabled?.checked);
+
+        if (gdriveDriveId) gdriveDriveId.disabled = !gdriveOn;
+        if (openprojectWp) openprojectWp.disabled = !openprojectOn;
+        if (gdriveWrap) gdriveWrap.classList.toggle('is-disabled', !gdriveOn);
+        if (openprojectWrap) openprojectWrap.classList.toggle('is-disabled', !openprojectOn);
+        if (gdriveSyncBtn) gdriveSyncBtn.disabled = !gdriveOn;
+        if (openprojectSyncBtn) openprojectSyncBtn.disabled = !openprojectOn;
+    }
+
+    function bindStorageWorkflowInputs() {
+        const root = document.getElementById('storageWorkflowRoot');
+        if (!root || root.dataset.storageWorkflowBound === '1') return;
+
+        root.addEventListener('input', (event) => {
+            const target = event?.target;
+            if (!target) return;
+            if (target.closest('#storage-step-paths')) {
+                markStorageStepDirty('paths');
+                hideStorageStepSaved('paths');
+                updateStoragePathPreview();
+            } else if (target.closest('#storage-step-policy')) {
+                markStorageStepDirty('policy');
+            } else if (target.closest('#storage-step-integrations')) {
+                markStorageStepDirty('integrations');
+            }
+        });
+
+        root.addEventListener('change', (event) => {
+            const target = event?.target;
+            if (!target) return;
+            if (target.closest('#storage-step-integrations')) {
+                markStorageStepDirty('integrations');
+                updateStorageIntegrationsFieldState();
+            }
+        });
+
+        root.dataset.storageWorkflowBound = '1';
+    }
+
+    function setStoragePolicyPresetActive(name = '') {
+        const key = String(name || '').trim().toLowerCase();
+        document.querySelectorAll('.storage-preset-btn[data-storage-preset]').forEach((btn) => {
+            const btnKey = String(btn?.dataset?.storagePreset || '').trim().toLowerCase();
+            btn.classList.toggle('active', key && key === btnKey);
+        });
+    }
+
+    function applyStoragePolicyPreset(name) {
+        const key = String(name || '').trim().toLowerCase();
+        const preset = STORAGE_POLICY_PRESETS[key] || STORAGE_POLICY_PRESETS.standard;
+        applyStoragePolicyToForm(preset);
+        setStoragePolicyPresetActive(key);
+        markStorageStepDirty('policy');
+    }
+
     async function loadStoragePaths(force = false) {
         const mdrInput = document.getElementById('mdrStoragePathInput');
         const corrInput = document.getElementById('correspondenceStoragePathInput');
@@ -407,7 +631,11 @@
         if (!corrLocked) {
             corrInput.value = norm(payload?.correspondence_storage_path);
         }
+        updateStoragePathPreview();
         validateStoragePathConflict(false);
+        if (!mdrLocked && !corrLocked) {
+            clearStorageStepDirty('paths');
+        }
         STORE.storagePathsLoaded = true;
     }
 
@@ -418,18 +646,26 @@
             .filter(Boolean);
     }
 
-    function safeParseJsonObject(value, fieldLabel) {
-        const raw = String(value || '').trim();
-        if (!raw) return {};
-        try {
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-                throw new Error(`${fieldLabel} must be a JSON object.`);
-            }
-            return parsed;
-        } catch (err) {
-            throw new Error(`${fieldLabel} format is invalid. Expected JSON object.`);
+    function parsePositiveNumber(value, label, fallback = null) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return fallback;
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n <= 0) {
+            throw new Error(`${label} باید عدد مثبت باشد.`);
         }
+        return Math.round(n);
+    }
+
+    function toStorageMaxSizeMap(policy = {}) {
+        const maxSize = policy?.max_size_mb && typeof policy.max_size_mb === 'object' ? policy.max_size_mb : {};
+        const pdf = Number(maxSize.pdf ?? maxSize.PDF ?? 0);
+        const native = Number(maxSize.native ?? maxSize.NATIVE ?? 0);
+        const attachment = Number(maxSize.attachment ?? maxSize.ATTACHMENT ?? 0);
+        return {
+            pdf: Number.isFinite(pdf) && pdf > 0 ? Math.round(pdf) : '',
+            native: Number.isFinite(native) && native > 0 ? Math.round(native) : '',
+            attachment: Number.isFinite(attachment) && attachment > 0 ? Math.round(attachment) : '',
+        };
     }
 
     function setStorageSyncResult(message = '', level = 'info') {
@@ -453,11 +689,16 @@
         const modeInput = document.getElementById('storagePolicyModeInput');
         const blockedInput = document.getElementById('storageBlockedExtensionsInput');
         const allowedInput = document.getElementById('storageAllowedMimesInput');
-        const maxSizeInput = document.getElementById('storageMaxSizeInput');
+        const pdfInput = document.getElementById('storageMaxSizePdfInput');
+        const nativeInput = document.getElementById('storageMaxSizeNativeInput');
+        const attachmentInput = document.getElementById('storageMaxSizeAttachmentInput');
+        const maxSize = toStorageMaxSizeMap(policy);
         if (modeInput) modeInput.value = String(policy?.enforcement_mode || 'warning');
         if (blockedInput) blockedInput.value = Array.isArray(policy?.blocked_extensions) ? policy.blocked_extensions.join(',') : '';
         if (allowedInput) allowedInput.value = Array.isArray(policy?.allowed_mimes) ? policy.allowed_mimes.join(',') : '';
-        if (maxSizeInput) maxSizeInput.value = JSON.stringify(policy?.max_size_mb || {}, null, 2);
+        if (pdfInput) pdfInput.value = String(maxSize.pdf);
+        if (nativeInput) nativeInput.value = String(maxSize.native);
+        if (attachmentInput) attachmentInput.value = String(maxSize.attachment);
     }
 
     async function loadStoragePolicy(force = false) {
@@ -466,6 +707,8 @@
         if (STORE.storagePolicyLoaded && !force) return;
         const payload = await request(`${API_BASE}/storage-policy`);
         applyStoragePolicyToForm(payload?.policy || {});
+        setStoragePolicyPresetActive('');
+        clearStorageStepDirty('policy');
         STORE.storagePolicyLoaded = true;
     }
 
@@ -473,13 +716,19 @@
         const modeInput = document.getElementById('storagePolicyModeInput');
         const blockedInput = document.getElementById('storageBlockedExtensionsInput');
         const allowedInput = document.getElementById('storageAllowedMimesInput');
-        const maxSizeInput = document.getElementById('storageMaxSizeInput');
-        if (!modeInput || !blockedInput || !allowedInput || !maxSizeInput) return;
+        const pdfInput = document.getElementById('storageMaxSizePdfInput');
+        const nativeInput = document.getElementById('storageMaxSizeNativeInput');
+        const attachmentInput = document.getElementById('storageMaxSizeAttachmentInput');
+        if (!modeInput || !blockedInput || !allowedInput || !pdfInput || !nativeInput || !attachmentInput) return;
 
         const enforcement_mode = String(modeInput.value || 'warning').trim().toLowerCase() === 'enforce' ? 'enforce' : 'warning';
         const blocked_extensions = parseCommaSeparatedList(blockedInput.value);
         const allowed_mimes = parseCommaSeparatedList(allowedInput.value).map((v) => v.toLowerCase());
-        const max_size_mb = safeParseJsonObject(maxSizeInput.value, 'Max Size MB');
+        const max_size_mb = {
+            pdf: parsePositiveNumber(pdfInput.value, 'حداکثر حجم PDF', 100),
+            native: parsePositiveNumber(nativeInput.value, 'حداکثر حجم Native', 250),
+            attachment: parsePositiveNumber(attachmentInput.value, 'حداکثر حجم Attachment', 100),
+        };
 
         const payload = await request(`${API_BASE}/storage-policy`, {
             method: 'POST',
@@ -492,8 +741,9 @@
         });
         applyStoragePolicyToForm(payload?.policy || {});
         STORE.storagePolicyLoaded = true;
+        clearStorageStepDirty('policy');
         setStorageSyncResult('');
-        tSuccess('Storage policy saved.');
+        tSuccess('سیاست اعتبارسنجی فایل ذخیره شد.');
     }
 
     function applyStorageIntegrationsToForm(integrations = {}) {
@@ -512,6 +762,7 @@
         if (localCacheEnabled) localCacheEnabled.checked = Boolean(localCache.enabled);
         if (openprojectWp) openprojectWp.value = String(openproject.default_project_id || '');
         if (gdriveDriveId) gdriveDriveId.value = String(gdrive.shared_drive_id || '');
+        updateStorageIntegrationsFieldState();
     }
 
     async function loadStorageIntegrations(force = false) {
@@ -520,6 +771,7 @@
         if (STORE.storageIntegrationsLoaded && !force) return;
         const payload = await request(`${API_BASE}/storage-integrations`);
         applyStorageIntegrationsToForm(payload?.integrations || {});
+        clearStorageStepDirty('integrations');
         STORE.storageIntegrationsLoaded = true;
     }
 
@@ -549,24 +801,26 @@
         });
         applyStorageIntegrationsToForm(payload?.integrations || {});
         STORE.storageIntegrationsLoaded = true;
+        clearStorageStepDirty('integrations');
         setStorageSyncResult('');
-        tSuccess('Storage integrations saved.');
+        tSuccess('تنظیمات یکپارچه‌سازی ذخیره شد.');
     }
 
     async function runStorageSyncJob(kind) {
         const endpoint = kind === 'openproject'
             ? '/api/v1/storage/sync/openproject/run'
             : '/api/v1/storage/sync/google-drive/run';
+        const title = kind === 'openproject' ? 'OpenProject' : 'Google Drive';
+        setStorageSyncResult(`در حال اجرای Sync ${title} ...`, 'info');
         const payload = await request(endpoint, { method: 'POST' });
         const processed = Number(payload?.processed || 0);
         const succeeded = Number(payload?.success || payload?.succeeded || 0);
         const failed = Number(payload?.failed || 0);
         const dead = Number(payload?.dead || 0);
-        const title = kind === 'openproject' ? 'OpenProject' : 'Google Drive';
-        const summary = `${title} sync: processed=${processed}, succeeded=${succeeded}, failed=${failed}, dead=${dead}`;
+        const summary = `نتیجه Sync ${title}: پردازش=${processed}، موفق=${succeeded}، خطا=${failed}، صف‌معیوب=${dead}`;
         setStorageSyncResult(summary, failed > 0 || dead > 0 ? 'error' : 'success');
         if (failed > 0 || dead > 0) {
-            tError(summary);
+            tError(`${summary}. جزئیات در پنل نتیجه نمایش داده شد.`);
             return;
         }
         tSuccess(summary);
@@ -943,6 +1197,9 @@
             if (inputEl && inputEl.dataset) {
                 inputEl.dataset.storagePathDirty = '1';
             }
+            hideStorageStepSaved('paths');
+            markStorageStepDirty('paths');
+            updateStoragePathPreview();
             validateStoragePathConflict(true);
         };
         mdrInput.addEventListener('input', onInput);
@@ -994,9 +1251,25 @@
     }
 
     function activeGeneralPage() {
+        const activeBtn = document.querySelector('.general-settings-btn.active[data-general-tab]');
+        if (activeBtn?.dataset?.generalTab) return activeBtn.dataset.generalTab;
         const el = document.querySelector('.general-settings-page.active');
-        if (!el?.id) return STORE.activePage || 'db';
+        if (!el?.id) return STORE.activePage || 'db_sync';
         return el.id.replace('general-page-', '');
+    }
+
+    function toggleGeneralStorageSections(page) {
+        const dbPage = document.getElementById('general-page-db');
+        if (!dbPage) return;
+        const showStorage = page === 'storage';
+        const dbOnlySections = Array.from(dbPage.querySelectorAll('.general-db-only'));
+        const storageOnlySections = Array.from(dbPage.querySelectorAll('.general-storage-only'));
+        dbOnlySections.forEach((el) => {
+            el.style.display = showStorage ? 'none' : '';
+        });
+        storageOnlySections.forEach((el) => {
+            el.style.display = showStorage ? '' : 'none';
+        });
     }
 
     function isGeneralButtonVisibleForDomain(buttonEl, domain) {
@@ -1005,7 +1278,7 @@
         return buttonDomain === domain || buttonDomain === 'common';
     }
 
-    function applyGeneralDomainVisibility(domain = 'all') {
+    function applyGeneralDomainVisibility(domain = 'common') {
         const buttons = Array.from(document.querySelectorAll('.general-settings-btn[data-general-tab]'));
         let firstVisible = null;
         let firstDomainVisible = null;
@@ -1022,14 +1295,23 @@
 
     async function loadGeneralPageData(page, force = false) {
         STORE.activePage = page;
-        if (page === 'db') {
+        if (page === 'db_sync') {
+            toggleGeneralStorageSections(page);
             await loadOverview();
+            await loadEntity('projects', force);
+            refreshProjectCards();
+            return;
+        }
+        if (page === 'storage') {
+            toggleGeneralStorageSections(page);
+            bindStorageWorkflowInputs();
+            setStorageWizardStep('paths', { force: true });
             await loadStoragePaths(force);
             await loadStoragePolicy(force);
             await loadStorageIntegrations(force);
-            await loadSiteCache(force);
-            await loadEntity('projects', force);
-            refreshProjectCards();
+            updateStoragePathPreview();
+            updateStorageIntegrationsFieldState();
+            updateStorageActionBarState();
             return;
         }
         if (page === 'transmittal_config') {
@@ -1062,7 +1344,7 @@
                     window.switchGeneralSettingsPage(actionEl.dataset.generalTab || '', actionEl);
                     break;
                 case 'switch-domain':
-                    window.switchGeneralSettingsDomain(actionEl.dataset.generalDomain || 'all', actionEl);
+                    window.switchGeneralSettingsDomain(actionEl.dataset.generalDomain || 'common', actionEl);
                     break;
                 case 'run-seed':
                     window.localRunSeed();
@@ -1081,6 +1363,21 @@
                     break;
                 case 'run-storage-openproject-sync':
                     window.runStorageOpenProjectSync();
+                    break;
+                case 'storage-switch-step':
+                    setStorageWizardStep(actionEl.dataset.storageStep || 'paths');
+                    break;
+                case 'storage-step-prev':
+                    moveStorageWizardStep(-1);
+                    break;
+                case 'storage-step-next':
+                    moveStorageWizardStep(1);
+                    break;
+                case 'storage-save-current':
+                    saveCurrentStorageWizardStep();
+                    break;
+                case 'storage-policy-preset':
+                    applyStoragePolicyPreset(actionEl.dataset.storagePreset || 'standard');
                     break;
                 case 'save-site-cache-profile':
                     window.saveSiteCacheProfileSetting();
@@ -1293,7 +1590,7 @@
                     await ensureSelects();
                     STORE.initialized = true;
                 }
-                await window.switchGeneralSettingsDomain(STORE.activeDomain || 'all', null, force);
+                await window.switchGeneralSettingsDomain(STORE.activeDomain || 'common', null, force);
             } catch (err) {
                 tError(`خطا در بارگذاری تنظیمات عمومی: ${err.message}`);
             }
@@ -1383,14 +1680,15 @@
         document.querySelectorAll('.general-settings-page').forEach((p) => p.classList.remove('active'));
         const btn = btnEl || document.querySelector(`.general-settings-btn[data-general-tab="${page}"]`);
         if (btn) btn.classList.add('active');
-        const tab = document.getElementById(`general-page-${page}`);
+        const physicalPage = page === 'storage' || page === 'db_sync' ? 'db' : page;
+        const tab = document.getElementById(`general-page-${physicalPage}`);
         if (!tab) return;
         tab.classList.add('active');
         await loadGeneralPageData(page, force);
     };
 
-    window.switchGeneralSettingsDomain = async function switchGeneralSettingsDomain(domain = 'all', btnEl = null, force = false) {
-        const normalizedDomain = norm(domain).toLowerCase() || 'all';
+    window.switchGeneralSettingsDomain = async function switchGeneralSettingsDomain(domain = 'common', btnEl = null, force = false) {
+        const normalizedDomain = norm(domain).toLowerCase() || 'common';
         STORE.activeDomain = normalizedDomain;
 
         document.querySelectorAll('.general-module-btn').forEach((b) => b.classList.remove('active'));
@@ -1451,8 +1749,8 @@
             bindStoragePathValidation();
             const mdr_storage_path = norm(document.getElementById('mdrStoragePathInput')?.value);
             const correspondence_storage_path = norm(document.getElementById('correspondenceStoragePathInput')?.value);
-            requireVal(mdr_storage_path, 'MDR storage path');
-            requireVal(correspondence_storage_path, 'Correspondence storage path');
+            requireVal(mdr_storage_path, 'مسیر ذخیره مدارک مهندسی');
+            requireVal(correspondence_storage_path, 'مسیر ذخیره مکاتبات');
             if (!validateStoragePathConflict(true)) return;
 
             const payload = await request(`${API_BASE}/storage-paths`, {
@@ -1466,9 +1764,12 @@
             );
             document.getElementById('mdrStoragePathInput').dataset.storagePathDirty = '0';
             document.getElementById('correspondenceStoragePathInput').dataset.storagePathDirty = '0';
+            updateStoragePathPreview();
             setStoragePathConflictError('');
             STORE.storagePathsLoaded = true;
-            tSuccess('Storage paths saved.');
+            clearStorageStepDirty('paths');
+            showStorageStepSaved('paths', 'مسیرهای ذخیره‌سازی با موفقیت ذخیره شدند.');
+            tSuccess('مسیرهای ذخیره‌سازی ذخیره شد.');
         } catch (err) {
             tError(err.message);
         }
@@ -1495,8 +1796,8 @@
             await runStorageSyncJob('google_drive');
         } catch (err) {
             const detail = String(err?.message || 'Google Drive sync failed.');
-            setStorageSyncResult(detail, 'error');
-            tError(detail);
+            setStorageSyncResult(`اجرای Sync گوگل‌درایو ناموفق بود: ${detail}`, 'error');
+            tError(`Sync گوگل‌درایو انجام نشد. ${detail}`);
         }
     };
 
@@ -1505,8 +1806,8 @@
             await runStorageSyncJob('openproject');
         } catch (err) {
             const detail = String(err?.message || 'OpenProject sync failed.');
-            setStorageSyncResult(detail, 'error');
-            tError(detail);
+            setStorageSyncResult(`اجرای Sync اوپن‌پراجکت ناموفق بود: ${detail}`, 'error');
+            tError(`Sync اوپن‌پراجکت انجام نشد. ${detail}`);
         }
     };
 

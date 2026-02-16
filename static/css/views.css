@@ -1551,16 +1551,43 @@ tr:hover {
     font-size: 0.82rem;
 }
 .correspondence-toolbar {
-    gap: 10px;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "filters actions"
+        "search actions";
+    gap: 10px 12px;
+    align-items: start;
+}
+.correspondence-toolbar .archive-search-box {
+    grid-area: search;
+    max-width: none;
+    min-width: 260px;
 }
 .corr-filter-group {
-    display: flex;
+    grid-area: filters;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+}
+.corr-filter-group .archive-filter-select,
+.corr-filter-group .archive-filter-date {
+    width: 100%;
+}
+.corr-filter-group .btn-archive-icon {
+    justify-self: start;
+}
+.corr-toolbar-actions {
+    grid-area: actions;
+    display: inline-flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
-    flex: 1;
-    min-width: 260px;
+    align-self: start;
+}
+.corr-page-size-select {
+    min-width: 90px;
 }
 .corr-status-badge {
     display: inline-block;
@@ -2090,6 +2117,19 @@ tr:hover {
     color: #94a3b8;
 }
 
+@media (max-width: 1400px) {
+    .correspondence-toolbar {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "search"
+            "filters"
+            "actions";
+    }
+    .corr-toolbar-actions {
+        justify-self: start;
+    }
+}
+
 @media (max-width: 900px) {
     .archive-toolbar {
         flex-wrap: wrap;
@@ -2102,6 +2142,13 @@ tr:hover {
     .archive-filter-group {
         margin-inline-start: 0;
         width: 100%;
+    }
+    .correspondence-toolbar .archive-search-box {
+        min-width: 0;
+    }
+    .corr-toolbar-actions {
+        width: 100%;
+        justify-content: flex-start;
     }
     .corr-form-grid-2,
     .corr-form-grid-3,
@@ -3032,6 +3079,10 @@ tr:hover {
     display: block;
 }
 
+#general-page-db .general-storage-only {
+    display: none;
+}
+
 .general-settings-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -3154,6 +3205,187 @@ tr:hover {
 .storage-path-warning .material-icons-round {
     font-size: 18px;
     margin-top: 1px;
+}
+
+.storage-workflow-shell {
+    position: relative;
+}
+
+.storage-stepper {
+    display: flex;
+    gap: 8px;
+    margin: 4px 0 12px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+}
+
+.storage-step-btn {
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    color: #475569;
+    border-radius: 10px;
+    min-width: 210px;
+    padding: 8px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.storage-step-btn:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.storage-step-btn:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+}
+
+.storage-step-btn.active {
+    color: #1e3a8a;
+    border-color: #93c5fd;
+    background: #dbeafe;
+    box-shadow: 0 6px 14px rgba(37, 99, 235, 0.16);
+}
+
+.storage-step-index {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid #bfdbfe;
+    background: #fff;
+    color: #1d4ed8;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    font-weight: 800;
+    flex: 0 0 auto;
+}
+
+.storage-step-btn.active .storage-step-index {
+    border-color: #1d4ed8;
+    background: #1d4ed8;
+    color: #fff;
+}
+
+.storage-step-copy {
+    white-space: nowrap;
+    font-size: 0.86rem;
+}
+
+.storage-step-panel {
+    display: none;
+}
+
+.storage-step-panel.active {
+    display: block;
+    animation: fadeIn 0.2s ease;
+}
+
+.storage-path-preview {
+    font-size: 0.8rem;
+    color: #475569;
+    direction: rtl;
+    text-align: right;
+}
+
+.storage-path-preview code {
+    direction: ltr;
+    display: inline-block;
+}
+
+.storage-step-last-saved {
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: #64748b;
+}
+
+.storage-policy-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.storage-preset-btn {
+    min-width: 94px;
+    justify-content: center;
+    font-weight: 700;
+}
+
+.storage-preset-btn.active {
+    color: #1d4ed8;
+    border-color: #93c5fd;
+    background: #dbeafe;
+}
+
+.storage-policy-grid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+}
+
+.storage-max-size-group {
+    grid-column: 1 / -1;
+}
+
+.storage-max-size-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.storage-size-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.82rem;
+    color: #334155;
+}
+
+.storage-integrations-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-items: start;
+}
+
+.storage-integrations-grid .is-disabled {
+    opacity: 0.55;
+}
+
+.storage-integrations-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+}
+
+.storage-advanced-note {
+    margin-top: 12px;
+}
+
+.storage-action-bar {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    border-top: 1px solid #e2e8f0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), #ffffff 36%);
+    padding: 10px 2px 2px;
+    z-index: 3;
+}
+
+.storage-action-bar-left,
+.storage-action-bar-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .general-overview-grid {
@@ -3508,6 +3740,36 @@ tr:hover {
     .general-module-btn {
         justify-content: center;
         width: 100%;
+    }
+
+    .storage-stepper {
+        flex-wrap: nowrap;
+    }
+
+    .storage-step-btn {
+        min-width: 170px;
+    }
+
+    .storage-policy-grid,
+    .storage-integrations-grid,
+    .storage-max-size-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .storage-action-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .storage-action-bar-left,
+    .storage-action-bar-right {
+        width: 100%;
+    }
+
+    .storage-action-bar-right .btn,
+    .storage-action-bar-left .btn {
+        width: 100%;
+        justify-content: center;
     }
 
     .general-list-toolbar {

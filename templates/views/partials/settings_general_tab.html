@@ -1,6 +1,6 @@
 <div class="general-module-nav">
-  <button type="button" class="general-module-btn active" data-general-domain="all" data-general-action="switch-domain">
-    <span class="material-icons-round">apps</span> همه
+  <button type="button" class="general-module-btn active" data-general-domain="common" data-general-action="switch-domain">
+    <span class="material-icons-round">tune</span> عمومی
   </button>
   <button type="button" class="general-module-btn" data-general-domain="mdr" data-general-action="switch-domain">
     <span class="material-icons-round">description</span> مدارک مهندسی
@@ -14,8 +14,8 @@
 </div>
 
 <div class="general-settings-nav">
-  <button type="button" class="general-settings-btn active" data-general-domain="common" data-general-tab="db" data-general-action="switch-page">
-    <span class="material-icons-round">storage</span> مدیریت پایگاه داده
+  <button type="button" class="general-settings-btn active" data-general-domain="common" data-general-tab="db_sync" data-general-action="switch-page">
+    <span class="material-icons-round">sync</span> همگام‌سازی دیتابیس
   </button>
   <button type="button" class="general-settings-btn" data-general-domain="common" data-general-tab="projects" data-general-action="switch-page">
     <span class="material-icons-round">apartment</span> پروژه‌ها
@@ -50,8 +50,10 @@
   <button type="button" class="general-settings-btn" data-general-domain="transmittal" data-general-tab="transmittal_config" data-general-action="switch-page">
     <span class="material-icons-round">settings</span> تنظیمات ترنسمیتال
   </button>
-</div><div id="general-page-db" class="general-settings-page active">
-  <div class="general-settings-grid">
+</div>
+
+<div id="general-page-db" class="general-settings-page active">
+  <div class="general-settings-grid general-db-only">
     <div class="general-settings-card">
       <h3 class="general-settings-title">
         <span class="material-icons-round">sync</span> همگام‌سازی دیتابیس
@@ -75,180 +77,149 @@
     </div>
   </div>
 
-  <div class="general-settings-card">
+  <div class="general-settings-card general-storage-only storage-workflow-shell" id="storageWorkflowRoot">
     <h3 class="general-settings-title">
-      <span class="material-icons-round">folder_open</span> Storage Paths
+      <span class="material-icons-round">folder_open</span> مدیریت ذخیره‌سازی
     </h3>
     <div class="general-settings-note general-settings-note-info">
       <span class="material-icons-round">info</span>
       <div>
-        این مسیرها محل ذخیره فیزیکی فایل‌ها هستند. مسیر نسبی نسبت به پوشه اصلی برنامه
-        <code>(BASE_DIR)</code> محاسبه می‌شود.
+        این بخش به‌صورت مرحله‌ای طراحی شده است. ابتدا مسیرها را تنظیم کنید، سپس سیاست اعتبارسنجی فایل و در نهایت یکپارچه‌سازی‌ها را ذخیره کنید.
       </div>
     </div>
-    <div class="general-form-grid">
-      <div class="storage-path-field-group">
-        <div class="storage-path-field-title">مسیر مدارک مهندسی (MDR / Archive)</div>
-        <input id="mdrStoragePathInput" class="form-input" placeholder="MDR storage path (e.g. ./files/technical)">
-        <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/technical</code></div>
-        <span class="form-help storage-path-help">برای فایل‌های آرشیو مدارک، نسخه‌ها و پیوست‌های MDR</span>
-      </div>
-      <div class="storage-path-field-group">
-        <div class="storage-path-field-title">مسیر مکاتبات (Correspondence)</div>
-        <input id="correspondenceStoragePathInput" class="form-input" placeholder="Correspondence path (e.g. ./files/correspondence)">
-        <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/correspondence</code></div>
-        <span class="form-help storage-path-help">برای نامه‌ها، اکشن‌ها و پیوست‌های مکاتبات (Correspondence)</span>
-      </div>
-    </div>
-    <div id="storagePathsConflictError" class="storage-path-inline-error" style="display:none;"></div>
-    <div class="general-settings-note storage-path-warning">
-      <span class="material-icons-round">warning_amber</span>
-      <div>پیشنهاد می‌شود این دو مسیر یکسان نباشند تا اختلاط فایل‌ها رخ ندهد.</div>
-    </div>
-    <div class="general-form-actions">
-      <button class="btn btn-primary" type="button" data-general-action="save-storage-paths">Save Paths</button>
-    </div>
-  </div>
 
-  
-  <div class="general-settings-grid" style="margin-top:16px;">
-    <div class="general-settings-card">
-      <h3 class="general-settings-title">
-        <span class="material-icons-round">policy</span> Storage Policy
-      </h3>
-      <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+    <div class="storage-stepper" role="tablist" aria-label="مراحل مدیریت ذخیره‌سازی">
+      <button type="button" class="storage-step-btn active" data-general-action="storage-switch-step" data-storage-step="paths" aria-controls="storage-step-paths" aria-selected="true">
+        <span class="storage-step-index">1</span>
+        <span class="storage-step-copy">مسیرهای ذخیره‌سازی</span>
+      </button>
+      <button type="button" class="storage-step-btn" data-general-action="storage-switch-step" data-storage-step="policy" aria-controls="storage-step-policy" aria-selected="false">
+        <span class="storage-step-index">2</span>
+        <span class="storage-step-copy">سیاست اعتبارسنجی فایل</span>
+      </button>
+      <button type="button" class="storage-step-btn" data-general-action="storage-switch-step" data-storage-step="integrations" aria-controls="storage-step-integrations" aria-selected="false">
+        <span class="storage-step-index">3</span>
+        <span class="storage-step-copy">یکپارچه‌سازی‌ها و Sync</span>
+      </button>
+    </div>
+
+    <section id="storage-step-paths" class="storage-step-panel active" data-storage-step-panel="paths">
+      <div class="general-settings-note general-settings-note-info">
+        <span class="material-icons-round">folder</span>
+        <div>مسیرهای فیزیکی ذخیره فایل‌ها نسبت به <code>BASE_DIR</code> محاسبه می‌شوند.</div>
+      </div>
+      <div class="general-form-grid">
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">مسیر مدارک مهندسی (MDR / Archive)</div>
+          <input id="mdrStoragePathInput" class="form-input" placeholder="./files/technical">
+          <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/technical</code></div>
+          <div class="storage-path-preview">پیش‌نمایش normalize شده: <code id="storagePathMdrPreview">-</code></div>
+          <span class="form-help storage-path-help">برای فایل‌های آرشیو مدارک، نسخه‌ها و پیوست‌های MDR</span>
+        </div>
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">مسیر مکاتبات (Correspondence)</div>
+          <input id="correspondenceStoragePathInput" class="form-input" placeholder="./files/correspondence">
+          <div class="storage-path-example">نمونه مسیر استاندارد: <code>./files/correspondence</code></div>
+          <div class="storage-path-preview">پیش‌نمایش normalize شده: <code id="storagePathCorrespondencePreview">-</code></div>
+          <span class="form-help storage-path-help">برای نامه‌ها، اکشن‌ها و پیوست‌های مکاتبات</span>
+        </div>
+      </div>
+      <div id="storagePathsConflictError" class="storage-path-inline-error" style="display:none;"></div>
+      <div class="general-settings-note storage-path-warning">
+        <span class="material-icons-round">warning_amber</span>
+        <div>پیشنهاد می‌شود این دو مسیر یکسان نباشند تا اختلاط فایل‌ها رخ ندهد.</div>
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-storage-paths">ذخیره مسیرها</button>
+      </div>
+      <div id="storagePathsSavedNote" class="general-settings-note storage-sync-result-success" style="margin-top:10px; display:none;"></div>
+      <div class="storage-step-last-saved">آخرین ذخیره: <span id="storagePathsLastSavedAt">-</span></div>
+    </section>
+
+    <section id="storage-step-policy" class="storage-step-panel" data-storage-step-panel="policy">
+      <div class="storage-policy-presets" role="group" aria-label="پیش‌تنظیم سیاست">
+        <button class="btn-archive-icon storage-preset-btn" type="button" data-general-action="storage-policy-preset" data-storage-preset="warning">هشدار</button>
+        <button class="btn-archive-icon storage-preset-btn" type="button" data-general-action="storage-policy-preset" data-storage-preset="standard">استاندارد</button>
+        <button class="btn-archive-icon storage-preset-btn" type="button" data-general-action="storage-policy-preset" data-storage-preset="strict">سختگیرانه</button>
+      </div>
+      <div class="general-form-grid storage-policy-grid">
         <div>
-          <label class="form-label-sm">Enforcement Mode</label>
+          <label class="form-label-sm">حالت اعمال</label>
           <select id="storagePolicyModeInput" class="form-input">
             <option value="warning">warning</option>
             <option value="enforce">enforce</option>
           </select>
         </div>
         <div>
-          <label class="form-label-sm">Blocked Extensions (comma separated)</label>
+          <label class="form-label-sm">پسوندهای مسدود (با کاما جدا کنید)</label>
           <input id="storageBlockedExtensionsInput" class="form-input" placeholder="exe,bat,cmd,ps1,js,vbs,sh">
         </div>
         <div>
-          <label class="form-label-sm">Allowed MIME (comma separated)</label>
+          <label class="form-label-sm">MIMEهای مجاز (با کاما جدا کنید)</label>
           <textarea id="storageAllowedMimesInput" class="form-input" rows="3" placeholder="application/pdf,image/png,image/jpeg"></textarea>
         </div>
-        <div>
-          <label class="form-label-sm">Max Size MB (json)</label>
-          <textarea id="storageMaxSizeInput" class="form-input" rows="3" placeholder='{"pdf":100,"native":250,"attachment":100}'></textarea>
+        <div class="storage-max-size-group">
+          <label class="form-label-sm">حداکثر حجم (MB)</label>
+          <div class="storage-max-size-grid">
+            <label class="storage-size-field">PDF
+              <input id="storageMaxSizePdfInput" class="form-input" type="number" min="1" step="1" placeholder="100">
+            </label>
+            <label class="storage-size-field">Native
+              <input id="storageMaxSizeNativeInput" class="form-input" type="number" min="1" step="1" placeholder="250">
+            </label>
+            <label class="storage-size-field">Attachment
+              <input id="storageMaxSizeAttachmentInput" class="form-input" type="number" min="1" step="1" placeholder="100">
+            </label>
+          </div>
         </div>
       </div>
       <div class="general-form-actions">
-        <button class="btn btn-primary" type="button" data-general-action="save-storage-policy">Save Storage Policy</button>
+        <button class="btn btn-primary" type="button" data-general-action="save-storage-policy">ذخیره سیاست‌ها</button>
       </div>
-    </div>
+    </section>
 
-    <div class="general-settings-card">
-      <h3 class="general-settings-title">
-        <span class="material-icons-round">hub</span> Storage Integrations
-      </h3>
-      <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-        <label class="checkbox-label"><input id="storageGoogleDriveEnabledInput" type="checkbox"><span class="checkmark"></span>Google Drive Enabled</label>
-        <label class="checkbox-label"><input id="storageOpenProjectEnabledInput" type="checkbox"><span class="checkmark"></span>OpenProject Enabled</label>
-        <label class="checkbox-label"><input id="storageLocalCacheEnabledInput" type="checkbox"><span class="checkmark"></span>Local Cache Enabled</label>
-        <div>
-          <label class="form-label-sm">OpenProject Default Work Package</label>
-          <input id="storageOpenProjectDefaultWpInput" class="form-input" placeholder="e.g. 321">
+    <section id="storage-step-integrations" class="storage-step-panel" data-storage-step-panel="integrations">
+      <div class="general-form-grid storage-integrations-grid">
+        <label class="checkbox-label"><input id="storageGoogleDriveEnabledInput" type="checkbox"><span class="checkmark"></span>Google Drive فعال</label>
+        <label class="checkbox-label"><input id="storageOpenProjectEnabledInput" type="checkbox"><span class="checkmark"></span>OpenProject فعال</label>
+        <label class="checkbox-label"><input id="storageLocalCacheEnabledInput" type="checkbox"><span class="checkmark"></span>Local Cache فعال</label>
+        <div id="storageOpenProjectDefaultWpWrap">
+          <label class="form-label-sm">Work Package پیش‌فرض OpenProject</label>
+          <input id="storageOpenProjectDefaultWpInput" class="form-input" placeholder="مثال: 321">
         </div>
-        <div>
+        <div id="storageGoogleDriveDriveIdWrap">
           <label class="form-label-sm">Google Drive Shared Drive ID</label>
           <input id="storageGoogleDriveDriveIdInput" class="form-input" placeholder="shared drive id">
         </div>
       </div>
-      <div class="general-form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
-        <button class="btn btn-primary" type="button" data-general-action="save-storage-integrations">Save Integrations</button>
-        <button class="btn btn-secondary" type="button" data-general-action="run-storage-google-drive-sync">Run Google Drive Sync</button>
-        <button class="btn btn-secondary" type="button" data-general-action="run-storage-openproject-sync">Run OpenProject Sync</button>
+      <div class="general-form-actions storage-integrations-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-storage-integrations">ذخیره یکپارچه‌سازی‌ها</button>
+        <button id="storageGoogleDriveSyncRunBtn" class="btn btn-secondary" type="button" data-general-action="run-storage-google-drive-sync">اجرای Sync گوگل‌درایو</button>
+        <button id="storageOpenProjectSyncRunBtn" class="btn btn-secondary" type="button" data-general-action="run-storage-openproject-sync">اجرای Sync اوپن‌پراجکت</button>
       </div>
       <div id="storageSyncResult" class="general-settings-note" style="margin-top:10px; display:none;"></div>
-    </div>
-  </div>
-  <div class="general-settings-card" style="margin-top:16px;">
-    <h3 class="general-settings-title">
-      <span class="material-icons-round">dns</span> Site Cache (HQ -&gt; Site)
-    </h3>
-    <div class="general-settings-note general-settings-note-info">
-      <span class="material-icons-round">info</span>
-      <div>
-        Manage site profiles, CIDR matching, pin rules, and agent tokens for one-way site cache sync.
+      <div class="general-settings-note general-settings-note-info storage-advanced-note">
+        <span class="material-icons-round">construction</span>
+        <div><strong>Advanced (بعداً):</strong> تنظیمات کامل Site Cache در نسخه V2 فعال می‌شود.</div>
       </div>
-    </div>
-    <div class="general-settings-grid" style="margin-top:10px;">
-      <div class="general-settings-card">
-        <h4 class="general-settings-title"><span class="material-icons-round">apartment</span> Profiles</h4>
-        <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-          <input id="siteCacheProfileCodeInput" class="form-input" placeholder="Site code (e.g. SITE_A)">
-          <input id="siteCacheProfileNameInput" class="form-input" placeholder="Profile name">
-          <input id="siteCacheProfileProjectInput" class="form-input" placeholder="Project code (optional)">
-          <input id="siteCacheProfileRootInput" class="form-input" placeholder="Local root path (UNC/local)">
-          <select id="siteCacheProfileFallbackInput" class="form-input">
-            <option value="local_first">local_first</option>
-            <option value="hq_first">hq_first</option>
-          </select>
-          <label class="checkbox-label">
-            <input id="siteCacheProfileActiveInput" type="checkbox" checked>
-            <span class="checkmark"></span>
-            Active
-          </label>
-        </div>
-        <div class="general-form-actions">
-          <button class="btn btn-primary" type="button" data-general-action="save-site-cache-profile">Save Profile</button>
-          <button class="btn btn-secondary" type="button" data-general-action="reset-site-cache-profile">New</button>
-        </div>
-        <div class="table-responsive">
-          <table class="archive-table">
-            <thead>
-              <tr><th>Code</th><th>Name</th><th>Project</th><th>Active</th><th>Actions</th></tr>
-            </thead>
-            <tbody id="settingsSiteCacheProfilesRows"></tbody>
-          </table>
-        </div>
+    </section>
+
+    <div class="storage-action-bar" id="storageActionBar">
+      <div class="storage-action-bar-left">
+        <button class="btn btn-secondary" type="button" data-general-action="storage-step-prev" aria-label="مرحله قبل">
+          <span class="material-icons-round">navigate_next</span> مرحله قبل
+        </button>
+        <button class="btn btn-secondary" type="button" data-general-action="storage-step-next" aria-label="مرحله بعد">
+          مرحله بعد <span class="material-icons-round">navigate_before</span>
+        </button>
       </div>
-      <div class="general-settings-card">
-        <h4 class="general-settings-title"><span class="material-icons-round">settings_ethernet</span> CIDR + Rules + Tokens</h4>
-        <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-          <select id="siteCacheProfileSelect" class="form-input"></select>
-          <button class="btn btn-secondary" type="button" data-general-action="refresh-site-cache">Refresh</button>
-          <input id="siteCacheCidrInput" class="form-input" placeholder="CIDR (e.g. 10.88.0.0/16)">
-          <button class="btn btn-primary" type="button" data-general-action="save-site-cache-cidr">Add CIDR</button>
-          <input id="siteCacheRuleNameInput" class="form-input" placeholder="Rule name">
-          <input id="siteCacheRuleStatusInput" class="form-input" placeholder="Status codes (e.g. IFA,IFC)">
-          <input id="siteCacheRuleProjectInput" class="form-input" placeholder="Rule project (optional)">
-          <input id="siteCacheRuleDisciplineInput" class="form-input" placeholder="Rule discipline (optional)">
-          <label class="checkbox-label"><input id="siteCacheRulePrimaryOnlyInput" type="checkbox" checked><span class="checkmark"></span>Primary only</label>
-          <label class="checkbox-label"><input id="siteCacheRuleLatestOnlyInput" type="checkbox" checked><span class="checkmark"></span>Latest revision only</label>
-          <label class="checkbox-label"><input id="siteCacheRuleIncludeNativeInput" type="checkbox"><span class="checkmark"></span>Include native</label>
-          <input id="siteCacheRulePriorityInput" class="form-input" type="number" value="100" placeholder="Priority">
-        </div>
-        <div class="general-form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button class="btn btn-primary" type="button" data-general-action="save-site-cache-rule">Add Rule</button>
-          <button class="btn btn-warning" type="button" data-general-action="rebuild-site-cache-pins">Rebuild Pins</button>
-          <button class="btn btn-secondary" type="button" data-general-action="mint-site-cache-token">Mint Token</button>
-        </div>
-        <div id="siteCacheTokenPlain" class="general-settings-note" style="display:none; margin-bottom:10px;"></div>
-        <div class="table-responsive" style="margin-top:8px;">
-          <table class="archive-table">
-            <thead>
-              <tr><th>CIDRs</th><th>Rules</th><th>Tokens</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><div id="settingsSiteCacheCidrsRows" class="general-inline-list"></div></td>
-                <td><div id="settingsSiteCacheRulesRows" class="general-inline-list"></div></td>
-                <td><div id="settingsSiteCacheTokensRows" class="general-inline-list"></div></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="storage-action-bar-right">
+        <button class="btn btn-primary" type="button" data-general-action="storage-save-current">ذخیره مرحله جاری</button>
       </div>
     </div>
   </div>
 
-  <div class="general-settings-card" style="margin-top:16px;">
+  <div class="general-settings-card general-db-only" style="margin-top:16px;">
     <h3 class="general-settings-title">
       <span class="material-icons-round">apartment</span> پروژه‌های فعال
     </h3>
