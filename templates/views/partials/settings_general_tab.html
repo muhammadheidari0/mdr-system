@@ -207,7 +207,15 @@
       <div class="storage-site-cache-v2">
         <div class="storage-site-cache-grid">
           <div class="general-settings-card">
-            <h4 class="general-settings-title"><span class="material-icons-round">apartment</span> پروفایل‌های سایت</h4>
+            <h4 class="general-settings-title">
+              <span class="storage-block-badge">بلوک 1</span>
+              <span class="material-icons-round">apartment</span>
+              انتخاب پروفایل سایت
+            </h4>
+            <div class="general-form-actions site-cache-profile-toolbar">
+              <select id="siteCacheProfileSelect" class="form-input"></select>
+              <button class="btn btn-secondary" type="button" data-general-action="refresh-site-cache">بازخوانی پروفایل‌ها</button>
+            </div>
             <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
               <input id="siteCacheProfileCodeInput" class="form-input" maxlength="64" pattern="[A-Za-z0-9_-]{2,64}" placeholder="کد سایت (مثال: SITE_A)">
               <input id="siteCacheProfileNameInput" class="form-input" maxlength="255" placeholder="نام پروفایل">
@@ -238,44 +246,70 @@
           </div>
 
           <div class="general-settings-card">
-            <h4 class="general-settings-title"><span class="material-icons-round">settings_ethernet</span> CIDR + قانون Pin + توکن Agent</h4>
+            <h4 class="general-settings-title">
+              <span class="storage-block-badge">بلوک 2</span>
+              <span class="material-icons-round">rule</span>
+              ساخت قانون Pin
+            </h4>
             <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-              <select id="siteCacheProfileSelect" class="form-input"></select>
-              <button class="btn btn-secondary" type="button" data-general-action="refresh-site-cache">بازخوانی پروفایل‌ها</button>
-              <input id="siteCacheCidrInput" class="form-input" maxlength="64" placeholder="CIDR (مثال: 10.88.0.0/16)">
-              <button class="btn btn-primary" type="button" data-general-action="save-site-cache-cidr">افزودن CIDR</button>
               <input id="siteCacheRuleNameInput" class="form-input" maxlength="255" placeholder="نام قانون Pin">
               <input id="siteCacheRuleStatusInput" class="form-input" maxlength="255" pattern="[A-Za-z0-9_\\-,\\s]{1,255}" placeholder="کد وضعیت‌ها (مثال: IFA,IFC)">
-              <select id="siteCacheRuleProjectInput" class="form-input form-multi-select" multiple size="6"></select>
-              <select id="siteCacheRuleDisciplineInput" class="form-input form-multi-select" multiple size="6"></select>
-              <select id="siteCacheRulePackageInput" class="form-input form-multi-select" multiple size="6"></select>
-              <div class="general-settings-note general-settings-note-info" style="grid-column: 1 / -1; margin: 0;">
-                برای چند انتخاب از <code>Ctrl</code> (یا <code>Shift</code>) استفاده کنید. گزینه «همه» با سایر گزینه‌ها همزمان اعمال نمی‌شود.
+              <div class="token-multi-field">
+                <label class="form-label-sm">پروژه‌ها</label>
+                <select id="siteCacheRuleProjectInput" class="form-input form-multi-select" multiple size="6"></select>
               </div>
+              <div class="token-multi-field">
+                <label class="form-label-sm">دیسیپلین‌ها</label>
+                <select id="siteCacheRuleDisciplineInput" class="form-input form-multi-select" multiple size="6"></select>
+              </div>
+              <div class="token-multi-field token-multi-field-full">
+                <label class="form-label-sm">پکیج‌ها</label>
+                <select id="siteCacheRulePackageInput" class="form-input form-multi-select" multiple size="6"></select>
+              </div>
+              <div class="general-settings-note general-settings-note-info site-cache-guide-note" style="grid-column: 1 / -1; margin: 0;">
+                <div>Ctrl/Shift برای چند انتخاب</div>
+                <div>گزینه «همه» با گزینه‌های دیگر همزمان اعمال نمی‌شود</div>
+              </div>
+              <div id="siteCacheRuleLiveSummary" class="general-settings-note general-settings-note-info site-cache-rule-summary" style="grid-column: 1 / -1; margin: 0;"></div>
               <label class="checkbox-label"><input id="siteCacheRulePrimaryOnlyInput" type="checkbox" checked><span class="checkmark"></span>فقط فایل اصلی</label>
               <label class="checkbox-label"><input id="siteCacheRuleLatestOnlyInput" type="checkbox" checked disabled><span class="checkmark"></span>فقط آخرین رویژن (اجباری)</label>
               <label class="checkbox-label"><input id="siteCacheRuleIncludeNativeInput" type="checkbox"><span class="checkmark"></span>شامل فایل Native</label>
               <input id="siteCacheRulePriorityInput" class="form-input" type="number" min="0" max="10000" step="1" value="100" placeholder="اولویت">
             </div>
-            <div class="general-form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div class="general-form-actions site-cache-rule-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
               <button class="btn btn-primary" type="button" data-general-action="save-site-cache-rule">افزودن قانون Pin</button>
-              <button class="btn btn-warning" type="button" data-general-action="rebuild-site-cache-pins">بازسازی Pinها</button>
-              <button class="btn btn-secondary" type="button" data-general-action="mint-site-cache-token">ایجاد توکن Agent</button>
+            </div>
+
+            <h4 class="general-settings-title site-cache-apply-title">
+              <span class="storage-block-badge">بلوک 3</span>
+              <span class="material-icons-round">sync</span>
+              اعمال و بازسازی
+            </h4>
+            <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+              <input id="siteCacheCidrInput" class="form-input" maxlength="64" placeholder="CIDR (مثال: 10.88.0.0/16)">
+              <button class="btn btn-secondary" type="button" data-general-action="save-site-cache-cidr">افزودن CIDR</button>
+            </div>
+            <div class="general-form-actions site-cache-apply-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-secondary" type="button" data-general-action="rebuild-site-cache-pins">بازسازی Pinها</button>
+              <button class="btn btn-tertiary" type="button" data-general-action="mint-site-cache-token">ایجاد توکن Agent</button>
             </div>
             <div id="siteCacheTokenPlain" class="general-settings-note" style="display:none; margin-bottom:10px;"></div>
-            <div class="table-responsive" style="margin-top:8px;">
-              <table class="archive-table">
-                <thead>
-                  <tr><th>فهرست CIDR</th><th>قوانین Pin</th><th>توکن‌های Agent</th></tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><div id="settingsSiteCacheCidrsRows" class="general-inline-list"></div></td>
-                    <td><div id="settingsSiteCacheRulesRows" class="general-inline-list"></div></td>
-                    <td><div id="settingsSiteCacheTokensRows" class="general-inline-list"></div></td>
-                  </tr>
-                </tbody>
-              </table>
+
+            <div class="site-cache-list-tabs" role="tablist" aria-label="Site Cache Lists">
+              <button type="button" class="site-cache-list-tab active" data-general-action="switch-site-cache-list-tab" data-site-cache-list-tab="cidr" role="tab" aria-selected="true">CIDRها</button>
+              <button type="button" class="site-cache-list-tab" data-general-action="switch-site-cache-list-tab" data-site-cache-list-tab="rules" role="tab" aria-selected="false">قوانین Pin</button>
+              <button type="button" class="site-cache-list-tab" data-general-action="switch-site-cache-list-tab" data-site-cache-list-tab="tokens" role="tab" aria-selected="false">توکن‌ها</button>
+            </div>
+            <div class="site-cache-list-panel-wrap">
+              <div id="siteCacheListPanelCidr" class="site-cache-list-panel active" data-site-cache-list-panel="cidr" role="tabpanel">
+                <div id="settingsSiteCacheCidrsRows" class="general-inline-list"></div>
+              </div>
+              <div id="siteCacheListPanelRules" class="site-cache-list-panel" data-site-cache-list-panel="rules" role="tabpanel" hidden>
+                <div id="settingsSiteCacheRulesRows" class="general-inline-list"></div>
+              </div>
+              <div id="siteCacheListPanelTokens" class="site-cache-list-panel" data-site-cache-list-panel="tokens" role="tabpanel" hidden>
+                <div id="settingsSiteCacheTokensRows" class="general-inline-list"></div>
+              </div>
             </div>
           </div>
         </div>
