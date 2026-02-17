@@ -3379,6 +3379,16 @@ tr:hover {
     margin: 0;
 }
 
+.form-multi-select {
+    min-height: 128px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.form-multi-select option {
+    padding: 4px 8px;
+}
+
 .storage-action-bar {
     position: sticky;
     bottom: 0;

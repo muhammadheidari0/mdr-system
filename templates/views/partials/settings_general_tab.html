@@ -246,10 +246,14 @@
               <button class="btn btn-primary" type="button" data-general-action="save-site-cache-cidr">افزودن CIDR</button>
               <input id="siteCacheRuleNameInput" class="form-input" maxlength="255" placeholder="نام قانون Pin">
               <input id="siteCacheRuleStatusInput" class="form-input" maxlength="255" pattern="[A-Za-z0-9_\\-,\\s]{1,255}" placeholder="کد وضعیت‌ها (مثال: IFA,IFC)">
-              <input id="siteCacheRuleProjectInput" class="form-input" maxlength="50" pattern="[A-Za-z0-9_-]{1,50}" placeholder="کد پروژه قانون (اختیاری)">
-              <input id="siteCacheRuleDisciplineInput" class="form-input" maxlength="20" pattern="[A-Za-z0-9_-]{1,20}" placeholder="کد دیسیپلین قانون (اختیاری)">
+              <select id="siteCacheRuleProjectInput" class="form-input form-multi-select" multiple size="6"></select>
+              <select id="siteCacheRuleDisciplineInput" class="form-input form-multi-select" multiple size="6"></select>
+              <select id="siteCacheRulePackageInput" class="form-input form-multi-select" multiple size="6"></select>
+              <div class="general-settings-note general-settings-note-info" style="grid-column: 1 / -1; margin: 0;">
+                برای چند انتخاب از <code>Ctrl</code> (یا <code>Shift</code>) استفاده کنید. گزینه «همه» با سایر گزینه‌ها همزمان اعمال نمی‌شود.
+              </div>
               <label class="checkbox-label"><input id="siteCacheRulePrimaryOnlyInput" type="checkbox" checked><span class="checkmark"></span>فقط فایل اصلی</label>
-              <label class="checkbox-label"><input id="siteCacheRuleLatestOnlyInput" type="checkbox" checked><span class="checkmark"></span>فقط آخرین رویژن</label>
+              <label class="checkbox-label"><input id="siteCacheRuleLatestOnlyInput" type="checkbox" checked disabled><span class="checkmark"></span>فقط آخرین رویژن (اجباری)</label>
               <label class="checkbox-label"><input id="siteCacheRuleIncludeNativeInput" type="checkbox"><span class="checkmark"></span>شامل فایل Native</label>
               <input id="siteCacheRulePriorityInput" class="form-input" type="number" min="0" max="10000" step="1" value="100" placeholder="اولویت">
             </div>

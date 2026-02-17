@@ -165,6 +165,10 @@ def _apply_rule_filters(query, profile: SiteCacheProfile, rule: SiteCachePinRule
     if discipline_code:
         query = query.filter(MdrDocument.discipline_code == discipline_code)
 
+    package_code = str(rule.package_code or "").strip().upper()
+    if package_code:
+        query = query.filter(MdrDocument.package_code == package_code)
+
     statuses = parse_csv_codes(rule.status_codes or DEFAULT_SITE_RULE_STATUSES, uppercase=True)
     if statuses:
         query = query.filter(func.upper(func.coalesce(ArchiveFile.status, "")).in_(statuses))
@@ -174,22 +178,22 @@ def _apply_rule_filters(query, profile: SiteCacheProfile, rule: SiteCachePinRule
     if not rule.include_native:
         query = query.filter(or_(ArchiveFile.file_kind.is_(None), ArchiveFile.file_kind != "native"))
 
-    if rule.latest_revision_only:
-        latest_revision_subquery = (
-            query.session.query(
-                DocumentRevision.document_id.label("document_id"),
-                func.max(DocumentRevision.id).label("latest_revision_id"),
-            )
-            .group_by(DocumentRevision.document_id)
-            .subquery()
+    # Site cache always syncs latest revision to keep local nodes lean and deterministic.
+    latest_revision_subquery = (
+        query.session.query(
+            DocumentRevision.document_id.label("document_id"),
+            func.max(DocumentRevision.id).label("latest_revision_id"),
         )
-        query = query.join(
-            latest_revision_subquery,
-            and_(
-                DocumentRevision.document_id == latest_revision_subquery.c.document_id,
-                DocumentRevision.id == latest_revision_subquery.c.latest_revision_id,
-            ),
-        )
+        .group_by(DocumentRevision.document_id)
+        .subquery()
+    )
+    query = query.join(
+        latest_revision_subquery,
+        and_(
+            DocumentRevision.document_id == latest_revision_subquery.c.document_id,
+            DocumentRevision.id == latest_revision_subquery.c.latest_revision_id,
+        ),
+    )
     return query
 
 
@@ -471,6 +475,7 @@ def serialize_profile(profile: SiteCacheProfile) -> dict[str, Any]:
             "name": row.name,
             "project_code": row.project_code,
             "discipline_code": row.discipline_code,
+            "package_code": row.package_code,
             "status_codes": row.status_codes,
             "include_native": bool(row.include_native),
             "primary_only": bool(row.primary_only),

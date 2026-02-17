@@ -90,7 +90,9 @@
     const SITE_CACHE_CODE_RE = /^[A-Z0-9_-]{2,64}$/;
     const SITE_CACHE_PROJECT_CODE_RE = /^[A-Z0-9_-]{1,50}$/;
     const SITE_CACHE_DISCIPLINE_CODE_RE = /^[A-Z0-9_-]{1,20}$/;
+    const SITE_CACHE_PACKAGE_CODE_RE = /^[A-Z0-9_-]{1,30}$/;
     const SITE_CACHE_STATUS_CODE_RE = /^[A-Z0-9_-]{1,20}$/;
+    const SITE_CACHE_ALL_VALUE = '__ALL__';
 
     function tSuccess(msg) { if (window.UI?.success) window.UI.success(msg); else alert(msg); }
     function tError(msg) { if (window.UI?.error) window.UI.error(msg); else alert(msg); }
@@ -985,6 +987,157 @@
         throw new Error(fallbackMessage);
     }
 
+    function toSiteCacheFilterCode(value, regex, label, maxLength) {
+        const raw = norm(value).toUpperCase();
+        if (!raw || raw === SITE_CACHE_ALL_VALUE) return null;
+        if (raw.length > maxLength) {
+            throw new Error(`${label} نباید بیشتر از ${maxLength} کاراکتر باشد.`);
+        }
+        if (!regex.test(raw)) {
+            throw new Error(`${label} معتبر نیست.`);
+        }
+        return raw;
+    }
+
+    function getMultiSelectValues(selectEl) {
+        if (!selectEl) return [];
+        const options = Array.from(selectEl.selectedOptions || []);
+        return options
+            .map((opt) => norm(opt?.value).toUpperCase())
+            .filter(Boolean);
+    }
+
+    function normalizeMultiSelectValues(values) {
+        const normalized = [];
+        (Array.isArray(values) ? values : []).forEach((item) => {
+            const code = norm(item).toUpperCase();
+            if (!code) return;
+            if (!normalized.includes(code)) normalized.push(code);
+        });
+        if (!normalized.length) return [SITE_CACHE_ALL_VALUE];
+        if (normalized.includes(SITE_CACHE_ALL_VALUE) && normalized.length > 1) {
+            return normalized.filter((item) => item !== SITE_CACHE_ALL_VALUE);
+        }
+        return normalized;
+    }
+
+    function setMultiSelectValues(selectEl, values) {
+        if (!selectEl) return;
+        const target = normalizeMultiSelectValues(values);
+        Array.from(selectEl.options || []).forEach((opt) => {
+            const code = norm(opt?.value).toUpperCase();
+            opt.selected = target.includes(code);
+        });
+    }
+
+    function parseSiteCacheFilterCodes(selectEl, regex, label, maxLength) {
+        const values = normalizeMultiSelectValues(getMultiSelectValues(selectEl));
+        if (values.length === 1 && values[0] === SITE_CACHE_ALL_VALUE) return [null];
+        const out = values
+            .map((value) => toSiteCacheFilterCode(value, regex, label, maxLength))
+            .filter(Boolean);
+        return out.length ? out : [null];
+    }
+
+    function parseSiteCachePackageSelections(selectEl) {
+        const values = normalizeMultiSelectValues(getMultiSelectValues(selectEl));
+        if (values.length === 1 && values[0] === SITE_CACHE_ALL_VALUE) {
+            return [{ discipline_code: null, package_code: null }];
+        }
+        const out = [];
+        for (const value of values) {
+            const raw = norm(value).toUpperCase();
+            const sep = raw.indexOf('::');
+            if (sep <= 0 || sep >= raw.length - 2) {
+                throw new Error(`پکیج انتخاب‌شده معتبر نیست: ${raw || '-'}`);
+            }
+            const discipline_code = toSiteCacheFilterCode(raw.slice(0, sep), SITE_CACHE_DISCIPLINE_CODE_RE, 'کد دیسیپلین پکیج', 20);
+            const package_code = toSiteCacheFilterCode(raw.slice(sep + 2), SITE_CACHE_PACKAGE_CODE_RE, 'کد پکیج', 30);
+            if (!discipline_code || !package_code) continue;
+            out.push({ discipline_code, package_code });
+        }
+        return out.length ? out : [{ discipline_code: null, package_code: null }];
+    }
+
+    function fillSiteCacheRulePackageOptions(selectedDisciplines = null, selectedPackages = null) {
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        if (!packageSelect) return;
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        const selectedDisciplineValues = normalizeMultiSelectValues(
+            Array.isArray(selectedDisciplines) ? selectedDisciplines : getMultiSelectValues(disciplineSelect)
+        );
+        const currentPackageValues = normalizeMultiSelectValues(
+            Array.isArray(selectedPackages) ? selectedPackages : getMultiSelectValues(packageSelect)
+        );
+        const isAllDiscipline = selectedDisciplineValues.includes(SITE_CACHE_ALL_VALUE);
+        const packageRows = (STORE.data.packages || [])
+            .filter((row) => {
+                if (isAllDiscipline) return true;
+                const disc = norm(row?.discipline_code).toUpperCase();
+                return selectedDisciplineValues.includes(disc);
+            })
+            .sort((a, b) => {
+                const ad = String(a?.discipline_code || '');
+                const bd = String(b?.discipline_code || '');
+                if (ad !== bd) return ad.localeCompare(bd);
+                return String(a?.package_code || '').localeCompare(String(b?.package_code || ''));
+            });
+        const options = [`<option value="${SITE_CACHE_ALL_VALUE}">همه پکیج‌ها</option>`]
+            .concat(
+                packageRows.map((row) => {
+                    const disc = norm(row?.discipline_code).toUpperCase();
+                    const code = norm(row?.package_code).toUpperCase();
+                    const pair = `${disc}::${code}`;
+                    const label = `${disc || '-'} / ${code || '-'} - ${norm(row?.name_e) || norm(row?.name_p) || '-'}`;
+                    return `<option value="${esc(pair)}">${esc(label)}</option>`;
+                })
+            )
+            .join('');
+        packageSelect.innerHTML = options;
+        const allowedValues = new Set(
+            [SITE_CACHE_ALL_VALUE].concat(
+                packageRows.map((row) => `${norm(row?.discipline_code).toUpperCase()}::${norm(row?.package_code).toUpperCase()}`)
+            )
+        );
+        const nextValues = currentPackageValues.filter((value) => allowedValues.has(value));
+        setMultiSelectValues(packageSelect, nextValues.length ? nextValues : [SITE_CACHE_ALL_VALUE]);
+    }
+
+    function fillSiteCacheRuleFilterOptions() {
+        const projectSelect = document.getElementById('siteCacheRuleProjectInput');
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        if (!projectSelect || !disciplineSelect || !packageSelect) return;
+        const currentProject = normalizeMultiSelectValues(getMultiSelectValues(projectSelect));
+        const currentDiscipline = normalizeMultiSelectValues(getMultiSelectValues(disciplineSelect));
+        const currentPackage = normalizeMultiSelectValues(getMultiSelectValues(packageSelect));
+        const projectOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">همه پروژه‌ها</option>`]
+            .concat(
+                (STORE.data.projects || []).map((row) => {
+                    const code = norm(row?.code).toUpperCase();
+                    const label = `${code || '-'} - ${norm(row?.project_name) || '-'}`;
+                    return `<option value="${esc(code)}">${esc(label)}</option>`;
+                })
+            )
+            .join('');
+        const disciplineOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">همه دیسیپلین‌ها</option>`]
+            .concat(
+                (STORE.data.disciplines || []).map((row) => {
+                    const code = norm(row?.code).toUpperCase();
+                    const label = `${code || '-'} - ${norm(row?.name_e) || norm(row?.name_p) || '-'}`;
+                    return `<option value="${esc(code)}">${esc(label)}</option>`;
+                })
+            )
+            .join('');
+        projectSelect.innerHTML = projectOptions;
+        disciplineSelect.innerHTML = disciplineOptions;
+        const validProjects = [SITE_CACHE_ALL_VALUE].concat((STORE.data.projects || []).map((row) => norm(row?.code).toUpperCase()));
+        const validDisciplines = [SITE_CACHE_ALL_VALUE].concat((STORE.data.disciplines || []).map((row) => norm(row?.code).toUpperCase()));
+        setMultiSelectValues(projectSelect, currentProject.filter((code) => validProjects.includes(code)));
+        setMultiSelectValues(disciplineSelect, currentDiscipline.filter((code) => validDisciplines.includes(code)));
+        fillSiteCacheRulePackageOptions(getMultiSelectValues(disciplineSelect), currentPackage);
+    }
+
     function currentSiteCacheProfile() {
         const activeId = Number(STORE.siteCache.activeProfileId || 0);
         return (STORE.siteCache.profiles || []).find((item) => Number(item?.id || 0) === activeId) || null;
@@ -1052,7 +1205,7 @@
             ? rules.map((item) => `
                 <div class="general-inline-chip">
                     <span class="material-icons-round">rule</span>
-                    <span>${esc(item?.name || '-')} [${esc(item?.status_codes || '-')} ]</span>
+                    <span>${esc(item?.name || '-')} [${esc(item?.status_codes || '-')} ] (${esc(item?.project_code || 'همه')}/${esc(item?.discipline_code || 'همه')}/${esc(item?.package_code || 'همه')})</span>
                     <button type="button" data-general-action="delete-site-cache-rule" data-rule-id="${Number(item?.id || 0)}" title="حذف قانون">
                         <span class="material-icons-round">close</span>
                     </button>
@@ -1088,6 +1241,10 @@
     async function loadSiteCache(force = false) {
         const profileCodeInput = document.getElementById('siteCacheProfileCodeInput');
         if (!profileCodeInput) return;
+        await loadEntity('projects', force);
+        await loadEntity('disciplines', force);
+        await loadEntity('packages', force);
+        fillSiteCacheRuleFilterOptions();
         if (STORE.siteCacheLoaded && !force) {
             renderSiteCacheProfiles();
             const profile = currentSiteCacheProfile();
@@ -1215,44 +1372,93 @@
 
     async function addSiteCacheRule() {
         const profileId = getActiveSiteCacheProfileId();
-        ensureInputValidity(document.getElementById('siteCacheRuleProjectInput'), 'فرمت کد پروژه قانون معتبر نیست.');
-        ensureInputValidity(document.getElementById('siteCacheRuleDisciplineInput'), 'فرمت کد دیسیپلین قانون معتبر نیست.');
         ensureInputValidity(document.getElementById('siteCacheRulePriorityInput'), 'اولویت باید بین ۰ تا ۱۰۰۰۰ باشد.');
         const name = normalizeSiteCacheRuleName(document.getElementById('siteCacheRuleNameInput')?.value);
-        const payload = {
-            profile_id: profileId,
-            name,
-            status_codes: parseSiteCacheStatusCodes(document.getElementById('siteCacheRuleStatusInput')?.value),
-            project_code: normalizeOptionalSiteCode(
-                document.getElementById('siteCacheRuleProjectInput')?.value,
-                'کد پروژه قانون',
-                SITE_CACHE_PROJECT_CODE_RE,
-                50
-            ),
-            discipline_code: normalizeOptionalSiteCode(
-                document.getElementById('siteCacheRuleDisciplineInput')?.value,
-                'کد دیسیپلین قانون',
-                SITE_CACHE_DISCIPLINE_CODE_RE,
-                20
-            ),
-            include_native: Boolean(document.getElementById('siteCacheRuleIncludeNativeInput')?.checked),
-            primary_only: Boolean(document.getElementById('siteCacheRulePrimaryOnlyInput')?.checked),
-            latest_revision_only: Boolean(document.getElementById('siteCacheRuleLatestOnlyInput')?.checked),
-            priority: parseSiteCachePriority(document.getElementById('siteCacheRulePriorityInput')?.value),
-            is_active: true,
-        };
-        await request(`${API_BASE}/site-cache/rules/upsert`, {
-            method: 'POST',
-            body: JSON.stringify(payload),
-        });
-        ['siteCacheRuleNameInput', 'siteCacheRuleStatusInput', 'siteCacheRuleProjectInput', 'siteCacheRuleDisciplineInput'].forEach((id) => {
+        const projectSelect = document.getElementById('siteCacheRuleProjectInput');
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        const projectCodes = parseSiteCacheFilterCodes(projectSelect, SITE_CACHE_PROJECT_CODE_RE, 'کد پروژه قانون', 50);
+        const disciplineCodes = parseSiteCacheFilterCodes(disciplineSelect, SITE_CACHE_DISCIPLINE_CODE_RE, 'کد دیسیپلین قانون', 20);
+        const packageSelections = parseSiteCachePackageSelections(packageSelect);
+        const hasPackageScope = packageSelections.some((item) => item.package_code);
+        const statusCodes = parseSiteCacheStatusCodes(document.getElementById('siteCacheRuleStatusInput')?.value);
+        const includeNative = Boolean(document.getElementById('siteCacheRuleIncludeNativeInput')?.checked);
+        const primaryOnly = Boolean(document.getElementById('siteCacheRulePrimaryOnlyInput')?.checked);
+        const priority = parseSiteCachePriority(document.getElementById('siteCacheRulePriorityInput')?.value);
+
+        const targets = [];
+        if (hasPackageScope) {
+            for (const projectCode of projectCodes) {
+                for (const pkg of packageSelections) {
+                    if (!pkg.package_code) continue;
+                    if (disciplineCodes.every((code) => code !== null) && !disciplineCodes.includes(pkg.discipline_code)) {
+                        continue;
+                    }
+                    targets.push({
+                        project_code: projectCode,
+                        discipline_code: pkg.discipline_code,
+                        package_code: pkg.package_code,
+                    });
+                }
+            }
+        } else {
+            for (const projectCode of projectCodes) {
+                for (const disciplineCode of disciplineCodes) {
+                    targets.push({
+                        project_code: projectCode,
+                        discipline_code: disciplineCode,
+                        package_code: null,
+                    });
+                }
+            }
+        }
+
+        const dedup = [];
+        const seen = new Set();
+        for (const target of targets) {
+            const key = `${target.project_code || 'ALL'}|${target.discipline_code || 'ALL'}|${target.package_code || 'ALL'}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            dedup.push(target);
+        }
+        if (!dedup.length) {
+            throw new Error('ترکیب انتخابی پروژه/دیسیپلین/پکیج معتبر نیست.');
+        }
+        if (dedup.length > 100) {
+            throw new Error('تعداد ترکیب‌های انتخابی زیاد است (بیش از ۱۰۰). لطفاً فیلترها را محدودتر کنید.');
+        }
+
+        for (const target of dedup) {
+            const scopeLabel = `${target.project_code || 'همه'}/${target.discipline_code || 'همه'}/${target.package_code || 'همه'}`;
+            const scopedName = dedup.length > 1 ? `${name} [${scopeLabel}]` : name;
+            await request(`${API_BASE}/site-cache/rules/upsert`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    profile_id: profileId,
+                    name: scopedName.slice(0, 255),
+                    status_codes: statusCodes,
+                    project_code: target.project_code,
+                    discipline_code: target.discipline_code,
+                    package_code: target.package_code,
+                    include_native: includeNative,
+                    primary_only: primaryOnly,
+                    latest_revision_only: true,
+                    priority,
+                    is_active: true,
+                }),
+            });
+        }
+        ['siteCacheRuleNameInput', 'siteCacheRuleStatusInput'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        setMultiSelectValues(projectSelect, [SITE_CACHE_ALL_VALUE]);
+        setMultiSelectValues(disciplineSelect, [SITE_CACHE_ALL_VALUE]);
+        fillSiteCacheRulePackageOptions([SITE_CACHE_ALL_VALUE], [SITE_CACHE_ALL_VALUE]);
         const priorityInput = document.getElementById('siteCacheRulePriorityInput');
         if (priorityInput) priorityInput.value = '100';
         await loadSiteCache(true);
-        tSuccess('قانون Pin اضافه شد.');
+        tSuccess(`${dedup.length} قانون Pin اضافه شد.`);
     }
 
     async function deleteSiteCacheRule(ruleId) {
@@ -1730,6 +1936,8 @@
                     const profile = currentSiteCacheProfile();
                     renderSiteCacheProfileDetails(profile);
                     loadSiteCacheTokens(profileId);
+                } else if (target?.id === 'siteCacheRuleDisciplineInput') {
+                    fillSiteCacheRulePackageOptions(getMultiSelectValues(target));
                 }
                 return;
             }

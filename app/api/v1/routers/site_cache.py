@@ -70,6 +70,7 @@ class SiteCacheRuleIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     project_code: Optional[str] = Field(default=None, max_length=50)
     discipline_code: Optional[str] = Field(default=None, max_length=20)
+    package_code: Optional[str] = Field(default=None, max_length=30)
     status_codes: Optional[str] = Field(default=DEFAULT_SITE_RULE_STATUSES, max_length=255)
     include_native: bool = False
     primary_only: bool = True
@@ -314,6 +315,7 @@ def list_pin_rules(
             "name": row.name,
             "project_code": row.project_code,
             "discipline_code": row.discipline_code,
+            "package_code": row.package_code,
             "status_codes": row.status_codes,
             "include_native": bool(row.include_native),
             "primary_only": bool(row.primary_only),
@@ -344,14 +346,20 @@ def upsert_pin_rule(
         db.add(row)
         db.flush()
 
+    package_code = _normalize_code(payload.package_code) or None
+    discipline_code = _normalize_code(payload.discipline_code) or None
+    if package_code and not discipline_code:
+        raise HTTPException(status_code=400, detail="discipline_code is required when package_code is set")
+
     row.profile_id = int(payload.profile_id)
     row.name = str(payload.name or "").strip()
     row.project_code = _normalize_code(payload.project_code) or None
-    row.discipline_code = _normalize_code(payload.discipline_code) or None
+    row.discipline_code = discipline_code
+    row.package_code = package_code
     row.status_codes = normalize_csv_codes(payload.status_codes or DEFAULT_SITE_RULE_STATUSES, uppercase=True)
     row.include_native = bool(payload.include_native)
     row.primary_only = bool(payload.primary_only)
-    row.latest_revision_only = bool(payload.latest_revision_only)
+    row.latest_revision_only = True
     row.priority = int(payload.priority or 0)
     row.is_active = bool(payload.is_active)
     row.updated_at = datetime.utcnow()
@@ -365,6 +373,7 @@ def upsert_pin_rule(
             "name": row.name,
             "project_code": row.project_code,
             "discipline_code": row.discipline_code,
+            "package_code": row.package_code,
             "status_codes": row.status_codes,
             "include_native": bool(row.include_native),
             "primary_only": bool(row.primary_only),

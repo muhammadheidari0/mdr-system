@@ -412,7 +412,9 @@ def main() -> None:
     parser.add_argument("--site-token", default="", help="Site agent token (preferred).")
     parser.add_argument("--token", default="", help="Backward-compatible alias for --site-token.")
     parser.add_argument("--out-dir", default=str(Path.home() / "MDRSiteCache"), help="Local cache folder.")
-    parser.add_argument("--prune", action="store_true", help="Remove local files that are no longer pinned.")
+    parser.add_argument("--prune", dest="prune", action="store_true", help="Remove local files that are no longer pinned.")
+    parser.add_argument("--no-prune", dest="prune", action="store_false", help="Keep old local files not in current manifest.")
+    parser.set_defaults(prune=True)
     parser.add_argument("--dry-run", action="store_true", help="Plan changes only, do not download/remove files.")
     parser.add_argument("--max-workers", type=int, default=4, help="Parallel download workers (1..32).")
     parser.add_argument(

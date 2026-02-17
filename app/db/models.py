@@ -764,6 +764,7 @@ class SiteCachePinRule(Base):
         Index("ix_site_cache_pin_rules_profile", "profile_id", "is_active"),
         Index("ix_site_cache_pin_rules_project", "project_code"),
         Index("ix_site_cache_pin_rules_discipline", "discipline_code"),
+        Index("ix_site_cache_pin_rules_package", "package_code"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -780,6 +781,7 @@ class SiteCachePinRule(Base):
     discipline_code: Mapped[str | None] = mapped_column(
         String(20), ForeignKey("disciplines.code", ondelete="SET NULL"), nullable=True
     )
+    package_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
     status_codes: Mapped[str] = mapped_column(String(255), nullable=False, default="IFA,IFC")
     include_native: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     primary_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
