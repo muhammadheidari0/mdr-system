@@ -87,6 +87,10 @@
             max_size_mb: { pdf: 50, native: 150, attachment: 50 },
         },
     };
+    const SITE_CACHE_CODE_RE = /^[A-Z0-9_-]{2,64}$/;
+    const SITE_CACHE_PROJECT_CODE_RE = /^[A-Z0-9_-]{1,50}$/;
+    const SITE_CACHE_DISCIPLINE_CODE_RE = /^[A-Z0-9_-]{1,20}$/;
+    const SITE_CACHE_STATUS_CODE_RE = /^[A-Z0-9_-]{1,20}$/;
 
     function tSuccess(msg) { if (window.UI?.success) window.UI.success(msg); else alert(msg); }
     function tError(msg) { if (window.UI?.error) window.UI.error(msg); else alert(msg); }
@@ -843,6 +847,144 @@
         else box.classList.add('storage-sync-result-info');
     }
 
+    function getActiveSiteCacheProfileId() {
+        const selected = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
+        if (!selected) {
+            throw new Error('ابتدا یک پروفایل سایت انتخاب کنید.');
+        }
+        return selected;
+    }
+
+    function normalizeSiteCacheProfileCode(value) {
+        const code = norm(value).toUpperCase();
+        requireVal(code, 'کد سایت');
+        if (!SITE_CACHE_CODE_RE.test(code)) {
+            throw new Error('کد سایت فقط می‌تواند شامل حروف انگلیسی، عدد، `_` و `-` باشد (حداقل ۲ کاراکتر).');
+        }
+        return code;
+    }
+
+    function normalizeOptionalSiteCode(value, label, regex, maxLength) {
+        const code = norm(value).toUpperCase();
+        if (!code) return null;
+        if (code.length > maxLength) {
+            throw new Error(`${label} نباید بیشتر از ${maxLength} کاراکتر باشد.`);
+        }
+        if (!regex.test(code)) {
+            throw new Error(`${label} فقط می‌تواند شامل حروف انگلیسی، عدد، '_' و '-' باشد.`);
+        }
+        return code;
+    }
+
+    function normalizeSiteCacheRootPath(value) {
+        const path = norm(value);
+        if (!path) return null;
+        if (path.length > 1024) {
+            throw new Error('مسیر ریشه محلی نباید بیشتر از ۱۰۲۴ کاراکتر باشد.');
+        }
+        return path;
+    }
+
+    function normalizeSiteCacheFallbackMode(value) {
+        const mode = norm(value).toLowerCase() || 'local_first';
+        if (!['local_first', 'hq_first'].includes(mode)) {
+            throw new Error('حالت fallback معتبر نیست.');
+        }
+        return mode;
+    }
+
+    function normalizeSiteCacheRuleName(value) {
+        const name = norm(value);
+        requireVal(name, 'نام قانون');
+        if (name.length > 255) {
+            throw new Error('نام قانون نباید بیشتر از ۲۵۵ کاراکتر باشد.');
+        }
+        return name;
+    }
+
+    function parseSiteCacheStatusCodes(value) {
+        const items = parseCommaSeparatedList(String(value || '').toUpperCase());
+        const dedup = [];
+        for (const raw of items) {
+            const code = norm(raw).toUpperCase();
+            if (!code) continue;
+            if (!SITE_CACHE_STATUS_CODE_RE.test(code)) {
+                throw new Error(`کد وضعیت نامعتبر است: ${code}`);
+            }
+            if (!dedup.includes(code)) dedup.push(code);
+        }
+        return dedup.length ? dedup.join(',') : 'IFA,IFC';
+    }
+
+    function parseSiteCachePriority(value) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return 100;
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n < 0 || n > 10000) {
+            throw new Error('اولویت باید یک عدد صحیح بین ۰ تا ۱۰۰۰۰ باشد.');
+        }
+        return n;
+    }
+
+    function validateIPv4Address(value) {
+        const parts = String(value || '').split('.');
+        if (parts.length !== 4) return false;
+        return parts.every((part) => {
+            if (!/^\d{1,3}$/.test(part)) return false;
+            const num = Number(part);
+            return Number.isInteger(num) && num >= 0 && num <= 255;
+        });
+    }
+
+    function validateIPv6Address(value) {
+        const ip = String(value || '').trim();
+        if (!ip) return false;
+        if (!/^[0-9a-fA-F:]+$/.test(ip)) return false;
+        const segments = ip.split(':');
+        if (segments.length < 3 || segments.length > 8) return false;
+        let emptyCount = 0;
+        for (const segment of segments) {
+            if (segment === '') {
+                emptyCount += 1;
+                continue;
+            }
+            if (!/^[0-9a-fA-F]{1,4}$/.test(segment)) return false;
+        }
+        return emptyCount <= 2;
+    }
+
+    function normalizeSiteCacheCidr(value) {
+        const raw = norm(value);
+        requireVal(raw, 'CIDR');
+        const slash = raw.indexOf('/');
+        if (slash <= 0 || slash === raw.length - 1) {
+            throw new Error('CIDR نامعتبر است. نمونه صحیح: 10.88.0.0/16');
+        }
+        const ip = raw.slice(0, slash).trim();
+        const prefixRaw = raw.slice(slash + 1).trim();
+        if (!/^\d{1,3}$/.test(prefixRaw)) {
+            throw new Error('بخش Prefix در CIDR معتبر نیست.');
+        }
+        const prefix = Number(prefixRaw);
+        if (ip.includes(':')) {
+            if (!validateIPv6Address(ip) || prefix < 0 || prefix > 128) {
+                throw new Error('CIDR IPv6 معتبر نیست.');
+            }
+            return `${ip}/${prefix}`;
+        }
+        if (!validateIPv4Address(ip) || prefix < 0 || prefix > 32) {
+            throw new Error('CIDR IPv4 معتبر نیست.');
+        }
+        return `${ip}/${prefix}`;
+    }
+
+    function ensureInputValidity(inputEl, fallbackMessage) {
+        if (!inputEl || typeof inputEl.checkValidity !== 'function') return;
+        if (inputEl.checkValidity()) return;
+        if (typeof inputEl.reportValidity === 'function') inputEl.reportValidity();
+        throw new Error(fallbackMessage);
+    }
+
     function currentSiteCacheProfile() {
         const activeId = Number(STORE.siteCache.activeProfileId || 0);
         return (STORE.siteCache.profiles || []).find((item) => Number(item?.id || 0) === activeId) || null;
@@ -854,8 +996,8 @@
         if (!tbody || !profileSelect) return;
         const profiles = Array.isArray(STORE.siteCache.profiles) ? STORE.siteCache.profiles : [];
         if (!profiles.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center muted">No site cache profile.</td></tr>';
-            profileSelect.innerHTML = '<option value="">Select profile</option>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center muted">هیچ پروفایل سایتی ثبت نشده است.</td></tr>';
+            profileSelect.innerHTML = '<option value="">انتخاب پروفایل سایت</option>';
             return;
         }
 
@@ -872,8 +1014,8 @@
                     <td>${esc(item?.project_code || '-')}</td>
                     <td>${boolBadge(Boolean(item?.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-site-cache-profile" data-profile-id="${pid}">Edit</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-site-cache-profile" data-profile-id="${pid}">Disable</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-site-cache-profile" data-profile-id="${pid}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-site-cache-profile" data-profile-id="${pid}">غیرفعال</button>
                     `)}</td>
                 </tr>
             `;
@@ -899,26 +1041,26 @@
                 <div class="general-inline-chip">
                     <span class="material-icons-round">network_check</span>
                     <span>${esc(item?.cidr || '-')}</span>
-                    <button type="button" data-general-action="delete-site-cache-cidr" data-cidr-id="${Number(item?.id || 0)}" title="Delete">
+                    <button type="button" data-general-action="delete-site-cache-cidr" data-cidr-id="${Number(item?.id || 0)}" title="حذف CIDR">
                         <span class="material-icons-round">close</span>
                     </button>
                 </div>
             `).join('')
-            : '<div class="text-muted">No CIDR</div>';
+            : '<div class="text-muted">CIDR ثبت نشده است.</div>';
 
         ruleBox.innerHTML = rules.length
             ? rules.map((item) => `
                 <div class="general-inline-chip">
                     <span class="material-icons-round">rule</span>
                     <span>${esc(item?.name || '-')} [${esc(item?.status_codes || '-')} ]</span>
-                    <button type="button" data-general-action="delete-site-cache-rule" data-rule-id="${Number(item?.id || 0)}" title="Delete">
+                    <button type="button" data-general-action="delete-site-cache-rule" data-rule-id="${Number(item?.id || 0)}" title="حذف قانون">
                         <span class="material-icons-round">close</span>
                     </button>
                 </div>
             `).join('')
-            : '<div class="text-muted">No rule</div>';
+            : '<div class="text-muted">قانونی ثبت نشده است.</div>';
 
-        tokenBox.innerHTML = '<div class="text-muted">Loading...</div>';
+        tokenBox.innerHTML = '<div class="text-muted">در حال بارگذاری...</div>';
     }
 
     async function loadSiteCacheTokens(profileId) {
@@ -932,14 +1074,14 @@
                     <div class="general-inline-chip">
                         <span class="material-icons-round">vpn_key</span>
                         <span>${esc(item?.token_hint || '-')}</span>
-                        <button type="button" data-general-action="revoke-site-cache-token" data-token-id="${Number(item?.id || 0)}" title="Revoke">
+                        <button type="button" data-general-action="revoke-site-cache-token" data-token-id="${Number(item?.id || 0)}" title="لغو توکن">
                             <span class="material-icons-round">close</span>
                         </button>
                     </div>
                 `).join('')
-                : '<div class="text-muted">No active token</div>';
+                : '<div class="text-muted">توکن فعالی وجود ندارد.</div>';
         } catch (err) {
-            tokenBox.innerHTML = `<div class="text-danger">${esc(err?.message || 'Failed to load tokens')}</div>`;
+            tokenBox.innerHTML = `<div class="text-danger">${esc(err?.message || 'بارگذاری توکن‌ها ناموفق بود.')}</div>`;
         }
     }
 
@@ -986,19 +1128,28 @@
         const codeInput = document.getElementById('siteCacheProfileCodeInput');
         const nameInput = document.getElementById('siteCacheProfileNameInput');
         if (!codeInput || !nameInput) return;
-        const code = norm(codeInput.value).toUpperCase();
+        ensureInputValidity(codeInput, 'فرمت کد سایت معتبر نیست.');
+        ensureInputValidity(document.getElementById('siteCacheProfileProjectInput'), 'فرمت کد پروژه معتبر نیست.');
+        const code = normalizeSiteCacheProfileCode(codeInput.value);
         const name = norm(nameInput.value);
-        requireVal(code, 'Site code');
-        requireVal(name, 'Site name');
+        requireVal(name, 'نام پروفایل');
+        if (name.length > 255) {
+            throw new Error('نام پروفایل نباید بیشتر از ۲۵۵ کاراکتر باشد.');
+        }
 
         const editId = Number(codeInput.dataset.editId || 0);
         const payload = {
             id: editId > 0 ? editId : null,
             code,
             name,
-            project_code: norm(document.getElementById('siteCacheProfileProjectInput')?.value).toUpperCase() || null,
-            local_root_path: norm(document.getElementById('siteCacheProfileRootInput')?.value) || null,
-            fallback_mode: norm(document.getElementById('siteCacheProfileFallbackInput')?.value) || 'local_first',
+            project_code: normalizeOptionalSiteCode(
+                document.getElementById('siteCacheProfileProjectInput')?.value,
+                'کد پروژه',
+                SITE_CACHE_PROJECT_CODE_RE,
+                50
+            ),
+            local_root_path: normalizeSiteCacheRootPath(document.getElementById('siteCacheProfileRootInput')?.value),
+            fallback_mode: normalizeSiteCacheFallbackMode(document.getElementById('siteCacheProfileFallbackInput')?.value),
             is_active: Boolean(document.getElementById('siteCacheProfileActiveInput')?.checked),
         };
         await request(`${API_BASE}/site-cache/profiles/upsert`, {
@@ -1008,7 +1159,7 @@
         setSiteCacheTokenMessage('');
         await loadSiteCache(true);
         resetSiteCacheProfileForm();
-        tSuccess('Site cache profile saved.');
+        tSuccess('پروفایل Site Cache ذخیره شد.');
     }
 
     function openEditSiteCacheProfile(profileId) {
@@ -1030,20 +1181,19 @@
     }
 
     async function disableSiteCacheProfile(profileId) {
-        if (!confirm('Disable this site cache profile?')) return;
+        if (!confirm('این پروفایل Site Cache غیرفعال شود؟')) return;
         await request(`${API_BASE}/site-cache/profiles/delete`, {
             method: 'POST',
             body: JSON.stringify({ id: Number(profileId || 0), hard_delete: false }),
         });
         await loadSiteCache(true);
-        tSuccess('Profile disabled.');
+        tSuccess('پروفایل غیرفعال شد.');
     }
 
     async function addSiteCacheCidr() {
-        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
-        if (!profileId) throw new Error('Select profile first.');
-        const cidr = norm(document.getElementById('siteCacheCidrInput')?.value);
-        requireVal(cidr, 'CIDR');
+        const profileId = getActiveSiteCacheProfileId();
+        ensureInputValidity(document.getElementById('siteCacheCidrInput'), 'فرمت CIDR معتبر نیست.');
+        const cidr = normalizeSiteCacheCidr(document.getElementById('siteCacheCidrInput')?.value);
         await request(`${API_BASE}/site-cache/cidrs/upsert`, {
             method: 'POST',
             body: JSON.stringify({ profile_id: profileId, cidr, is_active: true }),
@@ -1051,7 +1201,7 @@
         const input = document.getElementById('siteCacheCidrInput');
         if (input) input.value = '';
         await loadSiteCache(true);
-        tSuccess('CIDR added.');
+        tSuccess('CIDR اضافه شد.');
     }
 
     async function deleteSiteCacheCidr(cidrId) {
@@ -1060,24 +1210,35 @@
             body: JSON.stringify({ id: Number(cidrId || 0) }),
         });
         await loadSiteCache(true);
-        tSuccess('CIDR deleted.');
+        tSuccess('CIDR حذف شد.');
     }
 
     async function addSiteCacheRule() {
-        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
-        if (!profileId) throw new Error('Select profile first.');
-        const name = norm(document.getElementById('siteCacheRuleNameInput')?.value);
-        requireVal(name, 'Rule name');
+        const profileId = getActiveSiteCacheProfileId();
+        ensureInputValidity(document.getElementById('siteCacheRuleProjectInput'), 'فرمت کد پروژه قانون معتبر نیست.');
+        ensureInputValidity(document.getElementById('siteCacheRuleDisciplineInput'), 'فرمت کد دیسیپلین قانون معتبر نیست.');
+        ensureInputValidity(document.getElementById('siteCacheRulePriorityInput'), 'اولویت باید بین ۰ تا ۱۰۰۰۰ باشد.');
+        const name = normalizeSiteCacheRuleName(document.getElementById('siteCacheRuleNameInput')?.value);
         const payload = {
             profile_id: profileId,
             name,
-            status_codes: norm(document.getElementById('siteCacheRuleStatusInput')?.value) || 'IFA,IFC',
-            project_code: norm(document.getElementById('siteCacheRuleProjectInput')?.value).toUpperCase() || null,
-            discipline_code: norm(document.getElementById('siteCacheRuleDisciplineInput')?.value).toUpperCase() || null,
+            status_codes: parseSiteCacheStatusCodes(document.getElementById('siteCacheRuleStatusInput')?.value),
+            project_code: normalizeOptionalSiteCode(
+                document.getElementById('siteCacheRuleProjectInput')?.value,
+                'کد پروژه قانون',
+                SITE_CACHE_PROJECT_CODE_RE,
+                50
+            ),
+            discipline_code: normalizeOptionalSiteCode(
+                document.getElementById('siteCacheRuleDisciplineInput')?.value,
+                'کد دیسیپلین قانون',
+                SITE_CACHE_DISCIPLINE_CODE_RE,
+                20
+            ),
             include_native: Boolean(document.getElementById('siteCacheRuleIncludeNativeInput')?.checked),
             primary_only: Boolean(document.getElementById('siteCacheRulePrimaryOnlyInput')?.checked),
             latest_revision_only: Boolean(document.getElementById('siteCacheRuleLatestOnlyInput')?.checked),
-            priority: Number(document.getElementById('siteCacheRulePriorityInput')?.value || 100),
+            priority: parseSiteCachePriority(document.getElementById('siteCacheRulePriorityInput')?.value),
             is_active: true,
         };
         await request(`${API_BASE}/site-cache/rules/upsert`, {
@@ -1091,7 +1252,7 @@
         const priorityInput = document.getElementById('siteCacheRulePriorityInput');
         if (priorityInput) priorityInput.value = '100';
         await loadSiteCache(true);
-        tSuccess('Rule added.');
+        tSuccess('قانون Pin اضافه شد.');
     }
 
     async function deleteSiteCacheRule(ruleId) {
@@ -1100,21 +1261,21 @@
             body: JSON.stringify({ id: Number(ruleId || 0) }),
         });
         await loadSiteCache(true);
-        tSuccess('Rule deleted.');
+        tSuccess('قانون حذف شد.');
     }
 
     async function mintSiteCacheToken() {
-        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
-        if (!profileId) throw new Error('Select profile first.');
+        const profileId = getActiveSiteCacheProfileId();
         const payload = await request(`${API_BASE}/site-cache/tokens/mint`, {
             method: 'POST',
             body: JSON.stringify({ profile_id: profileId }),
         });
         const token = String(payload?.token || '').trim();
         if (token) {
-            setSiteCacheTokenMessage(`Token (show once): ${token}`, 'success');
+            setSiteCacheTokenMessage(`توکن Agent (فقط یک‌بار نمایش): ${token}`, 'success');
         }
         await loadSiteCacheTokens(profileId);
+        tSuccess('توکن Agent جدید ایجاد شد.');
     }
 
     async function revokeSiteCacheToken(tokenId) {
@@ -1124,18 +1285,17 @@
         });
         await loadSiteCache(true);
         setSiteCacheTokenMessage('');
-        tSuccess('Token revoked.');
+        tSuccess('توکن لغو شد.');
     }
 
     async function rebuildSiteCachePins() {
-        const profileId = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
-        if (!profileId) throw new Error('Select profile first.');
+        const profileId = getActiveSiteCacheProfileId();
         const payload = await request(`${API_BASE}/site-cache/rebuild-pins`, {
             method: 'POST',
             body: JSON.stringify({ profile_id: profileId, dry_run: false }),
         });
         const result = payload?.result || {};
-        const summary = `Rebuild done: selected=${Number(result.selected_count || 0)}, enabled=${Number(result.to_enable_count || 0)}, disabled=${Number(result.to_disable_count || 0)}`;
+        const summary = `بازسازی انجام شد: انتخاب=${Number(result.selected_count || 0)}، فعال=${Number(result.to_enable_count || 0)}، غیرفعال=${Number(result.to_disable_count || 0)}`;
         setSiteCacheTokenMessage(summary, 'info');
         tSuccess(summary);
     }
@@ -1309,6 +1469,11 @@
             await loadStoragePaths(force);
             await loadStoragePolicy(force);
             await loadStorageIntegrations(force);
+            try {
+                await loadSiteCache(force);
+            } catch (err) {
+                setSiteCacheTokenMessage(`خطا در بارگذاری Site Cache: ${err.message}`, 'error');
+            }
             updateStoragePathPreview();
             updateStorageIntegrationsFieldState();
             updateStorageActionBarState();
@@ -1673,6 +1838,96 @@
         if (reloadEntities.includes('projects') || reloadEntities.includes('disciplines')) await ensureSelects();
         await loadOverview();
     }
+
+    window.saveSiteCacheProfileSetting = async function saveSiteCacheProfileSetting() {
+        try {
+            await saveSiteCacheProfile();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.resetSiteCacheProfileSetting = function resetSiteCacheProfileSetting() {
+        resetSiteCacheProfileForm();
+        setSiteCacheTokenMessage('');
+    };
+
+    window.openEditSiteCacheProfileById = function openEditSiteCacheProfileById(profileId) {
+        openEditSiteCacheProfile(profileId);
+    };
+
+    window.deleteSiteCacheProfileById = async function deleteSiteCacheProfileById(profileId) {
+        try {
+            await disableSiteCacheProfile(profileId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.refreshSiteCacheSettings = async function refreshSiteCacheSettings() {
+        try {
+            await loadSiteCache(true);
+            setSiteCacheTokenMessage('اطلاعات Site Cache با موفقیت بازخوانی شد.', 'info');
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.saveSiteCacheCidrSetting = async function saveSiteCacheCidrSetting() {
+        try {
+            await addSiteCacheCidr();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.deleteSiteCacheCidrSetting = async function deleteSiteCacheCidrSetting(cidrId) {
+        try {
+            await deleteSiteCacheCidr(cidrId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.saveSiteCacheRuleSetting = async function saveSiteCacheRuleSetting() {
+        try {
+            await addSiteCacheRule();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.deleteSiteCacheRuleSetting = async function deleteSiteCacheRuleSetting(ruleId) {
+        try {
+            await deleteSiteCacheRule(ruleId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.mintSiteCacheTokenSetting = async function mintSiteCacheTokenSetting() {
+        try {
+            await mintSiteCacheToken();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.revokeSiteCacheTokenSetting = async function revokeSiteCacheTokenSetting(tokenId) {
+        try {
+            await revokeSiteCacheToken(tokenId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.rebuildSiteCachePinsSetting = async function rebuildSiteCachePinsSetting() {
+        try {
+            await rebuildSiteCachePins();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
 
     window.switchGeneralSettingsPage = async function switchGeneralSettingsPage(page, btnEl = null, force = false) {
         if (!page) return;

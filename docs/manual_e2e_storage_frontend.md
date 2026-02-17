@@ -8,8 +8,8 @@
 - Quick regression check for other settings tabs.
 
 ## Out of Scope (V1)
-- Full Site Cache admin forms and operations.
 - Backend contract changes (all checks use existing APIs).
+- For full Site Cache scenarios, use `docs/manual_e2e_site_cache.md`.
 
 ## Preconditions
 - Admin user is available.

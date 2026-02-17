@@ -198,9 +198,83 @@
         <button id="storageOpenProjectSyncRunBtn" class="btn btn-secondary" type="button" data-general-action="run-storage-openproject-sync">اجرای Sync اوپن‌پراجکت</button>
       </div>
       <div id="storageSyncResult" class="general-settings-note" style="margin-top:10px; display:none;"></div>
+
       <div class="general-settings-note general-settings-note-info storage-advanced-note">
-        <span class="material-icons-round">construction</span>
-        <div><strong>Advanced (بعداً):</strong> تنظیمات کامل Site Cache در نسخه V2 فعال می‌شود.</div>
+        <span class="material-icons-round">dns</span>
+        <div><strong>Site Cache - نسخه ۲:</strong> مدیریت پروفایل سایت، CIDR، قوانین Pin و توکن Agent.</div>
+      </div>
+
+      <div class="storage-site-cache-v2">
+        <div class="storage-site-cache-grid">
+          <div class="general-settings-card">
+            <h4 class="general-settings-title"><span class="material-icons-round">apartment</span> پروفایل‌های سایت</h4>
+            <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+              <input id="siteCacheProfileCodeInput" class="form-input" maxlength="64" pattern="[A-Za-z0-9_-]{2,64}" placeholder="کد سایت (مثال: SITE_A)">
+              <input id="siteCacheProfileNameInput" class="form-input" maxlength="255" placeholder="نام پروفایل">
+              <input id="siteCacheProfileProjectInput" class="form-input" maxlength="50" pattern="[A-Za-z0-9_-]{1,50}" placeholder="کد پروژه (اختیاری)">
+              <input id="siteCacheProfileRootInput" class="form-input" maxlength="1024" placeholder="مسیر محلی ریشه (UNC / Local)">
+              <select id="siteCacheProfileFallbackInput" class="form-input">
+                <option value="local_first">اولویت با مسیر محلی (Local First)</option>
+                <option value="hq_first">اولویت با سرور مرکزی (HQ First)</option>
+              </select>
+              <label class="checkbox-label">
+                <input id="siteCacheProfileActiveInput" type="checkbox" checked>
+                <span class="checkmark"></span>
+                فعال
+              </label>
+            </div>
+            <div class="general-form-actions">
+              <button class="btn btn-primary" type="button" data-general-action="save-site-cache-profile">ذخیره پروفایل</button>
+              <button class="btn btn-secondary" type="button" data-general-action="reset-site-cache-profile">جدید</button>
+            </div>
+            <div class="table-responsive">
+              <table class="archive-table">
+                <thead>
+                  <tr><th>کد</th><th>نام</th><th>پروژه</th><th>فعال</th><th>عملیات</th></tr>
+                </thead>
+                <tbody id="settingsSiteCacheProfilesRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="general-settings-card">
+            <h4 class="general-settings-title"><span class="material-icons-round">settings_ethernet</span> CIDR + قانون Pin + توکن Agent</h4>
+            <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+              <select id="siteCacheProfileSelect" class="form-input"></select>
+              <button class="btn btn-secondary" type="button" data-general-action="refresh-site-cache">بازخوانی پروفایل‌ها</button>
+              <input id="siteCacheCidrInput" class="form-input" maxlength="64" placeholder="CIDR (مثال: 10.88.0.0/16)">
+              <button class="btn btn-primary" type="button" data-general-action="save-site-cache-cidr">افزودن CIDR</button>
+              <input id="siteCacheRuleNameInput" class="form-input" maxlength="255" placeholder="نام قانون Pin">
+              <input id="siteCacheRuleStatusInput" class="form-input" maxlength="255" pattern="[A-Za-z0-9_\\-,\\s]{1,255}" placeholder="کد وضعیت‌ها (مثال: IFA,IFC)">
+              <input id="siteCacheRuleProjectInput" class="form-input" maxlength="50" pattern="[A-Za-z0-9_-]{1,50}" placeholder="کد پروژه قانون (اختیاری)">
+              <input id="siteCacheRuleDisciplineInput" class="form-input" maxlength="20" pattern="[A-Za-z0-9_-]{1,20}" placeholder="کد دیسیپلین قانون (اختیاری)">
+              <label class="checkbox-label"><input id="siteCacheRulePrimaryOnlyInput" type="checkbox" checked><span class="checkmark"></span>فقط فایل اصلی</label>
+              <label class="checkbox-label"><input id="siteCacheRuleLatestOnlyInput" type="checkbox" checked><span class="checkmark"></span>فقط آخرین رویژن</label>
+              <label class="checkbox-label"><input id="siteCacheRuleIncludeNativeInput" type="checkbox"><span class="checkmark"></span>شامل فایل Native</label>
+              <input id="siteCacheRulePriorityInput" class="form-input" type="number" min="0" max="10000" step="1" value="100" placeholder="اولویت">
+            </div>
+            <div class="general-form-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-primary" type="button" data-general-action="save-site-cache-rule">افزودن قانون Pin</button>
+              <button class="btn btn-warning" type="button" data-general-action="rebuild-site-cache-pins">بازسازی Pinها</button>
+              <button class="btn btn-secondary" type="button" data-general-action="mint-site-cache-token">ایجاد توکن Agent</button>
+            </div>
+            <div id="siteCacheTokenPlain" class="general-settings-note" style="display:none; margin-bottom:10px;"></div>
+            <div class="table-responsive" style="margin-top:8px;">
+              <table class="archive-table">
+                <thead>
+                  <tr><th>فهرست CIDR</th><th>قوانین Pin</th><th>توکن‌های Agent</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><div id="settingsSiteCacheCidrsRows" class="general-inline-list"></div></td>
+                    <td><div id="settingsSiteCacheRulesRows" class="general-inline-list"></div></td>
+                    <td><div id="settingsSiteCacheTokensRows" class="general-inline-list"></div></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

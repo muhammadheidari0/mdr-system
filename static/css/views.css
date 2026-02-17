@@ -3365,6 +3365,20 @@ tr:hover {
     margin-top: 12px;
 }
 
+.storage-site-cache-v2 {
+    margin-top: 12px;
+}
+
+.storage-site-cache-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.storage-site-cache-v2 .general-settings-card {
+    margin: 0;
+}
+
 .storage-action-bar {
     position: sticky;
     bottom: 0;
@@ -3753,6 +3767,10 @@ tr:hover {
     .storage-policy-grid,
     .storage-integrations-grid,
     .storage-max-size-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .storage-site-cache-grid {
         grid-template-columns: 1fr;
     }
 
