@@ -151,6 +151,26 @@ def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
         assert restore_res.status_code == 200, restore_res.text
 
 
+def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
+    partial = client.get("/ui/partial/settings")
+    assert partial.status_code == 200, partial.text
+    html = partial.text
+    assert 'data-tab="integrations"' in html
+    assert 'id="tab-integrations"' in html
+    assert 'id="settingsIntegrationsRoot"' in html
+    assert 'data-integrations-action="save-integrations"' in html
+    assert 'data-integrations-action="ping-openproject"' in html
+    assert 'id="storageOpenProjectTokenSourceBadge"' in html
+
+    base_dir = Path(__file__).resolve().parents[1]
+    storage_partial = (
+        base_dir / "templates" / "views" / "partials" / "settings_general_tab.html"
+    ).read_text(encoding="utf-8")
+    assert 'id="storage-step-site-cache"' in storage_partial
+    assert "storageOpenProjectBaseUrlInput" not in storage_partial
+    assert "storageOpenProjectApiTokenInput" not in storage_partial
+    assert "storageGoogleDriveDriveIdInput" not in storage_partial
+
 def test_ui_smoke_workboard_crud_flow() -> None:
     headers = _admin_headers()
 

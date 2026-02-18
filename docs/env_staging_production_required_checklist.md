@@ -30,7 +30,8 @@ Use this checklist before running `docker compose up -d --build` on staging or p
 - [ ] `GDRIVE_SHARED_DRIVE_ID`
 - [ ] `OPENPROJECT_BASE_URL`
 - [ ] `OPENPROJECT_API_TOKEN`
-- [ ] `OPENPROJECT_DEFAULT_PROJECT_ID`
+- [ ] `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
+- [ ] (optional legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
 
 ## Quick Validation
 

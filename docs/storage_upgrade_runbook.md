@@ -67,4 +67,5 @@ python tools/backfill_file_integrity.py --execute
 - `GDRIVE_SHARED_DRIVE_ID`
 - `OPENPROJECT_BASE_URL`
 - `OPENPROJECT_API_TOKEN`
-- `OPENPROJECT_DEFAULT_PROJECT_ID`
+- `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
+- legacy alias: `OPENPROJECT_DEFAULT_PROJECT_ID` (optional, backward compatible)

@@ -4,7 +4,10 @@
 - Settings > Storage Management (3-step workflow):
   - Step 1: Paths
   - Step 2: Policy
-  - Step 3: Integrations + Sync
+  - Step 3: Site Cache
+- Settings > Integrations:
+  - OpenProject / Google Drive / Local Cache configuration
+  - OpenProject Ping + provider sync actions
 - Quick regression check for other settings tabs.
 
 ## Out of Scope (V1)
@@ -24,7 +27,7 @@
 
 Expected:
 - Storage page opens on `Paths`.
-- Stepper is visible with 3 steps.
+- Stepper is visible with 3 steps (Paths / Policy / Site Cache).
 
 ## 2) Stepper Navigation + Unsaved Guard
 1. In Step 1, edit one path field (do not save).
@@ -70,8 +73,8 @@ Expected:
 - Saved values are reloaded correctly.
 - Max size values persist as numbers (no raw JSON input in UI).
 
-## 5) Step 3 - Integrations + Sync
-1. Go to Step 3.
+## 5) Integrations Tab
+1. Open `Settings > Integrations`.
 2. Toggle `Google Drive` OFF.
 
 Expected:
@@ -89,8 +92,9 @@ Expected:
 Expected:
 - Save success message is shown.
 
-5. Click `Run Google Drive Sync`.
-6. Click `Run OpenProject Sync`.
+5. Click `Ping OpenProject`.
+6. Click `Run Google Drive Sync`.
+7. Click `Run OpenProject Sync`.
 
 Expected:
 - Result panel first shows in-progress text.
