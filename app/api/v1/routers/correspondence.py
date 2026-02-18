@@ -14,11 +14,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     User,
-    allow_editor,
-    allow_viewer,
     apply_scope_query_filters,
     enforce_scope_access,
     get_db,
+    require_permission,
 )
 from app.db.models import (
     Correspondence,
@@ -560,7 +559,7 @@ def _serialize_correspondence(
 @router.get("/catalog")
 def get_correspondence_catalog(
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     del user
     issuing_rows = (
@@ -627,7 +626,7 @@ def get_correspondence_catalog(
 @router.get("/dashboard")
 def get_correspondence_dashboard(
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     query = db.query(Correspondence)
     query = apply_scope_query_filters(
@@ -693,7 +692,7 @@ def list_correspondence(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     query = db.query(Correspondence)
     query = apply_scope_query_filters(
@@ -779,7 +778,7 @@ def list_correspondence(
 def create_correspondence(
     payload: CorrespondenceCreateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:create")),
 ):
     issuing_code = _resolve_issuing_code(payload.issuing_code, payload.project_code)
     issuing = _get_or_create_issuing_entity(
@@ -893,7 +892,7 @@ def update_correspondence(
     correspondence_id: int,
     payload: CorrespondenceUpdateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:update")),
 ):
     row = db.query(Correspondence).filter(Correspondence.id == correspondence_id).first()
     if not row:
@@ -989,7 +988,7 @@ def update_correspondence(
 def list_correspondence_actions(
     correspondence_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -1007,7 +1006,7 @@ def create_correspondence_action(
     correspondence_id: int,
     payload: CorrespondenceActionCreateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:create")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -1038,7 +1037,7 @@ def update_correspondence_action(
     action_id: int,
     payload: CorrespondenceActionUpdateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:update")),
 ):
     row = _load_action_or_404(db, action_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
@@ -1069,7 +1068,7 @@ def update_correspondence_action(
 def delete_correspondence_action(
     action_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:delete")),
 ):
     row = _load_action_or_404(db, action_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
@@ -1083,7 +1082,7 @@ def delete_correspondence_action(
 def list_correspondence_attachments(
     correspondence_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -1118,7 +1117,7 @@ def upload_correspondence_attachment(
     openproject_work_package_id: Optional[int] = Form(default=None),
     action_id: Optional[int] = Form(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:create")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -1194,7 +1193,7 @@ def upload_correspondence_attachment(
 def download_correspondence_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     row = _load_attachment_or_404(db, attachment_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
@@ -1210,7 +1209,7 @@ def download_correspondence_attachment(
 def delete_correspondence_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:delete")),
 ):
     row = _load_attachment_or_404(db, attachment_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
