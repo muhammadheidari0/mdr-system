@@ -8,6 +8,7 @@ services:
       APP_ENV: ${APP_ENV:-production}
       DEBUG: ${DEBUG:-false}
       API_PREFIX: ${API_PREFIX:-/api/v1}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
     volumes:
       - ${MDR_DATA_ROOT:-/opt/mdr_data}/database:/app/database
       - ${MDR_DATA_ROOT:-/opt/mdr_data}/data_store:/app/data_store
@@ -30,6 +31,8 @@ services:
     restart: unless-stopped
     depends_on:
       - web
+    environment:
+      MDR_DOMAIN: ${MDR_DOMAIN:?MDR_DOMAIN is required}
     ports:
       - "80:80"
       - "443:443"

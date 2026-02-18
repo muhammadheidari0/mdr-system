@@ -1,5 +1,5 @@
-# Replace `your-domain.com` with your production domain before go-live.
-your-domain.com {
+# Set MDR_DOMAIN in the environment (.env). Example: MDR_DOMAIN=esms.example.com
+{$MDR_DOMAIN} {
     encode zstd gzip
     reverse_proxy web:8000
 

@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mdr_app}
       POSTGRES_USER: ${POSTGRES_USER:-mdr}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mdr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
       - "${POSTGRES_PORT_BIND:-127.0.0.1:5432:5432}"
     volumes:
@@ -18,21 +18,26 @@ services:
       retries: 20
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
     container_name: mdr_app
     restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     depends_on:
       postgres:
         condition: service_healthy
     env_file:
       - .env
     environment:
-      API_PREFIX: ${COMPOSE_API_PREFIX:-/api/v1}
+      API_PREFIX: ${API_PREFIX:-/api/v1}
       APP_ENV: ${APP_ENV:-development}
-      DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql+psycopg://mdr:mdr@postgres:5432/mdr_app}
-      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-${DATABASE_URL:?DATABASE_URL (or COMPOSE_DATABASE_URL) is required}}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@mdr.local}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-ChangeMe#12345}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-System Administrator}
       READ_ONLY_MODE: ${COMPOSE_READ_ONLY_MODE:-false}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
@@ -40,6 +45,7 @@ services:
       DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
       DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
       DB_ECHO: ${DB_ECHO:-false}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-}
     ports:
       - "${WEB_PORT_BIND:-127.0.0.1:8000:8000}"
     volumes:
@@ -60,9 +66,14 @@ services:
     command: ["/app/docker/start.sh"]
 
   worker:
-    build: .
+    build:
+      context: .
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
     container_name: mdr_worker
     restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,8 +83,8 @@ services:
       - .env
     environment:
       APP_ENV: ${APP_ENV:-development}
-      DATABASE_URL: ${COMPOSE_DATABASE_URL:-postgresql+psycopg://mdr:mdr@postgres:5432/mdr_app}
-      SECRET_KEY: ${SECRET_KEY}
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-${DATABASE_URL:?DATABASE_URL (or COMPOSE_DATABASE_URL) is required}}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
       DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
