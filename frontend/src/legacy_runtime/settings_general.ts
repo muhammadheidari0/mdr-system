@@ -2066,9 +2066,10 @@
     }
 
     function activeGeneralPage() {
-        const activeBtn = document.querySelector('.general-settings-btn.active[data-general-tab]');
+        const generalPanel = document.getElementById('tab-general');
+        const activeBtn = generalPanel?.querySelector('.general-settings-btn.active[data-general-tab]');
         if (activeBtn?.dataset?.generalTab) return activeBtn.dataset.generalTab;
-        const el = document.querySelector('.general-settings-page.active');
+        const el = generalPanel?.querySelector('.general-settings-page.active');
         if (!el?.id) return STORE.activePage || 'db_sync';
         return el.id.replace('general-page-', '');
     }
@@ -2102,7 +2103,8 @@
     }
 
     function applyGeneralDomainVisibility(domain = 'common') {
-        const buttons = Array.from(document.querySelectorAll('.general-settings-btn[data-general-tab]'));
+        const generalPanel = document.getElementById('tab-general');
+        const buttons = Array.from(generalPanel?.querySelectorAll('.general-settings-btn[data-general-tab]') || []);
         let firstVisible = null;
         let firstDomainVisible = null;
         buttons.forEach((button) => {
@@ -2606,9 +2608,11 @@
 
     window.switchGeneralSettingsPage = async function switchGeneralSettingsPage(page, btnEl = null, force = false) {
         if (!page) return;
-        document.querySelectorAll('.general-settings-btn').forEach((b) => b.classList.remove('active'));
-        document.querySelectorAll('.general-settings-page').forEach((p) => p.classList.remove('active'));
-        const btn = btnEl || document.querySelector(`.general-settings-btn[data-general-tab="${page}"]`);
+        const generalPanel = document.getElementById('tab-general');
+        if (!generalPanel) return;
+        generalPanel.querySelectorAll('.general-settings-btn').forEach((b) => b.classList.remove('active'));
+        generalPanel.querySelectorAll('.general-settings-page').forEach((p) => p.classList.remove('active'));
+        const btn = btnEl || generalPanel.querySelector(`.general-settings-btn[data-general-tab="${page}"]`);
         if (btn) btn.classList.add('active');
         const physicalPage = page === 'storage' || page === 'db_sync' ? 'db' : page;
         const tab = document.getElementById(`general-page-${physicalPage}`);
@@ -2620,13 +2624,15 @@
     window.switchGeneralSettingsDomain = async function switchGeneralSettingsDomain(domain = 'common', btnEl = null, force = false) {
         const normalizedDomain = norm(domain).toLowerCase() || 'common';
         STORE.activeDomain = normalizedDomain;
+        const generalPanel = document.getElementById('tab-general');
+        if (!generalPanel) return;
 
-        document.querySelectorAll('.general-module-btn').forEach((b) => b.classList.remove('active'));
-        const moduleBtn = btnEl || document.querySelector(`.general-module-btn[data-general-domain="${normalizedDomain}"]`);
+        generalPanel.querySelectorAll('.general-module-btn').forEach((b) => b.classList.remove('active'));
+        const moduleBtn = btnEl || generalPanel.querySelector(`.general-module-btn[data-general-domain="${normalizedDomain}"]`);
         if (moduleBtn) moduleBtn.classList.add('active');
 
         const preferredVisible = applyGeneralDomainVisibility(normalizedDomain);
-        const activeBtn = document.querySelector('.general-settings-btn.active');
+        const activeBtn = generalPanel.querySelector('.general-settings-btn.active');
         const activeBtnDomain = norm(activeBtn?.dataset?.generalDomain || 'common').toLowerCase();
         const keepCurrentActive = Boolean(
             activeBtn &&
