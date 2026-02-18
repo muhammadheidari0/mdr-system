@@ -20,6 +20,31 @@ This runbook deploys MDR App on a direct Ubuntu Server host (no Windows/WSL).
 - Deploy model: Git tag pull (`git fetch --tags`, `git checkout --detach <tag>`)
 - Frontend build model: Docker multi-stage (no `static/dist` dependency in Git)
 
+## Quick Bootstrap (Recommended)
+
+Use the bootstrap script for first-time Ubuntu 24.04 setup + deploy:
+
+```bash
+cd /opt/mdr_app
+chmod +x tools/bootstrap_ubuntu2404.sh
+tools/bootstrap_ubuntu2404.sh \
+  --domain esms.example.com \
+  --admin-email admin@esms.example.com \
+  --admin-password 'CHANGE_ME_STRONG_ADMIN_PASSWORD' \
+  --postgres-password 'CHANGE_ME_STRONG_PASSWORD' \
+  --secret-key 'CHANGE_ME_LONG_RANDOM_SECRET'
+```
+
+Key flags:
+
+- `--repo-url` (default `git@github.com:muhammadheidari0/mdr-system.git`)
+- `--ref` (default `v3.2.0`)
+- `--app-dir` (default `/opt/mdr_app`)
+- `--data-root` (default `/opt/mdr_data`)
+- `--skip-ufw`
+- `--existing-repo`
+- `--dry-run`
+
 ## 1) One-Time Server Preparation
 
 Run as a sudo-enabled user:
