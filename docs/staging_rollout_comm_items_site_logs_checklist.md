@@ -14,12 +14,12 @@
   - `alembic heads`
   - `alembic branches`
 - Expected:
-  - single head: `20260220_0011`
+  - single head: `20260220_0012`
   - no branches
 - Apply migration:
   - `alembic upgrade head`
 - Verify current revision:
-  - `alembic current` should be `20260220_0011`
+  - `alembic current` should be `20260220_0012`
 
 ## 3) App Deploy
 - Deploy backend and frontend artifacts.
@@ -31,10 +31,10 @@
 
 ## 4) Feature-Flag Validation (Staging)
 - Open contractor hub (`execution`):
-  - Two actions visible: `ثبت مکاتبات` and `گزارش کارگاه`
+  - Only Site Log flow is visible (no correspondence registration action in this tab).
   - Site Log drawer opens from left with wide layout.
 - Open consultant hub (`inspection`):
-  - `صف تایید گزارش کارگاه` visible
+  - Site Log verify queue is visible (no correspondence registration action in this tab).
   - submitted logs visible for verify.
 - Confirm forms are Persian (labels/messages/date display).
 

@@ -65,9 +65,9 @@ def test_ui_smoke_comm_items_feature_flag_template_switch() -> None:
         settings.FEATURE_COMM_ITEMS_V1 = True
         enabled = client.get("/ui/partial/contractor")
         assert enabled.status_code == 200, enabled.text
-        assert "comm-items-root" in enabled.text
-        assert "site-logs-root" in enabled.text
-        assert "data-dual-flow-action" in enabled.text
+        assert 'site-logs-root" data-module="contractor" data-tab="execution"' in enabled.text
+        assert 'comm-items-root" data-module="contractor" data-tab="execution"' not in enabled.text
+        assert "data-dual-flow-action" not in enabled.text
         assert "module-crud-root" not in enabled.text
 
         settings.FEATURE_COMM_ITEMS_V1 = False
@@ -87,7 +87,9 @@ def test_ui_smoke_consultant_inspection_has_site_log_queue_when_feature_enabled(
         enabled = client.get("/ui/partial/consultant")
         assert enabled.status_code == 200, enabled.text
         assert 'site-logs-root" data-module="consultant" data-tab="inspection"' in enabled.text
-        assert "show-site-log" in enabled.text
+        assert 'comm-items-root" data-module="consultant" data-tab="inspection"' not in enabled.text
+        assert "show-site-log" not in enabled.text
+        assert "show-comm" not in enabled.text
     finally:
         settings.FEATURE_COMM_ITEMS_V1 = original
 
