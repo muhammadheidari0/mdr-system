@@ -71,16 +71,45 @@
 
         <div class="module-workspace-panels">
             <section id="consultant-panel-inspection" class="module-workspace-panel active">
+                {% if feature_comm_items_v1 %}
+                <div class="dual-flow-shell" data-module="consultant" data-tab="inspection">
+                    <div class="dual-flow-actions">
+                        <button type="button" class="dual-flow-btn" data-dual-flow-action="show-comm">ثبت مکاتبات</button>
+                        <button type="button" class="dual-flow-btn is-active" data-dual-flow-action="show-site-log">صف تایید گزارش کارگاه</button>
+                    </div>
+                    <div class="dual-flow-panels">
+                        <div class="dual-flow-panel" data-dual-flow-panel="comm">
+                            <div class="comm-items-root" data-module="consultant" data-tab="inspection" data-title="بازدید و چک‌لیست"></div>
+                        </div>
+                        <div class="dual-flow-panel is-active" data-dual-flow-panel="site-log">
+                            <div class="site-logs-root" data-module="consultant" data-tab="inspection" data-title="صف تایید گزارش کارگاه"></div>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
                 <div class="module-crud-root" data-module="consultant" data-tab="inspection" data-title="بازدید و چک‌لیست"></div>
+                {% endif %}
             </section>
             <section id="consultant-panel-defects" class="module-workspace-panel">
+                {% if feature_comm_items_v1 %}
+                <div class="comm-items-root" data-module="consultant" data-tab="defects" data-title="لیست نواقص"></div>
+                {% else %}
                 <div class="module-crud-root" data-module="consultant" data-tab="defects" data-title="لیست نواقص"></div>
+                {% endif %}
             </section>
             <section id="consultant-panel-instructions" class="module-workspace-panel">
+                {% if feature_comm_items_v1 %}
+                <div class="comm-items-root" data-module="consultant" data-tab="instructions" data-title="دستورکار / صورتجلسه"></div>
+                {% else %}
                 <div class="module-crud-root" data-module="consultant" data-tab="instructions" data-title="دستورکار / صورتجلسه"></div>
+                {% endif %}
             </section>
             <section id="consultant-panel-control" class="module-workspace-panel">
+                {% if feature_comm_items_v1 %}
+                <div class="comm-items-root" data-module="consultant" data-tab="control" data-title="کنترل پروژه"></div>
+                {% else %}
                 <div class="module-crud-root" data-module="consultant" data-tab="control" data-title="کنترل پروژه"></div>
+                {% endif %}
             </section>
         </div>
     </div>

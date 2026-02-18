@@ -15,6 +15,15 @@ import type { CorrespondenceUiBridge } from "./lib/correspondence_ui";
 import type { CorrespondenceStateBridge } from "./lib/correspondence_state";
 import type { CorrespondenceFormBridge } from "./lib/correspondence_form";
 import type { CorrespondenceWorkflowBridge } from "./lib/correspondence_workflow";
+import type { CommItemsDataBridge } from "./lib/comm_items_data";
+import type { CommItemsFormBridge } from "./lib/comm_items_form";
+import type { CommItemsStateBridge } from "./lib/comm_items_state";
+import type { CommItemsUiBridge } from "./lib/comm_items_ui";
+import type { CommItemsWorkflowBridge } from "./lib/comm_items_workflow";
+import type { SiteLogsDataBridge } from "./lib/site_logs_data";
+import type { SiteLogsFormBridge } from "./lib/site_logs_form";
+import type { SiteLogsStateBridge } from "./lib/site_logs_state";
+import type { SiteLogsUiBridge } from "./lib/site_logs_ui";
 
 export {};
 
@@ -37,6 +46,15 @@ declare global {
     correspondenceState: CorrespondenceStateBridge;
     correspondenceForm: CorrespondenceFormBridge;
     correspondenceWorkflow: CorrespondenceWorkflowBridge;
+    commItemsData: CommItemsDataBridge;
+    commItemsForm: CommItemsFormBridge;
+    commItemsState: CommItemsStateBridge;
+    commItemsUi: CommItemsUiBridge;
+    commItemsWorkflow: CommItemsWorkflowBridge;
+    siteLogsData: SiteLogsDataBridge;
+    siteLogsForm: SiteLogsFormBridge;
+    siteLogsState: SiteLogsStateBridge;
+    siteLogsUi: SiteLogsUiBridge;
   }
 
   interface Window {
