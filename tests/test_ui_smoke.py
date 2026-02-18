@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.config import settings
 from tests.auth_helpers import get_auth_headers
 
 
@@ -47,6 +48,48 @@ def test_ui_smoke_whitelisted_partials_load() -> None:
         response = client.get(f"/ui/partial/{partial}")
         assert response.status_code == 200, f"{partial}: {response.text}"
         assert marker in response.text, f"{partial}: expected marker `{marker}`"
+
+
+def test_ui_smoke_reports_rebranded_impact_labels() -> None:
+    response = client.get("/ui/partial/reports")
+    assert response.status_code == 200, response.text
+    html = response.text
+    assert "Impact Signals" in html
+    assert "Items with Potential Impacts" in html
+    assert "Claim Candidates" not in html
+
+
+def test_ui_smoke_comm_items_feature_flag_template_switch() -> None:
+    original = bool(settings.FEATURE_COMM_ITEMS_V1)
+    try:
+        settings.FEATURE_COMM_ITEMS_V1 = True
+        enabled = client.get("/ui/partial/contractor")
+        assert enabled.status_code == 200, enabled.text
+        assert "comm-items-root" in enabled.text
+        assert "site-logs-root" in enabled.text
+        assert "data-dual-flow-action" in enabled.text
+        assert "module-crud-root" not in enabled.text
+
+        settings.FEATURE_COMM_ITEMS_V1 = False
+        disabled = client.get("/ui/partial/contractor")
+        assert disabled.status_code == 200, disabled.text
+        assert "module-crud-root" in disabled.text
+        assert "comm-items-root" not in disabled.text
+        assert "site-logs-root" not in disabled.text
+    finally:
+        settings.FEATURE_COMM_ITEMS_V1 = original
+
+
+def test_ui_smoke_consultant_inspection_has_site_log_queue_when_feature_enabled() -> None:
+    original = bool(settings.FEATURE_COMM_ITEMS_V1)
+    try:
+        settings.FEATURE_COMM_ITEMS_V1 = True
+        enabled = client.get("/ui/partial/consultant")
+        assert enabled.status_code == 200, enabled.text
+        assert 'site-logs-root" data-module="consultant" data-tab="inspection"' in enabled.text
+        assert "show-site-log" in enabled.text
+    finally:
+        settings.FEATURE_COMM_ITEMS_V1 = original
 
 
 def test_ui_smoke_priority_a_templates_have_no_inline_scripts_or_handlers() -> None:
@@ -200,3 +243,37 @@ def test_ui_smoke_transmittal_and_correspondence_endpoints_with_auth() -> None:
     corr_list = corr_list_res.json()
     assert corr_list.get("ok") is True
     assert isinstance(corr_list.get("data"), list)
+
+
+def test_ui_smoke_comm_items_endpoints_with_auth() -> None:
+    headers = _admin_headers()
+
+    catalog_res = client.get("/api/v1/comm-items/catalog", headers=headers)
+    assert catalog_res.status_code == 200, catalog_res.text
+    catalog = catalog_res.json()
+    assert catalog.get("ok") is True
+    assert isinstance(catalog.get("item_types"), list)
+    assert isinstance(catalog.get("workflow_statuses"), dict)
+    assert isinstance(catalog.get("attachment_scopes"), list)
+    assert isinstance(catalog.get("attachment_slot_rules"), dict)
+    assert isinstance(catalog.get("terminology"), dict)
+    subtypes = {str(row.get("code") or "").strip().upper() for row in catalog.get("tech_subtypes", [])}
+    assert "DAILY_REPORT" not in subtypes
+    assert "WEEKLY_REPORT" not in subtypes
+    assert "MANPOWER_REPORT" not in subtypes
+    assert "EQUIPMENT_REPORT" not in subtypes
+
+    list_res = client.get(
+        "/api/v1/comm-items/list?module_key=contractor&tab_key=requests&skip=0&limit=10",
+        headers=headers,
+    )
+    assert list_res.status_code == 200, list_res.text
+    listed = list_res.json()
+    assert listed.get("ok") is True
+    assert isinstance(listed.get("data"), list)
+
+    aging_res = client.get("/api/v1/comm-items/reports/aging", headers=headers)
+    assert aging_res.status_code == 200, aging_res.text
+    aging = aging_res.json()
+    assert aging.get("ok") is True
+    assert "summary" in aging
