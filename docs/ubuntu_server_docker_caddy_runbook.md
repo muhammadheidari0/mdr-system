@@ -113,9 +113,12 @@ Set required values in `.env`:
 - `POSTGRES_PASSWORD=<strong-password>`
 - `DATABASE_URL=postgresql+psycopg://mdr:<strong-password>@postgres:5432/mdr_app`
 - `COMPOSE_DATABASE_URL=postgresql+psycopg://mdr:<strong-password>@postgres:5432/mdr_app`
+- `MDR_DOMAIN=<your-public-domain>`
 - `MDR_DATA_ROOT=/opt/mdr_data`
 - `POSTGRES_PORT_BIND=127.0.0.1:5432:5432`
 - `WEB_PORT_BIND=127.0.0.1:8000:8000`
+- `APP_UID=1000`, `APP_GID=1000`
+- `WEB_CONCURRENCY=2`
 - `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_FULL_NAME`
 
 If integrations are enabled, also set:
@@ -128,7 +131,7 @@ If integrations are enabled, also set:
 
 ## 5) Configure Caddy Domain + Deploy
 
-Edit `docker/Caddyfile` and replace `your-domain.com` with your real domain.
+Set `MDR_DOMAIN` in `.env` (for example: `MDR_DOMAIN=esms.example.com`).
 
 Deploy:
 
