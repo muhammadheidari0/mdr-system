@@ -3546,6 +3546,35 @@ body.ci-drawer-open {
     opacity: 0.55;
 }
 
+.settings-integrations-page .general-settings-card {
+    margin: 0;
+}
+
+.settings-integration-token-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.settings-token-source-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #334155;
+    background: #f8fafc;
+}
+
+.settings-inline-actions {
+    justify-content: flex-start;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .storage-integrations-actions {
     justify-content: flex-start;
     flex-wrap: wrap;

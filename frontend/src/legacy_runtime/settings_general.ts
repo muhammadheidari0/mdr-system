@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 (() => {
     const API_BASE = '/api/v1/settings';
     const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories'];
@@ -18,7 +18,7 @@
             dirty: {
                 paths: false,
                 policy: false,
-                integrations: false,
+                site_cache: false,
             },
         },
         data: {
@@ -59,7 +59,7 @@
         corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
     };
 
-    const STORAGE_WIZARD_STEPS = ['paths', 'policy', 'integrations'];
+    const STORAGE_WIZARD_STEPS = ['paths', 'policy', 'site_cache'];
     const STORAGE_POLICY_DEFAULT_ALLOWED_MIMES = [
         'application/pdf',
         'image/png',
@@ -97,9 +97,9 @@
     const SITE_CACHE_ALL_VALUE = '__ALL__';
     const SITE_CACHE_TOKEN_MULTI_IDS = ['siteCacheRuleProjectInput', 'siteCacheRuleDisciplineInput', 'siteCacheRulePackageInput'];
     const SITE_CACHE_TOKEN_MULTI_PLACEHOLDER = {
-        siteCacheRuleProjectInput: 'انتخاب پروژه',
-        siteCacheRuleDisciplineInput: 'انتخاب دیسیپلین',
-        siteCacheRulePackageInput: 'انتخاب پکیج',
+        siteCacheRuleProjectInput: 'Ø§Ù†ØªØ®Ø§Ø¨ Ù¾Ø±ÙˆÚ˜Ù‡',
+        siteCacheRuleDisciplineInput: 'Ø§Ù†ØªØ®Ø§Ø¨ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†',
+        siteCacheRulePackageInput: 'Ø§Ù†ØªØ®Ø§Ø¨ Ù¾Ú©ÛŒØ¬',
     };
 
     function tSuccess(msg) { if (window.UI?.success) window.UI.success(msg); else alert(msg); }
@@ -119,11 +119,11 @@
 
     function boolBadge(value) {
         return value
-            ? '<span class="status-badge active">فعال</span>'
-            : '<span class="status-badge inactive">غیرفعال</span>';
+            ? '<span class="status-badge active">ÙØ¹Ø§Ù„</span>'
+            : '<span class="status-badge inactive">ØºÛŒØ±ÙØ¹Ø§Ù„</span>';
     }
 
-    function setLoadingRows(entity, message = 'در حال بارگذاری...') {
+    function setLoadingRows(entity, message = 'Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...') {
         const meta = LIST_META[entity];
         const tbody = document.getElementById(meta.tbodyId);
         if (!tbody) return;
@@ -182,11 +182,11 @@
         const pager = document.getElementById(LIST_META[entity].pagerId);
         if (!pager) return;
         pager.innerHTML = `
-            <div class="general-pager-left">نمایش ${info.from}-${info.to} از ${info.total}</div>
+            <div class="general-pager-left">Ù†Ù…Ø§ÛŒØ´ ${info.from}-${info.to} Ø§Ø² ${info.total}</div>
             <div class="general-pager-right">
-                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page - 1}">قبلی</button>
-                <span>صفحه ${info.page} از ${info.totalPages}</span>
-                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page + 1}">بعدی</button>
+                <button class="btn-archive-icon" type="button" ${info.page <= 1 ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page - 1}">Ù‚Ø¨Ù„ÛŒ</button>
+                <span>ØµÙØ­Ù‡ ${info.page} Ø§Ø² ${info.totalPages}</span>
+                <button class="btn-archive-icon" type="button" ${info.page >= info.totalPages ? 'disabled' : ''} data-general-action="goto-page" data-entity="${esc(entity)}" data-page="${info.page + 1}">Ø¨Ø¹Ø¯ÛŒ</button>
             </div>
         `;
     }
@@ -202,7 +202,7 @@
 
         const info = getFilteredAndPaged(entity);
         if (!info.rows.length) {
-            tbody.innerHTML = `<tr><td class="text-center muted" colspan="${meta.colspan}">موردی یافت نشد</td></tr>`;
+            tbody.innerHTML = `<tr><td class="text-center muted" colspan="${meta.colspan}">Ù…ÙˆØ±Ø¯ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯</td></tr>`;
             renderPager(entity, info);
             return;
         }
@@ -215,8 +215,8 @@
                     <td>${esc(p.project_name || p.name_e || '-')}</td>
                     <td>${boolBadge(Boolean(p.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-project" data-code="${esc(encoded(p.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-project" data-code="${esc(encoded(p.code))}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-project" data-code="${esc(encoded(p.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-project" data-code="${esc(encoded(p.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -227,8 +227,8 @@
                     <td>${esc(m.name_e || m.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(m.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-mdr" data-code="${esc(encoded(m.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-mdr" data-code="${esc(encoded(m.code))}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-mdr" data-code="${esc(encoded(m.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-mdr" data-code="${esc(encoded(m.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -239,8 +239,8 @@
                     <td>${esc(p.name_e || '-')}</td>
                     <td>${esc(p.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-phase" data-code="${esc(encoded(p.ph_code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-phase" data-code="${esc(encoded(p.ph_code))}">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-phase" data-code="${esc(encoded(p.ph_code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-phase" data-code="${esc(encoded(p.ph_code))}">Ø­Ø°Ù</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -251,8 +251,8 @@
                     <td>${esc(d.name_e || '-')}</td>
                     <td>${esc(d.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-discipline" data-code="${esc(encoded(d.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-discipline" data-code="${esc(encoded(d.code))}">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-discipline" data-code="${esc(encoded(d.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-discipline" data-code="${esc(encoded(d.code))}">Ø­Ø°Ù</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -264,8 +264,8 @@
                     <td>${esc(p.name_e || '-')}</td>
                     <td>${esc(p.name_p || '-')}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-package" data-discipline-code="${esc(encoded(p.discipline_code))}" data-package-code="${esc(encoded(p.package_code))}">Ø­Ø°Ù</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -277,8 +277,8 @@
                     <td>${esc(b.name_e || b.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(b.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-block" data-project-code="${esc(encoded(b.project_code))}" data-code="${esc(encoded(b.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -290,8 +290,8 @@
                     <td>${esc(l.name_p || '-')}</td>
                     <td>${esc(l.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-level" data-code="${esc(encoded(l.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-level" data-code="${esc(encoded(l.code))}">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-level" data-code="${esc(encoded(l.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-level" data-code="${esc(encoded(l.code))}">Ø­Ø°Ù</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -303,8 +303,8 @@
                     <td>${esc(s.description || '-')}</td>
                     <td>${esc(s.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-status" data-code="${esc(encoded(s.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-status" data-code="${esc(encoded(s.code))}">حذف</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-status" data-code="${esc(encoded(s.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-status" data-code="${esc(encoded(s.code))}">Ø­Ø°Ù</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -316,8 +316,8 @@
                     <td>${esc(s.project_code || '-')}</td>
                     <td>${boolBadge(Boolean(s.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-issuing" data-code="${esc(encoded(s.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-issuing" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-issuing" data-code="${esc(encoded(s.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-issuing" data-code="${esc(encoded(s.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -329,8 +329,8 @@
                     <td>${boolBadge(Boolean(s.is_active))}</td>
                     <td>${esc(s.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-category" data-code="${esc(encoded(s.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-category" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-category" data-code="${esc(encoded(s.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-category" data-code="${esc(encoded(s.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -344,7 +344,7 @@
         const fn = typeof window.fetchWithAuth === 'function' ? window.fetchWithAuth : fetch;
         const res = await fn(url, options);
         if (!res.ok) {
-            let message = `درخواست ناموفق بود (${res.status})`;
+            let message = `Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯ (${res.status})`;
             try {
                 const j = await res.clone().json();
                 message = j.detail || j.message || message;
@@ -389,7 +389,7 @@
         if (!box) return;
         const items = STORE.data.projects || [];
         if (!items.length) {
-            box.innerHTML = '<div class="text-muted">پروژه‌ای ثبت نشده است.</div>';
+            box.innerHTML = '<div class="text-muted">Ù¾Ø±ÙˆÚ˜Ù‡â€ŒØ§ÛŒ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</div>';
             return;
         }
         box.innerHTML = items.map((p) => `
@@ -403,20 +403,20 @@
     async function loadOverview() {
         const box = document.getElementById('settingsOverviewStats');
         if (!box) return;
-        box.innerHTML = '<div class="text-muted">در حال بارگذاری...</div>';
+        box.innerHTML = '<div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>';
         const data = await request(`${API_BASE}/overview`);
         const counts = data.counts || {};
         const cards = [
-            ['projects', 'پروژه'],
+            ['projects', 'Ù¾Ø±ÙˆÚ˜Ù‡'],
             ['mdr_categories', 'MDR'],
-            ['phases', 'فاز'],
-            ['disciplines', 'دیسیپلین'],
-            ['packages', 'پکیج'],
-            ['blocks', 'بلوک'],
-            ['levels', 'سطح'],
-            ['statuses', 'وضعیت'],
-            ['issuing_entities', 'مرجع صدور'],
-            ['correspondence_categories', 'دسته مکاتبات'],
+            ['phases', 'ÙØ§Ø²'],
+            ['disciplines', 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†'],
+            ['packages', 'Ù¾Ú©ÛŒØ¬'],
+            ['blocks', 'Ø¨Ù„ÙˆÚ©'],
+            ['levels', 'Ø³Ø·Ø­'],
+            ['statuses', 'ÙˆØ¶Ø¹ÛŒØª'],
+            ['issuing_entities', 'Ù…Ø±Ø¬Ø¹ ØµØ¯ÙˆØ±'],
+            ['correspondence_categories', 'Ø¯Ø³ØªÙ‡ Ù…Ú©Ø§ØªØ¨Ø§Øª'],
         ];
         box.innerHTML = cards.map(([k, label]) => `
             <div class="general-overview-card">
@@ -430,11 +430,11 @@
         const box = document.getElementById('transmittalConfigSummary');
         if (!box) return;
         const cards = [
-            ['projects', 'پروژه'],
+            ['projects', 'Ù¾Ø±ÙˆÚ˜Ù‡'],
             ['mdr', 'MDR'],
-            ['phases', 'فاز'],
-            ['disciplines', 'دیسیپلین'],
-            ['statuses', 'وضعیت'],
+            ['phases', 'ÙØ§Ø²'],
+            ['disciplines', 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†'],
+            ['statuses', 'ÙˆØ¶Ø¹ÛŒØª'],
         ];
         box.innerHTML = cards.map(([entity, label]) => `
             <div class="general-overview-card">
@@ -508,8 +508,12 @@
         if (prevBtn) prevBtn.disabled = idx <= 0;
         if (nextBtn) nextBtn.disabled = idx < 0 || idx >= STORAGE_WIZARD_STEPS.length - 1;
         if (saveBtn) {
-            const dirty = Boolean(STORE.storageWizard.dirty[step]);
-            saveBtn.textContent = dirty ? 'ذخیره مرحله جاری *' : 'ذخیره مرحله جاری';
+            const canSaveStep = step !== 'site_cache';
+            saveBtn.disabled = !canSaveStep;
+            const dirty = canSaveStep ? Boolean(STORE.storageWizard.dirty[step]) : false;
+            saveBtn.textContent = canSaveStep
+                ? (dirty ? 'Ø°Ø®ÛŒØ±Ù‡ Ù…Ø±Ø­Ù„Ù‡ Ø¬Ø§Ø±ÛŒ *' : 'Ø°Ø®ÛŒØ±Ù‡ Ù…Ø±Ø­Ù„Ù‡ Ø¬Ø§Ø±ÛŒ')
+                : 'Ù…Ø±Ø­Ù„Ù‡ Ø¬Ø§Ø±ÛŒ Ø°Ø®ÛŒØ±Ù‡ Ù…Ø³ØªÙ‚Ù„ Ù†Ø¯Ø§Ø±Ø¯';
         }
     }
 
@@ -518,7 +522,7 @@
         const force = Boolean(opts.force);
         const currentStep = STORE.storageWizard.activeStep || 'paths';
         if (!force && currentStep !== targetStep && STORE.storageWizard.dirty[currentStep]) {
-            const ok = confirm('تغییرات این مرحله ذخیره نشده است. آیا مایل به تغییر مرحله هستید؟');
+            const ok = confirm('ØªØºÛŒÛŒØ±Ø§Øª Ø§ÛŒÙ† Ù…Ø±Ø­Ù„Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª. Ø¢ÛŒØ§ Ù…Ø§ÛŒÙ„ Ø¨Ù‡ ØªØºÛŒÛŒØ± Ù…Ø±Ø­Ù„Ù‡ Ù‡Ø³ØªÛŒØ¯ØŸ');
             if (!ok) return false;
         }
         STORE.storageWizard.activeStep = targetStep;
@@ -556,31 +560,41 @@
             await window.saveStoragePolicySettings();
             return;
         }
-        if (step === 'integrations') {
-            await window.saveStorageIntegrationsSettings();
-            return;
-        }
+        tSuccess('ØªÙ†Ø¸ÛŒÙ…Ø§Øª Site Cache Ø¨Ø§ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ÛŒ Ø¯Ø§Ø®Ù„ÛŒ Ù‡Ù…ÛŒÙ† ØµÙØ­Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.');
     }
 
     function updateStorageIntegrationsFieldState() {
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
+        const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
+        const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
         const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
         const openprojectWrap = document.getElementById('storageOpenProjectDefaultWpWrap');
+        const openprojectBaseUrlWrap = document.getElementById('storageOpenProjectBaseUrlWrap');
+        const openprojectTokenWrap = document.getElementById('storageOpenProjectTokenWrap');
         const gdriveWrap = document.getElementById('storageGoogleDriveDriveIdWrap');
         const openprojectSyncBtn = document.getElementById('storageOpenProjectSyncRunBtn');
         const gdriveSyncBtn = document.getElementById('storageGoogleDriveSyncRunBtn');
+        const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
+        const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
+        const tokenSource = norm(tokenBadge?.dataset?.tokenSource || 'none').toLowerCase();
+        const envManagedToken = tokenSource === 'env';
 
         const gdriveOn = Boolean(gdriveEnabled?.checked);
         const openprojectOn = Boolean(openprojectEnabled?.checked);
 
         if (gdriveDriveId) gdriveDriveId.disabled = !gdriveOn;
+        if (openprojectBaseUrl) openprojectBaseUrl.disabled = !openprojectOn;
+        if (openprojectToken) openprojectToken.disabled = !openprojectOn || envManagedToken;
         if (openprojectWp) openprojectWp.disabled = !openprojectOn;
         if (gdriveWrap) gdriveWrap.classList.toggle('is-disabled', !gdriveOn);
+        if (openprojectBaseUrlWrap) openprojectBaseUrlWrap.classList.toggle('is-disabled', !openprojectOn);
+        if (openprojectTokenWrap) openprojectTokenWrap.classList.toggle('is-disabled', !openprojectOn);
         if (openprojectWrap) openprojectWrap.classList.toggle('is-disabled', !openprojectOn);
         if (gdriveSyncBtn) gdriveSyncBtn.disabled = !gdriveOn;
         if (openprojectSyncBtn) openprojectSyncBtn.disabled = !openprojectOn;
+        if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
     }
 
     function bindStorageWorkflowInputs() {
@@ -596,16 +610,13 @@
                 updateStoragePathPreview();
             } else if (target.closest('#storage-step-policy')) {
                 markStorageStepDirty('policy');
-            } else if (target.closest('#storage-step-integrations')) {
-                markStorageStepDirty('integrations');
             }
         });
 
         root.addEventListener('change', (event) => {
             const target = event?.target;
             if (!target) return;
-            if (target.closest('#storage-step-integrations')) {
-                markStorageStepDirty('integrations');
+            if (target.closest('#storage-step-site-cache')) {
                 updateStorageIntegrationsFieldState();
             }
         });
@@ -665,7 +676,7 @@
         if (!raw) return fallback;
         const n = Number(raw);
         if (!Number.isFinite(n) || n <= 0) {
-            throw new Error(`${label} باید عدد مثبت باشد.`);
+            throw new Error(`${label} Ø¨Ø§ÛŒØ¯ Ø¹Ø¯Ø¯ Ù…Ø«Ø¨Øª Ø¨Ø§Ø´Ø¯.`);
         }
         return Math.round(n);
     }
@@ -739,9 +750,9 @@
         const blocked_extensions = parseCommaSeparatedList(blockedInput.value);
         const allowed_mimes = parseCommaSeparatedList(allowedInput.value).map((v) => v.toLowerCase());
         const max_size_mb = {
-            pdf: parsePositiveNumber(pdfInput.value, 'حداکثر حجم PDF', 100),
-            native: parsePositiveNumber(nativeInput.value, 'حداکثر حجم Native', 250),
-            attachment: parsePositiveNumber(attachmentInput.value, 'حداکثر حجم Attachment', 100),
+            pdf: parsePositiveNumber(pdfInput.value, 'Ø­Ø¯Ø§Ú©Ø«Ø± Ø­Ø¬Ù… PDF', 100),
+            native: parsePositiveNumber(nativeInput.value, 'Ø­Ø¯Ø§Ú©Ø«Ø± Ø­Ø¬Ù… Native', 250),
+            attachment: parsePositiveNumber(attachmentInput.value, 'Ø­Ø¯Ø§Ú©Ø«Ø± Ø­Ø¬Ù… Attachment', 100),
         };
 
         const payload = await request(`${API_BASE}/storage-policy`, {
@@ -757,25 +768,37 @@
         STORE.storagePolicyLoaded = true;
         clearStorageStepDirty('policy');
         setStorageSyncResult('');
-        tSuccess('سیاست اعتبارسنجی فایل ذخیره شد.');
+        tSuccess('Ø³ÛŒØ§Ø³Øª Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ ÙØ§ÛŒÙ„ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
     }
 
     function applyStorageIntegrationsToForm(integrations = {}) {
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
         const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
+        const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
+        const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
         const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
+        const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
 
         const gdrive = integrations?.google_drive || {};
         const openproject = integrations?.openproject || {};
         const localCache = integrations?.local_cache || {};
+        const tokenSource = norm(openproject.token_source || 'none').toLowerCase();
 
         if (gdriveEnabled) gdriveEnabled.checked = Boolean(gdrive.enabled);
         if (openprojectEnabled) openprojectEnabled.checked = Boolean(openproject.enabled);
         if (localCacheEnabled) localCacheEnabled.checked = Boolean(localCache.enabled);
-        if (openprojectWp) openprojectWp.value = String(openproject.default_project_id || '');
+        if (openprojectBaseUrl) openprojectBaseUrl.value = String(openproject.base_url || '');
+        if (openprojectToken) openprojectToken.value = '';
+        if (openprojectWp) openprojectWp.value = String(openproject.default_work_package_id || openproject.default_project_id || '');
         if (gdriveDriveId) gdriveDriveId.value = String(gdrive.shared_drive_id || '');
+        if (tokenBadge) {
+            tokenBadge.textContent = tokenSource || 'none';
+            tokenBadge.dataset.tokenSource = tokenSource || 'none';
+        }
+        if (tokenHint) tokenHint.textContent = tokenSource === 'env' ? 'Token is managed by environment' : '';
         updateStorageIntegrationsFieldState();
     }
 
@@ -785,7 +808,6 @@
         if (STORE.storageIntegrationsLoaded && !force) return;
         const payload = await request(`${API_BASE}/storage-integrations`);
         applyStorageIntegrationsToForm(payload?.integrations || {});
-        clearStorageStepDirty('integrations');
         STORE.storageIntegrationsLoaded = true;
     }
 
@@ -793,9 +815,11 @@
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
         const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
+        const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
+        const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
         const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
-        if (!gdriveEnabled || !openprojectEnabled || !localCacheEnabled || !openprojectWp || !gdriveDriveId) return;
+        if (!gdriveEnabled || !openprojectEnabled || !localCacheEnabled || !openprojectWp || !gdriveDriveId || !openprojectBaseUrl || !openprojectToken) return;
 
         const payload = await request(`${API_BASE}/storage-integrations`, {
             method: 'POST',
@@ -806,7 +830,9 @@
                 },
                 openproject: {
                     enabled: Boolean(openprojectEnabled.checked),
-                    default_project_id: norm(openprojectWp.value),
+                    base_url: norm(openprojectBaseUrl.value),
+                    api_token: norm(openprojectToken.value),
+                    default_work_package_id: norm(openprojectWp.value),
                 },
                 local_cache: {
                     enabled: Boolean(localCacheEnabled.checked),
@@ -815,9 +841,30 @@
         });
         applyStorageIntegrationsToForm(payload?.integrations || {});
         STORE.storageIntegrationsLoaded = true;
-        clearStorageStepDirty('integrations');
         setStorageSyncResult('');
         tSuccess('تنظیمات یکپارچه‌سازی ذخیره شد.');
+    }
+
+    async function clearOpenProjectStoredToken() {
+        const payload = await request(`${API_BASE}/storage-integrations/openproject/clear-token`, {
+            method: 'POST',
+        });
+        applyStorageIntegrationsToForm(payload?.integrations || {});
+        setStorageSyncResult('توکن ذخیره‌شده OpenProject پاک شد.', 'success');
+    }
+
+    async function pingOpenProject() {
+        setStorageSyncResult('در حال بررسی اتصال OpenProject ...', 'info');
+        const payload = await request('/api/v1/storage/openproject/ping', { method: 'POST' });
+        const reachable = Boolean(payload?.reachable);
+        const authOk = Boolean(payload?.auth_ok);
+        const statusCode = payload?.status_code ?? '-';
+        const tokenSource = String(payload?.token_source || 'none');
+        const message = String(payload?.message || '');
+        const summary = `Ping OpenProject: reachable=${reachable} | auth_ok=${authOk} | status=${statusCode} | token_source=${tokenSource}`;
+        setStorageSyncResult(`${summary}${message ? ` | ${message}` : ''}`, authOk ? 'success' : (reachable ? 'info' : 'error'));
+        if (authOk) tSuccess('اتصال OpenProject تایید شد.');
+        else tError('Ping OpenProject انجام شد ولی احراز هویت/مسیر نیاز به اصلاح دارد.');
     }
 
     async function runStorageSyncJob(kind) {
@@ -825,19 +872,63 @@
             ? '/api/v1/storage/sync/openproject/run'
             : '/api/v1/storage/sync/google-drive/run';
         const title = kind === 'openproject' ? 'OpenProject' : 'Google Drive';
-        setStorageSyncResult(`در حال اجرای Sync ${title} ...`, 'info');
+        setStorageSyncResult(`Ø¯Ø± Ø­Ø§Ù„ Ø§Ø¬Ø±Ø§ÛŒ Sync ${title} ...`, 'info');
         const payload = await request(endpoint, { method: 'POST' });
         const processed = Number(payload?.processed || 0);
         const succeeded = Number(payload?.success || payload?.succeeded || 0);
         const failed = Number(payload?.failed || 0);
         const dead = Number(payload?.dead || 0);
-        const summary = `نتیجه Sync ${title}: پردازش=${processed}، موفق=${succeeded}، خطا=${failed}، صف‌معیوب=${dead}`;
+        const summary = `Ù†ØªÛŒØ¬Ù‡ Sync ${title}: Ù¾Ø±Ø¯Ø§Ø²Ø´=${processed}ØŒ Ù…ÙˆÙÙ‚=${succeeded}ØŒ Ø®Ø·Ø§=${failed}ØŒ ØµÙâ€ŒÙ…Ø¹ÛŒÙˆØ¨=${dead}`;
         setStorageSyncResult(summary, failed > 0 || dead > 0 ? 'error' : 'success');
         if (failed > 0 || dead > 0) {
-            tError(`${summary}. جزئیات در پنل نتیجه نمایش داده شد.`);
+            tError(`${summary}. Ø¬Ø²Ø¦ÛŒØ§Øª Ø¯Ø± Ù¾Ù†Ù„ Ù†ØªÛŒØ¬Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´Ø¯.`);
             return;
         }
         tSuccess(summary);
+    }
+
+    function bindIntegrationsActions() {
+        const root = document.getElementById('settingsIntegrationsRoot');
+        if (!root || root.dataset.integrationsActionsBound === '1') return;
+        root.addEventListener('click', async (event) => {
+            const actionEl = event?.target?.closest?.('[data-integrations-action]');
+            if (!actionEl || !root.contains(actionEl)) return;
+            event.preventDefault();
+            const action = norm(actionEl.dataset.integrationsAction || '').toLowerCase();
+            try {
+                if (action === 'save-integrations') {
+                    await saveStorageIntegrations();
+                    return;
+                }
+                if (action === 'run-google-sync') {
+                    await runStorageSyncJob('google_drive');
+                    return;
+                }
+                if (action === 'run-openproject-sync') {
+                    await runStorageSyncJob('openproject');
+                    return;
+                }
+                if (action === 'ping-openproject') {
+                    await pingOpenProject();
+                    return;
+                }
+                if (action === 'clear-openproject-token') {
+                    await clearOpenProjectStoredToken();
+                }
+            } catch (err) {
+                tError(err.message);
+            }
+        });
+        root.addEventListener('change', () => {
+            updateStorageIntegrationsFieldState();
+        });
+        root.dataset.integrationsActionsBound = '1';
+    }
+
+    async function initSettingsIntegrations(force = false) {
+        bindIntegrationsActions();
+        await loadStorageIntegrations(force);
+        updateStorageIntegrationsFieldState();
     }
 
     function setSiteCacheTokenMessage(message = '', level = 'info') {
@@ -860,16 +951,16 @@
     function getActiveSiteCacheProfileId() {
         const selected = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
         if (!selected) {
-            throw new Error('ابتدا یک پروفایل سایت انتخاب کنید.');
+            throw new Error('Ø§Ø¨ØªØ¯Ø§ ÛŒÚ© Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØª Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯.');
         }
         return selected;
     }
 
     function normalizeSiteCacheProfileCode(value) {
         const code = norm(value).toUpperCase();
-        requireVal(code, 'کد سایت');
+        requireVal(code, 'Ú©Ø¯ Ø³Ø§ÛŒØª');
         if (!SITE_CACHE_CODE_RE.test(code)) {
-            throw new Error('کد سایت فقط می‌تواند شامل حروف انگلیسی، عدد، `_` و `-` باشد (حداقل ۲ کاراکتر).');
+            throw new Error('Ú©Ø¯ Ø³Ø§ÛŒØª ÙÙ‚Ø· Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø´Ø§Ù…Ù„ Ø­Ø±ÙˆÙ Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒØŒ Ø¹Ø¯Ø¯ØŒ `_` Ùˆ `-` Ø¨Ø§Ø´Ø¯ (Ø­Ø¯Ø§Ù‚Ù„ Û² Ú©Ø§Ø±Ø§Ú©ØªØ±).');
         }
         return code;
     }
@@ -878,10 +969,10 @@
         const code = norm(value).toUpperCase();
         if (!code) return null;
         if (code.length > maxLength) {
-            throw new Error(`${label} نباید بیشتر از ${maxLength} کاراکتر باشد.`);
+            throw new Error(`${label} Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² ${maxLength} Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.`);
         }
         if (!regex.test(code)) {
-            throw new Error(`${label} فقط می‌تواند شامل حروف انگلیسی، عدد، '_' و '-' باشد.`);
+            throw new Error(`${label} ÙÙ‚Ø· Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø´Ø§Ù…Ù„ Ø­Ø±ÙˆÙ Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒØŒ Ø¹Ø¯Ø¯ØŒ '_' Ùˆ '-' Ø¨Ø§Ø´Ø¯.`);
         }
         return code;
     }
@@ -890,7 +981,7 @@
         const path = norm(value);
         if (!path) return null;
         if (path.length > 1024) {
-            throw new Error('مسیر ریشه محلی نباید بیشتر از ۱۰۲۴ کاراکتر باشد.');
+            throw new Error('Ù…Ø³ÛŒØ± Ø±ÛŒØ´Ù‡ Ù…Ø­Ù„ÛŒ Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û±Û°Û²Û´ Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.');
         }
         return path;
     }
@@ -898,16 +989,16 @@
     function normalizeSiteCacheFallbackMode(value) {
         const mode = norm(value).toLowerCase() || 'local_first';
         if (!['local_first', 'hq_first'].includes(mode)) {
-            throw new Error('حالت fallback معتبر نیست.');
+            throw new Error('Ø­Ø§Ù„Øª fallback Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
         }
         return mode;
     }
 
     function normalizeSiteCacheRuleName(value) {
         const name = norm(value);
-        requireVal(name, 'نام قانون');
+        requireVal(name, 'Ù†Ø§Ù… Ù‚Ø§Ù†ÙˆÙ†');
         if (name.length > 255) {
-            throw new Error('نام قانون نباید بیشتر از ۲۵۵ کاراکتر باشد.');
+            throw new Error('Ù†Ø§Ù… Ù‚Ø§Ù†ÙˆÙ† Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û²ÛµÛµ Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.');
         }
         return name;
     }
@@ -919,7 +1010,7 @@
             const code = norm(raw).toUpperCase();
             if (!code) continue;
             if (!SITE_CACHE_STATUS_CODE_RE.test(code)) {
-                throw new Error(`کد وضعیت نامعتبر است: ${code}`);
+                throw new Error(`Ú©Ø¯ ÙˆØ¶Ø¹ÛŒØª Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª: ${code}`);
             }
             if (!dedup.includes(code)) dedup.push(code);
         }
@@ -931,7 +1022,7 @@
         if (!raw) return 100;
         const n = Number(raw);
         if (!Number.isInteger(n) || n < 0 || n > 10000) {
-            throw new Error('اولویت باید یک عدد صحیح بین ۰ تا ۱۰۰۰۰ باشد.');
+            throw new Error('Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø§ÛŒØ¯ ÛŒÚ© Ø¹Ø¯Ø¯ ØµØ­ÛŒØ­ Ø¨ÛŒÙ† Û° ØªØ§ Û±Û°Û°Û°Û° Ø¨Ø§Ø´Ø¯.');
         }
         return n;
     }
@@ -968,22 +1059,22 @@
         requireVal(raw, 'CIDR');
         const slash = raw.indexOf('/');
         if (slash <= 0 || slash === raw.length - 1) {
-            throw new Error('CIDR نامعتبر است. نمونه صحیح: 10.88.0.0/16');
+            throw new Error('CIDR Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª. Ù†Ù…ÙˆÙ†Ù‡ ØµØ­ÛŒØ­: 10.88.0.0/16');
         }
         const ip = raw.slice(0, slash).trim();
         const prefixRaw = raw.slice(slash + 1).trim();
         if (!/^\d{1,3}$/.test(prefixRaw)) {
-            throw new Error('بخش Prefix در CIDR معتبر نیست.');
+            throw new Error('Ø¨Ø®Ø´ Prefix Ø¯Ø± CIDR Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
         }
         const prefix = Number(prefixRaw);
         if (ip.includes(':')) {
             if (!validateIPv6Address(ip) || prefix < 0 || prefix > 128) {
-                throw new Error('CIDR IPv6 معتبر نیست.');
+                throw new Error('CIDR IPv6 Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
             }
             return `${ip}/${prefix}`;
         }
         if (!validateIPv4Address(ip) || prefix < 0 || prefix > 32) {
-            throw new Error('CIDR IPv4 معتبر نیست.');
+            throw new Error('CIDR IPv4 Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
         }
         return `${ip}/${prefix}`;
     }
@@ -999,10 +1090,10 @@
         const raw = norm(value).toUpperCase();
         if (!raw || raw === SITE_CACHE_ALL_VALUE) return null;
         if (raw.length > maxLength) {
-            throw new Error(`${label} نباید بیشتر از ${maxLength} کاراکتر باشد.`);
+            throw new Error(`${label} Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² ${maxLength} Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.`);
         }
         if (!regex.test(raw)) {
-            throw new Error(`${label} معتبر نیست.`);
+            throw new Error(`${label} Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.`);
         }
         return raw;
     }
@@ -1070,7 +1161,7 @@
                     </button>
                 `;
             }).join('')
-            : '<div class="token-multi-empty">گزینه‌ای یافت نشد.</div>';
+            : '<div class="token-multi-empty">Ú¯Ø²ÛŒÙ†Ù‡â€ŒØ§ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯.</div>';
     }
 
     function updateSiteCacheTokenMultiChips(selectId) {
@@ -1085,7 +1176,7 @@
             if (value === SITE_CACHE_ALL_VALUE) {
                 chips.push(`
                     <span class="token-chip token-chip-all">
-                        <span>همه</span>
+                        <span>Ù‡Ù…Ù‡</span>
                     </span>
                 `);
                 return;
@@ -1103,7 +1194,7 @@
         ref.chipsBox.innerHTML = chips.join('');
         const showPlaceholder = values.length === 1 && values[0] === SITE_CACHE_ALL_VALUE;
         ref.placeholder.style.display = showPlaceholder ? '' : 'none';
-        ref.placeholder.textContent = SITE_CACHE_TOKEN_MULTI_PLACEHOLDER[selectId] || 'انتخاب گزینه';
+        ref.placeholder.textContent = SITE_CACHE_TOKEN_MULTI_PLACEHOLDER[selectId] || 'Ø§Ù†ØªØ®Ø§Ø¨ Ú¯Ø²ÛŒÙ†Ù‡';
         ref.root.classList.toggle('is-disabled', Boolean(ref.select.disabled));
         ref.root.classList.toggle('has-value', !showPlaceholder);
         ref.trigger?.setAttribute('aria-expanded', ref.dropdown?.classList.contains('is-open') ? 'true' : 'false');
@@ -1158,7 +1249,7 @@
 
         const placeholder = document.createElement('span');
         placeholder.className = 'token-multi-placeholder';
-        placeholder.textContent = SITE_CACHE_TOKEN_MULTI_PLACEHOLDER[selectId] || 'انتخاب گزینه';
+        placeholder.textContent = SITE_CACHE_TOKEN_MULTI_PLACEHOLDER[selectId] || 'Ø§Ù†ØªØ®Ø§Ø¨ Ú¯Ø²ÛŒÙ†Ù‡';
 
         const icon = document.createElement('span');
         icon.className = 'material-icons-round token-multi-expand';
@@ -1181,7 +1272,7 @@
         const searchInput = document.createElement('input');
         searchInput.type = 'text';
         searchInput.className = 'token-multi-search-input';
-        searchInput.placeholder = 'جستجو...';
+        searchInput.placeholder = 'Ø¬Ø³ØªØ¬Ùˆ...';
 
         searchWrap.appendChild(searchIcon);
         searchWrap.appendChild(searchInput);
@@ -1295,10 +1386,10 @@
             const raw = norm(value).toUpperCase();
             const sep = raw.indexOf('::');
             if (sep <= 0 || sep >= raw.length - 2) {
-                throw new Error(`پکیج انتخاب‌شده معتبر نیست: ${raw || '-'}`);
+                throw new Error(`Ù¾Ú©ÛŒØ¬ Ø§Ù†ØªØ®Ø§Ø¨â€ŒØ´Ø¯Ù‡ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª: ${raw || '-'}`);
             }
-            const discipline_code = toSiteCacheFilterCode(raw.slice(0, sep), SITE_CACHE_DISCIPLINE_CODE_RE, 'کد دیسیپلین پکیج', 20);
-            const package_code = toSiteCacheFilterCode(raw.slice(sep + 2), SITE_CACHE_PACKAGE_CODE_RE, 'کد پکیج', 30);
+            const discipline_code = toSiteCacheFilterCode(raw.slice(0, sep), SITE_CACHE_DISCIPLINE_CODE_RE, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ù¾Ú©ÛŒØ¬', 20);
+            const package_code = toSiteCacheFilterCode(raw.slice(sep + 2), SITE_CACHE_PACKAGE_CODE_RE, 'Ú©Ø¯ Ù¾Ú©ÛŒØ¬', 30);
             if (!discipline_code || !package_code) continue;
             out.push({ discipline_code, package_code });
         }
@@ -1361,8 +1452,8 @@
         if (!summaryEl || !projectSelect || !disciplineSelect || !packageSelect) return;
 
         try {
-            const projectCodes = parseSiteCacheFilterCodes(projectSelect, SITE_CACHE_PROJECT_CODE_RE, 'کد پروژه قانون', 50);
-            const disciplineCodes = parseSiteCacheFilterCodes(disciplineSelect, SITE_CACHE_DISCIPLINE_CODE_RE, 'کد دیسیپلین قانون', 20);
+            const projectCodes = parseSiteCacheFilterCodes(projectSelect, SITE_CACHE_PROJECT_CODE_RE, 'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ Ù‚Ø§Ù†ÙˆÙ†', 50);
+            const disciplineCodes = parseSiteCacheFilterCodes(disciplineSelect, SITE_CACHE_DISCIPLINE_CODE_RE, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ù‚Ø§Ù†ÙˆÙ†', 20);
             const packageSelections = parseSiteCachePackageSelections(packageSelect);
             const compiled = buildSiteCacheRuleTargets(projectCodes, disciplineCodes, packageSelections);
             const projectCount = countEffectiveMultiSelect(projectSelect, (STORE.data.projects || []).length);
@@ -1372,15 +1463,15 @@
 
             summaryEl.classList.remove('is-error');
             summaryEl.innerHTML = `
-                <strong>خلاصه انتخاب:</strong>
-                پروژه: ${Number(projectCount || 0)} |
-                دیسیپلین: ${Number(disciplineCount || 0)} |
-                پکیج: ${Number(packageCount || 0)} |
-                ترکیب نهایی: ${compiled.targets.length}
+                <strong>Ø®Ù„Ø§ØµÙ‡ Ø§Ù†ØªØ®Ø§Ø¨:</strong>
+                Ù¾Ø±ÙˆÚ˜Ù‡: ${Number(projectCount || 0)} |
+                Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†: ${Number(disciplineCount || 0)} |
+                Ù¾Ú©ÛŒØ¬: ${Number(packageCount || 0)} |
+                ØªØ±Ú©ÛŒØ¨ Ù†Ù‡Ø§ÛŒÛŒ: ${compiled.targets.length}
             `;
         } catch (err) {
             summaryEl.classList.add('is-error');
-            summaryEl.textContent = `ترکیب فعلی معتبر نیست: ${err.message || 'خطای نامشخص'}`;
+            summaryEl.textContent = `ØªØ±Ú©ÛŒØ¨ ÙØ¹Ù„ÛŒ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª: ${err.message || 'Ø®Ø·Ø§ÛŒ Ù†Ø§Ù…Ø´Ø®Øµ'}`;
         }
     }
 
@@ -1407,7 +1498,7 @@
                 if (ad !== bd) return ad.localeCompare(bd);
                 return String(a?.package_code || '').localeCompare(String(b?.package_code || ''));
             });
-        const options = [`<option value="${SITE_CACHE_ALL_VALUE}">همه پکیج‌ها</option>`]
+        const options = [`<option value="${SITE_CACHE_ALL_VALUE}">Ù‡Ù…Ù‡ Ù¾Ú©ÛŒØ¬â€ŒÙ‡Ø§</option>`]
             .concat(
                 packageRows.map((row) => {
                     const disc = norm(row?.discipline_code).toUpperCase();
@@ -1444,7 +1535,7 @@
         const currentProject = normalizeMultiSelectValues(getMultiSelectValues(projectSelect));
         const currentDiscipline = normalizeMultiSelectValues(getMultiSelectValues(disciplineSelect));
         const currentPackage = normalizeMultiSelectValues(getMultiSelectValues(packageSelect));
-        const projectOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">همه پروژه‌ها</option>`]
+        const projectOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">Ù‡Ù…Ù‡ Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§</option>`]
             .concat(
                 (STORE.data.projects || []).map((row) => {
                     const code = norm(row?.code).toUpperCase();
@@ -1453,7 +1544,7 @@
                 })
             )
             .join('');
-        const disciplineOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">همه دیسیپلین‌ها</option>`]
+        const disciplineOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">Ù‡Ù…Ù‡ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§</option>`]
             .concat(
                 (STORE.data.disciplines || []).map((row) => {
                     const code = norm(row?.code).toUpperCase();
@@ -1501,8 +1592,8 @@
         if (!tbody || !profileSelect) return;
         const profiles = Array.isArray(STORE.siteCache.profiles) ? STORE.siteCache.profiles : [];
         if (!profiles.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center muted">هیچ پروفایل سایتی ثبت نشده است.</td></tr>';
-            profileSelect.innerHTML = '<option value="">انتخاب پروفایل سایت</option>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center muted">Ù‡ÛŒÚ† Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØªÛŒ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</td></tr>';
+            profileSelect.innerHTML = '<option value="">Ø§Ù†ØªØ®Ø§Ø¨ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØª</option>';
             setSiteCacheListTab('cidr');
             return;
         }
@@ -1520,8 +1611,8 @@
                     <td>${esc(item?.project_code || '-')}</td>
                     <td>${boolBadge(Boolean(item?.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-site-cache-profile" data-profile-id="${pid}">ویرایش</button>
-                        <button class="btn-archive-icon btn-archive-danger-soft" type="button" data-general-action="delete-site-cache-profile" data-profile-id="${pid}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-site-cache-profile" data-profile-id="${pid}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon btn-archive-danger-soft" type="button" data-general-action="delete-site-cache-profile" data-profile-id="${pid}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `;
@@ -1548,26 +1639,26 @@
                 <div class="general-inline-chip">
                     <span class="material-icons-round">network_check</span>
                     <span>${esc(item?.cidr || '-')}</span>
-                    <button type="button" data-general-action="delete-site-cache-cidr" data-cidr-id="${Number(item?.id || 0)}" title="حذف CIDR">
+                    <button type="button" data-general-action="delete-site-cache-cidr" data-cidr-id="${Number(item?.id || 0)}" title="Ø­Ø°Ù CIDR">
                         <span class="material-icons-round">close</span>
                     </button>
                 </div>
             `).join('')
-            : '<div class="text-muted">CIDR ثبت نشده است.</div>';
+            : '<div class="text-muted">CIDR Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</div>';
 
         ruleBox.innerHTML = rules.length
             ? rules.map((item) => `
                 <div class="general-inline-chip">
                     <span class="material-icons-round">rule</span>
-                    <span>${esc(item?.name || '-')} [${esc(item?.status_codes || '-')} ] (${esc(item?.project_code || 'همه')}/${esc(item?.discipline_code || 'همه')}/${esc(item?.package_code || 'همه')})</span>
-                    <button type="button" data-general-action="delete-site-cache-rule" data-rule-id="${Number(item?.id || 0)}" title="حذف قانون">
+                    <span>${esc(item?.name || '-')} [${esc(item?.status_codes || '-')} ] (${esc(item?.project_code || 'Ù‡Ù…Ù‡')}/${esc(item?.discipline_code || 'Ù‡Ù…Ù‡')}/${esc(item?.package_code || 'Ù‡Ù…Ù‡')})</span>
+                    <button type="button" data-general-action="delete-site-cache-rule" data-rule-id="${Number(item?.id || 0)}" title="Ø­Ø°Ù Ù‚Ø§Ù†ÙˆÙ†">
                         <span class="material-icons-round">close</span>
                     </button>
                 </div>
             `).join('')
-            : '<div class="text-muted">قانونی ثبت نشده است.</div>';
+            : '<div class="text-muted">Ù‚Ø§Ù†ÙˆÙ†ÛŒ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</div>';
 
-        tokenBox.innerHTML = '<div class="text-muted">در حال بارگذاری...</div>';
+        tokenBox.innerHTML = '<div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>';
         setSiteCacheListTab(STORE.siteCache.activeListTab || 'cidr');
     }
 
@@ -1582,14 +1673,14 @@
                     <div class="general-inline-chip">
                         <span class="material-icons-round">vpn_key</span>
                         <span>${esc(item?.token_hint || '-')}</span>
-                        <button class="site-cache-danger-inline" type="button" data-general-action="revoke-site-cache-token" data-token-id="${Number(item?.id || 0)}" title="لغو توکن">
+                        <button class="site-cache-danger-inline" type="button" data-general-action="revoke-site-cache-token" data-token-id="${Number(item?.id || 0)}" title="Ù„ØºÙˆ ØªÙˆÚ©Ù†">
                             <span class="material-icons-round">close</span>
                         </button>
                     </div>
                 `).join('')
-                : '<div class="text-muted">توکن فعالی وجود ندارد.</div>';
+                : '<div class="text-muted">ØªÙˆÚ©Ù† ÙØ¹Ø§Ù„ÛŒ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯.</div>';
         } catch (err) {
-            tokenBox.innerHTML = `<div class="text-danger">${esc(err?.message || 'بارگذاری توکن‌ها ناموفق بود.')}</div>`;
+            tokenBox.innerHTML = `<div class="text-danger">${esc(err?.message || 'Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯.')}</div>`;
         }
     }
 
@@ -1640,13 +1731,13 @@
         const codeInput = document.getElementById('siteCacheProfileCodeInput');
         const nameInput = document.getElementById('siteCacheProfileNameInput');
         if (!codeInput || !nameInput) return;
-        ensureInputValidity(codeInput, 'فرمت کد سایت معتبر نیست.');
-        ensureInputValidity(document.getElementById('siteCacheProfileProjectInput'), 'فرمت کد پروژه معتبر نیست.');
+        ensureInputValidity(codeInput, 'ÙØ±Ù…Øª Ú©Ø¯ Ø³Ø§ÛŒØª Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        ensureInputValidity(document.getElementById('siteCacheProfileProjectInput'), 'ÙØ±Ù…Øª Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
         const code = normalizeSiteCacheProfileCode(codeInput.value);
         const name = norm(nameInput.value);
-        requireVal(name, 'نام پروفایل');
+        requireVal(name, 'Ù†Ø§Ù… Ù¾Ø±ÙˆÙØ§ÛŒÙ„');
         if (name.length > 255) {
-            throw new Error('نام پروفایل نباید بیشتر از ۲۵۵ کاراکتر باشد.');
+            throw new Error('Ù†Ø§Ù… Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û²ÛµÛµ Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.');
         }
 
         const editId = Number(codeInput.dataset.editId || 0);
@@ -1656,7 +1747,7 @@
             name,
             project_code: normalizeOptionalSiteCode(
                 document.getElementById('siteCacheProfileProjectInput')?.value,
-                'کد پروژه',
+                'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡',
                 SITE_CACHE_PROJECT_CODE_RE,
                 50
             ),
@@ -1671,7 +1762,7 @@
         setSiteCacheTokenMessage('');
         await loadSiteCache(true);
         resetSiteCacheProfileForm();
-        tSuccess('پروفایل Site Cache ذخیره شد.');
+        tSuccess('Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Site Cache Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
     }
 
     function openEditSiteCacheProfile(profileId) {
@@ -1693,18 +1784,18 @@
     }
 
     async function disableSiteCacheProfile(profileId) {
-        if (!confirm('این پروفایل Site Cache غیرفعال شود؟')) return;
+        if (!confirm('Ø§ÛŒÙ† Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Site Cache ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ')) return;
         await request(`${API_BASE}/site-cache/profiles/delete`, {
             method: 'POST',
             body: JSON.stringify({ id: Number(profileId || 0), hard_delete: false }),
         });
         await loadSiteCache(true);
-        tSuccess('پروفایل غیرفعال شد.');
+        tSuccess('Ù¾Ø±ÙˆÙØ§ÛŒÙ„ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.');
     }
 
     async function addSiteCacheCidr() {
         const profileId = getActiveSiteCacheProfileId();
-        ensureInputValidity(document.getElementById('siteCacheCidrInput'), 'فرمت CIDR معتبر نیست.');
+        ensureInputValidity(document.getElementById('siteCacheCidrInput'), 'ÙØ±Ù…Øª CIDR Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
         const cidr = normalizeSiteCacheCidr(document.getElementById('siteCacheCidrInput')?.value);
         await request(`${API_BASE}/site-cache/cidrs/upsert`, {
             method: 'POST',
@@ -1713,7 +1804,7 @@
         const input = document.getElementById('siteCacheCidrInput');
         if (input) input.value = '';
         await loadSiteCache(true);
-        tSuccess('CIDR اضافه شد.');
+        tSuccess('CIDR Ø§Ø¶Ø§ÙÙ‡ Ø´Ø¯.');
     }
 
     async function deleteSiteCacheCidr(cidrId) {
@@ -1722,18 +1813,18 @@
             body: JSON.stringify({ id: Number(cidrId || 0) }),
         });
         await loadSiteCache(true);
-        tSuccess('CIDR حذف شد.');
+        tSuccess('CIDR Ø­Ø°Ù Ø´Ø¯.');
     }
 
     async function addSiteCacheRule() {
         const profileId = getActiveSiteCacheProfileId();
-        ensureInputValidity(document.getElementById('siteCacheRulePriorityInput'), 'اولویت باید بین ۰ تا ۱۰۰۰۰ باشد.');
+        ensureInputValidity(document.getElementById('siteCacheRulePriorityInput'), 'Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø§ÛŒØ¯ Ø¨ÛŒÙ† Û° ØªØ§ Û±Û°Û°Û°Û° Ø¨Ø§Ø´Ø¯.');
         const name = normalizeSiteCacheRuleName(document.getElementById('siteCacheRuleNameInput')?.value);
         const projectSelect = document.getElementById('siteCacheRuleProjectInput');
         const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
         const packageSelect = document.getElementById('siteCacheRulePackageInput');
-        const projectCodes = parseSiteCacheFilterCodes(projectSelect, SITE_CACHE_PROJECT_CODE_RE, 'کد پروژه قانون', 50);
-        const disciplineCodes = parseSiteCacheFilterCodes(disciplineSelect, SITE_CACHE_DISCIPLINE_CODE_RE, 'کد دیسیپلین قانون', 20);
+        const projectCodes = parseSiteCacheFilterCodes(projectSelect, SITE_CACHE_PROJECT_CODE_RE, 'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ Ù‚Ø§Ù†ÙˆÙ†', 50);
+        const disciplineCodes = parseSiteCacheFilterCodes(disciplineSelect, SITE_CACHE_DISCIPLINE_CODE_RE, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ù‚Ø§Ù†ÙˆÙ†', 20);
         const packageSelections = parseSiteCachePackageSelections(packageSelect);
         const statusCodes = parseSiteCacheStatusCodes(document.getElementById('siteCacheRuleStatusInput')?.value);
         const includeNative = Boolean(document.getElementById('siteCacheRuleIncludeNativeInput')?.checked);
@@ -1742,10 +1833,10 @@
         const compiled = buildSiteCacheRuleTargets(projectCodes, disciplineCodes, packageSelections);
         const dedup = compiled.targets;
         if (!dedup.length) {
-            throw new Error('ترکیب انتخابی پروژه/دیسیپلین/پکیج معتبر نیست.');
+            throw new Error('ØªØ±Ú©ÛŒØ¨ Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ù¾Ø±ÙˆÚ˜Ù‡/Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†/Ù¾Ú©ÛŒØ¬ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
         }
         if (dedup.length > 100) {
-            throw new Error('تعداد ترکیب‌های انتخابی زیاد است (بیش از ۱۰۰). لطفاً فیلترها را محدودتر کنید.');
+            throw new Error('ØªØ¹Ø¯Ø§Ø¯ ØªØ±Ú©ÛŒØ¨â€ŒÙ‡Ø§ÛŒ Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ø²ÛŒØ§Ø¯ Ø§Ø³Øª (Ø¨ÛŒØ´ Ø§Ø² Û±Û°Û°). Ù„Ø·ÙØ§Ù‹ ÙÛŒÙ„ØªØ±Ù‡Ø§ Ø±Ø§ Ù…Ø­Ø¯ÙˆØ¯ØªØ± Ú©Ù†ÛŒØ¯.');
         }
 
         const existingRules = Array.isArray(currentSiteCacheProfile()?.rules) ? currentSiteCacheProfile().rules : [];
@@ -1776,7 +1867,7 @@
         let createdCount = 0;
         let existedCount = 0;
         for (const target of dedup) {
-            const scopeLabel = `${target.project_code || 'همه'}/${target.discipline_code || 'همه'}/${target.package_code || 'همه'}`;
+            const scopeLabel = `${target.project_code || 'Ù‡Ù…Ù‡'}/${target.discipline_code || 'Ù‡Ù…Ù‡'}/${target.package_code || 'Ù‡Ù…Ù‡'}`;
             const scopedName = dedup.length > 1 ? `${name} [${scopeLabel}]` : name;
             const payload = {
                 profile_id: profileId,
@@ -1813,7 +1904,7 @@
         const priorityInput = document.getElementById('siteCacheRulePriorityInput');
         if (priorityInput) priorityInput.value = '100';
         await loadSiteCache(true);
-        const summary = `${createdCount} قانون ایجاد شد، ${existedCount} قانون از قبل وجود داشت (ایجاد نشد).`;
+        const summary = `${createdCount} Ù‚Ø§Ù†ÙˆÙ† Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯ØŒ ${existedCount} Ù‚Ø§Ù†ÙˆÙ† Ø§Ø² Ù‚Ø¨Ù„ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø´Øª (Ø§ÛŒØ¬Ø§Ø¯ Ù†Ø´Ø¯).`;
         setSiteCacheTokenMessage(summary, createdCount > 0 ? 'success' : 'info');
         tSuccess(summary);
     }
@@ -1824,7 +1915,7 @@
             body: JSON.stringify({ id: Number(ruleId || 0) }),
         });
         await loadSiteCache(true);
-        tSuccess('قانون حذف شد.');
+        tSuccess('Ù‚Ø§Ù†ÙˆÙ† Ø­Ø°Ù Ø´Ø¯.');
     }
 
     async function mintSiteCacheToken() {
@@ -1835,21 +1926,21 @@
         });
         const token = String(payload?.token || '').trim();
         if (token) {
-            setSiteCacheTokenMessage(`توکن Agent (فقط یک‌بار نمایش): ${token}`, 'success');
+            setSiteCacheTokenMessage(`ØªÙˆÚ©Ù† Agent (ÙÙ‚Ø· ÛŒÚ©â€ŒØ¨Ø§Ø± Ù†Ù…Ø§ÛŒØ´): ${token}`, 'success');
         }
         await loadSiteCacheTokens(profileId);
-        tSuccess('توکن Agent جدید ایجاد شد.');
+        tSuccess('ØªÙˆÚ©Ù† Agent Ø¬Ø¯ÛŒØ¯ Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯.');
     }
 
     async function revokeSiteCacheToken(tokenId) {
-        if (!confirm('این توکن Agent لغو شود؟')) return;
+        if (!confirm('Ø§ÛŒÙ† ØªÙˆÚ©Ù† Agent Ù„ØºÙˆ Ø´ÙˆØ¯ØŸ')) return;
         await request(`${API_BASE}/site-cache/tokens/revoke`, {
             method: 'POST',
             body: JSON.stringify({ token_id: Number(tokenId || 0) }),
         });
         await loadSiteCache(true);
         setSiteCacheTokenMessage('');
-        tSuccess('توکن لغو شد.');
+        tSuccess('ØªÙˆÚ©Ù† Ù„ØºÙˆ Ø´Ø¯.');
     }
 
     async function rebuildSiteCachePins() {
@@ -1859,7 +1950,7 @@
             body: JSON.stringify({ profile_id: profileId, dry_run: false }),
         });
         const result = payload?.result || {};
-        const summary = `بازسازی انجام شد: انتخاب=${Number(result.selected_count || 0)}، فعال=${Number(result.to_enable_count || 0)}، غیرفعال=${Number(result.to_disable_count || 0)}`;
+        const summary = `Ø¨Ø§Ø²Ø³Ø§Ø²ÛŒ Ø§Ù†Ø¬Ø§Ù… Ø´Ø¯: Ø§Ù†ØªØ®Ø§Ø¨=${Number(result.selected_count || 0)}ØŒ ÙØ¹Ø§Ù„=${Number(result.to_enable_count || 0)}ØŒ ØºÛŒØ±ÙØ¹Ø§Ù„=${Number(result.to_disable_count || 0)}`;
         setSiteCacheTokenMessage(summary, 'info');
         tSuccess(summary);
     }
@@ -1901,7 +1992,7 @@
 
         if (hasConflict) {
             if (showError) {
-                setStoragePathConflictError('مسیر MDR و مسیر مکاتبات نباید یکسان باشند.');
+                setStoragePathConflictError('Ù…Ø³ÛŒØ± MDR Ùˆ Ù…Ø³ÛŒØ± Ù…Ú©Ø§ØªØ¨Ø§Øª Ù†Ø¨Ø§ÛŒØ¯ ÛŒÚ©Ø³Ø§Ù† Ø¨Ø§Ø´Ù†Ø¯.');
             }
             return false;
         }
@@ -2039,14 +2130,12 @@
             setStorageWizardStep('paths', { force: true });
             await loadStoragePaths(force);
             await loadStoragePolicy(force);
-            await loadStorageIntegrations(force);
             try {
                 await loadSiteCache(force);
             } catch (err) {
-                setSiteCacheTokenMessage(`خطا در بارگذاری Site Cache: ${err.message}`, 'error');
+                setSiteCacheTokenMessage(`Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Site Cache: ${err.message}`, 'error');
             }
             updateStoragePathPreview();
-            updateStorageIntegrationsFieldState();
             updateStorageActionBarState();
             return;
         }
@@ -2343,7 +2432,7 @@
                 }
                 await window.switchGeneralSettingsDomain(STORE.activeDomain || 'common', null, force);
             } catch (err) {
-                tError(`خطا در بارگذاری تنظیمات عمومی: ${err.message}`);
+                tError(`Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ: ${err.message}`);
             }
         })();
 
@@ -2354,7 +2443,7 @@
     }
 
     function requireVal(value, label) {
-        if (!norm(value)) throw new Error(`${label} الزامی است`);
+        if (!norm(value)) throw new Error(`${label} Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª`);
     }
 
     function extractPackageSequence(code, disciplineCode = '') {
@@ -2453,7 +2542,7 @@
     window.refreshSiteCacheSettings = async function refreshSiteCacheSettings() {
         try {
             await loadSiteCache(true);
-            setSiteCacheTokenMessage('اطلاعات Site Cache با موفقیت بازخوانی شد.', 'info');
+            setSiteCacheTokenMessage('Ø§Ø·Ù„Ø§Ø¹Ø§Øª Site Cache Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø¨Ø§Ø²Ø®ÙˆØ§Ù†ÛŒ Ø´Ø¯.', 'info');
         } catch (err) {
             tError(err.message);
         }
@@ -2574,14 +2663,14 @@
     };
 
     window.localRunSeed = async function localRunSeed() {
-        if (!confirm('Seed اجرا شود؟ داده‌های پایه بروزرسانی می‌شوند.')) return;
+        if (!confirm('Seed Ø§Ø¬Ø±Ø§ Ø´ÙˆØ¯ØŸ Ø¯Ø§Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ù¾Ø§ÛŒÙ‡ Ø¨Ø±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯.')) return;
         try {
             await request(`${API_BASE}/seed`, { method: 'POST' });
-            tSuccess('Seed با موفقیت اجرا شد.');
+            tSuccess('Seed Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø§Ø¬Ø±Ø§ Ø´Ø¯.');
             STORE.initialized = false;
             await initGeneralSettings(true);
         } catch (err) {
-            tError(`Seed ناموفق بود: ${err.message}`);
+            tError(`Seed Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯: ${err.message}`);
         }
     };
 
@@ -2590,8 +2679,8 @@
             bindStoragePathValidation();
             const mdr_storage_path = norm(document.getElementById('mdrStoragePathInput')?.value);
             const correspondence_storage_path = norm(document.getElementById('correspondenceStoragePathInput')?.value);
-            requireVal(mdr_storage_path, 'مسیر ذخیره مدارک مهندسی');
-            requireVal(correspondence_storage_path, 'مسیر ذخیره مکاتبات');
+            requireVal(mdr_storage_path, 'Ù…Ø³ÛŒØ± Ø°Ø®ÛŒØ±Ù‡ Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ');
+            requireVal(correspondence_storage_path, 'Ù…Ø³ÛŒØ± Ø°Ø®ÛŒØ±Ù‡ Ù…Ú©Ø§ØªØ¨Ø§Øª');
             if (!validateStoragePathConflict(true)) return;
 
             const payload = await request(`${API_BASE}/storage-paths`, {
@@ -2609,8 +2698,8 @@
             setStoragePathConflictError('');
             STORE.storagePathsLoaded = true;
             clearStorageStepDirty('paths');
-            showStorageStepSaved('paths', 'مسیرهای ذخیره‌سازی با موفقیت ذخیره شدند.');
-            tSuccess('مسیرهای ذخیره‌سازی ذخیره شد.');
+            showStorageStepSaved('paths', 'Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯Ù†Ø¯.');
+            tSuccess('Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
         } catch (err) {
             tError(err.message);
         }
@@ -2637,8 +2726,8 @@
             await runStorageSyncJob('google_drive');
         } catch (err) {
             const detail = String(err?.message || 'Google Drive sync failed.');
-            setStorageSyncResult(`اجرای Sync گوگل‌درایو ناموفق بود: ${detail}`, 'error');
-            tError(`Sync گوگل‌درایو انجام نشد. ${detail}`);
+            setStorageSyncResult(`Ø§Ø¬Ø±Ø§ÛŒ Sync Ú¯ÙˆÚ¯Ù„â€ŒØ¯Ø±Ø§ÛŒÙˆ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯: ${detail}`, 'error');
+            tError(`Sync Ú¯ÙˆÚ¯Ù„â€ŒØ¯Ø±Ø§ÛŒÙˆ Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯. ${detail}`);
         }
     };
 
@@ -2647,15 +2736,15 @@
             await runStorageSyncJob('openproject');
         } catch (err) {
             const detail = String(err?.message || 'OpenProject sync failed.');
-            setStorageSyncResult(`اجرای Sync اوپن‌پراجکت ناموفق بود: ${detail}`, 'error');
-            tError(`Sync اوپن‌پراجکت انجام نشد. ${detail}`);
+            setStorageSyncResult(`Ø§Ø¬Ø±Ø§ÛŒ Sync Ø§ÙˆÙ¾Ù†â€ŒÙ¾Ø±Ø§Ø¬Ú©Øª Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯: ${detail}`, 'error');
+            tError(`Sync Ø§ÙˆÙ¾Ù†â€ŒÙ¾Ø±Ø§Ø¬Ú©Øª Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯. ${detail}`);
         }
     };
 
     window.saveProjectSetting = async function saveProjectSetting() {
         try {
             const code = norm(document.getElementById('projectCodeInput')?.value).toUpperCase();
-            requireVal(code, 'کد پروژه');
+            requireVal(code, 'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡');
             const payload = {
                 code,
                 project_name: norm(document.getElementById('projectNameInput')?.value),
@@ -2663,7 +2752,7 @@
                 docnum_template: norm(document.getElementById('projectTemplateInput')?.value),
                 is_active: Boolean(document.getElementById('projectActiveInput')?.checked),
             };
-            await postAndReload('/projects/upsert', payload, ['projects'], 'پروژه ذخیره شد.');
+            await postAndReload('/projects/upsert', payload, ['projects'], 'Ù¾Ø±ÙˆÚ˜Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetProjectForm();
         } catch (err) { tError(err.message); }
     };
@@ -2684,8 +2773,8 @@
     };
     window.deleteProjectSetting = async function deleteProjectSetting(encodedCode) {
         const code = decoded(encodedCode);
-        if (!confirm(`پروژه ${code} غیرفعال شود؟`)) return;
-        try { await postAndReload('/projects/delete', { code, hard_delete: false }, ['projects'], 'پروژه غیرفعال شد.'); }
+        if (!confirm(`Ù¾Ø±ÙˆÚ˜Ù‡ ${code} ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/projects/delete', { code, hard_delete: false }, ['projects'], 'Ù¾Ø±ÙˆÚ˜Ù‡ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.'); }
         catch (err) { tError(err.message); }
     };
 
@@ -2699,8 +2788,8 @@
                 sort_order: Number(document.getElementById('mdrSortInput')?.value || 0),
                 is_active: Boolean(document.getElementById('mdrActiveInput')?.checked),
             };
-            requireVal(payload.code, 'کد MDR');
-            await postAndReload('/mdr-categories/upsert', payload, ['mdr'], 'MDR ذخیره شد.');
+            requireVal(payload.code, 'Ú©Ø¯ MDR');
+            await postAndReload('/mdr-categories/upsert', payload, ['mdr'], 'MDR Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetMdrForm();
         } catch (err) { tError(err.message); }
     };
@@ -2720,8 +2809,8 @@
     };
     window.deleteMdrSetting = async function deleteMdrSetting(c) {
         const code = decoded(c);
-        if (!confirm(`MDR ${code} غیرفعال شود؟`)) return;
-        try { await postAndReload('/mdr-categories/delete', { code, hard_delete: false }, ['mdr'], 'MDR غیرفعال شد.'); }
+        if (!confirm(`MDR ${code} ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/mdr-categories/delete', { code, hard_delete: false }, ['mdr'], 'MDR ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.'); }
         catch (err) { tError(err.message); }
     };
 
@@ -2732,9 +2821,9 @@
                 name_e: norm(document.getElementById('phaseNameEInput')?.value),
                 name_p: norm(document.getElementById('phaseNamePInput')?.value),
             };
-            requireVal(payload.ph_code, 'کد فاز');
-            requireVal(payload.name_e, 'نام فاز');
-            await postAndReload('/phases/upsert', payload, ['phases'], 'فاز ذخیره شد.');
+            requireVal(payload.ph_code, 'Ú©Ø¯ ÙØ§Ø²');
+            requireVal(payload.name_e, 'Ù†Ø§Ù… ÙØ§Ø²');
+            await postAndReload('/phases/upsert', payload, ['phases'], 'ÙØ§Ø² Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetPhaseForm();
         } catch (err) { tError(err.message); }
     };
@@ -2749,8 +2838,8 @@
     };
     window.deletePhaseSetting = async function deletePhaseSetting(c) {
         const ph_code = decoded(c);
-        if (!confirm(`فاز ${ph_code} حذف شود؟`)) return;
-        try { await postAndReload('/phases/delete', { ph_code }, ['phases'], 'فاز حذف شد.'); } catch (err) { tError(err.message); }
+        if (!confirm(`ÙØ§Ø² ${ph_code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/phases/delete', { ph_code }, ['phases'], 'ÙØ§Ø² Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
     };
 
     window.saveDisciplineSetting = async function saveDisciplineSetting() {
@@ -2760,9 +2849,9 @@
                 name_e: norm(document.getElementById('disciplineNameEInput')?.value),
                 name_p: norm(document.getElementById('disciplineNamePInput')?.value),
             };
-            requireVal(payload.code, 'کد دیسیپلین');
-            requireVal(payload.name_e, 'نام دیسیپلین');
-            await postAndReload('/disciplines/upsert', payload, ['disciplines', 'packages'], 'دیسیپلین ذخیره شد.');
+            requireVal(payload.code, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†');
+            requireVal(payload.name_e, 'Ù†Ø§Ù… Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†');
+            await postAndReload('/disciplines/upsert', payload, ['disciplines', 'packages'], 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetDisciplineForm();
         } catch (err) { tError(err.message); }
     };
@@ -2777,8 +2866,8 @@
     };
     window.deleteDisciplineSetting = async function deleteDisciplineSetting(c) {
         const code = decoded(c);
-        if (!confirm(`دیسیپلین ${code} حذف شود؟`)) return;
-        try { await postAndReload('/disciplines/delete', { code }, ['disciplines', 'packages'], 'دیسیپلین حذف شد.'); } catch (err) { tError(err.message); }
+        if (!confirm(`Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† ${code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/disciplines/delete', { code }, ['disciplines', 'packages'], 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
     };
 
     window.savePackageSetting = async function savePackageSetting() {
@@ -2798,10 +2887,10 @@
                 name_e: norm(document.getElementById('packageNameEInput')?.value),
                 name_p: norm(document.getElementById('packageNamePInput')?.value),
             };
-            requireVal(payload.discipline_code, 'دیسیپلین');
-            requireVal(payload.package_code, 'کد پکیج خودکار');
-            requireVal(payload.name_e, 'نام انگلیسی پکیج');
-            await postAndReload('/packages/upsert', payload, ['packages'], 'پکیج ذخیره شد.');
+            requireVal(payload.discipline_code, 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†');
+            requireVal(payload.package_code, 'Ú©Ø¯ Ù¾Ú©ÛŒØ¬ Ø®ÙˆØ¯Ú©Ø§Ø±');
+            requireVal(payload.name_e, 'Ù†Ø§Ù… Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒ Ù¾Ú©ÛŒØ¬');
+            await postAndReload('/packages/upsert', payload, ['packages'], 'Ù¾Ú©ÛŒØ¬ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetPackageForm();
         } catch (err) { tError(err.message); }
     };
@@ -2824,8 +2913,8 @@
     };
     window.deletePackageSetting = async function deletePackageSetting(d, p) {
         const discipline_code = decoded(d); const package_code = decoded(p);
-        if (!confirm(`پکیج ${package_code} در ${discipline_code} حذف شود؟`)) return;
-        try { await postAndReload('/packages/delete', { discipline_code, package_code }, ['packages'], 'پکیج حذف شد.'); } catch (err) { tError(err.message); }
+        if (!confirm(`Ù¾Ú©ÛŒØ¬ ${package_code} Ø¯Ø± ${discipline_code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/packages/delete', { discipline_code, package_code }, ['packages'], 'Ù¾Ú©ÛŒØ¬ Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
     };
 
     window.saveBlockSetting = async function saveBlockSetting() {
@@ -2838,9 +2927,9 @@
                 sort_order: Number(document.getElementById('blockSortInput')?.value || 0),
                 is_active: Boolean(document.getElementById('blockActiveInput')?.checked),
             };
-            requireVal(payload.project_code, 'پروژه');
-            requireVal(payload.code, 'کد بلوک');
-            await postAndReload('/blocks/upsert', payload, ['blocks'], 'بلوک ذخیره شد.');
+            requireVal(payload.project_code, 'Ù¾Ø±ÙˆÚ˜Ù‡');
+            requireVal(payload.code, 'Ú©Ø¯ Ø¨Ù„ÙˆÚ©');
+            await postAndReload('/blocks/upsert', payload, ['blocks'], 'Ø¨Ù„ÙˆÚ© Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetBlockForm();
         } catch (err) { tError(err.message); }
     };
@@ -2860,8 +2949,8 @@
     };
     window.deleteBlockSetting = async function deleteBlockSetting(p, c) {
         const project_code = decoded(p); const code = decoded(c);
-        if (!confirm(`بلوک ${code} در پروژه ${project_code} غیرفعال شود؟`)) return;
-        try { await postAndReload('/blocks/delete', { project_code, code, hard_delete: false }, ['blocks'], 'بلوک غیرفعال شد.'); } catch (err) { tError(err.message); }
+        if (!confirm(`Ø¨Ù„ÙˆÚ© ${code} Ø¯Ø± Ù¾Ø±ÙˆÚ˜Ù‡ ${project_code} ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/blocks/delete', { project_code, code, hard_delete: false }, ['blocks'], 'Ø¨Ù„ÙˆÚ© ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.'); } catch (err) { tError(err.message); }
     };
 
     window.saveLevelSetting = async function saveLevelSetting() {
@@ -2872,8 +2961,8 @@
                 name_p: norm(document.getElementById('levelNamePInput')?.value),
                 sort_order: Number(document.getElementById('levelSortInput')?.value || 0),
             };
-            requireVal(payload.code, 'کد سطح');
-            await postAndReload('/levels/upsert', payload, ['levels'], 'سطح ذخیره شد.');
+            requireVal(payload.code, 'Ú©Ø¯ Ø³Ø·Ø­');
+            await postAndReload('/levels/upsert', payload, ['levels'], 'Ø³Ø·Ø­ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetLevelForm();
         } catch (err) { tError(err.message); }
     };
@@ -2890,8 +2979,8 @@
     };
     window.deleteLevelSetting = async function deleteLevelSetting(c) {
         const code = decoded(c);
-        if (!confirm(`سطح ${code} حذف شود؟`)) return;
-        try { await postAndReload('/levels/delete', { code }, ['levels'], 'سطح حذف شد.'); } catch (err) { tError(err.message); }
+        if (!confirm(`Ø³Ø·Ø­ ${code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/levels/delete', { code }, ['levels'], 'Ø³Ø·Ø­ Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
     };
 
     window.saveStatusSetting = async function saveStatusSetting() {
@@ -2902,9 +2991,9 @@
                 description: norm(document.getElementById('statusDescInput')?.value),
                 sort_order: Number(document.getElementById('statusSortInput')?.value || 0),
             };
-            requireVal(payload.code, 'کد وضعیت');
-            requireVal(payload.name, 'نام وضعیت');
-            await postAndReload('/statuses/upsert', payload, ['statuses'], 'وضعیت ذخیره شد.');
+            requireVal(payload.code, 'Ú©Ø¯ ÙˆØ¶Ø¹ÛŒØª');
+            requireVal(payload.name, 'Ù†Ø§Ù… ÙˆØ¶Ø¹ÛŒØª');
+            await postAndReload('/statuses/upsert', payload, ['statuses'], 'ÙˆØ¶Ø¹ÛŒØª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
             window.resetStatusForm();
         } catch (err) { tError(err.message); }
     };
@@ -2921,8 +3010,8 @@
     };
     window.deleteStatusSetting = async function deleteStatusSetting(c) {
         const code = decoded(c);
-        if (!confirm(`وضعیت ${code} حذف شود؟`)) return;
-        try { await postAndReload('/statuses/delete', { code }, ['statuses'], 'وضعیت حذف شد.'); } catch (err) { tError(err.message); }
+        if (!confirm(`ÙˆØ¶Ø¹ÛŒØª ${code} Ø­Ø°Ù Ø´ÙˆØ¯ØŸ`)) return;
+        try { await postAndReload('/statuses/delete', { code }, ['statuses'], 'ÙˆØ¶Ø¹ÛŒØª Ø­Ø°Ù Ø´Ø¯.'); } catch (err) { tError(err.message); }
     };
 
     window.saveCorrespondenceIssuingSetting = async function saveCorrespondenceIssuingSetting() {
@@ -3024,4 +3113,6 @@
     };
 
     window.initGeneralSettings = initGeneralSettings;
+    window.initSettingsIntegrations = initSettingsIntegrations;
 })();
+

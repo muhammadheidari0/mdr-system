@@ -113,7 +113,23 @@
         <span class="material-icons-round settings-nav-card-icon">folder_open</span>
         <span class="settings-nav-card-copy">
           <span class="settings-nav-card-title">مدیریت ذخیره‌سازی</span>
-          <span class="settings-nav-card-subtitle">Paths، Policy و Integrations</span>
+          <span class="settings-nav-card-subtitle">Paths، Policy و Site Cache</span>
+        </span>
+      </button>
+
+      <button
+        type="button"
+        class="settings-nav-card"
+        data-settings-tab="true"
+        data-tab="integrations"
+        role="tab"
+        aria-selected="false"
+        aria-controls="tab-integrations"
+      >
+        <span class="material-icons-round settings-nav-card-icon">hub</span>
+        <span class="settings-nav-card-copy">
+          <span class="settings-nav-card-title">یکپارچه‌سازی‌ها</span>
+          <span class="settings-nav-card-subtitle">OpenProject، Google Drive، Local Cache</span>
         </span>
       </button>
 
@@ -153,6 +169,10 @@
 
       <section id="tab-bulk" class="settings-tab-content" role="tabpanel" aria-hidden="true">
         {% include 'views/partials/settings_bulk_tab.html' %}
+      </section>
+
+      <section id="tab-integrations" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+        {% include 'views/partials/settings_integrations_tab.html' %}
       </section>
 
       <section id="tab-reports" class="settings-tab-content" role="tabpanel" aria-hidden="true">

@@ -67,6 +67,11 @@ function switchSettingsTab(tabName, btnEl) {
         } else if (typeof window.loadUsers === 'function') {
             window.loadUsers();
         }
+    } else if (panelTab === 'integrations' && typeof window.initSettingsIntegrations === 'function') {
+        const initResult = window.initSettingsIntegrations();
+        if (initResult && typeof initResult.then === 'function') {
+            initResult.catch(() => {});
+        }
     } else if (panelTab === 'organizations' && typeof window.initOrganizationsSettings === 'function') {
         window.initOrganizationsSettings();
     } else if (panelTab === 'permissions' && typeof window.initPermissionsSettings === 'function') {
