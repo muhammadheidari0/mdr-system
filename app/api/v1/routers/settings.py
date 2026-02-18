@@ -34,6 +34,7 @@ from app.db.models import (
     SettingsAuditLog,
     Correspondence, CorrespondenceAction, CorrespondenceAttachment,
     CorrespondenceCategory, IssuingEntity,
+    WorkflowStatus, WorkflowTransition, TechSubtype, ReviewResult,
 )
 
 # ✅ استفاده از سرویس Seed
@@ -204,6 +205,39 @@ class CorrespondenceCategoryDeleteIn(BaseModel):
     hard_delete: bool = False
 
 
+class WorkflowStatusIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    item_type: str = Field(..., min_length=1, max_length=16)
+    code: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., min_length=1, max_length=128)
+    is_terminal: bool = False
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class WorkflowTransitionIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    item_type: str = Field(..., min_length=1, max_length=16)
+    from_status_code: str = Field(..., min_length=1, max_length=64)
+    to_status_code: str = Field(..., min_length=1, max_length=64)
+    requires_note: bool = False
+    is_active: bool = True
+
+
+class TechSubtypeIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=32)
+    label: str = Field(..., min_length=1, max_length=128)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class ReviewResultIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=32)
+    label: str = Field(..., min_length=1, max_length=128)
+    sort_order: int = 0
+    is_active: bool = True
+
+
 class OrganizationIn(BaseModel):
     id: Optional[int] = Field(default=None, ge=1)
     code: str = Field(..., min_length=1, max_length=64)
@@ -242,6 +276,16 @@ def _norm(s: Any) -> str:
 
 def _upper(s: Any) -> str:
     return _norm(s).upper()
+
+
+VALID_WORKFLOW_ITEM_TYPES = {"RFI", "NCR", "TECH"}
+
+
+def _normalize_workflow_item_type_or_400(value: Optional[str]) -> str:
+    item_type = _upper(value)
+    if item_type not in VALID_WORKFLOW_ITEM_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid workflow item_type: {value}")
+    return item_type
 
 
 _PKG_SEQ_RE = re.compile(r"(\d{1,3})$")
@@ -2484,4 +2528,327 @@ def permissions_audit_logs(
             }
             for row in rows
         ],
+    }
+
+
+@router.get("/workflow-statuses")
+def list_workflow_statuses(
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(WorkflowStatus)
+        .order_by(
+            WorkflowStatus.item_type.asc(),
+            WorkflowStatus.sort_order.asc(),
+            WorkflowStatus.code.asc(),
+        )
+        .all()
+    )
+    return {
+        "ok": True,
+        "data": [
+            {
+                "id": row.id,
+                "item_type": row.item_type,
+                "code": row.code,
+                "label": row.label,
+                "is_terminal": bool(row.is_terminal),
+                "sort_order": row.sort_order,
+                "is_active": bool(row.is_active),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/workflow-statuses")
+def upsert_workflow_status(
+    payload: WorkflowStatusIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    item_type = _normalize_workflow_item_type_or_400(payload.item_type)
+    code = _upper(payload.code)
+    label = _norm(payload.label)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    if not label:
+        raise HTTPException(status_code=400, detail="label is required")
+
+    row = None
+    if payload.id:
+        row = db.query(WorkflowStatus).filter(WorkflowStatus.id == payload.id).first()
+    if row is None:
+        row = (
+            db.query(WorkflowStatus)
+            .filter(WorkflowStatus.item_type == item_type, WorkflowStatus.code == code)
+            .first()
+        )
+
+    before = _as_dict(
+        row,
+        ["id", "item_type", "code", "label", "is_terminal", "sort_order", "is_active"],
+    )
+    if row is None:
+        row = WorkflowStatus(item_type=item_type, code=code)
+        db.add(row)
+    row.item_type = item_type
+    row.code = code
+    row.label = label
+    row.is_terminal = bool(payload.is_terminal)
+    row.sort_order = int(payload.sort_order)
+    row.is_active = bool(payload.is_active)
+    db.flush()
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="workflow.status.upsert",
+        target_type="workflow_status",
+        target_key=f"{row.item_type}:{row.code}",
+        before=before,
+        after=_as_dict(
+            row,
+            ["id", "item_type", "code", "label", "is_terminal", "sort_order", "is_active"],
+        ),
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "data": {
+            "id": row.id,
+            "item_type": row.item_type,
+            "code": row.code,
+            "label": row.label,
+            "is_terminal": bool(row.is_terminal),
+            "sort_order": row.sort_order,
+            "is_active": bool(row.is_active),
+        },
+    }
+
+
+@router.get("/workflow-transitions")
+def list_workflow_transitions(
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(WorkflowTransition)
+        .order_by(
+            WorkflowTransition.item_type.asc(),
+            WorkflowTransition.from_status_code.asc(),
+            WorkflowTransition.to_status_code.asc(),
+        )
+        .all()
+    )
+    return {
+        "ok": True,
+        "data": [
+            {
+                "id": row.id,
+                "item_type": row.item_type,
+                "from_status_code": row.from_status_code,
+                "to_status_code": row.to_status_code,
+                "requires_note": bool(row.requires_note),
+                "is_active": bool(row.is_active),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/workflow-transitions")
+def upsert_workflow_transition(
+    payload: WorkflowTransitionIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    item_type = _normalize_workflow_item_type_or_400(payload.item_type)
+    from_status = _upper(payload.from_status_code)
+    to_status = _upper(payload.to_status_code)
+    if not from_status or not to_status:
+        raise HTTPException(status_code=400, detail="from_status_code and to_status_code are required")
+
+    row = None
+    if payload.id:
+        row = db.query(WorkflowTransition).filter(WorkflowTransition.id == payload.id).first()
+    if row is None:
+        row = (
+            db.query(WorkflowTransition)
+            .filter(
+                WorkflowTransition.item_type == item_type,
+                WorkflowTransition.from_status_code == from_status,
+                WorkflowTransition.to_status_code == to_status,
+            )
+            .first()
+        )
+
+    before = _as_dict(
+        row,
+        ["id", "item_type", "from_status_code", "to_status_code", "requires_note", "is_active"],
+    )
+    if row is None:
+        row = WorkflowTransition(
+            item_type=item_type,
+            from_status_code=from_status,
+            to_status_code=to_status,
+        )
+        db.add(row)
+    row.item_type = item_type
+    row.from_status_code = from_status
+    row.to_status_code = to_status
+    row.requires_note = bool(payload.requires_note)
+    row.is_active = bool(payload.is_active)
+    db.flush()
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="workflow.transition.upsert",
+        target_type="workflow_transition",
+        target_key=f"{row.item_type}:{row.from_status_code}->{row.to_status_code}",
+        before=before,
+        after=_as_dict(
+            row,
+            ["id", "item_type", "from_status_code", "to_status_code", "requires_note", "is_active"],
+        ),
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "data": {
+            "id": row.id,
+            "item_type": row.item_type,
+            "from_status_code": row.from_status_code,
+            "to_status_code": row.to_status_code,
+            "requires_note": bool(row.requires_note),
+            "is_active": bool(row.is_active),
+        },
+    }
+
+
+@router.get("/tech-subtypes")
+def list_tech_subtypes(
+    db: Session = Depends(get_db),
+):
+    rows = db.query(TechSubtype).order_by(TechSubtype.sort_order.asc(), TechSubtype.code.asc()).all()
+    return {
+        "ok": True,
+        "data": [
+            {
+                "code": row.code,
+                "label": row.label,
+                "sort_order": row.sort_order,
+                "is_active": bool(row.is_active),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/tech-subtypes")
+def upsert_tech_subtype(
+    payload: TechSubtypeIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    code = _upper(payload.code)
+    label = _norm(payload.label)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    if not label:
+        raise HTTPException(status_code=400, detail="label is required")
+
+    row = db.query(TechSubtype).filter(TechSubtype.code == code).first()
+    before = _as_dict(row, ["code", "label", "sort_order", "is_active"])
+    if row is None:
+        row = TechSubtype(code=code)
+        db.add(row)
+    row.code = code
+    row.label = label
+    row.sort_order = int(payload.sort_order)
+    row.is_active = bool(payload.is_active)
+    db.flush()
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="workflow.tech_subtype.upsert",
+        target_type="tech_subtype",
+        target_key=row.code,
+        before=before,
+        after=_as_dict(row, ["code", "label", "sort_order", "is_active"]),
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "data": {
+            "code": row.code,
+            "label": row.label,
+            "sort_order": row.sort_order,
+            "is_active": bool(row.is_active),
+        },
+    }
+
+
+@router.get("/review-results")
+def list_review_results(
+    db: Session = Depends(get_db),
+):
+    rows = db.query(ReviewResult).order_by(ReviewResult.sort_order.asc(), ReviewResult.code.asc()).all()
+    return {
+        "ok": True,
+        "data": [
+            {
+                "code": row.code,
+                "label": row.label,
+                "sort_order": row.sort_order,
+                "is_active": bool(row.is_active),
+            }
+            for row in rows
+        ],
+    }
+
+
+@router.post("/review-results")
+def upsert_review_result(
+    payload: ReviewResultIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    code = _upper(payload.code)
+    label = _norm(payload.label)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    if not label:
+        raise HTTPException(status_code=400, detail="label is required")
+
+    row = db.query(ReviewResult).filter(ReviewResult.code == code).first()
+    before = _as_dict(row, ["code", "label", "sort_order", "is_active"])
+    if row is None:
+        row = ReviewResult(code=code)
+        db.add(row)
+    row.code = code
+    row.label = label
+    row.sort_order = int(payload.sort_order)
+    row.is_active = bool(payload.is_active)
+    db.flush()
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="workflow.review_result.upsert",
+        target_type="review_result",
+        target_key=row.code,
+        before=before,
+        after=_as_dict(row, ["code", "label", "sort_order", "is_active"]),
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "data": {
+            "code": row.code,
+            "label": row.label,
+            "sort_order": row.sort_order,
+            "is_active": bool(row.is_active),
+        },
     }

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     TEST_ADMIN_EMAIL: str | None = None
     TEST_ADMIN_PASSWORD: str | None = None
 
+    # Feature flags
+    FEATURE_COMM_ITEMS_V1: bool = True
+
     def is_production_like(self) -> bool:
         env = str(self.APP_ENV or "").strip().lower()
         return env in {"prod", "production", "staging"}

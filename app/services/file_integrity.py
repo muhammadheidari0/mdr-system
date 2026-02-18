@@ -35,6 +35,10 @@ _EXTENSION_MIME_HINTS: dict[str, set[str]] = {
     ".png": {"image/png"},
     ".jpg": {"image/jpeg"},
     ".jpeg": {"image/jpeg"},
+    ".xls": {
+        "application/vnd.ms-excel",
+        "application/octet-stream",
+    },
     ".docx": {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/zip",
@@ -44,7 +48,9 @@ _EXTENSION_MIME_HINTS: dict[str, set[str]] = {
         "application/zip",
     },
     ".zip": {"application/zip"},
+    ".dxf": {"application/dxf", "image/vnd.dxf", "application/octet-stream", "text/plain"},
     ".dwg": {"application/x-dwg", "application/acad", "image/vnd.dwg", "application/octet-stream"},
+    ".ifc": {"model/ifc", "application/x-step", "application/octet-stream", "text/plain"},
 }
 
 

@@ -579,6 +579,655 @@ class CorrespondenceAttachment(Base):
     )
 
 
+class WorkflowStatus(Base):
+    __tablename__ = "workflow_statuses"
+    __table_args__ = (
+        UniqueConstraint("item_type", "code", name="uq_workflow_status_item_type_code"),
+        Index("ix_workflow_status_item_type_sort", "item_type", "sort_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    is_terminal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class WorkflowTransition(Base):
+    __tablename__ = "workflow_transitions"
+    __table_args__ = (
+        UniqueConstraint(
+            "item_type",
+            "from_status_code",
+            "to_status_code",
+            name="uq_workflow_transition_item_from_to",
+        ),
+        Index("ix_workflow_transition_item_from", "item_type", "from_status_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    from_status_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    to_status_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    requires_note: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class TechSubtype(Base):
+    __tablename__ = "tech_subtypes"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ReviewResult(Base):
+    __tablename__ = "review_results"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class CommItem(Base):
+    __tablename__ = "comm_items"
+    __table_args__ = (
+        UniqueConstraint("item_no", name="uq_comm_items_item_no"),
+        Index(
+            "ix_comm_items_project_disc_type_status_created",
+            "project_code",
+            "discipline_code",
+            "item_type",
+            "status_code",
+            "created_at",
+        ),
+        Index("ix_comm_items_response_due_date", "response_due_date"),
+        Index("ix_comm_items_notice_deadline", "notice_deadline"),
+        Index("ix_comm_items_org_module", "organization_id", "item_type", "status_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_no: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    item_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)  # RFI | NCR | TECH
+
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    discipline_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    zone: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    short_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="normal")
+    response_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    assignee_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    recipient_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    contractor_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    consultant_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    contract_clause_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    spec_clause_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    wbs_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    activity_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    potential_impact_time: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    potential_impact_cost: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    potential_impact_quality: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    potential_impact_safety: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    impact_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delay_days_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    claim_notice_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notice_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    is_superseded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    superseded_by_item_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship("Project")
+    discipline: Mapped["Discipline"] = relationship("Discipline")
+    organization: Mapped["Organization | None"] = relationship("Organization", foreign_keys=[organization_id])
+    recipient_org: Mapped["Organization | None"] = relationship(
+        "Organization", foreign_keys=[recipient_org_id]
+    )
+    assignee_user: Mapped["User | None"] = relationship("User", foreign_keys=[assignee_user_id])
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+
+    rfi_detail: Mapped["RfiDetail | None"] = relationship(
+        back_populates="item", cascade="all, delete-orphan", uselist=False
+    )
+    ncr_detail: Mapped["NcrDetail | None"] = relationship(
+        back_populates="item", cascade="all, delete-orphan", uselist=False
+    )
+    tech_detail: Mapped["TechDetail | None"] = relationship(
+        back_populates="item", cascade="all, delete-orphan", uselist=False
+    )
+    status_logs: Mapped[List["ItemStatusLog"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan"
+    )
+    field_audits: Mapped[List["ItemFieldAudit"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan"
+    )
+    comments: Mapped[List["ItemComment"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan"
+    )
+    attachments: Mapped[List["ItemAttachment"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan"
+    )
+    outgoing_relations: Mapped[List["ItemRelation"]] = relationship(
+        "ItemRelation",
+        foreign_keys="ItemRelation.from_item_id",
+        back_populates="from_item",
+        cascade="all, delete-orphan",
+    )
+    incoming_relations: Mapped[List["ItemRelation"]] = relationship(
+        "ItemRelation",
+        foreign_keys="ItemRelation.to_item_id",
+        back_populates="to_item",
+        cascade="all, delete-orphan",
+    )
+
+
+class RfiDetail(Base):
+    __tablename__ = "rfi_details"
+
+    comm_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    proposed_solution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answer_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    drawing_refs_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    spec_refs_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    item: Mapped["CommItem"] = relationship(back_populates="rfi_detail")
+
+
+class NcrDetail(Base):
+    __tablename__ = "ncr_details"
+
+    comm_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    kind: Mapped[str | None] = mapped_column(String(32), nullable=True)  # NCR | OBSERVATION | CAR
+    severity: Mapped[str | None] = mapped_column(String(32), nullable=True)  # MINOR | MAJOR | CRITICAL
+    nonconformance_text: Mapped[str] = mapped_column(Text, nullable=False)
+    containment_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rectification_method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rectification_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    root_cause: Mapped[str | None] = mapped_column(Text, nullable=True)
+    corrective_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preventive_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verification_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verified_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    item: Mapped["CommItem"] = relationship(back_populates="ncr_detail")
+    verified_by: Mapped["User | None"] = relationship("User", foreign_keys=[verified_by_id])
+
+
+class TechDetail(Base):
+    __tablename__ = "tech_details"
+
+    comm_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), primary_key=True
+    )
+    tech_subtype_code: Mapped[str] = mapped_column(
+        String(32), ForeignKey("tech_subtypes.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    document_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    document_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    transmittal_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    submission_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    review_cycle_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_result_code: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("review_results.code", ondelete="SET NULL"), nullable=True
+    )
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    meeting_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    item: Mapped["CommItem"] = relationship(back_populates="tech_detail")
+    tech_subtype: Mapped["TechSubtype"] = relationship("TechSubtype")
+    review_result: Mapped["ReviewResult | None"] = relationship("ReviewResult")
+    reviewed_by: Mapped["User | None"] = relationship("User", foreign_keys=[reviewed_by_id])
+
+
+class ItemSequence(Base):
+    __tablename__ = "item_sequences"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_code",
+            "item_type",
+            "discipline_code",
+            name="uq_item_sequences_project_type_discipline",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False
+    )
+    item_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    discipline_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="CASCADE"), nullable=False
+    )
+    next_value: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class ItemStatusLog(Base):
+    __tablename__ = "item_status_logs"
+    __table_args__ = (
+        Index("ix_item_status_logs_item_changed_at", "item_id", "changed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    from_status_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    to_status_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    changed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    item: Mapped["CommItem"] = relationship(back_populates="status_logs")
+    changed_by: Mapped["User | None"] = relationship("User", foreign_keys=[changed_by_id])
+
+
+class ItemFieldAudit(Base):
+    __tablename__ = "item_field_audits"
+    __table_args__ = (
+        Index("ix_item_field_audits_item_changed_at", "item_id", "changed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    field_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    item: Mapped["CommItem"] = relationship(back_populates="field_audits")
+    changed_by: Mapped["User | None"] = relationship("User", foreign_keys=[changed_by_id])
+
+
+class ItemComment(Base):
+    __tablename__ = "item_comments"
+    __table_args__ = (
+        Index("ix_item_comments_item_created_at", "item_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    comment_type: Mapped[str] = mapped_column(String(32), nullable=False, default="comment")
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    item: Mapped["CommItem"] = relationship(back_populates="comments")
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+
+
+class ItemAttachment(Base):
+    __tablename__ = "item_attachments"
+    __table_args__ = (
+        Index("ix_item_attachments_item_uploaded_at", "item_id", "uploaded_at"),
+        Index("ix_item_attachments_item_scope_uploaded_at", "item_id", "scope_code", "uploaded_at"),
+        Index("ix_item_attachments_item_slot_uploaded_at", "item_id", "slot_code", "uploaded_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="attachment")
+    scope_code: Mapped[str] = mapped_column(String(16), nullable=False, default="GENERAL", index=True)
+    slot_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    detected_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    gdrive_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    mirror_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    mirror_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    uploaded_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    item: Mapped["CommItem"] = relationship(back_populates="attachments")
+    uploaded_by: Mapped["User | None"] = relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class ItemRelation(Base):
+    __tablename__ = "item_relations"
+    __table_args__ = (
+        Index("ix_item_relations_from_item", "from_item_id"),
+        Index("ix_item_relations_to_item", "to_item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    from_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=False
+    )
+    to_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=False
+    )
+    relation_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    from_item: Mapped["CommItem"] = relationship(
+        "CommItem", foreign_keys=[from_item_id], back_populates="outgoing_relations"
+    )
+    to_item: Mapped["CommItem"] = relationship(
+        "CommItem", foreign_keys=[to_item_id], back_populates="incoming_relations"
+    )
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+
+
+class SiteLogWorkflowStatus(Base):
+    __tablename__ = "site_log_workflow_statuses"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogSequence(Base):
+    __tablename__ = "site_log_sequences"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_code",
+            "log_type",
+            "log_date",
+            name="uq_site_log_sequences_project_type_date",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False
+    )
+    log_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    log_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    next_value: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class SiteLog(Base):
+    __tablename__ = "site_logs"
+    __table_args__ = (
+        UniqueConstraint("log_no", name="uq_site_logs_log_no"),
+        Index(
+            "ix_site_logs_project_disc_type_status_date",
+            "project_code",
+            "discipline_code",
+            "log_type",
+            "status_code",
+            "log_date",
+        ),
+        Index("ix_site_logs_status_date", "status_code", "log_date"),
+        Index("ix_site_logs_org_status", "organization_id", "status_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    log_no: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    log_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    discipline_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    log_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    weather: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status_code: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT", index=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    submitted_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    verified_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship("Project")
+    discipline: Mapped["Discipline"] = relationship("Discipline")
+    organization: Mapped["Organization | None"] = relationship("Organization", foreign_keys=[organization_id])
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+    submitted_by: Mapped["User | None"] = relationship("User", foreign_keys=[submitted_by_id])
+    verified_by: Mapped["User | None"] = relationship("User", foreign_keys=[verified_by_id])
+
+    manpower_rows: Mapped[List["SiteLogManpowerRow"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    equipment_rows: Mapped[List["SiteLogEquipmentRow"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    activity_rows: Mapped[List["SiteLogActivityRow"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    status_logs: Mapped[List["SiteLogStatusLog"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    comments: Mapped[List["SiteLogComment"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    attachments: Mapped[List["SiteLogAttachment"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+
+
+class SiteLogManpowerRow(Base):
+    __tablename__ = "site_log_manpower_rows"
+    __table_args__ = (
+        Index("ix_site_log_manpower_rows_site_role", "site_log_id", "role_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    role_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    claimed_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    claimed_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    verified_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    verified_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="manpower_rows")
+
+
+class SiteLogEquipmentRow(Base):
+    __tablename__ = "site_log_equipment_rows"
+    __table_args__ = (
+        Index("ix_site_log_equipment_rows_site_equipment", "site_log_id", "equipment_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    equipment_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    equipment_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    claimed_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    claimed_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    verified_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    verified_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="equipment_rows")
+
+
+class SiteLogActivityRow(Base):
+    __tablename__ = "site_log_activity_rows"
+    __table_args__ = (
+        Index("ix_site_log_activity_rows_site_activity", "site_log_id", "activity_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    activity_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    activity_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_system: Mapped[str] = mapped_column(String(32), nullable=False, default="MANUAL")
+    external_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    claimed_progress_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    verified_progress_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="activity_rows")
+
+
+class SiteLogStatusLog(Base):
+    __tablename__ = "site_log_status_logs"
+    __table_args__ = (
+        Index("ix_site_log_status_logs_site_changed_at", "site_log_id", "changed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    from_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    changed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="status_logs")
+    changed_by: Mapped["User | None"] = relationship("User", foreign_keys=[changed_by_id])
+
+
+class SiteLogComment(Base):
+    __tablename__ = "site_log_comments"
+    __table_args__ = (
+        Index("ix_site_log_comments_site_created_at", "site_log_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    comment_type: Mapped[str] = mapped_column(String(32), nullable=False, default="comment")
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="comments")
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+
+
+class SiteLogAttachment(Base):
+    __tablename__ = "site_log_attachments"
+    __table_args__ = (
+        Index("ix_site_log_attachments_site_uploaded_at", "site_log_id", "uploaded_at"),
+        Index("ix_site_log_attachments_site_section_uploaded_at", "site_log_id", "section_code", "uploaded_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    section_code: Mapped[str] = mapped_column(String(32), nullable=False, default="GENERAL", index=True)
+    row_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="attachment")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    detected_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    uploaded_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="attachments")
+    uploaded_by: Mapped["User | None"] = relationship("User", foreign_keys=[uploaded_by_id])
+
+
 class WorkboardItem(Base):
     __tablename__ = "workboard_items"
     __table_args__ = (
@@ -630,7 +1279,6 @@ class StorageJob(Base):
     __tablename__ = "storage_jobs"
     __table_args__ = (
         Index("ix_storage_jobs_status_next_retry", "status", "next_retry_at"),
-        Index("ix_storage_jobs_job_type", "job_type"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -654,7 +1302,6 @@ class OpenProjectLink(Base):
     __tablename__ = "openproject_links"
     __table_args__ = (
         UniqueConstraint("entity_type", "entity_id", "work_package_id", name="uq_openproject_entity_wp"),
-        Index("ix_openproject_links_sync_status", "sync_status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
