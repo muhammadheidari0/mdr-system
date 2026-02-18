@@ -106,20 +106,20 @@
     <section id="storage-step-paths" class="storage-step-panel active" data-storage-step-panel="paths">
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">folder</span>
-        <div>Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ ÙÛŒØ²ÛŒÚ©ÛŒ Ø°Ø®ÛŒØ±Ù‡ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ Ù†Ø³Ø¨Øª Ø¨Ù‡ <code>BASE_DIR</code> Ù…Ø­Ø§Ø³Ø¨Ù‡ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯.</div>
+        <div>مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور (Network Mount) قرار بگیرند و توسط Service Account قابل‌نوشتن باشند.</div>
       </div>
       <div class="general-form-grid">
         <div class="storage-path-field-group">
           <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ (MDR / Archive)</div>
-          <input id="mdrStoragePathInput" class="form-input" placeholder="./files/technical">
-          <div class="storage-path-example">Ù†Ù…ÙˆÙ†Ù‡ Ù…Ø³ÛŒØ± Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯: <code>./files/technical</code></div>
+          <input id="mdrStoragePathInput" class="form-input" placeholder="/app/archive_storage/technical">
+          <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/technical</code></div>
           <div class="storage-path-preview">Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ normalize Ø´Ø¯Ù‡: <code id="storagePathMdrPreview">-</code></div>
           <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ø¢Ø±Ø´ÛŒÙˆ Ù…Ø¯Ø§Ø±Ú©ØŒ Ù†Ø³Ø®Ù‡â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ MDR</span>
         </div>
         <div class="storage-path-field-group">
           <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ú©Ø§ØªØ¨Ø§Øª (Correspondence)</div>
-          <input id="correspondenceStoragePathInput" class="form-input" placeholder="./files/correspondence">
-          <div class="storage-path-example">Ù†Ù…ÙˆÙ†Ù‡ Ù…Ø³ÛŒØ± Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯: <code>./files/correspondence</code></div>
+          <input id="correspondenceStoragePathInput" class="form-input" placeholder="/app/archive_storage/correspondence">
+          <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/correspondence</code></div>
           <div class="storage-path-preview">Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ normalize Ø´Ø¯Ù‡: <code id="storagePathCorrespondencePreview">-</code></div>
           <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ Ù†Ø§Ù…Ù‡â€ŒÙ‡Ø§ØŒ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ Ù…Ú©Ø§ØªØ¨Ø§Øª</span>
         </div>

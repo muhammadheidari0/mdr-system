@@ -345,13 +345,30 @@
         const res = await fn(url, options);
         if (!res.ok) {
             let message = `Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯ (${res.status})`;
+            let details = null;
             try {
                 const j = await res.clone().json();
-                message = j.detail || j.message || message;
+                details = j?.detail;
+                if (Array.isArray(details) && details.length) {
+                    const lines = details
+                        .map((item) => {
+                            if (!item || typeof item !== 'object') return norm(item);
+                            const field = norm(item.field || item.loc || '');
+                            const text = norm(item.message || item.detail || item.msg || '');
+                            if (field && text) return `${field}: ${text}`;
+                            return text || JSON.stringify(item);
+                        })
+                        .filter(Boolean);
+                    if (lines.length) message = lines.join(' | ');
+                } else {
+                    message = j.detail || j.message || message;
+                }
             } catch (_) {
                 try { message = await res.text(); } catch (_) {}
             }
-            throw new Error(message);
+            const err = new Error(message);
+            if (Array.isArray(details)) err.details = details;
+            throw err;
         }
         return res.json();
     }
@@ -2707,6 +2724,18 @@
             showStorageStepSaved('paths', 'Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯Ù†Ø¯.');
             tSuccess('Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
         } catch (err) {
+            const lines = Array.isArray(err?.details)
+                ? err.details
+                    .map((item) => {
+                        if (!item || typeof item !== 'object') return norm(item);
+                        const field = norm(item.field || '');
+                        const text = norm(item.message || item.detail || '');
+                        if (field && text) return `${field}: ${text}`;
+                        return text;
+                    })
+                    .filter(Boolean)
+                : [];
+            if (lines.length) setStoragePathConflictError(lines.join(' | '));
             tError(err.message);
         }
     };
