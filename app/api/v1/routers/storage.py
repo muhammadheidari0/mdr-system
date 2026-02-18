@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import requests
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -40,7 +41,14 @@ from app.services.openproject_status import (
     is_valid_entity_type,
     normalize_entity_type,
 )
-from app.services.storage_sync import JOB_GOOGLE_DRIVE_MIRROR, JOB_OPENPROJECT_SYNC, run_storage_jobs
+from app.services.storage_sync import (
+    JOB_GOOGLE_DRIVE_MIRROR,
+    JOB_OPENPROJECT_SYNC,
+    resolve_openproject_runtime,
+    run_storage_jobs,
+)
+from app.services.openproject_adapter import OpenProjectAdapter
+from app.services.storage_policy import get_storage_integrations
 from app.services.site_cache import (
     build_site_manifest,
     detect_matching_profile_by_cidr,
@@ -258,6 +266,81 @@ def run_openproject_jobs(
     del user
     result = run_storage_jobs(db, limit=limit, job_types=[JOB_OPENPROJECT_SYNC])
     return {"ok": True, **result}
+
+
+@router.post("/openproject/ping")
+def ping_openproject(
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    integrations = get_storage_integrations(db)
+    runtime = resolve_openproject_runtime(integrations)
+    token_source = str(runtime.get("token_source") or "none")
+    base_url = OpenProjectAdapter.normalize_base_url(str(runtime.get("base_url") or ""))
+    if not base_url:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "token_source": token_source,
+            "message": "OpenProject base URL is not configured.",
+        }
+
+    url = f"{base_url}/api/v3"
+    auth = ("apikey", str(runtime.get("api_token") or "")) if str(runtime.get("api_token") or "").strip() else None
+    try:
+        response = requests.get(
+            url,
+            auth=auth,
+            headers={"Accept": "application/json"},
+            timeout=(
+                float(runtime.get("connect_timeout") or 5),
+                float(runtime.get("read_timeout") or 10),
+            ),
+            verify=bool(runtime.get("tls_verify")),
+        )
+        status_code = int(response.status_code)
+        reachable = True
+        auth_ok = status_code < 400
+        if status_code in {401, 403}:
+            auth_ok = False
+            message = "OpenProject API is reachable, but authentication failed."
+        elif status_code == 404:
+            auth_ok = False
+            message = "OpenProject API path not found (check base URL/reverse proxy path)."
+        elif status_code >= 400:
+            auth_ok = False
+            message = f"OpenProject returned HTTP {status_code}."
+        else:
+            message = "OpenProject API reachable and authenticated."
+        return {
+            "ok": True,
+            "reachable": reachable,
+            "auth_ok": auth_ok,
+            "status_code": status_code,
+            "token_source": token_source,
+            "message": message,
+        }
+    except requests.Timeout:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "token_source": token_source,
+            "message": "OpenProject ping timed out.",
+        }
+    except requests.RequestException:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "token_source": token_source,
+            "message": "OpenProject is unreachable (network/TLS error).",
+        }
 
 
 @router.post("/openproject/status")

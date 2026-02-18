@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.api.dependencies import get_db, allow_admin
 from app.core.config import settings
+from app.core.redaction import redact_secrets
 from app.core.organizations import (
     ALL_ORG_TYPES,
     DEFAULT_PERMISSION_CATEGORY,
@@ -364,7 +365,38 @@ def _count(db: Session, model) -> int:
 
 
 def _safe_json_dump(payload: Any) -> str:
-    return json.dumps(payload, ensure_ascii=False, default=str)
+    return json.dumps(redact_secrets(payload), ensure_ascii=False, default=str)
+
+
+def _storage_integrations_openproject_token_source(integrations: Dict[str, Any]) -> str:
+    openproject = dict((integrations or {}).get("openproject") or {})
+    env_token = str(settings.OPENPROJECT_API_TOKEN or "").strip()
+    settings_token = str(openproject.get("api_token") or "").strip()
+    if env_token:
+        return "env"
+    if settings_token:
+        return "settings"
+    return "none"
+
+
+def _masked_storage_integrations_payload(integrations: Dict[str, Any]) -> Dict[str, Any]:
+    masked = dict(integrations or {})
+    openproject = dict(masked.get("openproject", {}))
+    if not str(openproject.get("default_work_package_id") or "").strip():
+        openproject["default_work_package_id"] = str(openproject.get("default_project_id") or "").strip()
+    openproject.pop("default_project_id", None)
+    token_source = _storage_integrations_openproject_token_source(integrations)
+    openproject["token_source"] = token_source
+    openproject["api_token_configured"] = token_source in {"env", "settings"}
+    openproject.pop("api_token", None)
+    masked["openproject"] = openproject
+
+    if str(settings.GDRIVE_SERVICE_ACCOUNT_JSON or "").strip():
+        gdrive = dict(masked.get("google_drive", {}))
+        gdrive["service_account_configured"] = True
+        masked["google_drive"] = gdrive
+
+    return redact_secrets(masked)
 
 
 def _as_dict(obj: Any, fields: List[str]) -> Dict[str, Any] | None:
@@ -2038,17 +2070,7 @@ def save_storage_policy_settings(
 @router.get("/storage-integrations")
 def get_storage_integrations_settings(db: Session = Depends(get_db)):
     integrations = get_storage_integrations(db)
-    masked = dict(integrations)
-    openproject = dict(masked.get("openproject", {}))
-    if str(settings.OPENPROJECT_API_TOKEN or "").strip():
-        openproject["api_token_configured"] = True
-    if "api_token" in openproject:
-        openproject["api_token"] = "***"
-    masked["openproject"] = openproject
-    if str(settings.GDRIVE_SERVICE_ACCOUNT_JSON or "").strip():
-        gdrive = dict(masked.get("google_drive", {}))
-        gdrive["service_account_configured"] = True
-        masked["google_drive"] = gdrive
+    masked = _masked_storage_integrations_payload(integrations)
     return {
         "ok": True,
         "integrations": masked,
@@ -2064,6 +2086,16 @@ def save_storage_integrations_settings(
 ):
     before = get_storage_integrations(db)
     incoming = payload.model_dump(exclude_unset=True)
+    openproject_incoming = incoming.get("openproject")
+    if isinstance(openproject_incoming, dict):
+        raw_default_wp = str(
+            openproject_incoming.get("default_work_package_id") or openproject_incoming.get("default_project_id") or ""
+        ).strip()
+        openproject_incoming["default_work_package_id"] = raw_default_wp
+        openproject_incoming.pop("default_project_id", None)
+        if "api_token" in openproject_incoming and not str(openproject_incoming.get("api_token") or "").strip():
+            openproject_incoming["api_token"] = str((before.get("openproject") or {}).get("api_token") or "")
+
     merged = dict(before)
     for key in ("google_drive", "openproject", "local_cache"):
         if isinstance(incoming.get(key), dict):
@@ -2071,6 +2103,7 @@ def save_storage_integrations_settings(
             current.update(incoming.get(key) or {})
             merged[key] = current
     integrations = set_storage_integrations(db, merged)
+    masked = _masked_storage_integrations_payload(integrations)
     _audit_log(
         db,
         actor=current_user,
@@ -2078,10 +2111,35 @@ def save_storage_integrations_settings(
         target_type="storage_integrations",
         target_key=None,
         before=before,
-        after=integrations,
+        after=masked,
     )
     db.commit()
-    return {"ok": True, "integrations": integrations}
+    return {"ok": True, "integrations": masked}
+
+
+@router.post("/storage-integrations/openproject/clear-token")
+def clear_storage_openproject_token(
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    before = get_storage_integrations(db)
+    merged = dict(before)
+    openproject = dict(merged.get("openproject") or {})
+    openproject["api_token"] = ""
+    merged["openproject"] = openproject
+    integrations = set_storage_integrations(db, merged)
+    masked = _masked_storage_integrations_payload(integrations)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="storage_integrations.openproject.clear_token",
+        target_type="storage_integrations",
+        target_key="openproject",
+        before=before,
+        after=masked,
+    )
+    db.commit()
+    return {"ok": True, "integrations": masked}
 
 
 @router.get("/permissions/matrix")

@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     GDRIVE_SHARED_DRIVE_ID: str = ""
     OPENPROJECT_BASE_URL: str = ""
     OPENPROJECT_API_TOKEN: str = ""
+    OPENPROJECT_CONNECT_TIMEOUT_SECONDS: int = 5
+    OPENPROJECT_READ_TIMEOUT_SECONDS: int = 10
+    OPENPROJECT_TLS_VERIFY: bool = True
+    OPENPROJECT_DEFAULT_WORK_PACKAGE_ID: str = ""
+    # Legacy alias kept for backward compatibility in env files/docs.
     OPENPROJECT_DEFAULT_PROJECT_ID: str = ""
 
     # Test auth (read from .env or process environment)

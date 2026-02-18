@@ -22,18 +22,75 @@ JOB_GOOGLE_DRIVE_MIRROR = "google_drive_mirror"
 JOB_OPENPROJECT_SYNC = "openproject_sync"
 
 
+def _to_positive_int_or_none(value: Any) -> int | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = int(raw)
+    except Exception:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def resolve_openproject_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
+    openproject_cfg = dict(integrations.get("openproject") or {})
+    env_token = str(settings.OPENPROJECT_API_TOKEN or "").strip()
+    settings_token = str(openproject_cfg.get("api_token") or "").strip()
+    base_url = str(settings.OPENPROJECT_BASE_URL or "").strip() or str(openproject_cfg.get("base_url") or "").strip()
+    env_default_wp = (
+        str(settings.OPENPROJECT_DEFAULT_WORK_PACKAGE_ID or "").strip()
+        or str(settings.OPENPROJECT_DEFAULT_PROJECT_ID or "").strip()
+    )
+    settings_default_wp = str(
+        openproject_cfg.get("default_work_package_id") or openproject_cfg.get("default_project_id") or ""
+    ).strip()
+    return {
+        "enabled": bool(openproject_cfg.get("enabled")),
+        "base_url": base_url,
+        "api_token": env_token or settings_token,
+        "token_source": "env" if env_token else ("settings" if settings_token else "none"),
+        "default_work_package_id": _to_positive_int_or_none(env_default_wp or settings_default_wp),
+        "connect_timeout": int(settings.OPENPROJECT_CONNECT_TIMEOUT_SECONDS or 5),
+        "read_timeout": int(settings.OPENPROJECT_READ_TIMEOUT_SECONDS or 10),
+        "tls_verify": bool(settings.OPENPROJECT_TLS_VERIFY),
+    }
+
+
+def _resolve_default_work_package_id(
+    db: Session,
+    *,
+    integrations: dict[str, Any] | None = None,
+) -> int | None:
+    runtime = resolve_openproject_runtime(integrations or get_storage_integrations(db))
+    return _to_positive_int_or_none(runtime.get("default_work_package_id"))
+
+
+def _effective_work_package_id(
+    db: Session,
+    requested_work_package_id: int | None,
+    *,
+    integrations: dict[str, Any] | None = None,
+) -> int | None:
+    explicit = _to_positive_int_or_none(requested_work_package_id)
+    if explicit:
+        return explicit
+    return _resolve_default_work_package_id(db, integrations=integrations)
+
+
 def enqueue_archive_mirror_job(
     db: Session,
     *,
     archive_file_id: int,
     work_package_id: int | None = None,
 ) -> StorageJob:
+    effective_work_package_id = _effective_work_package_id(db, work_package_id)
     payload = {
         "entity_type": "archive_file",
         "entity_id": int(archive_file_id),
     }
-    if work_package_id:
-        payload["work_package_id"] = int(work_package_id)
+    if effective_work_package_id:
+        payload["work_package_id"] = int(effective_work_package_id)
     return enqueue_storage_job(
         db,
         job_type=JOB_GOOGLE_DRIVE_MIRROR,
@@ -48,12 +105,13 @@ def enqueue_correspondence_mirror_job(
     attachment_id: int,
     work_package_id: int | None = None,
 ) -> StorageJob:
+    effective_work_package_id = _effective_work_package_id(db, work_package_id)
     payload = {
         "entity_type": "correspondence_attachment",
         "entity_id": int(attachment_id),
     }
-    if work_package_id:
-        payload["work_package_id"] = int(work_package_id)
+    if effective_work_package_id:
+        payload["work_package_id"] = int(effective_work_package_id)
     return enqueue_storage_job(
         db,
         job_type=JOB_GOOGLE_DRIVE_MIRROR,
@@ -211,8 +269,8 @@ def _sync_openproject(db: Session, job: StorageJob, integrations: dict[str, Any]
     if not entity_type or entity_id <= 0 or work_package_id <= 0:
         raise RuntimeError("Invalid openproject sync payload.")
 
-    openproject_cfg = integrations.get("openproject", {})
-    if not bool(openproject_cfg.get("enabled")):
+    openproject_runtime = resolve_openproject_runtime(integrations)
+    if not bool(openproject_runtime.get("enabled")):
         _upsert_openproject_link(
             db,
             entity_type=entity_type,
@@ -223,9 +281,11 @@ def _sync_openproject(db: Session, job: StorageJob, integrations: dict[str, Any]
         return {"status": "disabled"}
 
     adapter = OpenProjectAdapter(
-        base_url=str(settings.OPENPROJECT_BASE_URL or "").strip()
-        or str(openproject_cfg.get("base_url") or "").strip(),
-        api_token=str(settings.OPENPROJECT_API_TOKEN or "").strip(),
+        base_url=str(openproject_runtime.get("base_url") or "").strip(),
+        api_token=str(openproject_runtime.get("api_token") or "").strip(),
+        connect_timeout=float(openproject_runtime.get("connect_timeout") or 5),
+        read_timeout=float(openproject_runtime.get("read_timeout") or 10),
+        tls_verify=bool(openproject_runtime.get("tls_verify")),
     )
     response = adapter.attach_external_link(
         work_package_id=work_package_id,
