@@ -48,6 +48,7 @@ from app.services.storage_policy import (
     set_storage_integrations,
     set_storage_policy,
 )
+from app.services.storage import StorageManager
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(allow_admin)])
 
@@ -2002,8 +2003,19 @@ def save_storage_paths(
 ):
     mdr_storage_path = _norm(payload.mdr_storage_path)
     correspondence_storage_path = _norm(payload.correspondence_storage_path)
-    if not mdr_storage_path or not correspondence_storage_path:
-        raise HTTPException(status_code=422, detail="Storage paths cannot be empty")
+    errors: list[dict[str, str]] = []
+    normalized_mdr, mdr_errors = StorageManager.validate_storage_path(
+        mdr_storage_path,
+        field="mdr_storage_path",
+    )
+    normalized_corr, corr_errors = StorageManager.validate_storage_path(
+        correspondence_storage_path,
+        field="correspondence_storage_path",
+    )
+    errors.extend(mdr_errors)
+    errors.extend(corr_errors)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
 
     before = {
         "mdr_storage_path": _kv_get_value(db, STORAGE_PATH_MDR_KEY, DEFAULT_MDR_STORAGE_PATH),
@@ -2014,12 +2026,12 @@ def save_storage_paths(
         ),
     }
     after = {
-        "mdr_storage_path": mdr_storage_path,
-        "correspondence_storage_path": correspondence_storage_path,
+        "mdr_storage_path": normalized_mdr,
+        "correspondence_storage_path": normalized_corr,
     }
 
-    _kv_set(db, STORAGE_PATH_MDR_KEY, mdr_storage_path)
-    _kv_set(db, STORAGE_PATH_CORRESPONDENCE_KEY, correspondence_storage_path)
+    _kv_set(db, STORAGE_PATH_MDR_KEY, normalized_mdr)
+    _kv_set(db, STORAGE_PATH_CORRESPONDENCE_KEY, normalized_corr)
     _audit_log(
         db,
         actor=current_user,

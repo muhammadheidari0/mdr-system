@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
 
     API_PREFIX: str = "/api/v1"
+    MDR_DATA_ROOT: str = ""
 
     # DB
     DATABASE_URL: str = "postgresql+psycopg://mdr:mdr@localhost:5432/mdr_app"
@@ -59,6 +60,9 @@ class Settings(BaseSettings):
     OPENPROJECT_DEFAULT_WORK_PACKAGE_ID: str = ""
     # Legacy alias kept for backward compatibility in env files/docs.
     OPENPROJECT_DEFAULT_PROJECT_ID: str = ""
+    STORAGE_ALLOWED_ROOTS: str = ""
+    STORAGE_REQUIRE_ABSOLUTE_PATHS: bool = True
+    STORAGE_VALIDATE_WRITABLE_ON_SAVE: bool = True
 
     # Test auth (read from .env or process environment)
     TEST_ADMIN_EMAIL: str | None = None

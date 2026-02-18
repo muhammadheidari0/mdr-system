@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -36,6 +37,167 @@ class StorageManager:
         if path.is_absolute():
             return path
         return Path(settings.BASE_DIR) / path
+
+    @staticmethod
+    def _has_uri_scheme(value: str) -> bool:
+        text = str(value or "").strip()
+        return "://" in text
+
+    @classmethod
+    def _default_allowed_roots(cls) -> list[Path]:
+        roots: list[Path] = []
+        mdr_data_root = str(getattr(settings, "MDR_DATA_ROOT", "") or "").strip()
+        if mdr_data_root:
+            roots.append(Path(mdr_data_root) / "archive_storage")
+            roots.append(Path(mdr_data_root) / "data_store")
+
+        base = Path(settings.BASE_DIR).resolve()
+        roots.append(base / "archive_storage")
+        roots.append(base / "data_store")
+        roots.append(base / "files")
+
+        # Container canonical mounts.
+        roots.append(Path("/app/archive_storage"))
+        roots.append(Path("/app/data_store"))
+
+        dedup: list[Path] = []
+        seen: set[str] = set()
+        for root in roots:
+            try:
+                resolved = root.expanduser().resolve(strict=False)
+            except Exception:
+                continue
+            key = os.path.normcase(str(resolved))
+            if key in seen:
+                continue
+            seen.add(key)
+            dedup.append(resolved)
+        return dedup
+
+    @classmethod
+    def allowed_roots(cls) -> list[Path]:
+        raw = str(getattr(settings, "STORAGE_ALLOWED_ROOTS", "") or "").strip()
+        if not raw:
+            return cls._default_allowed_roots()
+
+        roots: list[Path] = []
+        seen: set[str] = set()
+        for token in [part.strip() for part in raw.split(",")]:
+            if not token or cls._has_uri_scheme(token):
+                continue
+            candidate = Path(token).expanduser()
+            if not candidate.is_absolute():
+                continue
+            try:
+                resolved = candidate.resolve(strict=False)
+            except Exception:
+                continue
+            key = os.path.normcase(str(resolved))
+            if key in seen:
+                continue
+            seen.add(key)
+            roots.append(resolved)
+        return roots
+
+    @staticmethod
+    def _is_under_root(path: Path, root: Path) -> bool:
+        try:
+            return os.path.commonpath([str(path), str(root)]) == str(root)
+        except Exception:
+            return False
+
+    @staticmethod
+    def _probe_writable(path: Path) -> None:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / f".storage_write_probe_{uuid.uuid4().hex}.tmp"
+        try:
+            with open(probe, "wb") as stream:
+                stream.write(b"ok")
+        finally:
+            try:
+                if probe.exists():
+                    probe.unlink()
+            except Exception:
+                pass
+
+    @classmethod
+    def validate_storage_path(cls, path_value: str, *, field: str) -> tuple[str, list[dict[str, str]]]:
+        errors: list[dict[str, str]] = []
+        raw = str(path_value or "").strip()
+        if not raw:
+            errors.append(
+                {
+                    "field": field,
+                    "code": "path_required",
+                    "message": "Path cannot be empty.",
+                }
+            )
+            return "", errors
+
+        if cls._has_uri_scheme(raw):
+            errors.append(
+                {
+                    "field": field,
+                    "code": "path_scheme_not_supported",
+                    "message": "Network URI schemes (e.g. smb://) are not supported. Use mounted filesystem paths.",
+                }
+            )
+            return "", errors
+
+        candidate = Path(raw).expanduser()
+        require_absolute = bool(getattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True))
+        if require_absolute and not candidate.is_absolute():
+            errors.append(
+                {
+                    "field": field,
+                    "code": "path_not_absolute",
+                    "message": "Path must be absolute.",
+                }
+            )
+            return "", errors
+
+        if not candidate.is_absolute():
+            candidate = Path(settings.BASE_DIR) / candidate
+
+        try:
+            normalized = candidate.resolve(strict=False)
+        except Exception:
+            errors.append(
+                {
+                    "field": field,
+                    "code": "path_invalid",
+                    "message": "Path is invalid.",
+                }
+            )
+            return "", errors
+
+        roots = cls.allowed_roots()
+        if roots and not any(cls._is_under_root(normalized, root) for root in roots):
+            allowed = ", ".join(str(root) for root in roots)
+            errors.append(
+                {
+                    "field": field,
+                    "code": "path_outside_allowed_roots",
+                    "message": f"Path must be under allowed roots: {allowed}",
+                }
+            )
+            return "", errors
+
+        validate_writable = bool(getattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", True))
+        if validate_writable:
+            try:
+                cls._probe_writable(normalized)
+            except Exception:
+                errors.append(
+                    {
+                        "field": field,
+                        "code": "path_not_writable",
+                        "message": "Path is not writable by the service account.",
+                    }
+                )
+                return "", errors
+
+        return str(normalized), errors
 
     def get_mdr_base_path(self) -> Path:
         raw = self._get_setting(self.MDR_STORAGE_KEY, self.DEFAULT_MDR_STORAGE_PATH)
