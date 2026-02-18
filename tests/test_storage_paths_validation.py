@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.core.config import settings
 from app.main import app
+from app.services.storage import StorageManager
 from tests.auth_helpers import get_auth_headers
 
 client = TestClient(app)
@@ -168,3 +169,55 @@ def test_storage_paths_accept_absolute_writable_under_allowed_roots(monkeypatch,
         monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", False)
         monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", "")
         _restore_paths(headers, before)
+
+
+def test_storage_validate_unc_path_under_unc_allowed_root(monkeypatch) -> None:
+    unc_root = r"\\192.168.5.5\share"
+    unc_target = r"\\192.168.5.5\share\technical"
+    monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", unc_root)
+    monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True)
+    monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", True)
+    monkeypatch.setattr(StorageManager, "_probe_writable", staticmethod(lambda _path: None))
+
+    normalized, errors = StorageManager.validate_storage_path(unc_target, field="mdr_storage_path")
+    assert errors == []
+    assert normalized.lower().startswith(unc_root.lower())
+
+
+def test_storage_validate_unc_path_reject_when_unc_root_not_allowed(monkeypatch) -> None:
+    unc_target = r"\\192.168.5.5\share\technical"
+    monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", str(Path(settings.BASE_DIR).resolve()))
+    monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True)
+    monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", False)
+
+    _, errors = StorageManager.validate_storage_path(unc_target, field="mdr_storage_path")
+    assert any(
+        str(item.get("code") or "") == "path_outside_allowed_roots"
+        for item in errors
+        if isinstance(item, dict)
+    )
+
+
+def test_storage_validate_unc_path_uses_credentials_for_mount(monkeypatch) -> None:
+    unc_root = r"\\192.168.5.5\share"
+    unc_target = r"\\192.168.5.5\share\technical"
+    calls: list[tuple[str, str, str]] = []
+
+    def _fake_mount(*, unc_path: str, username: str, password: str) -> None:
+        calls.append((unc_path, username, password))
+
+    monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", unc_root)
+    monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True)
+    monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", True)
+    monkeypatch.setattr(StorageManager, "_ensure_unc_connected_with_credentials", classmethod(lambda cls, **kwargs: _fake_mount(**kwargs)))
+    monkeypatch.setattr(StorageManager, "_probe_writable", staticmethod(lambda _path: None))
+
+    normalized, errors = StorageManager.validate_storage_path(
+        unc_target,
+        field="mdr_storage_path",
+        network_username=r"DOMAIN\svc_mdr",
+        network_password="secret",
+    )
+    assert errors == []
+    assert normalized.lower().startswith(unc_root.lower())
+    assert calls == [(normalized, r"DOMAIN\svc_mdr", "secret")]

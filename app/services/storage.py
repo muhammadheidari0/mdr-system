@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import ntpath
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -42,6 +44,84 @@ class StorageManager:
     def _has_uri_scheme(value: str) -> bool:
         text = str(value or "").strip()
         return "://" in text
+
+    @staticmethod
+    def _is_unc_path(value: str) -> bool:
+        text = str(value or "").strip().replace("/", "\\")
+        if not text.startswith("\\\\"):
+            return False
+        parts = [part for part in text.split("\\") if part]
+        return len(parts) >= 2
+
+    @classmethod
+    def _normalize_unc_path(cls, value: str) -> str:
+        text = str(value or "").strip().replace("/", "\\")
+        normalized = ntpath.normpath(text)
+        if not normalized.startswith("\\\\"):
+            normalized = "\\\\" + normalized.lstrip("\\")
+        return normalized.rstrip("\\")
+
+    @classmethod
+    def _normalize_unc_root(cls, value: str) -> str:
+        return cls._normalize_unc_path(value).rstrip("\\")
+
+    @classmethod
+    def _is_under_unc_root(cls, path_value: str, root_value: str) -> bool:
+        path_norm = cls._normalize_unc_root(path_value)
+        root_norm = cls._normalize_unc_root(root_value)
+        if not root_norm:
+            return False
+        path_cmp = path_norm.lower()
+        root_cmp = root_norm.lower()
+        return path_cmp == root_cmp or path_cmp.startswith(f"{root_cmp}\\")
+
+    @classmethod
+    def _extract_unc_share_root(cls, value: str) -> str:
+        normalized = cls._normalize_unc_path(value)
+        parts = [part for part in normalized.split("\\") if part]
+        if len(parts) < 2:
+            raise ValueError("Invalid UNC path.")
+        return f"\\\\{parts[0]}\\{parts[1]}"
+
+    @classmethod
+    def _ensure_unc_connected_with_credentials(
+        cls,
+        *,
+        unc_path: str,
+        username: str,
+        password: str,
+    ) -> None:
+        user = str(username or "").strip()
+        if not user:
+            return
+        if password is None:
+            return
+        if os.name != "nt":
+            raise RuntimeError(
+                "Runtime cannot mount UNC credentials directly. Configure OS-level mount/service account."
+            )
+        share_root = cls._extract_unc_share_root(unc_path)
+        command = [
+            "net",
+            "use",
+            share_root,
+            str(password),
+            f"/user:{user}",
+            "/persistent:no",
+        ]
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        if result.returncode == 0:
+            return
+        stderr = str(result.stderr or "").strip()
+        stdout = str(result.stdout or "").strip()
+        detail = stderr or stdout or f"exit={result.returncode}"
+        raise RuntimeError(f"UNC authentication failed for share {share_root}: {detail}")
 
     @classmethod
     def _default_allowed_roots(cls) -> list[Path]:
@@ -99,6 +179,27 @@ class StorageManager:
             roots.append(resolved)
         return roots
 
+    @classmethod
+    def allowed_unc_roots(cls) -> list[str]:
+        raw = str(getattr(settings, "STORAGE_ALLOWED_ROOTS", "") or "").strip()
+        if not raw:
+            return []
+
+        roots: list[str] = []
+        seen: set[str] = set()
+        for token in [part.strip() for part in raw.split(",")]:
+            if not token or cls._has_uri_scheme(token):
+                continue
+            if not cls._is_unc_path(token):
+                continue
+            normalized = cls._normalize_unc_root(token)
+            key = normalized.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            roots.append(normalized)
+        return roots
+
     @staticmethod
     def _is_under_root(path: Path, root: Path) -> bool:
         try:
@@ -121,7 +222,14 @@ class StorageManager:
                 pass
 
     @classmethod
-    def validate_storage_path(cls, path_value: str, *, field: str) -> tuple[str, list[dict[str, str]]]:
+    def validate_storage_path(
+        cls,
+        path_value: str,
+        *,
+        field: str,
+        network_username: str | None = None,
+        network_password: str | None = None,
+    ) -> tuple[str, list[dict[str, str]]]:
         errors: list[dict[str, str]] = []
         raw = str(path_value or "").strip()
         if not raw:
@@ -144,9 +252,10 @@ class StorageManager:
             )
             return "", errors
 
+        is_unc_path = cls._is_unc_path(raw)
         candidate = Path(raw).expanduser()
         require_absolute = bool(getattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True))
-        if require_absolute and not candidate.is_absolute():
+        if require_absolute and not (candidate.is_absolute() or is_unc_path):
             errors.append(
                 {
                     "field": field,
@@ -155,6 +264,54 @@ class StorageManager:
                 }
             )
             return "", errors
+
+        if is_unc_path:
+            normalized_unc = cls._normalize_unc_path(raw)
+            configured_roots_raw = str(getattr(settings, "STORAGE_ALLOWED_ROOTS", "") or "").strip()
+            unc_roots = cls.allowed_unc_roots()
+            if configured_roots_raw and unc_roots:
+                if not any(cls._is_under_unc_root(normalized_unc, root) for root in unc_roots):
+                    allowed = ", ".join(unc_roots)
+                    errors.append(
+                        {
+                            "field": field,
+                            "code": "path_outside_allowed_roots",
+                            "message": f"Path must be under allowed roots: {allowed}",
+                        }
+                    )
+                    return "", errors
+            elif configured_roots_raw and not unc_roots:
+                errors.append(
+                    {
+                        "field": field,
+                        "code": "path_outside_allowed_roots",
+                        "message": "UNC paths are not included in STORAGE_ALLOWED_ROOTS.",
+                    }
+                )
+                return "", errors
+
+            validate_writable = bool(getattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", True))
+            if validate_writable:
+                try:
+                    if network_username and network_password is not None:
+                        cls._ensure_unc_connected_with_credentials(
+                            unc_path=normalized_unc,
+                            username=network_username,
+                            password=network_password,
+                        )
+                    cls._probe_writable(Path(normalized_unc))
+                except Exception as exc:
+                    code = "path_not_writable"
+                    message = "Path is not writable by the service account."
+                    if network_username:
+                        code = "path_unc_auth_failed"
+                        if isinstance(exc, RuntimeError) and "cannot mount UNC credentials" in str(exc):
+                            message = "UNC credential mounting is not supported by this runtime. Configure OS-level mount."
+                        else:
+                            message = "UNC authentication failed or share is not writable."
+                    errors.append({"field": field, "code": code, "message": message})
+                    return "", errors
+            return normalized_unc, errors
 
         if not candidate.is_absolute():
             candidate = Path(settings.BASE_DIR) / candidate

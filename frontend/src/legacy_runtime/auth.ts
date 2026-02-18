@@ -268,7 +268,7 @@ async function fetchWithAuth(url, options = {}) {
     }
 
     const config = { ...options, headers };
-    const max429Retries = Number.isFinite(options.max429Retries) ? Number(options.max429Retries) : 2;
+    const max429Retries = Number.isFinite(options.max429Retries) ? Number(options.max429Retries) : 0;
     const base429DelayMs = Number.isFinite(options.base429DelayMs) ? Number(options.base429DelayMs) : 700;
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

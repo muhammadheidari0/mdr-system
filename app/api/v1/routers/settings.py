@@ -120,6 +120,8 @@ class KvIn(BaseModel):
 class StoragePathsIn(BaseModel):
     mdr_storage_path: str = Field(..., min_length=1, max_length=1024)
     correspondence_storage_path: str = Field(..., min_length=1, max_length=1024)
+    network_username: Optional[str] = Field(default=None, max_length=255)
+    network_password: Optional[str] = Field(default=None, max_length=255)
 
 class StoragePolicyIn(BaseModel):
     enforcement_mode: Optional[str] = Field(default=None, max_length=20)
@@ -2007,10 +2009,14 @@ def save_storage_paths(
     normalized_mdr, mdr_errors = StorageManager.validate_storage_path(
         mdr_storage_path,
         field="mdr_storage_path",
+        network_username=payload.network_username,
+        network_password=payload.network_password,
     )
     normalized_corr, corr_errors = StorageManager.validate_storage_path(
         correspondence_storage_path,
         field="correspondence_storage_path",
+        network_username=payload.network_username,
+        network_password=payload.network_password,
     )
     errors.extend(mdr_errors)
     errors.extend(corr_errors)

@@ -3,6 +3,7 @@ import { createCommItemsDataBridge } from "./comm_items_data";
 import { createCommItemsFormBridge } from "./comm_items_form";
 import { createCommItemsStateBridge } from "./comm_items_state";
 import { createCommItemsWorkflowBridge } from "./comm_items_workflow";
+import { formatShamsiDate, formatShamsiDateForFileName } from "./persian_datetime";
 import { initShamsiDateInputs } from "./shamsi_date_input";
 
 export interface CommItemsUiDeps {
@@ -169,6 +170,239 @@ function itemTypeForTab(moduleKey: string, tabKey: string): string {
   return formBridge.resolveItemType({ moduleKey, tabKey });
 }
 
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((row) => String(row ?? "").trim())
+    .filter((row) => !!row);
+}
+
+function text(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function textOrDash(value: unknown): string {
+  const parsed = text(value);
+  return parsed || "-";
+}
+
+function tabSupportsRfi(moduleKey: string, tabKey: string): boolean {
+  const m = normalize(moduleKey);
+  const t = normalize(tabKey);
+  if (!m || !t) return false;
+  if (upper(itemTypeForTab(m, t)) === "RFI") return true;
+  const matchedRule = asArray(catalogCache?.tab_rules).find(
+    (row) => normalize(row.module_key) === m && normalize(row.tab_key) === t
+  );
+  if (!matchedRule) {
+    return m === "consultant" && t === "control";
+  }
+  const rule = asRecord(matchedRule.rule);
+  return asStringArray(rule.item_types).map((row) => upper(row)).includes("RFI");
+}
+
+function findProjectName(cache: Record<string, unknown>, projectCode: unknown): string {
+  const code = upper(projectCode);
+  if (!code) return "-";
+  const row = asArray(cache.projects).find((project) => upper(project.code || project.project_code) === code);
+  return textOrDash(row?.project_name || row?.name || row?.name_p || row?.name_e || code);
+}
+
+function findDisciplineLabel(cache: Record<string, unknown>, disciplineCode: unknown): string {
+  const code = upper(disciplineCode);
+  if (!code) return "-";
+  const row = asArray(cache.disciplines).find((discipline) => upper(discipline.code || discipline.discipline_code) === code);
+  return textOrDash(row?.name || row?.name_p || row?.name_e || code);
+}
+
+function findOrganizationName(cache: Record<string, unknown>, organizationId: unknown): string {
+  const id = Number(organizationId || 0);
+  if (!id) return "-";
+  const row = asArray(cache.organizations).find((organization) => Number(organization.id || 0) === id);
+  return textOrDash(row?.name || row?.name_e || row?.name_p || row?.code);
+}
+
+function escHtml(value: unknown): string {
+  return stateBridge.esc(textOrDash(value));
+}
+
+function rfiExcelHeaders(): string[] {
+  return [
+    "شناسه اختصاصی",
+    "نام پروژه",
+    "کد پروژه",
+    "تاریخ صدور",
+    "صادرکننده",
+    "شرکت",
+    "شماره قرار داد",
+    "نام و نام خانوادگی",
+    "سمت",
+    "اطلاعات تماس",
+    "ایمیل",
+    "مخاطب",
+    "رشته (Discipline)",
+    "کد مدرک مرجع",
+    "شماره شیت",
+    "REV",
+    "بلوک",
+    "طبقه",
+    "موضوع",
+    "شرح موضوع",
+    "طرح پیشنهاد",
+    "پیوست",
+    "بارگذاری مدارک",
+    "ارسال",
+    "پاسخ",
+    "پیوست پاسخ",
+    "شرح پاسخ",
+    "تایید کارفرما",
+    "file",
+    "ارسال ایمیل",
+    "ایمیل ارسال TO",
+    "ایمیل ارسال CC",
+    "خطای ارسال",
+  ];
+}
+
+function rfiExcelRow(item: Record<string, unknown>, cache: Record<string, unknown>): string[] {
+  const rfi = asRecord(item.rfi);
+  const answerText = text(rfi.answer_text);
+  const drawingRefs = asStringArray(rfi.drawing_refs);
+  return [
+    textOrDash(item.item_no),
+    findProjectName(cache, item.project_code),
+    textOrDash(item.project_code),
+    textOrDash(formatShamsiDate(item.created_at)),
+    textOrDash(item.created_by_name),
+    findOrganizationName(cache, item.organization_id),
+    "-",
+    textOrDash(item.created_by_name),
+    "-",
+    "-",
+    "-",
+    textOrDash(item.recipient_org_name),
+    findDisciplineLabel(cache, item.discipline_code),
+    textOrDash(drawingRefs[0]),
+    "-",
+    "-",
+    textOrDash(item.zone),
+    "-",
+    textOrDash(item.title),
+    textOrDash(rfi.question_text || item.short_description),
+    textOrDash(rfi.proposed_solution),
+    "-",
+    "-",
+    textOrDash(item.status_code),
+    answerText ? "ارسال شد" : "انتظار اقدام",
+    "-",
+    textOrDash(rfi.answer_text),
+    "-",
+    "-",
+    "-",
+    "-",
+    "-",
+    "-",
+  ];
+}
+
+function buildRfiPrintHtml(item: Record<string, unknown>, cache: Record<string, unknown>): string {
+  const rfi = asRecord(item.rfi);
+  const drawingRefs = asStringArray(rfi.drawing_refs).join("، ");
+  const projectName = findProjectName(cache, item.project_code);
+  const disciplineLabel = findDisciplineLabel(cache, item.discipline_code);
+  const companyName = findOrganizationName(cache, item.organization_id);
+  const issueDate = formatShamsiDate(item.created_at);
+  const answeredDate = formatShamsiDate(rfi.answered_at);
+  return `
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>RFI Print - ${stateBridge.esc(textOrDash(item.item_no))}</title>
+  <style>
+    @page { size: A4; margin: 10mm; }
+    body { font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 12px; color: #0f172a; margin: 0; }
+    .sheet { border: 1px solid #0f172a; padding: 12px; }
+    .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+    .box { border: 1px solid #334155; padding: 6px; min-height: 28px; }
+    .title { text-align: center; font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+    .section-title { background: #e2e8f0; padding: 4px 6px; font-weight: 700; border: 1px solid #cbd5e1; margin-top: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+    td, th { border: 1px solid #334155; padding: 6px; vertical-align: top; }
+    .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+    .check-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .check-item { border: 1px solid #334155; padding: 6px; text-align: center; }
+    .check-box { display: inline-block; width: 11px; height: 11px; border: 1px solid #334155; margin-left: 6px; vertical-align: middle; }
+    .disclaimer { margin-top: 10px; border: 1px solid #334155; padding: 8px; line-height: 1.8; }
+    .signature { margin-top: 10px; }
+    .signature td { height: 56px; }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="title">فرم درخواست اطلاعات فنی (RFI)</div>
+    <div class="top-grid">
+      <div class="box"><strong>نام پروژه:</strong> ${escHtml(projectName)}</div>
+      <div class="box"><strong>شماره:</strong> ${escHtml(item.item_no)}</div>
+      <div class="box"><strong>کد پروژه:</strong> ${escHtml(item.project_code)}</div>
+      <div class="box"><strong>تاریخ صدور:</strong> ${escHtml(issueDate)}</div>
+    </div>
+
+    <div class="section-title">اطلاعات درخواست‌کننده</div>
+    <table>
+      <tr>
+        <td><strong>صادرکننده</strong><br>${escHtml(item.created_by_name)}</td>
+        <td><strong>شرکت</strong><br>${escHtml(companyName)}</td>
+        <td><strong>مخاطب</strong><br>${escHtml(item.recipient_org_name)}</td>
+        <td><strong>رشته</strong><br>${escHtml(disciplineLabel)}</td>
+      </tr>
+    </table>
+
+    <div class="section-title">اطلاعات مرجع</div>
+    <table>
+      <tr>
+        <td><strong>کد مدرک مرجع</strong><br>${escHtml(drawingRefs)}</td>
+        <td><strong>شماره شیت</strong><br>-</td>
+        <td><strong>REV</strong><br>-</td>
+        <td><strong>بلوک/طبقه</strong><br>${escHtml(item.zone)} / -</td>
+      </tr>
+    </table>
+
+    <div class="section-title">موضوع</div>
+    <div class="box">${escHtml(item.title)}</div>
+
+    <div class="section-title">شرح موضوع</div>
+    <div class="box">${escHtml(rfi.question_text || item.short_description)}</div>
+
+    <div class="section-title">طرح پیشنهاد</div>
+    <div class="box">${escHtml(rfi.proposed_solution)}</div>
+
+    <div class="section-title">پاسخ</div>
+    <div class="box">${escHtml(rfi.answer_text)}</div>
+    <div class="check-grid">
+      <div class="check-item"><span class="check-box"></span>تایید</div>
+      <div class="check-item"><span class="check-box"></span>اصلاح</div>
+      <div class="check-item"><span class="check-box"></span>مردود</div>
+    </div>
+    <div style="margin-top:6px;"><strong>تاریخ پاسخ:</strong> ${escHtml(answeredDate)}</div>
+
+    <div class="disclaimer">
+      هدف از این فرم صرفاً رفع ابهامات فنی و پاسخ به سوالات جاری است. در صورت وجود هرگونه اثر مالی یا زمانی، اجرای عملیات منوط به اخذ تایید کتبی کارفرما پیش از اجرا خواهد بود.
+    </div>
+
+    <table class="signature">
+      <tr>
+        <td><strong>1- درخواست‌کننده</strong><br><br>نام و نام خانوادگی:<br><br>تاریخ:<br><br>مهر و امضا:</td>
+        <td><strong>2- پاسخ‌دهنده</strong><br><br>نام و نام خانوادگی:<br><br>تاریخ:<br><br>مهر و امضا:</td>
+        <td><strong>3- کارفرما</strong><br><br>نام و نام خانوادگی:<br><br>تاریخ:<br><br>مهر و امضا:</td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>
+`;
+}
+
 function typeSectionsHtml(key: string, defaultTechSubtype: string): string {
   const subtypes = asArray(catalogCache?.tech_subtypes)
     .map((row) => {
@@ -245,6 +479,7 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
       <div class="module-crud-toolbar">
         <div class="module-crud-toolbar-left">
           ${canEdit ? `<button type="button" class="btn btn-primary" data-ci-action="open-form">افزودن آیتم</button>` : ""}
+          ${tabSupportsRfi(moduleKey, tabKey) ? `<button type="button" class="btn btn-secondary" data-ci-action="export-rfi-excel">خروجی اکسل RFI</button>` : ""}
           <button type="button" class="btn-archive-icon" data-ci-action="refresh"><span class="material-icons-round">refresh</span></button>
         </div>
         <div class="module-crud-toolbar-right" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;flex:1 1 100%;min-width:0;width:100%;">
@@ -671,6 +906,7 @@ function renderSummaryTab(moduleKey: string, tabKey: string, item: Record<string
         <div><strong>${stateBridge.esc(item.item_no || "-")}</strong></div>
         <div style="margin-top:6px;">${stateBridge.esc(item.title || "-")}</div>
         <div style="font-size:0.85rem;color:#64748b;">${stateBridge.esc(item.item_type || "-")} · ${stateBridge.esc(item.status_code || "-")}</div>
+        ${tabSupportsRfi(moduleKey, tabKey) ? '<button type="button" class="btn btn-secondary" data-ci-action="print-rfi-form" style="margin-top:8px;">پرینت فرم RFI</button>' : ""}
       </div>
       <div class="archive-card" style="padding:10px;">
         <div style="font-weight:600;">Transition</div>
@@ -893,6 +1129,68 @@ async function deleteRelation(moduleKey: string, tabKey: string, relationId: num
   }
 }
 
+async function exportRfiExcel(moduleKey: string, tabKey: string, deps: CommItemsUiDeps): Promise<void> {
+  const key = keyOf(moduleKey, tabKey);
+  const rows = asArray(boardRowsByKey[key]).filter((row) => upper(row.item_type) === "RFI");
+  if (!rows.length) {
+    deps.showToast("ردیف RFI برای خروجی وجود ندارد.", "error");
+    return;
+  }
+  try {
+    await window.ensureXlsxLoaded?.();
+    if (!window.XLSX?.utils) throw new Error("XLSX library not available");
+    const wb = window.XLSX.utils.book_new();
+    const sheetRows = [rfiExcelHeaders()].concat(rows.map((row) => rfiExcelRow(row, deps.cache || {})));
+    const ws = window.XLSX.utils.aoa_to_sheet(sheetRows);
+    window.XLSX.utils.book_append_sheet(wb, ws, "RFI");
+    const stamp = text(formatShamsiDateForFileName(new Date())) || text(new Date().toISOString().slice(0, 10).replace(/-/g, ""));
+    window.XLSX.writeFile(wb, `RFI_List_${normalize(moduleKey)}_${normalize(tabKey)}_${stamp}.xlsx`);
+  } catch (error) {
+    deps.showToast(error instanceof Error ? error.message : "Export failed", "error");
+  }
+}
+
+async function printRfiForm(moduleKey: string, tabKey: string, deps: CommItemsUiDeps, explicitItemId?: number): Promise<void> {
+  const key = keyOf(moduleKey, tabKey);
+  const selectedId = Number(explicitItemId || selectedItemByKey[key] || 0);
+  if (!selectedId) {
+    deps.showToast("ابتدا یک آیتم را در جزئیات انتخاب کنید.", "error");
+    return;
+  }
+  const popup = window.open("", "_blank", "width=980,height=900");
+  if (!popup) {
+    deps.showToast("پنجره پرینت توسط مرورگر مسدود شده است.", "error");
+    return;
+  }
+  try {
+    const body = await dataBridge.get(selectedId, { fetch: deps.fetch });
+    const item = asRecord(body.data);
+    if (upper(item.item_type) !== "RFI") {
+      popup.close();
+      deps.showToast("فرم پرینت فقط برای آیتم RFI فعال است.", "error");
+      return;
+    }
+    popup.document.open();
+    popup.document.write(buildRfiPrintHtml(item, deps.cache || {}));
+    popup.document.close();
+    popup.focus();
+    window.setTimeout(() => {
+      try {
+        popup.print();
+      } catch {
+        // no-op
+      }
+    }, 180);
+  } catch (error) {
+    try {
+      popup.close();
+    } catch {
+      // no-op
+    }
+    deps.showToast(error instanceof Error ? error.message : "Print failed", "error");
+  }
+}
+
 function bindActions(depsResolver: () => CommItemsUiDeps): void {
   if (actionsBound) return;
 
@@ -919,11 +1217,13 @@ function bindActions(depsResolver: () => CommItemsUiDeps): void {
       return;
     }
     if (action === "refresh") return void (await loadTab(context.moduleKey, context.tabKey, deps, true));
+    if (action === "export-rfi-excel") return void (await exportRfiExcel(context.moduleKey, context.tabKey, deps));
     if (action === "open-form") { resetForm(context.moduleKey, context.tabKey); openForm(context.moduleKey, context.tabKey); return; }
     if (action === "close-form") { closeForm(context.moduleKey, context.tabKey); return; }
     if (action === "save-form") return void (await saveForm(context.moduleKey, context.tabKey, deps));
     if (action === "open-edit") { const id = Number(actionEl.dataset.ciId || 0); if (id > 0) await openEdit(context.moduleKey, context.tabKey, id, deps); return; }
     if (action === "open-detail") { const id = Number(actionEl.dataset.ciId || 0); if (id > 0) await openDetail(context.moduleKey, context.tabKey, id, deps); return; }
+    if (action === "print-rfi-form") return void (await printRfiForm(context.moduleKey, context.tabKey, deps, Number(actionEl.dataset.ciId || 0)));
     if (action === "transition-item") return void (await doTransition(context.moduleKey, context.tabKey, deps));
     if (action === "add-comment") return void (await addComment(context.moduleKey, context.tabKey, deps));
     if (action === "upload-attachment") return void (await uploadAttachment(context.moduleKey, context.tabKey, String(actionEl.dataset.ciScope || "GENERAL"), deps));

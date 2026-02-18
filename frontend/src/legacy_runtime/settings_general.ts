@@ -2702,19 +2702,28 @@
             bindStoragePathValidation();
             const mdr_storage_path = norm(document.getElementById('mdrStoragePathInput')?.value);
             const correspondence_storage_path = norm(document.getElementById('correspondenceStoragePathInput')?.value);
+            const network_username = norm(document.getElementById('storageNetworkUsernameInput')?.value);
+            const network_password = String(document.getElementById('storageNetworkPasswordInput')?.value || '').trim();
             requireVal(mdr_storage_path, 'Ù…Ø³ÛŒØ± Ø°Ø®ÛŒØ±Ù‡ Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ');
             requireVal(correspondence_storage_path, 'Ù…Ø³ÛŒØ± Ø°Ø®ÛŒØ±Ù‡ Ù…Ú©Ø§ØªØ¨Ø§Øª');
             if (!validateStoragePathConflict(true)) return;
 
             const payload = await request(`${API_BASE}/storage-paths`, {
                 method: 'POST',
-                body: JSON.stringify({ mdr_storage_path, correspondence_storage_path }),
+                body: JSON.stringify({
+                    mdr_storage_path,
+                    correspondence_storage_path,
+                    network_username,
+                    network_password,
+                }),
             });
 
             document.getElementById('mdrStoragePathInput').value = norm(payload?.mdr_storage_path || mdr_storage_path);
             document.getElementById('correspondenceStoragePathInput').value = norm(
                 payload?.correspondence_storage_path || correspondence_storage_path
             );
+            const networkPasswordInput = document.getElementById('storageNetworkPasswordInput');
+            if (networkPasswordInput) networkPasswordInput.value = '';
             document.getElementById('mdrStoragePathInput').dataset.storagePathDirty = '0';
             document.getElementById('correspondenceStoragePathInput').dataset.storagePathDirty = '0';
             updateStoragePathPreview();

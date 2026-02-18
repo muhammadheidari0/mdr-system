@@ -57,6 +57,7 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
     .map((row, index) => {
       const itemId = Number(row.id || 0);
       const isOverdue = Boolean(row.is_overdue);
+      const isRfi = normalize(row.item_type) === "RFI";
       const overdueBadge = isOverdue ? `<span class="module-crud-priority is-urgent">Overdue</span>` : "";
       return `
         <tr>
@@ -73,6 +74,7 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
             <div class="module-crud-actions">
               ${canEdit ? `<button type="button" class="btn-archive-icon" data-ci-action="open-edit" data-ci-id="${itemId}">ویرایش</button>` : ""}
               <button type="button" class="btn-archive-icon" data-ci-action="open-detail" data-ci-id="${itemId}">جزئیات</button>
+              ${isRfi ? `<button type="button" class="btn-archive-icon" data-ci-action="print-rfi-form" data-ci-id="${itemId}">پرینت</button>` : ""}
             </div>
           </td>
         </tr>

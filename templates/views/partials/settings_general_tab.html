@@ -106,7 +106,7 @@
     <section id="storage-step-paths" class="storage-step-panel active" data-storage-step-panel="paths">
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">folder</span>
-        <div>مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور (Network Mount) قرار بگیرند و توسط Service Account قابل‌نوشتن باشند.</div>
+        <div>مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور قرار بگیرند و توسط Service Account قابل‌نوشتن باشند. در ویندوز می‌توانید مسیر UNC مثل <code>\\192.168.5.5\share\technical</code> هم وارد کنید.</div>
       </div>
       <div class="general-form-grid">
         <div class="storage-path-field-group">
@@ -128,6 +128,18 @@
       <div class="general-settings-note storage-path-warning">
         <span class="material-icons-round">warning_amber</span>
         <div>Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ Ù…ÛŒâ€ŒØ´ÙˆØ¯ Ø§ÛŒÙ† Ø¯Ùˆ Ù…Ø³ÛŒØ± ÛŒÚ©Ø³Ø§Ù† Ù†Ø¨Ø§Ø´Ù†Ø¯ ØªØ§ Ø§Ø®ØªÙ„Ø§Ø· ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ Ø±Ø® Ù†Ø¯Ù‡Ø¯.</div>
+      </div>
+      <div class="general-form-grid">
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø´Ø¨Ú©Ù‡ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)</div>
+          <input id="storageNetworkUsernameInput" class="form-input" placeholder="DOMAIN\\username ÛŒØ§ username">
+          <span class="form-help storage-path-help">ÙÙ‚Ø· Ø¨Ø±Ø§ÛŒ Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ UNC Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.</span>
+        </div>
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">Ø±Ù…Ø² Ø¹Ø¨ÙˆØ± Ø´Ø¨Ú©Ù‡ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)</div>
+          <input id="storageNetworkPasswordInput" class="form-input" type="password" autocomplete="new-password" placeholder="Ø±Ù…Ø² Ø¹Ø¨ÙˆØ± Ø¯Ø³ØªØ±Ø³ÛŒ Ø¨Ù‡ share">
+          <span class="form-help storage-path-help">Ø¨Ø¹Ø¯ Ø§Ø² Ø°Ø®ÛŒØ±Ù‡ Ù…Ø³ÛŒØ±Ù‡Ø§ Ø¯Ø± ÙØ±Ù… Ù†Ú¯Ù‡â€ŒØ¯Ø§Ø±ÛŒ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.</span>
+        </div>
       </div>
       <div class="general-form-actions">
         <button class="btn btn-primary" type="button" data-general-action="save-storage-paths">Ø°Ø®ÛŒØ±Ù‡ Ù…Ø³ÛŒØ±Ù‡Ø§</button>
