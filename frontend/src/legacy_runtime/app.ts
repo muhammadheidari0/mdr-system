@@ -41,6 +41,8 @@ const TS_MODULE_BOARD = requireBridge(APP_RUNTIME?.moduleBoard, 'Module board');
 const TS_MODULE_TABS = requireBridge(APP_RUNTIME?.moduleTabs, 'Module tabs');
 const TS_VIEW_LOADER = requireBridge(APP_RUNTIME?.viewLoader, 'View loader');
 const TS_APP_DATA = requireBridge(APP_RUNTIME?.appData, 'App data');
+const TS_COMM_ITEMS_UI = requireBridge(APP_RUNTIME?.commItemsUi, 'Comm items UI');
+const TS_SITE_LOGS_UI = requireBridge(APP_RUNTIME?.siteLogsUi, 'Site logs UI');
 
 const API_BASE = '/api/v1'; 
 window.CACHE = {}; // Ú©Ø´ Ø¨Ø±Ø§ÛŒ Ù†Ú¯Ù‡Ø¯Ø§Ø±ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø§ÛŒÙ‡ (Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§ Ùˆ...)
@@ -104,6 +106,24 @@ const WORKBOARD_STATE = {
     timers: {},
     rowsByKey: {},
 };
+
+function buildCommItemsUiDeps() {
+    return {
+        fetch: async (url, init = undefined) => window.fetchWithAuth(url, init),
+        canEdit: () => moduleBoardCanEdit(),
+        showToast: (message, type = 'info') => showToast(message, type),
+        cache: window.CACHE || {},
+    };
+}
+
+function buildSiteLogsUiDeps() {
+    return {
+        fetch: async (url, init = undefined) => window.fetchWithAuth(url, init),
+        canEdit: () => moduleBoardCanEdit(),
+        showToast: (message, type = 'info') => showToast(message, type),
+        cache: window.CACHE || {},
+    };
+}
 
 const VIEW_IDS = [
     'view-dashboard',
@@ -942,13 +962,82 @@ function switchModuleTab(tabName, tabToPanelMap, tabButtonSelector, dataAttrName
     return normalized;
 }
 
+function hasCommItemsRoots(moduleKey, tabKey = null) {
+    const normalized = String(moduleKey || '').trim().toLowerCase();
+    if (!normalized) return false;
+    const tab = String(tabKey || '').trim().toLowerCase();
+    try {
+        const selector = tab
+            ? `.comm-items-root[data-module="${normalized}"][data-tab="${tab}"]`
+            : `.comm-items-root[data-module="${normalized}"][data-tab]`;
+        return !!document.querySelector(selector);
+    } catch (error) {
+        return false;
+    }
+}
+
+function hasSiteLogsRoots(moduleKey) {
+    const normalized = String(moduleKey || '').trim().toLowerCase();
+    if (!normalized) return false;
+    try {
+        return !!document.querySelector(`.site-logs-root[data-module="${normalized}"][data-tab]`);
+    } catch (error) {
+        return false;
+    }
+}
+
+function onSiteLogsTabOpened(moduleKey, tabKey) {
+    if (!(TS_SITE_LOGS_UI?.onTabOpened) || !hasSiteLogsRoots(moduleKey)) return;
+    Promise.resolve(
+        TS_SITE_LOGS_UI.onTabOpened(moduleKey, tabKey, buildSiteLogsUiDeps())
+    ).catch((error) => {
+        console.warn('siteLogsUi tab open failed:', error);
+    });
+}
+
+function initSiteLogsModule(moduleKey) {
+    if (!(TS_SITE_LOGS_UI?.initModule) || !hasSiteLogsRoots(moduleKey)) return;
+    Promise.resolve(
+        TS_SITE_LOGS_UI.initModule(moduleKey, buildSiteLogsUiDeps())
+    ).catch((error) => {
+        console.warn('siteLogsUi init failed:', error);
+    });
+}
+
 function openContractorTab(tabName, btnEl = null) {
     const normalized = switchModuleTab(tabName, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
     if (!normalized) return;
-    moduleBoardOnTabOpened('contractor', normalized);
+    let handledByCommBridge = false;
+    if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('contractor', normalized)) {
+        handledByCommBridge = true;
+        Promise.resolve(
+            TS_COMM_ITEMS_UI.onTabOpened('contractor', normalized, buildCommItemsUiDeps())
+        ).then((handled) => {
+            if (!handled) return moduleBoardOnTabOpened('contractor', normalized);
+            return null;
+        }).catch((error) => {
+            console.warn('commItemsUi contractor tab open failed:', error);
+            return moduleBoardOnTabOpened('contractor', normalized);
+        });
+    }
+    if (!handledByCommBridge) {
+        moduleBoardOnTabOpened('contractor', normalized);
+    }
+    onSiteLogsTabOpened('contractor', normalized);
 }
 
 function initContractorView() {
+    if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('contractor')) {
+        Promise.resolve(
+            TS_COMM_ITEMS_UI.initModule('contractor', buildCommItemsUiDeps())
+        ).then((handled) => {
+            if (!handled) initModuleCrudBoards();
+        }).catch((error) => {
+            console.warn('commItemsUi contractor init failed:', error);
+            initModuleCrudBoards();
+        });
+    }
+    initSiteLogsModule('contractor');
     initModuleCrudBoards();
     if (TS_MODULE_TABS?.resolveInitialTab) {
         try {
@@ -970,10 +1059,37 @@ function initContractorView() {
 function openConsultantTab(tabName, btnEl = null) {
     const normalized = switchModuleTab(tabName, CONSULTANT_TAB_TO_PANEL, '.consultant-tab-btn', 'data-consultant-tab', btnEl);
     if (!normalized) return;
-    moduleBoardOnTabOpened('consultant', normalized);
+    let handledByCommBridge = false;
+    if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('consultant', normalized)) {
+        handledByCommBridge = true;
+        Promise.resolve(
+            TS_COMM_ITEMS_UI.onTabOpened('consultant', normalized, buildCommItemsUiDeps())
+        ).then((handled) => {
+            if (!handled) return moduleBoardOnTabOpened('consultant', normalized);
+            return null;
+        }).catch((error) => {
+            console.warn('commItemsUi consultant tab open failed:', error);
+            return moduleBoardOnTabOpened('consultant', normalized);
+        });
+    }
+    if (!handledByCommBridge) {
+        moduleBoardOnTabOpened('consultant', normalized);
+    }
+    onSiteLogsTabOpened('consultant', normalized);
 }
 
 function initConsultantView() {
+    if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('consultant')) {
+        Promise.resolve(
+            TS_COMM_ITEMS_UI.initModule('consultant', buildCommItemsUiDeps())
+        ).then((handled) => {
+            if (!handled) initModuleCrudBoards();
+        }).catch((error) => {
+            console.warn('commItemsUi consultant init failed:', error);
+            initModuleCrudBoards();
+        });
+    }
+    initSiteLogsModule('consultant');
     initModuleCrudBoards();
     if (TS_MODULE_TABS?.resolveInitialTab) {
         try {

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
 
     API_PREFIX: str = "/api/v1"
+    MDR_DATA_ROOT: str = ""
 
     # DB
     DATABASE_URL: str = "postgresql+psycopg://mdr:mdr@localhost:5432/mdr_app"
@@ -53,11 +54,22 @@ class Settings(BaseSettings):
     GDRIVE_SHARED_DRIVE_ID: str = ""
     OPENPROJECT_BASE_URL: str = ""
     OPENPROJECT_API_TOKEN: str = ""
+    OPENPROJECT_CONNECT_TIMEOUT_SECONDS: int = 5
+    OPENPROJECT_READ_TIMEOUT_SECONDS: int = 10
+    OPENPROJECT_TLS_VERIFY: bool = True
+    OPENPROJECT_DEFAULT_WORK_PACKAGE_ID: str = ""
+    # Legacy alias kept for backward compatibility in env files/docs.
     OPENPROJECT_DEFAULT_PROJECT_ID: str = ""
+    STORAGE_ALLOWED_ROOTS: str = ""
+    STORAGE_REQUIRE_ABSOLUTE_PATHS: bool = True
+    STORAGE_VALIDATE_WRITABLE_ON_SAVE: bool = True
 
     # Test auth (read from .env or process environment)
     TEST_ADMIN_EMAIL: str | None = None
     TEST_ADMIN_PASSWORD: str | None = None
+
+    # Feature flags
+    FEATURE_COMM_ITEMS_V1: bool = True
 
     def is_production_like(self) -> bool:
         env = str(self.APP_ENV or "").strip().lower()

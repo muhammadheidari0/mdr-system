@@ -1,0 +1,54 @@
+<div id="settingsIntegrationsRoot" class="settings-integrations-page">
+  <div class="general-settings-grid">
+    <div class="general-settings-card">
+      <h3 class="general-settings-title">
+        <span class="material-icons-round">hub</span> تنظیمات یکپارچه‌سازی‌ها
+      </h3>
+      <div class="general-settings-note general-settings-note-info">
+        <span class="material-icons-round">info</span>
+        <div>اتصال سرویس‌های خارجی را از این بخش مدیریت کنید. کلید OpenProject از نوع API Key (Access Token) است.</div>
+      </div>
+
+      <div class="general-form-grid storage-integrations-grid">
+        <label class="checkbox-label"><input id="storageGoogleDriveEnabledInput" type="checkbox"><span class="checkmark"></span>Google Drive فعال</label>
+        <label class="checkbox-label"><input id="storageOpenProjectEnabledInput" type="checkbox"><span class="checkmark"></span>OpenProject فعال</label>
+        <label class="checkbox-label"><input id="storageLocalCacheEnabledInput" type="checkbox"><span class="checkmark"></span>Local Cache فعال</label>
+
+        <div id="storageGoogleDriveDriveIdWrap">
+          <label class="form-label-sm">Google Drive Shared Drive ID</label>
+          <input id="storageGoogleDriveDriveIdInput" class="form-input" placeholder="shared drive id">
+        </div>
+
+        <div id="storageOpenProjectBaseUrlWrap">
+          <label class="form-label-sm">OpenProject Base URL</label>
+          <input id="storageOpenProjectBaseUrlInput" class="form-input" placeholder="https://open-project.htico.ir">
+        </div>
+
+        <div id="storageOpenProjectDefaultWpWrap">
+          <label class="form-label-sm">OpenProject Work Package ID (پیش‌فرض)</label>
+          <input id="storageOpenProjectDefaultWpInput" class="form-input" placeholder="مثال: 321">
+        </div>
+
+        <div id="storageOpenProjectTokenWrap">
+          <div class="settings-integration-token-head">
+            <label class="form-label-sm">OpenProject API Key (Access Token)</label>
+            <span id="storageOpenProjectTokenSourceBadge" class="settings-token-source-badge">none</span>
+          </div>
+          <input id="storageOpenProjectApiTokenInput" class="form-input" type="password" autocomplete="new-password" placeholder="کلید API کاربر یکپارچه‌سازی">
+          <div id="storageOpenProjectTokenManagedHint" class="form-help"></div>
+          <div class="general-form-actions settings-inline-actions">
+            <button class="btn btn-secondary" type="button" data-integrations-action="ping-openproject">Ping OpenProject</button>
+            <button class="btn btn-tertiary" type="button" data-integrations-action="clear-openproject-token">پاک‌کردن Token ذخیره‌شده</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="general-form-actions storage-integrations-actions">
+        <button class="btn btn-primary" type="button" data-integrations-action="save-integrations">ذخیره تنظیمات یکپارچه‌سازی</button>
+        <button id="storageGoogleDriveSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-google-sync">اجرای Sync گوگل‌درایو</button>
+        <button id="storageOpenProjectSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-openproject-sync">اجرای Sync اوپن‌پراجکت</button>
+      </div>
+      <div id="storageSyncResult" class="general-settings-note" style="margin-top:10px; display:none;"></div>
+    </div>
+  </div>
+</div>

@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.core.config import settings
 from tests.auth_helpers import get_auth_headers
 
 
@@ -49,6 +50,50 @@ def test_ui_smoke_whitelisted_partials_load() -> None:
         assert marker in response.text, f"{partial}: expected marker `{marker}`"
 
 
+def test_ui_smoke_reports_rebranded_impact_labels() -> None:
+    response = client.get("/ui/partial/reports")
+    assert response.status_code == 200, response.text
+    html = response.text
+    assert "Impact Signals" in html
+    assert "Items with Potential Impacts" in html
+    assert "Claim Candidates" not in html
+
+
+def test_ui_smoke_comm_items_feature_flag_template_switch() -> None:
+    original = bool(settings.FEATURE_COMM_ITEMS_V1)
+    try:
+        settings.FEATURE_COMM_ITEMS_V1 = True
+        enabled = client.get("/ui/partial/contractor")
+        assert enabled.status_code == 200, enabled.text
+        assert 'site-logs-root" data-module="contractor" data-tab="execution"' in enabled.text
+        assert 'comm-items-root" data-module="contractor" data-tab="execution"' not in enabled.text
+        assert "data-dual-flow-action" not in enabled.text
+        assert "module-crud-root" not in enabled.text
+
+        settings.FEATURE_COMM_ITEMS_V1 = False
+        disabled = client.get("/ui/partial/contractor")
+        assert disabled.status_code == 200, disabled.text
+        assert "module-crud-root" in disabled.text
+        assert "comm-items-root" not in disabled.text
+        assert "site-logs-root" not in disabled.text
+    finally:
+        settings.FEATURE_COMM_ITEMS_V1 = original
+
+
+def test_ui_smoke_consultant_inspection_has_site_log_queue_when_feature_enabled() -> None:
+    original = bool(settings.FEATURE_COMM_ITEMS_V1)
+    try:
+        settings.FEATURE_COMM_ITEMS_V1 = True
+        enabled = client.get("/ui/partial/consultant")
+        assert enabled.status_code == 200, enabled.text
+        assert 'site-logs-root" data-module="consultant" data-tab="inspection"' in enabled.text
+        assert 'comm-items-root" data-module="consultant" data-tab="inspection"' not in enabled.text
+        assert "show-site-log" not in enabled.text
+        assert "show-comm" not in enabled.text
+    finally:
+        settings.FEATURE_COMM_ITEMS_V1 = original
+
+
 def test_ui_smoke_priority_a_templates_have_no_inline_scripts_or_handlers() -> None:
     base_dir = Path(__file__).resolve().parents[1]
     template_paths = [
@@ -77,8 +122,13 @@ def test_ui_smoke_priority_a_templates_have_no_inline_scripts_or_handlers() -> N
         assert inline_handler_pattern.search(content) is None, f"Inline handler found in {path}"
 
 
-def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
+def test_ui_smoke_settings_storage_paths_roundtrip(monkeypatch, tmp_path: Path) -> None:
     headers = _admin_headers()
+    allowed_root = (tmp_path / "ui_smoke_storage").resolve()
+    allowed_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", str(allowed_root))
+    monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True)
+    monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", True)
 
     before_res = client.get("/api/v1/settings/storage-paths", headers=headers)
     assert before_res.status_code == 200, before_res.text
@@ -86,8 +136,10 @@ def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
     assert before.get("ok") is True
 
     payload = {
-        "mdr_storage_path": f"./files/ui_smoke_technical_{uuid.uuid4().hex[:8]}",
-        "correspondence_storage_path": f"./files/ui_smoke_correspondence_{uuid.uuid4().hex[:8]}",
+        "mdr_storage_path": str((allowed_root / f"technical_{uuid.uuid4().hex[:8]}").resolve()),
+        "correspondence_storage_path": str(
+            (allowed_root / f"correspondence_{uuid.uuid4().hex[:8]}").resolve()
+        ),
     }
 
     try:
@@ -98,6 +150,9 @@ def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
         assert save_body.get("mdr_storage_path") == payload["mdr_storage_path"]
         assert save_body.get("correspondence_storage_path") == payload["correspondence_storage_path"]
     finally:
+        monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", False)
+        monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", False)
+        monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", "")
         restore_payload = {
             "mdr_storage_path": before.get("mdr_storage_path") or "./files/technical",
             "correspondence_storage_path": before.get("correspondence_storage_path") or "./files/correspondence",
@@ -105,6 +160,26 @@ def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
         restore_res = client.post("/api/v1/settings/storage-paths", json=restore_payload, headers=headers)
         assert restore_res.status_code == 200, restore_res.text
 
+
+def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
+    partial = client.get("/ui/partial/settings")
+    assert partial.status_code == 200, partial.text
+    html = partial.text
+    assert 'data-tab="integrations"' in html
+    assert 'id="tab-integrations"' in html
+    assert 'id="settingsIntegrationsRoot"' in html
+    assert 'data-integrations-action="save-integrations"' in html
+    assert 'data-integrations-action="ping-openproject"' in html
+    assert 'id="storageOpenProjectTokenSourceBadge"' in html
+
+    base_dir = Path(__file__).resolve().parents[1]
+    storage_partial = (
+        base_dir / "templates" / "views" / "partials" / "settings_general_tab.html"
+    ).read_text(encoding="utf-8")
+    assert 'id="storage-step-site-cache"' in storage_partial
+    assert "storageOpenProjectBaseUrlInput" not in storage_partial
+    assert "storageOpenProjectApiTokenInput" not in storage_partial
+    assert "storageGoogleDriveDriveIdInput" not in storage_partial
 
 def test_ui_smoke_workboard_crud_flow() -> None:
     headers = _admin_headers()
@@ -200,3 +275,37 @@ def test_ui_smoke_transmittal_and_correspondence_endpoints_with_auth() -> None:
     corr_list = corr_list_res.json()
     assert corr_list.get("ok") is True
     assert isinstance(corr_list.get("data"), list)
+
+
+def test_ui_smoke_comm_items_endpoints_with_auth() -> None:
+    headers = _admin_headers()
+
+    catalog_res = client.get("/api/v1/comm-items/catalog", headers=headers)
+    assert catalog_res.status_code == 200, catalog_res.text
+    catalog = catalog_res.json()
+    assert catalog.get("ok") is True
+    assert isinstance(catalog.get("item_types"), list)
+    assert isinstance(catalog.get("workflow_statuses"), dict)
+    assert isinstance(catalog.get("attachment_scopes"), list)
+    assert isinstance(catalog.get("attachment_slot_rules"), dict)
+    assert isinstance(catalog.get("terminology"), dict)
+    subtypes = {str(row.get("code") or "").strip().upper() for row in catalog.get("tech_subtypes", [])}
+    assert "DAILY_REPORT" not in subtypes
+    assert "WEEKLY_REPORT" not in subtypes
+    assert "MANPOWER_REPORT" not in subtypes
+    assert "EQUIPMENT_REPORT" not in subtypes
+
+    list_res = client.get(
+        "/api/v1/comm-items/list?module_key=contractor&tab_key=requests&skip=0&limit=10",
+        headers=headers,
+    )
+    assert list_res.status_code == 200, list_res.text
+    listed = list_res.json()
+    assert listed.get("ok") is True
+    assert isinstance(listed.get("data"), list)
+
+    aging_res = client.get("/api/v1/comm-items/reports/aging", headers=headers)
+    assert aging_res.status_code == 200, aging_res.text
+    aging = aging_res.json()
+    assert aging.get("ok") is True
+    assert "summary" in aging

@@ -54,19 +54,10 @@ def get_navigation(
 ):
     user_role = normalize_role(current_user.role)
 
-    # Correspondence router currently uses allow_viewer/allow_editor role checks.
-    correspondence_roles = {
-        Role.ADMIN.value,
-        Role.MANAGER.value,
-        Role.DCC.value,
-        Role.USER.value,
-        Role.VIEWER.value,
-    }
-
     tabs = {
         "archive": dependencies.has_permission_for_user(db, current_user, "archive:read"),
         "transmittal": dependencies.has_permission_for_user(db, current_user, "transmittal:read"),
-        "correspondence": user_role in correspondence_roles,
+        "correspondence": dependencies.has_permission_for_user(db, current_user, "correspondence:read"),
         "reports": dependencies.has_permission_for_user(db, current_user, "reports:read"),
     }
 

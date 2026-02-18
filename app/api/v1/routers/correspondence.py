@@ -14,11 +14,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
     User,
-    allow_editor,
-    allow_viewer,
     apply_scope_query_filters,
     enforce_scope_access,
     get_db,
+    require_permission,
 )
 from app.db.models import (
     Correspondence,
@@ -30,6 +29,12 @@ from app.db.models import (
     Project,
 )
 from app.services.folder_service import safe_name
+from app.services.openproject_status import (
+    ENTITY_CORRESPONDENCE_ATTACHMENT,
+    default_openproject_sync_status,
+    get_openproject_status_map,
+    is_openproject_integration_enabled,
+)
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
 from app.services.storage_sync import enqueue_correspondence_mirror_job
@@ -37,6 +42,30 @@ from app.services.storage_sync import enqueue_correspondence_mirror_job
 router = APIRouter(prefix="/correspondence", tags=["Correspondence"])
 AUTO_REFERENCE_MAX_RETRIES = 8
 AUTO_REFERENCE_SERIAL_WIDTH = 3
+
+
+def _attachment_openproject_status_map(db: Session, attachment_ids: list[int]) -> tuple[dict[tuple[str, int], dict], str]:
+    clean_ids = [int(attachment_id) for attachment_id in attachment_ids if int(attachment_id or 0) > 0]
+    integration_enabled = is_openproject_integration_enabled(db)
+    fallback_status = default_openproject_sync_status(integration_enabled=integration_enabled)
+    if not clean_ids:
+        return {}, fallback_status
+    status_map = get_openproject_status_map(
+        db,
+        [(ENTITY_CORRESPONDENCE_ATTACHMENT, attachment_id) for attachment_id in clean_ids],
+        integration_enabled=integration_enabled,
+    )
+    return status_map, fallback_status
+
+
+def _attachment_openproject_payload(status_map: dict[tuple[str, int], dict], fallback_status: str, attachment_id: int) -> dict:
+    row = status_map.get((ENTITY_CORRESPONDENCE_ATTACHMENT, int(attachment_id or 0)), {})
+    return {
+        "openproject_sync_status": str(row.get("sync_status") or fallback_status),
+        "openproject_work_package_id": row.get("work_package_id"),
+        "openproject_attachment_id": row.get("openproject_attachment_id"),
+        "openproject_last_synced_at": row.get("last_synced_at"),
+    }
 
 
 def _norm(value: Optional[str]) -> str:
@@ -358,7 +387,12 @@ def _serialize_action(row: CorrespondenceAction) -> dict:
     }
 
 
-def _serialize_attachment(row: CorrespondenceAttachment) -> dict:
+def _serialize_attachment(
+    row: CorrespondenceAttachment,
+    *,
+    openproject_payload: dict | None = None,
+) -> dict:
+    openproject_payload = openproject_payload or {}
     return {
         "id": row.id,
         "correspondence_id": row.correspondence_id,
@@ -373,13 +407,11 @@ def _serialize_attachment(row: CorrespondenceAttachment) -> dict:
         "storage_backend": row.storage_backend,
         "gdrive_file_id": row.gdrive_file_id,
         "mirror_status": row.mirror_status,
-        "openproject_sync_status": "pending"
-        if str(row.mirror_status or "").strip().lower() in {"pending", "mirrored"}
-        else "disabled",
         "mirror_updated_at": row.mirror_updated_at.isoformat() if row.mirror_updated_at else None,
         "uploaded_by_id": row.uploaded_by_id,
         "uploaded_by_name": getattr(getattr(row, "uploaded_by", None), "full_name", None),
         "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
+        **openproject_payload,
     }
 
 
@@ -527,7 +559,7 @@ def _serialize_correspondence(
 @router.get("/catalog")
 def get_correspondence_catalog(
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     del user
     issuing_rows = (
@@ -594,7 +626,7 @@ def get_correspondence_catalog(
 @router.get("/dashboard")
 def get_correspondence_dashboard(
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     query = db.query(Correspondence)
     query = apply_scope_query_filters(
@@ -660,7 +692,7 @@ def list_correspondence(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     query = db.query(Correspondence)
     query = apply_scope_query_filters(
@@ -746,7 +778,7 @@ def list_correspondence(
 def create_correspondence(
     payload: CorrespondenceCreateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:create")),
 ):
     issuing_code = _resolve_issuing_code(payload.issuing_code, payload.project_code)
     issuing = _get_or_create_issuing_entity(
@@ -860,7 +892,7 @@ def update_correspondence(
     correspondence_id: int,
     payload: CorrespondenceUpdateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:update")),
 ):
     row = db.query(Correspondence).filter(Correspondence.id == correspondence_id).first()
     if not row:
@@ -956,7 +988,7 @@ def update_correspondence(
 def list_correspondence_actions(
     correspondence_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -974,7 +1006,7 @@ def create_correspondence_action(
     correspondence_id: int,
     payload: CorrespondenceActionCreateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:create")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -1005,7 +1037,7 @@ def update_correspondence_action(
     action_id: int,
     payload: CorrespondenceActionUpdateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:update")),
 ):
     row = _load_action_or_404(db, action_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
@@ -1036,7 +1068,7 @@ def update_correspondence_action(
 def delete_correspondence_action(
     action_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:delete")),
 ):
     row = _load_action_or_404(db, action_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
@@ -1050,7 +1082,7 @@ def delete_correspondence_action(
 def list_correspondence_attachments(
     correspondence_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -1060,7 +1092,21 @@ def list_correspondence_attachments(
         .order_by(CorrespondenceAttachment.uploaded_at.desc(), CorrespondenceAttachment.id.desc())
         .all()
     )
-    return {"ok": True, "data": [_serialize_attachment(row) for row in rows]}
+    status_map, fallback_status = _attachment_openproject_status_map(
+        db, [int(row.id or 0) for row in rows]
+    )
+    return {
+        "ok": True,
+        "data": [
+            _serialize_attachment(
+                row,
+                openproject_payload=_attachment_openproject_payload(
+                    status_map, fallback_status, int(row.id or 0)
+                ),
+            )
+            for row in rows
+        ],
+    }
 
 
 @router.post("/{correspondence_id}/attachments/upload")
@@ -1071,7 +1117,7 @@ def upload_correspondence_attachment(
     openproject_work_package_id: Optional[int] = Form(default=None),
     action_id: Optional[int] = Form(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:create")),
 ):
     corr = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, corr)
@@ -1131,14 +1177,23 @@ def upload_correspondence_attachment(
         )
     db.commit()
     db.refresh(row)
-    return {"ok": True, "data": _serialize_attachment(row)}
+    status_map, fallback_status = _attachment_openproject_status_map(db, [int(row.id or 0)])
+    return {
+        "ok": True,
+        "data": _serialize_attachment(
+            row,
+            openproject_payload=_attachment_openproject_payload(
+                status_map, fallback_status, int(row.id or 0)
+            ),
+        ),
+    }
 
 
 @router.get("/attachments/{attachment_id}/download")
 def download_correspondence_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("correspondence:read")),
 ):
     row = _load_attachment_or_404(db, attachment_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
@@ -1154,7 +1209,7 @@ def download_correspondence_attachment(
 def delete_correspondence_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("correspondence:delete")),
 ):
     row = _load_attachment_or_404(db, attachment_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)

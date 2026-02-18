@@ -1,0 +1,11 @@
+$python = "C:\Python310\python.exe"
+$script = "C:\mdr_app\tools\mdr_sync_agent.py"
+$args = @(
+  "--base-url", "https://your-domain.com",
+  "--site-code", "SITE_A",
+  "--site-token", "YOUR_SITE_TOKEN",
+  "--out-dir", "D:\MDR_Site_Cache",
+  "--prune",
+  "--max-workers", "6"
+)
+& $python $script @args

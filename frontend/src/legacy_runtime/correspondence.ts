@@ -28,13 +28,49 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   const dIso = (v) => (String(v || "").trim() ? `${String(v).trim()}T00:00:00` : null);
   const dFa = (v) => formatShamsiDate(v);
   const dirCode = (v) => ["I", "IN", "INBOUND"].includes(String(v || "").toUpperCase()) ? "I" : "O";
-  const dirFa = (v) => dirCode(v) === "I" ? "Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â§ÃƒËœÃ‚Â±ÃƒËœÃ‚Â¯Ãƒâ„¢Ã¢â‚¬Â¡" : "ÃƒËœÃ‚ÂµÃƒËœÃ‚Â§ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡";
+  const dirFa = (v) => dirCode(v) === "I" ? "وارده" : "صادره";
   const statusClass = (s) => { const k = String(s || "").toLowerCase(); return k === "closed" ? "is-closed" : (k === "overdue" ? "is-overdue" : "is-open"); };
-  const kindFa = (k) => ({ letter: "Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ Ãƒâ„¢Ã¢â‚¬Â ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦Ãƒâ„¢Ã¢â‚¬Â¡", original: "Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂµÃƒâ„¢Ã¢â‚¬Å¾Ãƒâ€ºÃ…â€™", attachment: "Ãƒâ„¢Ã‚Â¾Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â³ÃƒËœÃ‚Âª" }[String(k || "").toLowerCase()] || "Ãƒâ„¢Ã‚Â¾Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â³ÃƒËœÃ‚Âª");
+  const kindFa = (k) => ({ letter: "فایل نامه", original: "فایل اصلی", attachment: "پیوست" }[String(k || "").toLowerCase()] || "پیوست");
   const info = (m) => window.UI?.success?.(m); const warn = (m) => window.UI?.warning?.(m); const err = (m) => window.UI?.error?.(m);
   const nowYyMm = (v) => { const d = v ? new Date(`${v}T00:00:00`) : new Date(); return Number.isNaN(d.getTime()) ? "0000" : `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, "0")}`; };
   const curId = () => Number(q("corrIdInput")?.value || 0);
   const getCorrFetchFn = () => (typeof window.fetchWithAuth === "function" ? window.fetchWithAuth : fetch);
+  const STORAGE_ENTITY_ATTACHMENT = "correspondence_attachment";
+  async function corrReadJsonSafe(response) {
+    try {
+      return await response.json();
+    } catch (_) {
+      return null;
+    }
+  }
+  async function corrRequestJson(url, init = undefined) {
+    const response = await getCorrFetchFn()(url, init);
+    const payload = await corrReadJsonSafe(response);
+    if (!response.ok || (payload && payload.ok === false)) {
+      const detail = String(payload?.detail || payload?.message || `Request failed (${response.status})`).trim();
+      const error = new Error(detail || `Request failed (${response.status})`);
+      error.statusCode = Number(response.status || 0);
+      error.detail = detail;
+      throw error;
+    }
+    return payload || {};
+  }
+  function corrFriendlyUploadErrorMessage(inputError) {
+    const statusCode = Number(inputError?.statusCode || 0);
+    const detail = String(inputError?.detail || inputError?.message || "").trim();
+    const lower = detail.toLowerCase();
+    let friendly = "خطا در آپلود فایل مکاتبه.";
+    if (statusCode === 413 || lower.includes("too large") || lower.includes("size")) {
+      friendly = "حجم فایل بیشتر از حد مجاز است.";
+    } else if (lower.includes("magic") || lower.includes("mime") || lower.includes("content type")) {
+      friendly = "نوع واقعی فایل با فرمت مجاز هم‌خوانی ندارد.";
+    } else if (lower.includes("blocked extension") || lower.includes("extension")) {
+      friendly = "پسوند فایل مجاز نیست.";
+    } else if (lower.includes("validation") || lower.includes("invalid")) {
+      friendly = "فایل معتبر نیست یا با سیاست امنیتی سیستم سازگار نیست.";
+    }
+    return detail ? `${friendly}\nجزئیات: ${detail}` : friendly;
+  }
   function ensureShamsiInputs() {
     if (shamsiDates) return;
     shamsiDates = initShamsiDateInputs([
@@ -77,7 +113,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   function corrUpdateReferencePreview() {
     const el = q("corrRefPreview"); if (!el) return;
     const manual = String(q("corrReferenceInput")?.value || "").trim();
-    el.innerHTML = manual ? `<span class="manual-label">ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â³ÃƒËœÃ‚ÂªÃƒâ€ºÃ…â€™</span> ${esc(manual)}` : `<span class="auto-label">ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒâ„¢Ã‹â€ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒâ€ºÃ…â€™ÃƒÅ¡Ã‚Â©</span> ${esc(refPreview())}`;
+    el.innerHTML = manual ? `<span class="manual-label">دستی</span> ${esc(manual)}` : `<span class="auto-label">اتوماتیک</span> ${esc(refPreview())}`;
   }
   function syncProjectFromIssuing() {
     const issuing = String(q("corrIssuingInput")?.value || "").toUpperCase(); const p = q("corrProjectInput");
@@ -208,17 +244,17 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         throw new Error("Load actions bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.loadActions(Number(id), { fetch: getCorrFetchFn() });
-      if (!b?.ok) { err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â±Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â§Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Âª ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ÃƒËœÃ‚Â§ÃƒËœÃ‚Âª"); S.actions = []; renderActions(); return; }
+      if (!b?.ok) { err(b?.detail || "خطا در دریافت اقدامات"); S.actions = []; renderActions(); return; }
       S.actions = Array.isArray(b.data) ? b.data : [];
       renderActions();
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â±Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â§Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Âª ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ÃƒËœÃ‚Â§ÃƒËœÃ‚Âª");
+      err(error?.message || "خطا در دریافت اقدامات");
       S.actions = [];
       renderActions();
     }
   }
   async function corrSubmitAction() {
-    const id = curId(); if (!id) return warn("ÃƒËœÃ‚Â§ÃƒËœÃ‚Â¨ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒÅ¡Ã‚Â©Ãƒâ„¢Ã¢â‚¬Â Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯.");
+    const id = curId(); if (!id) return warn("ابتدا مکاتبه را ذخیره کنید.");
     const aid = Number(q("corrActionIdInput").value || 0);
     const actionInput = {
       action_type: q("corrActionTypeInput").value,
@@ -229,14 +265,14 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     };
     const formBridge = requireBridge(TS_CORRESPONDENCE_FORM, "Correspondence form");
     const payload = formBridge.buildActionPayload(actionInput);
-    if (!payload.title && !payload.description) return warn("ÃƒËœÃ‚Â¹Ãƒâ„¢Ã¢â‚¬Â Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â  Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â´ÃƒËœÃ‚Â±ÃƒËœÃ‚Â­ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§ Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â§ÃƒËœÃ‚Â±ÃƒËœÃ‚Â¯ ÃƒÅ¡Ã‚Â©Ãƒâ„¢Ã¢â‚¬Â Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯.");
+    if (!payload.title && !payload.description) return warn("عنوان یا شرح اقدام را وارد کنید.");
     try {
       if (!TS_CORRESPONDENCE_WORKFLOW?.upsertAction) {
         throw new Error("Save action bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.upsertAction(Number(id), Number(aid), payload, { fetch: getCorrFetchFn() });
-      if (!b?.ok) return err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦");
-      info(aid > 0 ? "ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ Ãƒâ„¢Ã‹â€ Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â´ ÃƒËœÃ‚Â´ÃƒËœÃ‚Â¯." : "ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ ÃƒËœÃ‚Â«ÃƒËœÃ‚Â¨ÃƒËœÃ‚Âª ÃƒËœÃ‚Â´ÃƒËœÃ‚Â¯."); if (TS_CORRESPONDENCE_WORKFLOW?.afterActionMutation) {
+      if (!b?.ok) return err(b?.detail || "خطا در ذخیره اقدام");
+      info(aid > 0 ? "اقدام ویرایش شد." : "اقدام ثبت شد."); if (TS_CORRESPONDENCE_WORKFLOW?.afterActionMutation) {
         await TS_CORRESPONDENCE_WORKFLOW.afterActionMutation({
           correspondenceId: Number(id),
           clearActionEditor: () => clearActionEditor(),
@@ -248,7 +284,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         clearActionEditor(); await loadActions(id); await loadDashboard(); await loadList();
       }
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦");
+      err(error?.message || "خطا در ذخیره اقدام");
     }
   }
   function corrEditAction(id) {
@@ -277,7 +313,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         throw new Error("Toggle action bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.toggleActionClosed(Number(id), !!checked, { fetch: getCorrFetchFn() });
-      if (!b?.ok) return err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚ÂªÃƒËœÃ‚ÂºÃƒâ€ºÃ…â€™Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â± Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¶ÃƒËœÃ‚Â¹Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Âª ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦");
+      if (!b?.ok) return err(b?.detail || "خطا در تغییر وضعیت اقدام");
       if (TS_CORRESPONDENCE_WORKFLOW?.afterActionMutation) {
         await TS_CORRESPONDENCE_WORKFLOW.afterActionMutation({
           correspondenceId: Number(curId()),
@@ -289,18 +325,18 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         await loadActions(curId()); await loadDashboard(); await loadList();
       }
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚ÂªÃƒËœÃ‚ÂºÃƒâ€ºÃ…â€™Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â± Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¶ÃƒËœÃ‚Â¹Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Âª ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦");
+      err(error?.message || "خطا در تغییر وضعیت اقدام");
     }
   }
   async function corrDeleteAction(id) {
-    if (!confirm("ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â ÃƒËœÃ‚Â´Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¯ÃƒËœÃ…Â¸")) return;
+    if (!confirm("اقدام حذف شود؟")) return;
     try {
       if (!TS_CORRESPONDENCE_WORKFLOW?.deleteAction) {
         throw new Error("Delete action bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.deleteAction(Number(id), { fetch: getCorrFetchFn() });
-      if (!b?.ok) return err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦");
-      info("ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â ÃƒËœÃ‚Â´ÃƒËœÃ‚Â¯."); clearActionEditor(); if (TS_CORRESPONDENCE_WORKFLOW?.afterActionMutation) {
+      if (!b?.ok) return err(b?.detail || "خطا در حذف اقدام");
+      info("اقدام حذف شد."); clearActionEditor(); if (TS_CORRESPONDENCE_WORKFLOW?.afterActionMutation) {
         await TS_CORRESPONDENCE_WORKFLOW.afterActionMutation({
           correspondenceId: Number(curId()),
           loadActions: (corrId) => loadActions(corrId),
@@ -311,7 +347,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         await loadActions(curId()); await loadDashboard(); await loadList();
       }
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦");
+      err(error?.message || "خطا در حذف اقدام");
     }
   }
 
@@ -323,6 +359,63 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       { getElementById: q }
     );
   }
+  async function loadAttachmentPinState() {
+    try {
+      const payload = await corrRequestJson(
+        `/api/v1/storage/local-cache/manifest?entity_type=${STORAGE_ENTITY_ATTACHMENT}&only_pinned=true`
+      );
+      const pinned = new Set(
+        (Array.isArray(payload?.items) ? payload.items : [])
+          .map((row) => Number(row?.file_id || 0))
+          .filter((id) => id > 0)
+      );
+      S.atts = (Array.isArray(S.atts) ? S.atts : []).map((item) => ({
+        ...item,
+        is_pinned: pinned.has(Number(item?.id || 0)),
+      }));
+    } catch (error) {
+      console.error("Failed to load attachment pin manifest", error);
+    }
+  }
+  async function enrichAttachmentOpenProjectStatus() {
+    const items = (Array.isArray(S.atts) ? S.atts : [])
+      .map((row) => ({
+        entity_type: STORAGE_ENTITY_ATTACHMENT,
+        entity_id: Number(row?.id || 0),
+      }))
+      .filter((row) => row.entity_id > 0);
+    if (!items.length) return;
+    try {
+      const payload = await corrRequestJson("/api/v1/storage/openproject/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const map = new Map(
+        (Array.isArray(payload?.items) ? payload.items : []).map((row) => [
+          Number(row?.entity_id || 0),
+          row || {},
+        ])
+      );
+      S.atts = (Array.isArray(S.atts) ? S.atts : []).map((item) => {
+        const resolved = map.get(Number(item?.id || 0));
+        if (!resolved) return item;
+        return {
+          ...item,
+          openproject_sync_status:
+            resolved.sync_status ?? item?.openproject_sync_status ?? null,
+          openproject_work_package_id:
+            resolved.work_package_id ?? item?.openproject_work_package_id ?? null,
+          openproject_attachment_id:
+            resolved.openproject_attachment_id ?? item?.openproject_attachment_id ?? null,
+          openproject_last_synced_at:
+            resolved.last_synced_at ?? item?.openproject_last_synced_at ?? null,
+        };
+      });
+    } catch (error) {
+      console.error("Failed to fetch OpenProject status for attachments", error);
+    }
+  }
   async function loadAtts(id) {
     if (!id) { S.atts = []; renderAtts(); return; }
     try {
@@ -330,26 +423,66 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         throw new Error("Load attachments bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.loadAttachments(Number(id), { fetch: getCorrFetchFn() });
-      if (!b?.ok) return err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â±Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â§Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Âª Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã…â€™Ãƒâ„¢Ã¢â‚¬Â¡ÃƒËœÃ‚Â§"), S.atts = [], renderAtts();
+      if (!b?.ok) {
+        err(b?.detail || "Failed to load attachments.");
+        S.atts = [];
+        renderAtts();
+        return;
+      }
       S.atts = Array.isArray(b.data) ? b.data : [];
+      await enrichAttachmentOpenProjectStatus();
+      await loadAttachmentPinState();
       renderAtts();
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â±Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â§Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Âª Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ÃƒÂ¢Ã¢â€šÂ¬Ã…â€™Ãƒâ„¢Ã¢â‚¬Â¡ÃƒËœÃ‚Â§");
+      err(error?.message || "Failed to load attachments.");
       S.atts = [];
       renderAtts();
     }
   }
+  async function corrToggleAttachmentPin(id, isPinned) {
+    const attachmentId = Number(id || 0);
+    if (!attachmentId) return;
+    const endpoint = isPinned
+      ? "/api/v1/storage/local-cache/unpin"
+      : "/api/v1/storage/local-cache/pin";
+    try {
+      await corrRequestJson(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_id: attachmentId,
+          entity_type: STORAGE_ENTITY_ATTACHMENT,
+        }),
+      });
+      await loadAtts(curId());
+    } catch (error) {
+      err(`خطا در تغییر وضعیت Pin.\n${String(error?.message || "")}`);
+    }
+  }
   async function corrUploadAttachment() {
-    const id = curId(); if (!id) return warn("ÃƒËœÃ‚Â§ÃƒËœÃ‚Â¨ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒÅ¡Ã‚Â©Ãƒâ„¢Ã¢â‚¬Â Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯.");
-    const f = q("corrAttachmentFileInput")?.files?.[0]; if (!f) return warn("Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â ÃƒËœÃ‚ÂªÃƒËœÃ‚Â®ÃƒËœÃ‚Â§ÃƒËœÃ‚Â¨ ÃƒÅ¡Ã‚Â©Ãƒâ„¢Ã¢â‚¬Â Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯.");
-    const fd = new FormData(); fd.append("file", f); fd.append("file_kind", String(q("corrAttachmentKindInput")?.value || "attachment")); const aid = String(q("corrAttachmentActionInput")?.value || ""); if (aid) fd.append("action_id", aid);
+    const id = curId();
+    if (!id) return warn("ابتدا مکاتبه را ذخیره کنید.");
+
+    const f = q("corrAttachmentFileInput")?.files?.[0];
+    if (!f) return warn("فایلی انتخاب نشده است.");
+
+    const fd = new FormData();
+    fd.append("file", f);
+    fd.append("file_kind", String(q("corrAttachmentKindInput")?.value || "attachment"));
+    const aid = String(q("corrAttachmentActionInput")?.value || "");
+    if (aid) fd.append("action_id", aid);
+
     try {
       if (!TS_CORRESPONDENCE_WORKFLOW?.uploadAttachment) {
         throw new Error("Upload attachment bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.uploadAttachment(Number(id), fd, { fetch: getCorrFetchFn() });
-      if (!b?.ok) return err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â¢Ãƒâ„¢Ã‚Â¾Ãƒâ„¢Ã¢â‚¬Å¾Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¯ Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾");
-      q("corrAttachmentFileInput").value = ""; info("Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ ÃƒËœÃ‚Â¢Ãƒâ„¢Ã‚Â¾Ãƒâ„¢Ã¢â‚¬Å¾Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¯ ÃƒËœÃ‚Â´ÃƒËœÃ‚Â¯."); if (TS_CORRESPONDENCE_WORKFLOW?.afterAttachmentMutation) {
+      if (!b?.ok) {
+        return err(corrFriendlyUploadErrorMessage({ message: b?.detail || "Upload failed" }));
+      }
+      q("corrAttachmentFileInput").value = "";
+      info("فایل با موفقیت آپلود شد.");
+      if (TS_CORRESPONDENCE_WORKFLOW?.afterAttachmentMutation) {
         await TS_CORRESPONDENCE_WORKFLOW.afterAttachmentMutation({
           correspondenceId: Number(id),
           loadAttachments: (corrId) => loadAtts(corrId),
@@ -360,7 +493,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         await loadAtts(id); await loadDashboard(); await loadList();
       }
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â¢Ãƒâ„¢Ã‚Â¾Ãƒâ„¢Ã¢â‚¬Å¾Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¯ Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾");
+      err(corrFriendlyUploadErrorMessage(error));
     }
   }
   async function corrDownloadAttachment(id) {
@@ -373,18 +506,18 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       const url = URL.createObjectURL(result.blob), a = document.createElement("a");
       a.href = url; a.download = fn; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â Ãƒâ„¢Ã¢â‚¬Å¾Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¯");
+      err(error?.message || "خطا در دانلود");
     }
   }
   async function corrDeleteAttachment(id) {
-    if (!confirm("Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â ÃƒËœÃ‚Â´Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¯ÃƒËœÃ…Â¸")) return;
+    if (!confirm("فایل حذف شود؟")) return;
     try {
       if (!TS_CORRESPONDENCE_WORKFLOW?.deleteAttachment) {
         throw new Error("Delete attachment bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.deleteAttachment(Number(id), { fetch: getCorrFetchFn() });
-      if (!b?.ok) return err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾");
-      info("Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â ÃƒËœÃ‚Â´ÃƒËœÃ‚Â¯."); if (TS_CORRESPONDENCE_WORKFLOW?.afterAttachmentMutation) {
+      if (!b?.ok) return err(b?.detail || "خطا در حذف فایل");
+      info("فایل حذف شد."); if (TS_CORRESPONDENCE_WORKFLOW?.afterAttachmentMutation) {
         await TS_CORRESPONDENCE_WORKFLOW.afterAttachmentMutation({
           correspondenceId: Number(curId()),
           loadAttachments: (corrId) => loadAtts(corrId),
@@ -395,7 +528,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
         await loadAtts(curId()); await loadDashboard(); await loadList();
       }
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â­ÃƒËœÃ‚Â°Ãƒâ„¢Ã‚Â Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾");
+      err(error?.message || "خطا در حذف فایل");
     }
   }
 
@@ -424,7 +557,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     applyFormValues(formBridge.createDefaultValues());
     if (!q("corrIssuingInput").value && q("corrIssuingInput").options.length) q("corrIssuingInput").selectedIndex = 0;
     if (!q("corrCategoryInput").value && q("corrCategoryInput").options.length) q("corrCategoryInput").selectedIndex = 0;
-    S.actions = []; S.atts = []; clearActionEditor(); q("corrActionsBody").innerHTML = `<tr><td colspan="5" class="corr-empty-row">ÃƒËœÃ‚Â§ÃƒËœÃ‚Â¨ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒÅ¡Ã‚Â©Ãƒâ„¢Ã¢â‚¬Â Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯.</td></tr>`; q("corrAttachmentsBody").innerHTML = `<tr><td colspan="5" class="corr-empty-row">ÃƒËœÃ‚Â§ÃƒËœÃ‚Â¨ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒÅ¡Ã‚Â©Ãƒâ„¢Ã¢â‚¬Â Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯.</td></tr>`; fillActionOptions(); corrUpdateReferencePreview();
+    S.actions = []; S.atts = []; clearActionEditor(); q("corrActionsBody").innerHTML = `<tr><td colspan="5" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; q("corrAttachmentsBody").innerHTML = `<tr><td colspan="7" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; fillActionOptions(); corrUpdateReferencePreview();
   }
   function payloadForm() {
     const input = {
@@ -448,25 +581,25 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   }
   async function corrSave(e) {
     e.preventDefault(); const id = curId(), p = payloadForm(), btn = q("corrSaveBtn");
-    if (!p.issuing_code || !p.category_code || !p.subject) return warn("Ãƒâ„¢Ã¢â‚¬Â¦ÃƒËœÃ‚Â±ÃƒËœÃ‚Â¬ÃƒËœÃ‚Â¹ ÃƒËœÃ‚ÂµÃƒËœÃ‚Â¯Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â±ÃƒËœÃ…â€™ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â³ÃƒËœÃ‚ÂªÃƒâ„¢Ã¢â‚¬Â¡ Ãƒâ„¢Ã‹â€  Ãƒâ„¢Ã¢â‚¬Â¦Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¶Ãƒâ„¢Ã‹â€ ÃƒËœÃ‚Â¹ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¾ÃƒËœÃ‚Â²ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦Ãƒâ€ºÃ…â€™ ÃƒËœÃ‚Â§ÃƒËœÃ‚Â³ÃƒËœÃ‚Âª.");
-    if (!p.corr_date) return warn("ÃƒËœÃ‚ÂªÃƒËœÃ‚Â§ÃƒËœÃ‚Â±Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â® Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¾ÃƒËœÃ‚Â²ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦Ãƒâ€ºÃ…â€™ ÃƒËœÃ‚Â§ÃƒËœÃ‚Â³ÃƒËœÃ‚Âª.");
+    if (!p.issuing_code || !p.category_code || !p.subject) return warn("مرجع صدور، دسته و موضوع الزامی است.");
+    if (!p.corr_date) return warn("تاریخ مکاتبه الزامی است.");
     btn.disabled = true;
     try {
       if (!TS_CORRESPONDENCE_WORKFLOW?.saveCorrespondence) {
         throw new Error("Save correspondence bridge unavailable.");
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.saveCorrespondence(Number(id), p, { fetch: getCorrFetchFn() });
-      if (!b?.ok) return err(b?.detail || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡");
-      const sid = Number(b.data?.id || 0); if (sid) { q("corrIdInput").value = String(sid); q("corrModalTitle").innerText = "Ãƒâ„¢Ã‹â€ Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â´ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡"; await loadActions(sid); await loadAtts(sid); }
-      info(id > 0 ? "Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ Ãƒâ„¢Ã‹â€ Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â´ ÃƒËœÃ‚Â´ÃƒËœÃ‚Â¯." : "Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â«ÃƒËœÃ‚Â¨ÃƒËœÃ‚Âª ÃƒËœÃ‚Â´ÃƒËœÃ‚Â¯. ÃƒËœÃ‚Â­ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¾ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Å¡ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â§Ãƒâ„¢Ã¢â‚¬Â¦ Ãƒâ„¢Ã‹â€  Ãƒâ„¢Ã‚ÂÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™Ãƒâ„¢Ã¢â‚¬Å¾ ÃƒËœÃ‚Â«ÃƒËœÃ‚Â¨ÃƒËœÃ‚Âª ÃƒÅ¡Ã‚Â©Ãƒâ„¢Ã¢â‚¬Â Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯."); await loadDashboard(); await loadList();
+      if (!b?.ok) return err(b?.detail || "خطا در ذخیره مکاتبه");
+      const sid = Number(b.data?.id || 0); if (sid) { q("corrIdInput").value = String(sid); q("corrModalTitle").innerText = "ویرایش مکاتبه"; await loadActions(sid); await loadAtts(sid); }
+      info(id > 0 ? "مکاتبه ویرایش شد." : "مکاتبه ثبت شد. حالا اقدام و فایل ثبت کنید."); await loadDashboard(); await loadList();
     } catch (error) {
-      err(error?.message || "ÃƒËœÃ‚Â®ÃƒËœÃ‚Â·ÃƒËœÃ‚Â§ ÃƒËœÃ‚Â¯ÃƒËœÃ‚Â± ÃƒËœÃ‚Â°ÃƒËœÃ‚Â®Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±Ãƒâ„¢Ã¢â‚¬Â¡ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡");
+      err(error?.message || "خطا در ذخیره مکاتبه");
     } finally { btn.disabled = false; }
   }
-  function corrOpenCreate() { q("corrModalTitle").innerText = "Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡ ÃƒËœÃ‚Â¬ÃƒËœÃ‚Â¯Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â¯"; formDefaults(); syncProjectFromIssuing(); q("corrModal").style.display = "flex"; }
+  function corrOpenCreate() { q("corrModalTitle").innerText = "مکاتبه جدید"; formDefaults(); syncProjectFromIssuing(); q("corrModal").style.display = "flex"; }
   async function corrOpenEdit(id) {
     const x = S.items.find((r) => Number(r.id) === Number(id)); if (!x) return;
-    q("corrModalTitle").innerText = "Ãƒâ„¢Ã‹â€ Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â±ÃƒËœÃ‚Â§Ãƒâ€ºÃ…â€™ÃƒËœÃ‚Â´ Ãƒâ„¢Ã¢â‚¬Â¦ÃƒÅ¡Ã‚Â©ÃƒËœÃ‚Â§ÃƒËœÃ‚ÂªÃƒËœÃ‚Â¨Ãƒâ„¢Ã¢â‚¬Â¡";
+    q("corrModalTitle").innerText = "ویرایش مکاتبه";
     const formBridge = requireBridge(TS_CORRESPONDENCE_FORM, "Correspondence form");
     applyFormValues(formBridge.normalizeEditValues(x));
     clearActionEditor(); corrUpdateReferencePreview(); q("corrModal").style.display = "flex"; await loadActions(Number(x.id)); await loadAtts(Number(x.id));
@@ -502,6 +635,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       deleteAction: (id) => corrDeleteAction(id),
       downloadAttachment: (id) => corrDownloadAttachment(id),
       deleteAttachment: (id) => corrDeleteAttachment(id),
+      toggleAttachmentPin: (id, isPinned) => corrToggleAttachmentPin(id, isPinned),
       toggleActionClosed: (id, checked) => corrToggleActionClosed(id, checked),
     });
     if (!handled) {
@@ -523,6 +657,8 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   const corrRoot = q("view-correspondence");
   if (corrRoot && corrRoot.style.display !== "none") init();
 })();
+
+
 
 
 

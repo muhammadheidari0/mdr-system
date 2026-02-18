@@ -15,6 +15,15 @@ import { createCorrespondenceUiBridge } from "../lib/correspondence_ui";
 import { createCorrespondenceStateBridge } from "../lib/correspondence_state";
 import { createCorrespondenceFormBridge } from "../lib/correspondence_form";
 import { createCorrespondenceWorkflowBridge } from "../lib/correspondence_workflow";
+import { createCommItemsDataBridge } from "../lib/comm_items_data";
+import { createCommItemsFormBridge } from "../lib/comm_items_form";
+import { createCommItemsStateBridge } from "../lib/comm_items_state";
+import { createCommItemsUiBridge } from "../lib/comm_items_ui";
+import { createCommItemsWorkflowBridge } from "../lib/comm_items_workflow";
+import { createSiteLogsDataBridge } from "../lib/site_logs_data";
+import { createSiteLogsFormBridge } from "../lib/site_logs_form";
+import { createSiteLogsStateBridge } from "../lib/site_logs_state";
+import { createSiteLogsUiBridge } from "../lib/site_logs_ui";
 import { installMojibakeRuntimeFix } from "../lib/mojibake_fix";
 
 window.AppRuntime = {
@@ -35,6 +44,15 @@ window.AppRuntime = {
   correspondenceState: createCorrespondenceStateBridge(),
   correspondenceForm: createCorrespondenceFormBridge(),
   correspondenceWorkflow: createCorrespondenceWorkflowBridge(),
+  commItemsData: createCommItemsDataBridge(),
+  commItemsForm: createCommItemsFormBridge(),
+  commItemsState: createCommItemsStateBridge(),
+  commItemsUi: createCommItemsUiBridge(),
+  commItemsWorkflow: createCommItemsWorkflowBridge(),
+  siteLogsData: createSiteLogsDataBridge(),
+  siteLogsForm: createSiteLogsFormBridge(),
+  siteLogsState: createSiteLogsStateBridge(),
+  siteLogsUi: createSiteLogsUiBridge(),
 };
 
 installMojibakeRuntimeFix();

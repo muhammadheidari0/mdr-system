@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 (() => {
     const API_BASE = '/api/v1/settings';
     const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories'];
@@ -7,9 +7,20 @@
         initialized: false,
         loadingPromise: null,
         storagePathsLoaded: false,
+        storagePolicyLoaded: false,
+        storageIntegrationsLoaded: false,
+        siteCacheLoaded: false,
         actionsBound: false,
-        activePage: 'db',
-        activeDomain: 'all',
+        activePage: 'db_sync',
+        activeDomain: 'common',
+        storageWizard: {
+            activeStep: 'paths',
+            dirty: {
+                paths: false,
+                policy: false,
+                site_cache: false,
+            },
+        },
         data: {
             projects: [],
             mdr: [],
@@ -21,6 +32,12 @@
             statuses: [],
             corr_issuing: [],
             corr_categories: [],
+        },
+        siteCache: {
+            profiles: [],
+            activeProfileId: 0,
+            activeListTab: 'cidr',
+            tokenMulti: {},
         },
         paging: {},
     };
@@ -40,6 +57,49 @@
         statuses: { url: '/statuses', tbodyId: 'settingsStatusesRows', pagerId: 'statusesPager', colspan: 5 },
         corr_issuing: { url: '/correspondence-issuing', tbodyId: 'settingsCorrIssuingRows', pagerId: 'corrIssuingPager', colspan: 5 },
         corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
+    };
+
+    const STORAGE_WIZARD_STEPS = ['paths', 'policy', 'site_cache'];
+    const STORAGE_POLICY_DEFAULT_ALLOWED_MIMES = [
+        'application/pdf',
+        'image/png',
+        'image/jpeg',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/zip',
+    ];
+    const STORAGE_POLICY_DEFAULT_BLOCKED = ['exe', 'bat', 'cmd', 'ps1', 'js', 'vbs', 'sh'];
+    const STORAGE_POLICY_PRESETS = {
+        warning: {
+            enforcement_mode: 'warning',
+            blocked_extensions: STORAGE_POLICY_DEFAULT_BLOCKED,
+            allowed_mimes: STORAGE_POLICY_DEFAULT_ALLOWED_MIMES,
+            max_size_mb: { pdf: 100, native: 250, attachment: 100 },
+        },
+        standard: {
+            enforcement_mode: 'enforce',
+            blocked_extensions: STORAGE_POLICY_DEFAULT_BLOCKED,
+            allowed_mimes: STORAGE_POLICY_DEFAULT_ALLOWED_MIMES,
+            max_size_mb: { pdf: 100, native: 250, attachment: 100 },
+        },
+        strict: {
+            enforcement_mode: 'enforce',
+            blocked_extensions: STORAGE_POLICY_DEFAULT_BLOCKED.concat(['zip']),
+            allowed_mimes: ['application/pdf', 'image/png', 'image/jpeg'],
+            max_size_mb: { pdf: 50, native: 150, attachment: 50 },
+        },
+    };
+    const SITE_CACHE_CODE_RE = /^[A-Z0-9_-]{2,64}$/;
+    const SITE_CACHE_PROJECT_CODE_RE = /^[A-Z0-9_-]{1,50}$/;
+    const SITE_CACHE_DISCIPLINE_CODE_RE = /^[A-Z0-9_-]{1,20}$/;
+    const SITE_CACHE_PACKAGE_CODE_RE = /^[A-Z0-9_-]{1,30}$/;
+    const SITE_CACHE_STATUS_CODE_RE = /^[A-Z0-9_-]{1,20}$/;
+    const SITE_CACHE_ALL_VALUE = '__ALL__';
+    const SITE_CACHE_TOKEN_MULTI_IDS = ['siteCacheRuleProjectInput', 'siteCacheRuleDisciplineInput', 'siteCacheRulePackageInput'];
+    const SITE_CACHE_TOKEN_MULTI_PLACEHOLDER = {
+        siteCacheRuleProjectInput: 'Ø§Ù†ØªØ®Ø§Ø¨ Ù¾Ø±ÙˆÚ˜Ù‡',
+        siteCacheRuleDisciplineInput: 'Ø§Ù†ØªØ®Ø§Ø¨ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†',
+        siteCacheRulePackageInput: 'Ø§Ù†ØªØ®Ø§Ø¨ Ù¾Ú©ÛŒØ¬',
     };
 
     function tSuccess(msg) { if (window.UI?.success) window.UI.success(msg); else alert(msg); }
@@ -256,8 +316,8 @@
                     <td>${esc(s.project_code || '-')}</td>
                     <td>${boolBadge(Boolean(s.is_active))}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-issuing" data-code="${esc(encoded(s.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-issuing" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-issuing" data-code="${esc(encoded(s.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-issuing" data-code="${esc(encoded(s.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -269,8 +329,8 @@
                     <td>${boolBadge(Boolean(s.is_active))}</td>
                     <td>${esc(s.sort_order ?? 0)}</td>
                     <td>${rowActions(`
-                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-category" data-code="${esc(encoded(s.code))}">ویرایش</button>
-                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-category" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-category" data-code="${esc(encoded(s.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-category" data-code="${esc(encoded(s.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -285,13 +345,30 @@
         const res = await fn(url, options);
         if (!res.ok) {
             let message = `Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯ (${res.status})`;
+            let details = null;
             try {
                 const j = await res.clone().json();
-                message = j.detail || j.message || message;
+                details = j?.detail;
+                if (Array.isArray(details) && details.length) {
+                    const lines = details
+                        .map((item) => {
+                            if (!item || typeof item !== 'object') return norm(item);
+                            const field = norm(item.field || item.loc || '');
+                            const text = norm(item.message || item.detail || item.msg || '');
+                            if (field && text) return `${field}: ${text}`;
+                            return text || JSON.stringify(item);
+                        })
+                        .filter(Boolean);
+                    if (lines.length) message = lines.join(' | ');
+                } else {
+                    message = j.detail || j.message || message;
+                }
             } catch (_) {
                 try { message = await res.text(); } catch (_) {}
             }
-            throw new Error(message);
+            const err = new Error(message);
+            if (Array.isArray(details)) err.details = details;
+            throw err;
         }
         return res.json();
     }
@@ -343,20 +420,20 @@
     async function loadOverview() {
         const box = document.getElementById('settingsOverviewStats');
         if (!box) return;
-        box.innerHTML = '<div class="text-muted">در حال بارگذاری...</div>';
+        box.innerHTML = '<div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>';
         const data = await request(`${API_BASE}/overview`);
         const counts = data.counts || {};
         const cards = [
-            ['projects', 'پروژه'],
+            ['projects', 'Ù¾Ø±ÙˆÚ˜Ù‡'],
             ['mdr_categories', 'MDR'],
-            ['phases', 'فاز'],
-            ['disciplines', 'دیسیپلین'],
-            ['packages', 'پکیج'],
-            ['blocks', 'بلوک'],
-            ['levels', 'سطح'],
-            ['statuses', 'وضعیت'],
-            ['issuing_entities', 'مرجع صدور'],
-            ['correspondence_categories', 'دسته مکاتبات'],
+            ['phases', 'ÙØ§Ø²'],
+            ['disciplines', 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†'],
+            ['packages', 'Ù¾Ú©ÛŒØ¬'],
+            ['blocks', 'Ø¨Ù„ÙˆÚ©'],
+            ['levels', 'Ø³Ø·Ø­'],
+            ['statuses', 'ÙˆØ¶Ø¹ÛŒØª'],
+            ['issuing_entities', 'Ù…Ø±Ø¬Ø¹ ØµØ¯ÙˆØ±'],
+            ['correspondence_categories', 'Ø¯Ø³ØªÙ‡ Ù…Ú©Ø§ØªØ¨Ø§Øª'],
         ];
         box.innerHTML = cards.map(([k, label]) => `
             <div class="general-overview-card">
@@ -370,11 +447,11 @@
         const box = document.getElementById('transmittalConfigSummary');
         if (!box) return;
         const cards = [
-            ['projects', 'پروژه'],
+            ['projects', 'Ù¾Ø±ÙˆÚ˜Ù‡'],
             ['mdr', 'MDR'],
-            ['phases', 'فاز'],
-            ['disciplines', 'دیسیپلین'],
-            ['statuses', 'وضعیت'],
+            ['phases', 'ÙØ§Ø²'],
+            ['disciplines', 'Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†'],
+            ['statuses', 'ÙˆØ¶Ø¹ÛŒØª'],
         ];
         box.innerHTML = cards.map(([entity, label]) => `
             <div class="general-overview-card">
@@ -382,6 +459,202 @@
                 <div class="general-overview-label">${label}</div>
             </div>
         `).join('');
+    }
+
+    function formatFaDateTime(now = new Date()) {
+        try {
+            return now.toLocaleString('fa-IR');
+        } catch (err) {
+            return now.toLocaleString();
+        }
+    }
+
+    function markStorageStepDirty(step) {
+        if (!STORAGE_WIZARD_STEPS.includes(step)) return;
+        STORE.storageWizard.dirty[step] = true;
+        updateStorageActionBarState();
+    }
+
+    function clearStorageStepDirty(step) {
+        if (!STORAGE_WIZARD_STEPS.includes(step)) return;
+        STORE.storageWizard.dirty[step] = false;
+        updateStorageActionBarState();
+    }
+
+    function updateStoragePathPreview() {
+        const mdrInput = document.getElementById('mdrStoragePathInput');
+        const corrInput = document.getElementById('correspondenceStoragePathInput');
+        const mdrPreview = document.getElementById('storagePathMdrPreview');
+        const corrPreview = document.getElementById('storagePathCorrespondencePreview');
+        if (mdrPreview && mdrInput) {
+            mdrPreview.textContent = normalizeStoragePathForCompare(mdrInput.value) || '-';
+        }
+        if (corrPreview && corrInput) {
+            corrPreview.textContent = normalizeStoragePathForCompare(corrInput.value) || '-';
+        }
+    }
+
+    function showStorageStepSaved(step, message) {
+        if (step !== 'paths') return;
+        const note = document.getElementById('storagePathsSavedNote');
+        const ts = document.getElementById('storagePathsLastSavedAt');
+        if (note) {
+            note.textContent = message;
+            note.style.display = 'block';
+        }
+        if (ts) {
+            ts.textContent = formatFaDateTime();
+        }
+    }
+
+    function hideStorageStepSaved(step) {
+        if (step !== 'paths') return;
+        const note = document.getElementById('storagePathsSavedNote');
+        if (note) {
+            note.textContent = '';
+            note.style.display = 'none';
+        }
+    }
+
+    function updateStorageActionBarState() {
+        const step = STORE.storageWizard.activeStep || 'paths';
+        const idx = STORAGE_WIZARD_STEPS.indexOf(step);
+        const prevBtn = document.querySelector('[data-general-action="storage-step-prev"]');
+        const nextBtn = document.querySelector('[data-general-action="storage-step-next"]');
+        const saveBtn = document.querySelector('[data-general-action="storage-save-current"]');
+        if (prevBtn) prevBtn.disabled = idx <= 0;
+        if (nextBtn) nextBtn.disabled = idx < 0 || idx >= STORAGE_WIZARD_STEPS.length - 1;
+        if (saveBtn) {
+            const canSaveStep = step !== 'site_cache';
+            saveBtn.disabled = !canSaveStep;
+            const dirty = canSaveStep ? Boolean(STORE.storageWizard.dirty[step]) : false;
+            saveBtn.textContent = canSaveStep
+                ? (dirty ? 'Ø°Ø®ÛŒØ±Ù‡ Ù…Ø±Ø­Ù„Ù‡ Ø¬Ø§Ø±ÛŒ *' : 'Ø°Ø®ÛŒØ±Ù‡ Ù…Ø±Ø­Ù„Ù‡ Ø¬Ø§Ø±ÛŒ')
+                : 'Ù…Ø±Ø­Ù„Ù‡ Ø¬Ø§Ø±ÛŒ Ø°Ø®ÛŒØ±Ù‡ Ù…Ø³ØªÙ‚Ù„ Ù†Ø¯Ø§Ø±Ø¯';
+        }
+    }
+
+    function setStorageWizardStep(step, opts = {}) {
+        const targetStep = STORAGE_WIZARD_STEPS.includes(step) ? step : 'paths';
+        const force = Boolean(opts.force);
+        const currentStep = STORE.storageWizard.activeStep || 'paths';
+        if (!force && currentStep !== targetStep && STORE.storageWizard.dirty[currentStep]) {
+            const ok = confirm('ØªØºÛŒÛŒØ±Ø§Øª Ø§ÛŒÙ† Ù…Ø±Ø­Ù„Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª. Ø¢ÛŒØ§ Ù…Ø§ÛŒÙ„ Ø¨Ù‡ ØªØºÛŒÛŒØ± Ù…Ø±Ø­Ù„Ù‡ Ù‡Ø³ØªÛŒØ¯ØŸ');
+            if (!ok) return false;
+        }
+        STORE.storageWizard.activeStep = targetStep;
+
+        document.querySelectorAll('[data-storage-step-panel]').forEach((panel) => {
+            const isActive = String(panel?.dataset?.storageStepPanel || '') === targetStep;
+            panel.classList.toggle('active', isActive);
+        });
+
+        document.querySelectorAll('.storage-step-btn[data-storage-step]').forEach((btn) => {
+            const isActive = String(btn?.dataset?.storageStep || '') === targetStep;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+
+        updateStorageActionBarState();
+        return true;
+    }
+
+    function moveStorageWizardStep(direction) {
+        const currentStep = STORE.storageWizard.activeStep || 'paths';
+        const idx = STORAGE_WIZARD_STEPS.indexOf(currentStep);
+        if (idx < 0) return;
+        const nextIndex = Math.max(0, Math.min(STORAGE_WIZARD_STEPS.length - 1, idx + Number(direction || 0)));
+        setStorageWizardStep(STORAGE_WIZARD_STEPS[nextIndex]);
+    }
+
+    async function saveCurrentStorageWizardStep() {
+        const step = STORE.storageWizard.activeStep || 'paths';
+        if (step === 'paths') {
+            await window.saveStoragePaths();
+            return;
+        }
+        if (step === 'policy') {
+            await window.saveStoragePolicySettings();
+            return;
+        }
+        tSuccess('ØªÙ†Ø¸ÛŒÙ…Ø§Øª Site Cache Ø¨Ø§ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ÛŒ Ø¯Ø§Ø®Ù„ÛŒ Ù‡Ù…ÛŒÙ† ØµÙØ­Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.');
+    }
+
+    function updateStorageIntegrationsFieldState() {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
+        const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
+        const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
+        const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        const openprojectWrap = document.getElementById('storageOpenProjectDefaultWpWrap');
+        const openprojectBaseUrlWrap = document.getElementById('storageOpenProjectBaseUrlWrap');
+        const openprojectTokenWrap = document.getElementById('storageOpenProjectTokenWrap');
+        const gdriveWrap = document.getElementById('storageGoogleDriveDriveIdWrap');
+        const openprojectSyncBtn = document.getElementById('storageOpenProjectSyncRunBtn');
+        const gdriveSyncBtn = document.getElementById('storageGoogleDriveSyncRunBtn');
+        const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
+        const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
+        const tokenSource = norm(tokenBadge?.dataset?.tokenSource || 'none').toLowerCase();
+        const envManagedToken = tokenSource === 'env';
+
+        const gdriveOn = Boolean(gdriveEnabled?.checked);
+        const openprojectOn = Boolean(openprojectEnabled?.checked);
+
+        if (gdriveDriveId) gdriveDriveId.disabled = !gdriveOn;
+        if (openprojectBaseUrl) openprojectBaseUrl.disabled = !openprojectOn;
+        if (openprojectToken) openprojectToken.disabled = !openprojectOn || envManagedToken;
+        if (openprojectWp) openprojectWp.disabled = !openprojectOn;
+        if (gdriveWrap) gdriveWrap.classList.toggle('is-disabled', !gdriveOn);
+        if (openprojectBaseUrlWrap) openprojectBaseUrlWrap.classList.toggle('is-disabled', !openprojectOn);
+        if (openprojectTokenWrap) openprojectTokenWrap.classList.toggle('is-disabled', !openprojectOn);
+        if (openprojectWrap) openprojectWrap.classList.toggle('is-disabled', !openprojectOn);
+        if (gdriveSyncBtn) gdriveSyncBtn.disabled = !gdriveOn;
+        if (openprojectSyncBtn) openprojectSyncBtn.disabled = !openprojectOn;
+        if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
+    }
+
+    function bindStorageWorkflowInputs() {
+        const root = document.getElementById('storageWorkflowRoot');
+        if (!root || root.dataset.storageWorkflowBound === '1') return;
+
+        root.addEventListener('input', (event) => {
+            const target = event?.target;
+            if (!target) return;
+            if (target.closest('#storage-step-paths')) {
+                markStorageStepDirty('paths');
+                hideStorageStepSaved('paths');
+                updateStoragePathPreview();
+            } else if (target.closest('#storage-step-policy')) {
+                markStorageStepDirty('policy');
+            }
+        });
+
+        root.addEventListener('change', (event) => {
+            const target = event?.target;
+            if (!target) return;
+            if (target.closest('#storage-step-site-cache')) {
+                updateStorageIntegrationsFieldState();
+            }
+        });
+
+        root.dataset.storageWorkflowBound = '1';
+    }
+
+    function setStoragePolicyPresetActive(name = '') {
+        const key = String(name || '').trim().toLowerCase();
+        document.querySelectorAll('.storage-preset-btn[data-storage-preset]').forEach((btn) => {
+            const btnKey = String(btn?.dataset?.storagePreset || '').trim().toLowerCase();
+            btn.classList.toggle('active', key && key === btnKey);
+        });
+    }
+
+    function applyStoragePolicyPreset(name) {
+        const key = String(name || '').trim().toLowerCase();
+        const preset = STORAGE_POLICY_PRESETS[key] || STORAGE_POLICY_PRESETS.standard;
+        applyStoragePolicyToForm(preset);
+        setStoragePolicyPresetActive(key);
+        markStorageStepDirty('policy');
     }
 
     async function loadStoragePaths(force = false) {
@@ -400,8 +673,1303 @@
         if (!corrLocked) {
             corrInput.value = norm(payload?.correspondence_storage_path);
         }
+        updateStoragePathPreview();
         validateStoragePathConflict(false);
+        if (!mdrLocked && !corrLocked) {
+            clearStorageStepDirty('paths');
+        }
         STORE.storagePathsLoaded = true;
+    }
+
+    function parseCommaSeparatedList(value) {
+        return String(value || '')
+            .split(/[\n,]+/g)
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+    }
+
+    function parsePositiveNumber(value, label, fallback = null) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return fallback;
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n <= 0) {
+            throw new Error(`${label} Ø¨Ø§ÛŒØ¯ Ø¹Ø¯Ø¯ Ù…Ø«Ø¨Øª Ø¨Ø§Ø´Ø¯.`);
+        }
+        return Math.round(n);
+    }
+
+    function toStorageMaxSizeMap(policy = {}) {
+        const maxSize = policy?.max_size_mb && typeof policy.max_size_mb === 'object' ? policy.max_size_mb : {};
+        const pdf = Number(maxSize.pdf ?? maxSize.PDF ?? 0);
+        const native = Number(maxSize.native ?? maxSize.NATIVE ?? 0);
+        const attachment = Number(maxSize.attachment ?? maxSize.ATTACHMENT ?? 0);
+        return {
+            pdf: Number.isFinite(pdf) && pdf > 0 ? Math.round(pdf) : '',
+            native: Number.isFinite(native) && native > 0 ? Math.round(native) : '',
+            attachment: Number.isFinite(attachment) && attachment > 0 ? Math.round(attachment) : '',
+        };
+    }
+
+    function setStorageSyncResult(message = '', level = 'info') {
+        const box = document.getElementById('storageSyncResult');
+        if (!box) return;
+        if (!message) {
+            box.textContent = '';
+            box.style.display = 'none';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.textContent = message;
+        box.style.display = 'block';
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function applyStoragePolicyToForm(policy = {}) {
+        const modeInput = document.getElementById('storagePolicyModeInput');
+        const blockedInput = document.getElementById('storageBlockedExtensionsInput');
+        const allowedInput = document.getElementById('storageAllowedMimesInput');
+        const pdfInput = document.getElementById('storageMaxSizePdfInput');
+        const nativeInput = document.getElementById('storageMaxSizeNativeInput');
+        const attachmentInput = document.getElementById('storageMaxSizeAttachmentInput');
+        const maxSize = toStorageMaxSizeMap(policy);
+        if (modeInput) modeInput.value = String(policy?.enforcement_mode || 'warning');
+        if (blockedInput) blockedInput.value = Array.isArray(policy?.blocked_extensions) ? policy.blocked_extensions.join(',') : '';
+        if (allowedInput) allowedInput.value = Array.isArray(policy?.allowed_mimes) ? policy.allowed_mimes.join(',') : '';
+        if (pdfInput) pdfInput.value = String(maxSize.pdf);
+        if (nativeInput) nativeInput.value = String(maxSize.native);
+        if (attachmentInput) attachmentInput.value = String(maxSize.attachment);
+    }
+
+    async function loadStoragePolicy(force = false) {
+        const modeInput = document.getElementById('storagePolicyModeInput');
+        if (!modeInput) return;
+        if (STORE.storagePolicyLoaded && !force) return;
+        const payload = await request(`${API_BASE}/storage-policy`);
+        applyStoragePolicyToForm(payload?.policy || {});
+        setStoragePolicyPresetActive('');
+        clearStorageStepDirty('policy');
+        STORE.storagePolicyLoaded = true;
+    }
+
+    async function saveStoragePolicy() {
+        const modeInput = document.getElementById('storagePolicyModeInput');
+        const blockedInput = document.getElementById('storageBlockedExtensionsInput');
+        const allowedInput = document.getElementById('storageAllowedMimesInput');
+        const pdfInput = document.getElementById('storageMaxSizePdfInput');
+        const nativeInput = document.getElementById('storageMaxSizeNativeInput');
+        const attachmentInput = document.getElementById('storageMaxSizeAttachmentInput');
+        if (!modeInput || !blockedInput || !allowedInput || !pdfInput || !nativeInput || !attachmentInput) return;
+
+        const enforcement_mode = String(modeInput.value || 'warning').trim().toLowerCase() === 'enforce' ? 'enforce' : 'warning';
+        const blocked_extensions = parseCommaSeparatedList(blockedInput.value);
+        const allowed_mimes = parseCommaSeparatedList(allowedInput.value).map((v) => v.toLowerCase());
+        const max_size_mb = {
+            pdf: parsePositiveNumber(pdfInput.value, 'Ø­Ø¯Ø§Ú©Ø«Ø± Ø­Ø¬Ù… PDF', 100),
+            native: parsePositiveNumber(nativeInput.value, 'Ø­Ø¯Ø§Ú©Ø«Ø± Ø­Ø¬Ù… Native', 250),
+            attachment: parsePositiveNumber(attachmentInput.value, 'Ø­Ø¯Ø§Ú©Ø«Ø± Ø­Ø¬Ù… Attachment', 100),
+        };
+
+        const payload = await request(`${API_BASE}/storage-policy`, {
+            method: 'POST',
+            body: JSON.stringify({
+                enforcement_mode,
+                blocked_extensions,
+                allowed_mimes,
+                max_size_mb,
+            }),
+        });
+        applyStoragePolicyToForm(payload?.policy || {});
+        STORE.storagePolicyLoaded = true;
+        clearStorageStepDirty('policy');
+        setStorageSyncResult('');
+        tSuccess('Ø³ÛŒØ§Ø³Øª Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ ÙØ§ÛŒÙ„ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+    }
+
+    function applyStorageIntegrationsToForm(integrations = {}) {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
+        const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
+        const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
+        const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
+        const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
+        const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
+
+        const gdrive = integrations?.google_drive || {};
+        const openproject = integrations?.openproject || {};
+        const localCache = integrations?.local_cache || {};
+        const tokenSource = norm(openproject.token_source || 'none').toLowerCase();
+
+        if (gdriveEnabled) gdriveEnabled.checked = Boolean(gdrive.enabled);
+        if (openprojectEnabled) openprojectEnabled.checked = Boolean(openproject.enabled);
+        if (localCacheEnabled) localCacheEnabled.checked = Boolean(localCache.enabled);
+        if (openprojectBaseUrl) openprojectBaseUrl.value = String(openproject.base_url || '');
+        if (openprojectToken) openprojectToken.value = '';
+        if (openprojectWp) openprojectWp.value = String(openproject.default_work_package_id || openproject.default_project_id || '');
+        if (gdriveDriveId) gdriveDriveId.value = String(gdrive.shared_drive_id || '');
+        if (tokenBadge) {
+            tokenBadge.textContent = tokenSource || 'none';
+            tokenBadge.dataset.tokenSource = tokenSource || 'none';
+        }
+        if (tokenHint) tokenHint.textContent = tokenSource === 'env' ? 'Token is managed by environment' : '';
+        updateStorageIntegrationsFieldState();
+    }
+
+    async function loadStorageIntegrations(force = false) {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        if (!gdriveEnabled) return;
+        if (STORE.storageIntegrationsLoaded && !force) return;
+        const payload = await request(`${API_BASE}/storage-integrations`);
+        applyStorageIntegrationsToForm(payload?.integrations || {});
+        STORE.storageIntegrationsLoaded = true;
+    }
+
+    async function saveStorageIntegrations() {
+        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
+        const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
+        const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
+        const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
+        const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        if (!gdriveEnabled || !openprojectEnabled || !localCacheEnabled || !openprojectWp || !gdriveDriveId || !openprojectBaseUrl || !openprojectToken) return;
+
+        const payload = await request(`${API_BASE}/storage-integrations`, {
+            method: 'POST',
+            body: JSON.stringify({
+                google_drive: {
+                    enabled: Boolean(gdriveEnabled.checked),
+                    shared_drive_id: norm(gdriveDriveId.value),
+                },
+                openproject: {
+                    enabled: Boolean(openprojectEnabled.checked),
+                    base_url: norm(openprojectBaseUrl.value),
+                    api_token: norm(openprojectToken.value),
+                    default_work_package_id: norm(openprojectWp.value),
+                },
+                local_cache: {
+                    enabled: Boolean(localCacheEnabled.checked),
+                },
+            }),
+        });
+        applyStorageIntegrationsToForm(payload?.integrations || {});
+        STORE.storageIntegrationsLoaded = true;
+        setStorageSyncResult('');
+        tSuccess('تنظیمات یکپارچه‌سازی ذخیره شد.');
+    }
+
+    async function clearOpenProjectStoredToken() {
+        const payload = await request(`${API_BASE}/storage-integrations/openproject/clear-token`, {
+            method: 'POST',
+        });
+        applyStorageIntegrationsToForm(payload?.integrations || {});
+        setStorageSyncResult('توکن ذخیره‌شده OpenProject پاک شد.', 'success');
+    }
+
+    async function pingOpenProject() {
+        setStorageSyncResult('در حال بررسی اتصال OpenProject ...', 'info');
+        const payload = await request('/api/v1/storage/openproject/ping', { method: 'POST' });
+        const reachable = Boolean(payload?.reachable);
+        const authOk = Boolean(payload?.auth_ok);
+        const statusCode = payload?.status_code ?? '-';
+        const tokenSource = String(payload?.token_source || 'none');
+        const message = String(payload?.message || '');
+        const summary = `Ping OpenProject: reachable=${reachable} | auth_ok=${authOk} | status=${statusCode} | token_source=${tokenSource}`;
+        setStorageSyncResult(`${summary}${message ? ` | ${message}` : ''}`, authOk ? 'success' : (reachable ? 'info' : 'error'));
+        if (authOk) tSuccess('اتصال OpenProject تایید شد.');
+        else tError('Ping OpenProject انجام شد ولی احراز هویت/مسیر نیاز به اصلاح دارد.');
+    }
+
+    async function runStorageSyncJob(kind) {
+        const endpoint = kind === 'openproject'
+            ? '/api/v1/storage/sync/openproject/run'
+            : '/api/v1/storage/sync/google-drive/run';
+        const title = kind === 'openproject' ? 'OpenProject' : 'Google Drive';
+        setStorageSyncResult(`Ø¯Ø± Ø­Ø§Ù„ Ø§Ø¬Ø±Ø§ÛŒ Sync ${title} ...`, 'info');
+        const payload = await request(endpoint, { method: 'POST' });
+        const processed = Number(payload?.processed || 0);
+        const succeeded = Number(payload?.success || payload?.succeeded || 0);
+        const failed = Number(payload?.failed || 0);
+        const dead = Number(payload?.dead || 0);
+        const summary = `Ù†ØªÛŒØ¬Ù‡ Sync ${title}: Ù¾Ø±Ø¯Ø§Ø²Ø´=${processed}ØŒ Ù…ÙˆÙÙ‚=${succeeded}ØŒ Ø®Ø·Ø§=${failed}ØŒ ØµÙâ€ŒÙ…Ø¹ÛŒÙˆØ¨=${dead}`;
+        setStorageSyncResult(summary, failed > 0 || dead > 0 ? 'error' : 'success');
+        if (failed > 0 || dead > 0) {
+            tError(`${summary}. Ø¬Ø²Ø¦ÛŒØ§Øª Ø¯Ø± Ù¾Ù†Ù„ Ù†ØªÛŒØ¬Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ø´Ø¯.`);
+            return;
+        }
+        tSuccess(summary);
+    }
+
+    function bindIntegrationsActions() {
+        const root = document.getElementById('settingsIntegrationsRoot');
+        if (!root || root.dataset.integrationsActionsBound === '1') return;
+        root.addEventListener('click', async (event) => {
+            const actionEl = event?.target?.closest?.('[data-integrations-action]');
+            if (!actionEl || !root.contains(actionEl)) return;
+            event.preventDefault();
+            const action = norm(actionEl.dataset.integrationsAction || '').toLowerCase();
+            try {
+                if (action === 'save-integrations') {
+                    await saveStorageIntegrations();
+                    return;
+                }
+                if (action === 'run-google-sync') {
+                    await runStorageSyncJob('google_drive');
+                    return;
+                }
+                if (action === 'run-openproject-sync') {
+                    await runStorageSyncJob('openproject');
+                    return;
+                }
+                if (action === 'ping-openproject') {
+                    await pingOpenProject();
+                    return;
+                }
+                if (action === 'clear-openproject-token') {
+                    await clearOpenProjectStoredToken();
+                }
+            } catch (err) {
+                tError(err.message);
+            }
+        });
+        root.addEventListener('change', () => {
+            updateStorageIntegrationsFieldState();
+        });
+        root.dataset.integrationsActionsBound = '1';
+    }
+
+    async function initSettingsIntegrations(force = false) {
+        bindIntegrationsActions();
+        await loadStorageIntegrations(force);
+        updateStorageIntegrationsFieldState();
+    }
+
+    function setSiteCacheTokenMessage(message = '', level = 'info') {
+        const box = document.getElementById('siteCacheTokenPlain');
+        if (!box) return;
+        if (!message) {
+            box.style.display = 'none';
+            box.textContent = '';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.style.display = 'block';
+        box.textContent = message;
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function getActiveSiteCacheProfileId() {
+        const selected = Number(document.getElementById('siteCacheProfileSelect')?.value || STORE.siteCache.activeProfileId || 0);
+        if (!selected) {
+            throw new Error('Ø§Ø¨ØªØ¯Ø§ ÛŒÚ© Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØª Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯.');
+        }
+        return selected;
+    }
+
+    function normalizeSiteCacheProfileCode(value) {
+        const code = norm(value).toUpperCase();
+        requireVal(code, 'Ú©Ø¯ Ø³Ø§ÛŒØª');
+        if (!SITE_CACHE_CODE_RE.test(code)) {
+            throw new Error('Ú©Ø¯ Ø³Ø§ÛŒØª ÙÙ‚Ø· Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø´Ø§Ù…Ù„ Ø­Ø±ÙˆÙ Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒØŒ Ø¹Ø¯Ø¯ØŒ `_` Ùˆ `-` Ø¨Ø§Ø´Ø¯ (Ø­Ø¯Ø§Ù‚Ù„ Û² Ú©Ø§Ø±Ø§Ú©ØªØ±).');
+        }
+        return code;
+    }
+
+    function normalizeOptionalSiteCode(value, label, regex, maxLength) {
+        const code = norm(value).toUpperCase();
+        if (!code) return null;
+        if (code.length > maxLength) {
+            throw new Error(`${label} Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² ${maxLength} Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.`);
+        }
+        if (!regex.test(code)) {
+            throw new Error(`${label} ÙÙ‚Ø· Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ø´Ø§Ù…Ù„ Ø­Ø±ÙˆÙ Ø§Ù†Ú¯Ù„ÛŒØ³ÛŒØŒ Ø¹Ø¯Ø¯ØŒ '_' Ùˆ '-' Ø¨Ø§Ø´Ø¯.`);
+        }
+        return code;
+    }
+
+    function normalizeSiteCacheRootPath(value) {
+        const path = norm(value);
+        if (!path) return null;
+        if (path.length > 1024) {
+            throw new Error('Ù…Ø³ÛŒØ± Ø±ÛŒØ´Ù‡ Ù…Ø­Ù„ÛŒ Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û±Û°Û²Û´ Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.');
+        }
+        return path;
+    }
+
+    function normalizeSiteCacheFallbackMode(value) {
+        const mode = norm(value).toLowerCase() || 'local_first';
+        if (!['local_first', 'hq_first'].includes(mode)) {
+            throw new Error('Ø­Ø§Ù„Øª fallback Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        }
+        return mode;
+    }
+
+    function normalizeSiteCacheRuleName(value) {
+        const name = norm(value);
+        requireVal(name, 'Ù†Ø§Ù… Ù‚Ø§Ù†ÙˆÙ†');
+        if (name.length > 255) {
+            throw new Error('Ù†Ø§Ù… Ù‚Ø§Ù†ÙˆÙ† Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û²ÛµÛµ Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.');
+        }
+        return name;
+    }
+
+    function parseSiteCacheStatusCodes(value) {
+        const items = parseCommaSeparatedList(String(value || '').toUpperCase());
+        const dedup = [];
+        for (const raw of items) {
+            const code = norm(raw).toUpperCase();
+            if (!code) continue;
+            if (!SITE_CACHE_STATUS_CODE_RE.test(code)) {
+                throw new Error(`Ú©Ø¯ ÙˆØ¶Ø¹ÛŒØª Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª: ${code}`);
+            }
+            if (!dedup.includes(code)) dedup.push(code);
+        }
+        return dedup.length ? dedup.join(',') : 'IFA,IFC';
+    }
+
+    function parseSiteCachePriority(value) {
+        const raw = String(value ?? '').trim();
+        if (!raw) return 100;
+        const n = Number(raw);
+        if (!Number.isInteger(n) || n < 0 || n > 10000) {
+            throw new Error('Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø§ÛŒØ¯ ÛŒÚ© Ø¹Ø¯Ø¯ ØµØ­ÛŒØ­ Ø¨ÛŒÙ† Û° ØªØ§ Û±Û°Û°Û°Û° Ø¨Ø§Ø´Ø¯.');
+        }
+        return n;
+    }
+
+    function validateIPv4Address(value) {
+        const parts = String(value || '').split('.');
+        if (parts.length !== 4) return false;
+        return parts.every((part) => {
+            if (!/^\d{1,3}$/.test(part)) return false;
+            const num = Number(part);
+            return Number.isInteger(num) && num >= 0 && num <= 255;
+        });
+    }
+
+    function validateIPv6Address(value) {
+        const ip = String(value || '').trim();
+        if (!ip) return false;
+        if (!/^[0-9a-fA-F:]+$/.test(ip)) return false;
+        const segments = ip.split(':');
+        if (segments.length < 3 || segments.length > 8) return false;
+        let emptyCount = 0;
+        for (const segment of segments) {
+            if (segment === '') {
+                emptyCount += 1;
+                continue;
+            }
+            if (!/^[0-9a-fA-F]{1,4}$/.test(segment)) return false;
+        }
+        return emptyCount <= 2;
+    }
+
+    function normalizeSiteCacheCidr(value) {
+        const raw = norm(value);
+        requireVal(raw, 'CIDR');
+        const slash = raw.indexOf('/');
+        if (slash <= 0 || slash === raw.length - 1) {
+            throw new Error('CIDR Ù†Ø§Ù…Ø¹ØªØ¨Ø± Ø§Ø³Øª. Ù†Ù…ÙˆÙ†Ù‡ ØµØ­ÛŒØ­: 10.88.0.0/16');
+        }
+        const ip = raw.slice(0, slash).trim();
+        const prefixRaw = raw.slice(slash + 1).trim();
+        if (!/^\d{1,3}$/.test(prefixRaw)) {
+            throw new Error('Ø¨Ø®Ø´ Prefix Ø¯Ø± CIDR Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        }
+        const prefix = Number(prefixRaw);
+        if (ip.includes(':')) {
+            if (!validateIPv6Address(ip) || prefix < 0 || prefix > 128) {
+                throw new Error('CIDR IPv6 Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+            }
+            return `${ip}/${prefix}`;
+        }
+        if (!validateIPv4Address(ip) || prefix < 0 || prefix > 32) {
+            throw new Error('CIDR IPv4 Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        }
+        return `${ip}/${prefix}`;
+    }
+
+    function ensureInputValidity(inputEl, fallbackMessage) {
+        if (!inputEl || typeof inputEl.checkValidity !== 'function') return;
+        if (inputEl.checkValidity()) return;
+        if (typeof inputEl.reportValidity === 'function') inputEl.reportValidity();
+        throw new Error(fallbackMessage);
+    }
+
+    function toSiteCacheFilterCode(value, regex, label, maxLength) {
+        const raw = norm(value).toUpperCase();
+        if (!raw || raw === SITE_CACHE_ALL_VALUE) return null;
+        if (raw.length > maxLength) {
+            throw new Error(`${label} Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² ${maxLength} Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.`);
+        }
+        if (!regex.test(raw)) {
+            throw new Error(`${label} Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.`);
+        }
+        return raw;
+    }
+
+    function getMultiSelectValues(selectEl) {
+        if (!selectEl) return [];
+        const options = Array.from(selectEl.selectedOptions || []);
+        return options
+            .map((opt) => norm(opt?.value).toUpperCase())
+            .filter(Boolean);
+    }
+
+    function normalizeMultiSelectValues(values) {
+        const normalized = [];
+        (Array.isArray(values) ? values : []).forEach((item) => {
+            const code = norm(item).toUpperCase();
+            if (!code) return;
+            if (!normalized.includes(code)) normalized.push(code);
+        });
+        if (!normalized.length) return [SITE_CACHE_ALL_VALUE];
+        if (normalized.includes(SITE_CACHE_ALL_VALUE) && normalized.length > 1) {
+            return normalized.filter((item) => item !== SITE_CACHE_ALL_VALUE);
+        }
+        return normalized;
+    }
+
+    function setMultiSelectValues(selectEl, values) {
+        if (!selectEl) return;
+        const target = normalizeMultiSelectValues(values);
+        Array.from(selectEl.options || []).forEach((opt) => {
+            const code = norm(opt?.value).toUpperCase();
+            opt.selected = target.includes(code);
+        });
+        refreshSiteCacheTokenMultiControl(selectEl.id);
+    }
+
+    function closeSiteCacheTokenMultiDropdown(exceptId = '') {
+        Object.entries(STORE.siteCache.tokenMulti || {}).forEach(([selectId, ref]) => {
+            if (!ref?.dropdown || selectId === exceptId) return;
+            ref.dropdown.classList.remove('is-open');
+            ref.trigger?.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function updateSiteCacheTokenMultiOptions(selectId) {
+        const ref = STORE.siteCache.tokenMulti?.[selectId];
+        if (!ref?.select || !ref.optionsBox) return;
+        const q = norm(ref.searchInput?.value).toLowerCase();
+        const selected = new Set(normalizeMultiSelectValues(getMultiSelectValues(ref.select)));
+        const options = Array.from(ref.select.options || []).map((opt) => ({
+            value: norm(opt.value).toUpperCase(),
+            label: String(opt.textContent || '').trim(),
+        }));
+        const filtered = q
+            ? options.filter((opt) => opt.label.toLowerCase().includes(q) || opt.value.toLowerCase().includes(q))
+            : options;
+
+        ref.optionsBox.innerHTML = filtered.length
+            ? filtered.map((opt) => {
+                const checked = selected.has(opt.value);
+                return `
+                    <button type="button" class="token-multi-option ${checked ? 'is-selected' : ''}" data-token-option-value="${esc(opt.value)}">
+                        <span class="token-multi-option-check material-icons-round">${checked ? 'check_box' : 'check_box_outline_blank'}</span>
+                        <span class="token-multi-option-label">${esc(opt.label)}</span>
+                    </button>
+                `;
+            }).join('')
+            : '<div class="token-multi-empty">Ú¯Ø²ÛŒÙ†Ù‡â€ŒØ§ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯.</div>';
+    }
+
+    function updateSiteCacheTokenMultiChips(selectId) {
+        const ref = STORE.siteCache.tokenMulti?.[selectId];
+        if (!ref?.select || !ref.chipsBox || !ref.placeholder) return;
+        const values = normalizeMultiSelectValues(getMultiSelectValues(ref.select));
+        const selectedValues = new Set(values);
+        const options = Array.from(ref.select.options || []);
+        const chips = [];
+
+        values.forEach((value) => {
+            if (value === SITE_CACHE_ALL_VALUE) {
+                chips.push(`
+                    <span class="token-chip token-chip-all">
+                        <span>Ù‡Ù…Ù‡</span>
+                    </span>
+                `);
+                return;
+            }
+            const opt = options.find((item) => norm(item?.value).toUpperCase() === value);
+            const label = String(opt?.textContent || value).trim();
+            chips.push(`
+                <button type="button" class="token-chip" data-token-chip-value="${esc(value)}" title="${esc(label)}">
+                    <span>${esc(label)}</span>
+                    <span class="material-icons-round">close</span>
+                </button>
+            `);
+        });
+
+        ref.chipsBox.innerHTML = chips.join('');
+        const showPlaceholder = values.length === 1 && values[0] === SITE_CACHE_ALL_VALUE;
+        ref.placeholder.style.display = showPlaceholder ? '' : 'none';
+        ref.placeholder.textContent = SITE_CACHE_TOKEN_MULTI_PLACEHOLDER[selectId] || 'Ø§Ù†ØªØ®Ø§Ø¨ Ú¯Ø²ÛŒÙ†Ù‡';
+        ref.root.classList.toggle('is-disabled', Boolean(ref.select.disabled));
+        ref.root.classList.toggle('has-value', !showPlaceholder);
+        ref.trigger?.setAttribute('aria-expanded', ref.dropdown?.classList.contains('is-open') ? 'true' : 'false');
+        ref.root.dataset.selected = Array.from(selectedValues).join(',');
+    }
+
+    function refreshSiteCacheTokenMultiControl(selectId) {
+        const ref = STORE.siteCache.tokenMulti?.[selectId];
+        if (!ref) return;
+        updateSiteCacheTokenMultiChips(selectId);
+        updateSiteCacheTokenMultiOptions(selectId);
+    }
+
+    function toggleSiteCacheTokenMultiValue(selectId, value) {
+        const ref = STORE.siteCache.tokenMulti?.[selectId];
+        if (!ref?.select || ref.select.disabled) return;
+        const code = norm(value).toUpperCase();
+        if (!code) return;
+        let selected = normalizeMultiSelectValues(getMultiSelectValues(ref.select));
+        if (code === SITE_CACHE_ALL_VALUE) {
+            selected = [SITE_CACHE_ALL_VALUE];
+        } else if (selected.includes(code)) {
+            selected = selected.filter((item) => item !== code);
+        } else {
+            selected = selected.filter((item) => item !== SITE_CACHE_ALL_VALUE).concat([code]);
+        }
+        setMultiSelectValues(ref.select, selected.length ? selected : [SITE_CACHE_ALL_VALUE]);
+        ref.select.dispatchEvent(new Event('change', { bubbles: true }));
+        refreshSiteCacheTokenMultiControl(selectId);
+    }
+
+    function ensureSiteCacheTokenMultiControl(selectId) {
+        const selectEl = document.getElementById(selectId);
+        if (!selectEl) return;
+        if (STORE.siteCache.tokenMulti?.[selectId]) {
+            refreshSiteCacheTokenMultiControl(selectId);
+            return;
+        }
+
+        const root = document.createElement('div');
+        root.className = 'token-multi-root';
+        root.dataset.selectId = selectId;
+
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'token-multi-trigger';
+        trigger.setAttribute('aria-haspopup', 'listbox');
+        trigger.setAttribute('aria-expanded', 'false');
+
+        const chipsBox = document.createElement('div');
+        chipsBox.className = 'token-multi-chips';
+
+        const placeholder = document.createElement('span');
+        placeholder.className = 'token-multi-placeholder';
+        placeholder.textContent = SITE_CACHE_TOKEN_MULTI_PLACEHOLDER[selectId] || 'Ø§Ù†ØªØ®Ø§Ø¨ Ú¯Ø²ÛŒÙ†Ù‡';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-icons-round token-multi-expand';
+        icon.textContent = 'expand_more';
+
+        trigger.appendChild(chipsBox);
+        trigger.appendChild(placeholder);
+        trigger.appendChild(icon);
+
+        const dropdown = document.createElement('div');
+        dropdown.className = 'token-multi-dropdown';
+
+        const searchWrap = document.createElement('div');
+        searchWrap.className = 'token-multi-search-wrap';
+
+        const searchIcon = document.createElement('span');
+        searchIcon.className = 'material-icons-round';
+        searchIcon.textContent = 'search';
+
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'token-multi-search-input';
+        searchInput.placeholder = 'Ø¬Ø³ØªØ¬Ùˆ...';
+
+        searchWrap.appendChild(searchIcon);
+        searchWrap.appendChild(searchInput);
+
+        const optionsBox = document.createElement('div');
+        optionsBox.className = 'token-multi-options';
+
+        dropdown.appendChild(searchWrap);
+        dropdown.appendChild(optionsBox);
+        root.appendChild(trigger);
+        root.appendChild(dropdown);
+
+        selectEl.classList.add('token-multi-native');
+        selectEl.parentElement?.insertBefore(root, selectEl);
+
+        STORE.siteCache.tokenMulti[selectId] = {
+            select: selectEl,
+            root,
+            trigger,
+            dropdown,
+            searchInput,
+            chipsBox,
+            placeholder,
+            optionsBox,
+        };
+
+        trigger.addEventListener('click', () => {
+            if (selectEl.disabled) return;
+            const willOpen = !dropdown.classList.contains('is-open');
+            closeSiteCacheTokenMultiDropdown(willOpen ? selectId : '');
+            dropdown.classList.toggle('is-open', willOpen);
+            trigger.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            if (willOpen) {
+                searchInput.focus();
+                searchInput.select();
+            }
+            refreshSiteCacheTokenMultiControl(selectId);
+        });
+
+        searchInput.addEventListener('input', () => {
+            updateSiteCacheTokenMultiOptions(selectId);
+        });
+
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                dropdown.classList.remove('is-open');
+                trigger.setAttribute('aria-expanded', 'false');
+                trigger.focus();
+            }
+        });
+
+        optionsBox.addEventListener('click', (event) => {
+            const optionBtn = event?.target?.closest?.('[data-token-option-value]');
+            if (!optionBtn) return;
+            toggleSiteCacheTokenMultiValue(selectId, optionBtn.dataset.tokenOptionValue || '');
+        });
+
+        chipsBox.addEventListener('click', (event) => {
+            const chipBtn = event?.target?.closest?.('[data-token-chip-value]');
+            if (!chipBtn) return;
+            const value = norm(chipBtn.dataset.tokenChipValue).toUpperCase();
+            if (!value) return;
+            const selected = normalizeMultiSelectValues(getMultiSelectValues(selectEl)).filter((item) => item !== value);
+            setMultiSelectValues(selectEl, selected.length ? selected : [SITE_CACHE_ALL_VALUE]);
+            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+            refreshSiteCacheTokenMultiControl(selectId);
+        });
+
+        refreshSiteCacheTokenMultiControl(selectId);
+    }
+
+    function ensureSiteCacheTokenMultiControls() {
+        SITE_CACHE_TOKEN_MULTI_IDS.forEach((selectId) => ensureSiteCacheTokenMultiControl(selectId));
+    }
+
+    function syncDisciplinesBySelectedPackages() {
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        if (!packageSelect || !disciplineSelect) return;
+        const selectedPackages = normalizeMultiSelectValues(getMultiSelectValues(packageSelect));
+        if (selectedPackages.includes(SITE_CACHE_ALL_VALUE)) return;
+        const disciplines = [];
+        selectedPackages.forEach((value) => {
+            const code = norm(value).toUpperCase();
+            const sep = code.indexOf('::');
+            if (sep <= 0) return;
+            const disc = code.slice(0, sep);
+            if (disc && !disciplines.includes(disc)) disciplines.push(disc);
+        });
+        if (!disciplines.length) return;
+        setMultiSelectValues(disciplineSelect, disciplines);
+        fillSiteCacheRulePackageOptions(disciplines, selectedPackages);
+    }
+
+    function parseSiteCacheFilterCodes(selectEl, regex, label, maxLength) {
+        const values = normalizeMultiSelectValues(getMultiSelectValues(selectEl));
+        if (values.length === 1 && values[0] === SITE_CACHE_ALL_VALUE) return [null];
+        const out = values
+            .map((value) => toSiteCacheFilterCode(value, regex, label, maxLength))
+            .filter(Boolean);
+        return out.length ? out : [null];
+    }
+
+    function parseSiteCachePackageSelections(selectEl) {
+        const values = normalizeMultiSelectValues(getMultiSelectValues(selectEl));
+        if (values.length === 1 && values[0] === SITE_CACHE_ALL_VALUE) {
+            return [{ discipline_code: null, package_code: null }];
+        }
+        const out = [];
+        for (const value of values) {
+            const raw = norm(value).toUpperCase();
+            const sep = raw.indexOf('::');
+            if (sep <= 0 || sep >= raw.length - 2) {
+                throw new Error(`Ù¾Ú©ÛŒØ¬ Ø§Ù†ØªØ®Ø§Ø¨â€ŒØ´Ø¯Ù‡ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª: ${raw || '-'}`);
+            }
+            const discipline_code = toSiteCacheFilterCode(raw.slice(0, sep), SITE_CACHE_DISCIPLINE_CODE_RE, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ù¾Ú©ÛŒØ¬', 20);
+            const package_code = toSiteCacheFilterCode(raw.slice(sep + 2), SITE_CACHE_PACKAGE_CODE_RE, 'Ú©Ø¯ Ù¾Ú©ÛŒØ¬', 30);
+            if (!discipline_code || !package_code) continue;
+            out.push({ discipline_code, package_code });
+        }
+        return out.length ? out : [{ discipline_code: null, package_code: null }];
+    }
+
+    function buildSiteCacheRuleTargets(projectCodes, disciplineCodes, packageSelections) {
+        const hasPackageScope = packageSelections.some((item) => item.package_code);
+        const targets = [];
+        if (hasPackageScope) {
+            for (const projectCode of projectCodes) {
+                for (const pkg of packageSelections) {
+                    if (!pkg.package_code) continue;
+                    if (disciplineCodes.every((code) => code !== null) && !disciplineCodes.includes(pkg.discipline_code)) {
+                        continue;
+                    }
+                    targets.push({
+                        project_code: projectCode,
+                        discipline_code: pkg.discipline_code,
+                        package_code: pkg.package_code,
+                    });
+                }
+            }
+        } else {
+            for (const projectCode of projectCodes) {
+                for (const disciplineCode of disciplineCodes) {
+                    targets.push({
+                        project_code: projectCode,
+                        discipline_code: disciplineCode,
+                        package_code: null,
+                    });
+                }
+            }
+        }
+
+        const dedup = [];
+        const seen = new Set();
+        for (const target of targets) {
+            const key = `${target.project_code || 'ALL'}|${target.discipline_code || 'ALL'}|${target.package_code || 'ALL'}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            dedup.push(target);
+        }
+        return { targets: dedup, hasPackageScope };
+    }
+
+    function countEffectiveMultiSelect(selectEl, totalCount) {
+        const values = normalizeMultiSelectValues(getMultiSelectValues(selectEl));
+        if (!values.length || values.includes(SITE_CACHE_ALL_VALUE)) {
+            return Number(totalCount || 0);
+        }
+        return values.length;
+    }
+
+    function updateSiteCacheRuleLiveSummary() {
+        const summaryEl = document.getElementById('siteCacheRuleLiveSummary');
+        const projectSelect = document.getElementById('siteCacheRuleProjectInput');
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        if (!summaryEl || !projectSelect || !disciplineSelect || !packageSelect) return;
+
+        try {
+            const projectCodes = parseSiteCacheFilterCodes(projectSelect, SITE_CACHE_PROJECT_CODE_RE, 'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ Ù‚Ø§Ù†ÙˆÙ†', 50);
+            const disciplineCodes = parseSiteCacheFilterCodes(disciplineSelect, SITE_CACHE_DISCIPLINE_CODE_RE, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ù‚Ø§Ù†ÙˆÙ†', 20);
+            const packageSelections = parseSiteCachePackageSelections(packageSelect);
+            const compiled = buildSiteCacheRuleTargets(projectCodes, disciplineCodes, packageSelections);
+            const projectCount = countEffectiveMultiSelect(projectSelect, (STORE.data.projects || []).length);
+            const disciplineCount = countEffectiveMultiSelect(disciplineSelect, (STORE.data.disciplines || []).length);
+            const packageOptionCount = Array.from(packageSelect.options || []).filter((opt) => norm(opt?.value).toUpperCase() !== SITE_CACHE_ALL_VALUE).length;
+            const packageCount = countEffectiveMultiSelect(packageSelect, packageOptionCount);
+
+            summaryEl.classList.remove('is-error');
+            summaryEl.innerHTML = `
+                <strong>Ø®Ù„Ø§ØµÙ‡ Ø§Ù†ØªØ®Ø§Ø¨:</strong>
+                Ù¾Ø±ÙˆÚ˜Ù‡: ${Number(projectCount || 0)} |
+                Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†: ${Number(disciplineCount || 0)} |
+                Ù¾Ú©ÛŒØ¬: ${Number(packageCount || 0)} |
+                ØªØ±Ú©ÛŒØ¨ Ù†Ù‡Ø§ÛŒÛŒ: ${compiled.targets.length}
+            `;
+        } catch (err) {
+            summaryEl.classList.add('is-error');
+            summaryEl.textContent = `ØªØ±Ú©ÛŒØ¨ ÙØ¹Ù„ÛŒ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª: ${err.message || 'Ø®Ø·Ø§ÛŒ Ù†Ø§Ù…Ø´Ø®Øµ'}`;
+        }
+    }
+
+    function fillSiteCacheRulePackageOptions(selectedDisciplines = null, selectedPackages = null) {
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        if (!packageSelect) return;
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        const selectedDisciplineValues = normalizeMultiSelectValues(
+            Array.isArray(selectedDisciplines) ? selectedDisciplines : getMultiSelectValues(disciplineSelect)
+        );
+        const currentPackageValues = normalizeMultiSelectValues(
+            Array.isArray(selectedPackages) ? selectedPackages : getMultiSelectValues(packageSelect)
+        );
+        const isAllDiscipline = selectedDisciplineValues.includes(SITE_CACHE_ALL_VALUE);
+        const packageRows = (STORE.data.packages || [])
+            .filter((row) => {
+                if (isAllDiscipline) return true;
+                const disc = norm(row?.discipline_code).toUpperCase();
+                return selectedDisciplineValues.includes(disc);
+            })
+            .sort((a, b) => {
+                const ad = String(a?.discipline_code || '');
+                const bd = String(b?.discipline_code || '');
+                if (ad !== bd) return ad.localeCompare(bd);
+                return String(a?.package_code || '').localeCompare(String(b?.package_code || ''));
+            });
+        const options = [`<option value="${SITE_CACHE_ALL_VALUE}">Ù‡Ù…Ù‡ Ù¾Ú©ÛŒØ¬â€ŒÙ‡Ø§</option>`]
+            .concat(
+                packageRows.map((row) => {
+                    const disc = norm(row?.discipline_code).toUpperCase();
+                    const code = norm(row?.package_code).toUpperCase();
+                    const pair = `${disc}::${code}`;
+                    const label = `${disc || '-'} / ${code || '-'} - ${norm(row?.name_e) || norm(row?.name_p) || '-'}`;
+                    return `<option value="${esc(pair)}">${esc(label)}</option>`;
+                })
+            )
+            .join('');
+        packageSelect.innerHTML = options;
+        if (isAllDiscipline) {
+            packageSelect.disabled = true;
+            setMultiSelectValues(packageSelect, [SITE_CACHE_ALL_VALUE]);
+            updateSiteCacheRuleLiveSummary();
+            return;
+        }
+        packageSelect.disabled = false;
+        const allowedValues = new Set(
+            [SITE_CACHE_ALL_VALUE].concat(
+                packageRows.map((row) => `${norm(row?.discipline_code).toUpperCase()}::${norm(row?.package_code).toUpperCase()}`)
+            )
+        );
+        const nextValues = currentPackageValues.filter((value) => allowedValues.has(value));
+        setMultiSelectValues(packageSelect, nextValues.length ? nextValues : [SITE_CACHE_ALL_VALUE]);
+        updateSiteCacheRuleLiveSummary();
+    }
+
+    function fillSiteCacheRuleFilterOptions() {
+        const projectSelect = document.getElementById('siteCacheRuleProjectInput');
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        if (!projectSelect || !disciplineSelect || !packageSelect) return;
+        const currentProject = normalizeMultiSelectValues(getMultiSelectValues(projectSelect));
+        const currentDiscipline = normalizeMultiSelectValues(getMultiSelectValues(disciplineSelect));
+        const currentPackage = normalizeMultiSelectValues(getMultiSelectValues(packageSelect));
+        const projectOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">Ù‡Ù…Ù‡ Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§</option>`]
+            .concat(
+                (STORE.data.projects || []).map((row) => {
+                    const code = norm(row?.code).toUpperCase();
+                    const label = `${code || '-'} - ${norm(row?.project_name) || '-'}`;
+                    return `<option value="${esc(code)}">${esc(label)}</option>`;
+                })
+            )
+            .join('');
+        const disciplineOptions = [`<option value="${SITE_CACHE_ALL_VALUE}">Ù‡Ù…Ù‡ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§</option>`]
+            .concat(
+                (STORE.data.disciplines || []).map((row) => {
+                    const code = norm(row?.code).toUpperCase();
+                    const label = `${code || '-'} - ${norm(row?.name_e) || norm(row?.name_p) || '-'}`;
+                    return `<option value="${esc(code)}">${esc(label)}</option>`;
+                })
+            )
+            .join('');
+        projectSelect.innerHTML = projectOptions;
+        disciplineSelect.innerHTML = disciplineOptions;
+        const validProjects = [SITE_CACHE_ALL_VALUE].concat((STORE.data.projects || []).map((row) => norm(row?.code).toUpperCase()));
+        const validDisciplines = [SITE_CACHE_ALL_VALUE].concat((STORE.data.disciplines || []).map((row) => norm(row?.code).toUpperCase()));
+        setMultiSelectValues(projectSelect, currentProject.filter((code) => validProjects.includes(code)));
+        setMultiSelectValues(disciplineSelect, currentDiscipline.filter((code) => validDisciplines.includes(code)));
+        fillSiteCacheRulePackageOptions(getMultiSelectValues(disciplineSelect), currentPackage);
+        ensureSiteCacheTokenMultiControls();
+        updateSiteCacheRuleLiveSummary();
+    }
+
+    function setSiteCacheListTab(tab) {
+        const targetTab = ['cidr', 'rules', 'tokens'].includes(String(tab || '').toLowerCase())
+            ? String(tab).toLowerCase()
+            : (STORE.siteCache.activeListTab || 'cidr');
+        STORE.siteCache.activeListTab = targetTab;
+        document.querySelectorAll('.site-cache-list-tab[data-site-cache-list-tab]').forEach((btn) => {
+            const isActive = String(btn?.dataset?.siteCacheListTab || '').toLowerCase() === targetTab;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-site-cache-list-panel]').forEach((panel) => {
+            const isActive = String(panel?.dataset?.siteCacheListPanel || '').toLowerCase() === targetTab;
+            panel.classList.toggle('active', isActive);
+            panel.hidden = !isActive;
+        });
+    }
+
+    function currentSiteCacheProfile() {
+        const activeId = Number(STORE.siteCache.activeProfileId || 0);
+        return (STORE.siteCache.profiles || []).find((item) => Number(item?.id || 0) === activeId) || null;
+    }
+
+    function renderSiteCacheProfiles() {
+        const tbody = document.getElementById('settingsSiteCacheProfilesRows');
+        const profileSelect = document.getElementById('siteCacheProfileSelect');
+        if (!tbody || !profileSelect) return;
+        const profiles = Array.isArray(STORE.siteCache.profiles) ? STORE.siteCache.profiles : [];
+        if (!profiles.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center muted">Ù‡ÛŒÚ† Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØªÛŒ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</td></tr>';
+            profileSelect.innerHTML = '<option value="">Ø§Ù†ØªØ®Ø§Ø¨ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØª</option>';
+            setSiteCacheListTab('cidr');
+            return;
+        }
+
+        if (!STORE.siteCache.activeProfileId || !profiles.some((item) => Number(item?.id || 0) === Number(STORE.siteCache.activeProfileId || 0))) {
+            STORE.siteCache.activeProfileId = Number(profiles[0]?.id || 0);
+        }
+
+        tbody.innerHTML = profiles.map((item) => {
+            const pid = Number(item?.id || 0);
+            return `
+                <tr>
+                    <td>${esc(item?.code || '-')}</td>
+                    <td>${esc(item?.name || '-')}</td>
+                    <td>${esc(item?.project_code || '-')}</td>
+                    <td>${boolBadge(Boolean(item?.is_active))}</td>
+                    <td>${rowActions(`
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-site-cache-profile" data-profile-id="${pid}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon btn-archive-danger-soft" type="button" data-general-action="delete-site-cache-profile" data-profile-id="${pid}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
+                    `)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        profileSelect.innerHTML = profiles
+            .map((item) => `<option value="${Number(item?.id || 0)}">${esc(`${item?.code || '-'} - ${item?.name || '-'}`)}</option>`)
+            .join('');
+        profileSelect.value = String(STORE.siteCache.activeProfileId || '');
+        setSiteCacheListTab(STORE.siteCache.activeListTab || 'cidr');
+    }
+
+    function renderSiteCacheProfileDetails(profile) {
+        const cidrBox = document.getElementById('settingsSiteCacheCidrsRows');
+        const ruleBox = document.getElementById('settingsSiteCacheRulesRows');
+        const tokenBox = document.getElementById('settingsSiteCacheTokensRows');
+        if (!cidrBox || !ruleBox || !tokenBox) return;
+
+        const cidrs = Array.isArray(profile?.cidrs) ? profile.cidrs : [];
+        const rules = Array.isArray(profile?.rules) ? profile.rules : [];
+
+        cidrBox.innerHTML = cidrs.length
+            ? cidrs.map((item) => `
+                <div class="general-inline-chip">
+                    <span class="material-icons-round">network_check</span>
+                    <span>${esc(item?.cidr || '-')}</span>
+                    <button type="button" data-general-action="delete-site-cache-cidr" data-cidr-id="${Number(item?.id || 0)}" title="Ø­Ø°Ù CIDR">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+            `).join('')
+            : '<div class="text-muted">CIDR Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</div>';
+
+        ruleBox.innerHTML = rules.length
+            ? rules.map((item) => `
+                <div class="general-inline-chip">
+                    <span class="material-icons-round">rule</span>
+                    <span>${esc(item?.name || '-')} [${esc(item?.status_codes || '-')} ] (${esc(item?.project_code || 'Ù‡Ù…Ù‡')}/${esc(item?.discipline_code || 'Ù‡Ù…Ù‡')}/${esc(item?.package_code || 'Ù‡Ù…Ù‡')})</span>
+                    <button type="button" data-general-action="delete-site-cache-rule" data-rule-id="${Number(item?.id || 0)}" title="Ø­Ø°Ù Ù‚Ø§Ù†ÙˆÙ†">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+            `).join('')
+            : '<div class="text-muted">Ù‚Ø§Ù†ÙˆÙ†ÛŒ Ø«Ø¨Øª Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª.</div>';
+
+        tokenBox.innerHTML = '<div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>';
+        setSiteCacheListTab(STORE.siteCache.activeListTab || 'cidr');
+    }
+
+    async function loadSiteCacheTokens(profileId) {
+        const tokenBox = document.getElementById('settingsSiteCacheTokensRows');
+        if (!tokenBox || !profileId) return;
+        try {
+            const payload = await request(`${API_BASE}/site-cache/tokens?profile_id=${Number(profileId)}`);
+            const tokens = Array.isArray(payload?.items) ? payload.items : [];
+            tokenBox.innerHTML = tokens.length
+                ? tokens.map((item) => `
+                    <div class="general-inline-chip">
+                        <span class="material-icons-round">vpn_key</span>
+                        <span>${esc(item?.token_hint || '-')}</span>
+                        <button class="site-cache-danger-inline" type="button" data-general-action="revoke-site-cache-token" data-token-id="${Number(item?.id || 0)}" title="Ù„ØºÙˆ ØªÙˆÚ©Ù†">
+                            <span class="material-icons-round">close</span>
+                        </button>
+                    </div>
+                `).join('')
+                : '<div class="text-muted">ØªÙˆÚ©Ù† ÙØ¹Ø§Ù„ÛŒ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯.</div>';
+        } catch (err) {
+            tokenBox.innerHTML = `<div class="text-danger">${esc(err?.message || 'Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙˆÚ©Ù†â€ŒÙ‡Ø§ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯.')}</div>`;
+        }
+    }
+
+    async function loadSiteCache(force = false) {
+        const profileCodeInput = document.getElementById('siteCacheProfileCodeInput');
+        if (!profileCodeInput) return;
+        await loadEntity('projects', force);
+        await loadEntity('disciplines', force);
+        await loadEntity('packages', force);
+        fillSiteCacheRuleFilterOptions();
+        if (STORE.siteCacheLoaded && !force) {
+            renderSiteCacheProfiles();
+            const profile = currentSiteCacheProfile();
+            renderSiteCacheProfileDetails(profile);
+            if (profile?.id) await loadSiteCacheTokens(profile.id);
+            return;
+        }
+
+        const payload = await request(`${API_BASE}/site-cache/profiles?include_inactive=true`);
+        STORE.siteCache.profiles = Array.isArray(payload?.items) ? payload.items : [];
+        STORE.siteCacheLoaded = true;
+        renderSiteCacheProfiles();
+        const profile = currentSiteCacheProfile();
+        renderSiteCacheProfileDetails(profile);
+        if (profile?.id) await loadSiteCacheTokens(profile.id);
+    }
+
+    function resetSiteCacheProfileForm() {
+        const ids = [
+            'siteCacheProfileCodeInput',
+            'siteCacheProfileNameInput',
+            'siteCacheProfileProjectInput',
+            'siteCacheProfileRootInput',
+        ];
+        ids.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const fallback = document.getElementById('siteCacheProfileFallbackInput');
+        if (fallback) fallback.value = 'local_first';
+        const active = document.getElementById('siteCacheProfileActiveInput');
+        if (active) active.checked = true;
+        const codeInput = document.getElementById('siteCacheProfileCodeInput');
+        if (codeInput) delete codeInput.dataset.editId;
+    }
+
+    async function saveSiteCacheProfile() {
+        const codeInput = document.getElementById('siteCacheProfileCodeInput');
+        const nameInput = document.getElementById('siteCacheProfileNameInput');
+        if (!codeInput || !nameInput) return;
+        ensureInputValidity(codeInput, 'ÙØ±Ù…Øª Ú©Ø¯ Ø³Ø§ÛŒØª Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        ensureInputValidity(document.getElementById('siteCacheProfileProjectInput'), 'ÙØ±Ù…Øª Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        const code = normalizeSiteCacheProfileCode(codeInput.value);
+        const name = norm(nameInput.value);
+        requireVal(name, 'Ù†Ø§Ù… Ù¾Ø±ÙˆÙØ§ÛŒÙ„');
+        if (name.length > 255) {
+            throw new Error('Ù†Ø§Ù… Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ù†Ø¨Ø§ÛŒØ¯ Ø¨ÛŒØ´ØªØ± Ø§Ø² Û²ÛµÛµ Ú©Ø§Ø±Ø§Ú©ØªØ± Ø¨Ø§Ø´Ø¯.');
+        }
+
+        const editId = Number(codeInput.dataset.editId || 0);
+        const payload = {
+            id: editId > 0 ? editId : null,
+            code,
+            name,
+            project_code: normalizeOptionalSiteCode(
+                document.getElementById('siteCacheProfileProjectInput')?.value,
+                'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡',
+                SITE_CACHE_PROJECT_CODE_RE,
+                50
+            ),
+            local_root_path: normalizeSiteCacheRootPath(document.getElementById('siteCacheProfileRootInput')?.value),
+            fallback_mode: normalizeSiteCacheFallbackMode(document.getElementById('siteCacheProfileFallbackInput')?.value),
+            is_active: Boolean(document.getElementById('siteCacheProfileActiveInput')?.checked),
+        };
+        await request(`${API_BASE}/site-cache/profiles/upsert`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        setSiteCacheTokenMessage('');
+        await loadSiteCache(true);
+        resetSiteCacheProfileForm();
+        tSuccess('Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Site Cache Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+    }
+
+    function openEditSiteCacheProfile(profileId) {
+        const item = (STORE.siteCache.profiles || []).find((row) => Number(row?.id || 0) === Number(profileId || 0));
+        if (!item) return;
+        const codeInput = document.getElementById('siteCacheProfileCodeInput');
+        if (!codeInput) return;
+        codeInput.value = item.code || '';
+        codeInput.dataset.editId = String(Number(item.id || 0));
+        document.getElementById('siteCacheProfileNameInput').value = item.name || '';
+        document.getElementById('siteCacheProfileProjectInput').value = item.project_code || '';
+        document.getElementById('siteCacheProfileRootInput').value = item.local_root_path || '';
+        document.getElementById('siteCacheProfileFallbackInput').value = item.fallback_mode || 'local_first';
+        document.getElementById('siteCacheProfileActiveInput').checked = Boolean(item.is_active);
+        STORE.siteCache.activeProfileId = Number(item.id || 0);
+        renderSiteCacheProfiles();
+        renderSiteCacheProfileDetails(item);
+        loadSiteCacheTokens(item.id);
+    }
+
+    async function disableSiteCacheProfile(profileId) {
+        if (!confirm('Ø§ÛŒÙ† Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Site Cache ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´ÙˆØ¯ØŸ')) return;
+        await request(`${API_BASE}/site-cache/profiles/delete`, {
+            method: 'POST',
+            body: JSON.stringify({ id: Number(profileId || 0), hard_delete: false }),
+        });
+        await loadSiteCache(true);
+        tSuccess('Ù¾Ø±ÙˆÙØ§ÛŒÙ„ ØºÛŒØ±ÙØ¹Ø§Ù„ Ø´Ø¯.');
+    }
+
+    async function addSiteCacheCidr() {
+        const profileId = getActiveSiteCacheProfileId();
+        ensureInputValidity(document.getElementById('siteCacheCidrInput'), 'ÙØ±Ù…Øª CIDR Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        const cidr = normalizeSiteCacheCidr(document.getElementById('siteCacheCidrInput')?.value);
+        await request(`${API_BASE}/site-cache/cidrs/upsert`, {
+            method: 'POST',
+            body: JSON.stringify({ profile_id: profileId, cidr, is_active: true }),
+        });
+        const input = document.getElementById('siteCacheCidrInput');
+        if (input) input.value = '';
+        await loadSiteCache(true);
+        tSuccess('CIDR Ø§Ø¶Ø§ÙÙ‡ Ø´Ø¯.');
+    }
+
+    async function deleteSiteCacheCidr(cidrId) {
+        await request(`${API_BASE}/site-cache/cidrs/delete`, {
+            method: 'POST',
+            body: JSON.stringify({ id: Number(cidrId || 0) }),
+        });
+        await loadSiteCache(true);
+        tSuccess('CIDR Ø­Ø°Ù Ø´Ø¯.');
+    }
+
+    async function addSiteCacheRule() {
+        const profileId = getActiveSiteCacheProfileId();
+        ensureInputValidity(document.getElementById('siteCacheRulePriorityInput'), 'Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø§ÛŒØ¯ Ø¨ÛŒÙ† Û° ØªØ§ Û±Û°Û°Û°Û° Ø¨Ø§Ø´Ø¯.');
+        const name = normalizeSiteCacheRuleName(document.getElementById('siteCacheRuleNameInput')?.value);
+        const projectSelect = document.getElementById('siteCacheRuleProjectInput');
+        const disciplineSelect = document.getElementById('siteCacheRuleDisciplineInput');
+        const packageSelect = document.getElementById('siteCacheRulePackageInput');
+        const projectCodes = parseSiteCacheFilterCodes(projectSelect, SITE_CACHE_PROJECT_CODE_RE, 'Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ Ù‚Ø§Ù†ÙˆÙ†', 50);
+        const disciplineCodes = parseSiteCacheFilterCodes(disciplineSelect, SITE_CACHE_DISCIPLINE_CODE_RE, 'Ú©Ø¯ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ† Ù‚Ø§Ù†ÙˆÙ†', 20);
+        const packageSelections = parseSiteCachePackageSelections(packageSelect);
+        const statusCodes = parseSiteCacheStatusCodes(document.getElementById('siteCacheRuleStatusInput')?.value);
+        const includeNative = Boolean(document.getElementById('siteCacheRuleIncludeNativeInput')?.checked);
+        const primaryOnly = Boolean(document.getElementById('siteCacheRulePrimaryOnlyInput')?.checked);
+        const priority = parseSiteCachePriority(document.getElementById('siteCacheRulePriorityInput')?.value);
+        const compiled = buildSiteCacheRuleTargets(projectCodes, disciplineCodes, packageSelections);
+        const dedup = compiled.targets;
+        if (!dedup.length) {
+            throw new Error('ØªØ±Ú©ÛŒØ¨ Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ù¾Ø±ÙˆÚ˜Ù‡/Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†/Ù¾Ú©ÛŒØ¬ Ù…Ø¹ØªØ¨Ø± Ù†ÛŒØ³Øª.');
+        }
+        if (dedup.length > 100) {
+            throw new Error('ØªØ¹Ø¯Ø§Ø¯ ØªØ±Ú©ÛŒØ¨â€ŒÙ‡Ø§ÛŒ Ø§Ù†ØªØ®Ø§Ø¨ÛŒ Ø²ÛŒØ§Ø¯ Ø§Ø³Øª (Ø¨ÛŒØ´ Ø§Ø² Û±Û°Û°). Ù„Ø·ÙØ§Ù‹ ÙÛŒÙ„ØªØ±Ù‡Ø§ Ø±Ø§ Ù…Ø­Ø¯ÙˆØ¯ØªØ± Ú©Ù†ÛŒØ¯.');
+        }
+
+        const existingRules = Array.isArray(currentSiteCacheProfile()?.rules) ? currentSiteCacheProfile().rules : [];
+        const makeRuleKey = (payload) => [
+            norm(payload.name),
+            norm(payload.project_code || 'ALL'),
+            norm(payload.discipline_code || 'ALL'),
+            norm(payload.package_code || 'ALL'),
+            norm(payload.status_codes),
+            payload.include_native ? '1' : '0',
+            payload.primary_only ? '1' : '0',
+            '1',
+            String(Number(payload.priority || 0)),
+            payload.is_active ? '1' : '0',
+        ].join('|');
+        const existingKeys = new Set(existingRules.map((row) => makeRuleKey({
+            name: row?.name || '',
+            project_code: row?.project_code,
+            discipline_code: row?.discipline_code,
+            package_code: row?.package_code,
+            status_codes: row?.status_codes || 'IFA,IFC',
+            include_native: Boolean(row?.include_native),
+            primary_only: Boolean(row?.primary_only),
+            priority: Number(row?.priority || 0),
+            is_active: Boolean(row?.is_active ?? true),
+        })));
+
+        let createdCount = 0;
+        let existedCount = 0;
+        for (const target of dedup) {
+            const scopeLabel = `${target.project_code || 'Ù‡Ù…Ù‡'}/${target.discipline_code || 'Ù‡Ù…Ù‡'}/${target.package_code || 'Ù‡Ù…Ù‡'}`;
+            const scopedName = dedup.length > 1 ? `${name} [${scopeLabel}]` : name;
+            const payload = {
+                profile_id: profileId,
+                name: scopedName.slice(0, 255),
+                status_codes: statusCodes,
+                project_code: target.project_code,
+                discipline_code: target.discipline_code,
+                package_code: target.package_code,
+                include_native: includeNative,
+                primary_only: primaryOnly,
+                latest_revision_only: true,
+                priority,
+                is_active: true,
+            };
+            const key = makeRuleKey(payload);
+            if (existingKeys.has(key)) {
+                existedCount += 1;
+                continue;
+            }
+            await request(`${API_BASE}/site-cache/rules/upsert`, {
+                method: 'POST',
+                body: JSON.stringify(payload),
+            });
+            createdCount += 1;
+            existingKeys.add(key);
+        }
+        ['siteCacheRuleNameInput', 'siteCacheRuleStatusInput'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        setMultiSelectValues(projectSelect, [SITE_CACHE_ALL_VALUE]);
+        setMultiSelectValues(disciplineSelect, [SITE_CACHE_ALL_VALUE]);
+        fillSiteCacheRulePackageOptions([SITE_CACHE_ALL_VALUE], [SITE_CACHE_ALL_VALUE]);
+        const priorityInput = document.getElementById('siteCacheRulePriorityInput');
+        if (priorityInput) priorityInput.value = '100';
+        await loadSiteCache(true);
+        const summary = `${createdCount} Ù‚Ø§Ù†ÙˆÙ† Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯ØŒ ${existedCount} Ù‚Ø§Ù†ÙˆÙ† Ø§Ø² Ù‚Ø¨Ù„ ÙˆØ¬ÙˆØ¯ Ø¯Ø§Ø´Øª (Ø§ÛŒØ¬Ø§Ø¯ Ù†Ø´Ø¯).`;
+        setSiteCacheTokenMessage(summary, createdCount > 0 ? 'success' : 'info');
+        tSuccess(summary);
+    }
+
+    async function deleteSiteCacheRule(ruleId) {
+        await request(`${API_BASE}/site-cache/rules/delete`, {
+            method: 'POST',
+            body: JSON.stringify({ id: Number(ruleId || 0) }),
+        });
+        await loadSiteCache(true);
+        tSuccess('Ù‚Ø§Ù†ÙˆÙ† Ø­Ø°Ù Ø´Ø¯.');
+    }
+
+    async function mintSiteCacheToken() {
+        const profileId = getActiveSiteCacheProfileId();
+        const payload = await request(`${API_BASE}/site-cache/tokens/mint`, {
+            method: 'POST',
+            body: JSON.stringify({ profile_id: profileId }),
+        });
+        const token = String(payload?.token || '').trim();
+        if (token) {
+            setSiteCacheTokenMessage(`ØªÙˆÚ©Ù† Agent (ÙÙ‚Ø· ÛŒÚ©â€ŒØ¨Ø§Ø± Ù†Ù…Ø§ÛŒØ´): ${token}`, 'success');
+        }
+        await loadSiteCacheTokens(profileId);
+        tSuccess('ØªÙˆÚ©Ù† Agent Ø¬Ø¯ÛŒØ¯ Ø§ÛŒØ¬Ø§Ø¯ Ø´Ø¯.');
+    }
+
+    async function revokeSiteCacheToken(tokenId) {
+        if (!confirm('Ø§ÛŒÙ† ØªÙˆÚ©Ù† Agent Ù„ØºÙˆ Ø´ÙˆØ¯ØŸ')) return;
+        await request(`${API_BASE}/site-cache/tokens/revoke`, {
+            method: 'POST',
+            body: JSON.stringify({ token_id: Number(tokenId || 0) }),
+        });
+        await loadSiteCache(true);
+        setSiteCacheTokenMessage('');
+        tSuccess('ØªÙˆÚ©Ù† Ù„ØºÙˆ Ø´Ø¯.');
+    }
+
+    async function rebuildSiteCachePins() {
+        const profileId = getActiveSiteCacheProfileId();
+        const payload = await request(`${API_BASE}/site-cache/rebuild-pins`, {
+            method: 'POST',
+            body: JSON.stringify({ profile_id: profileId, dry_run: false }),
+        });
+        const result = payload?.result || {};
+        const summary = `Ø¨Ø§Ø²Ø³Ø§Ø²ÛŒ Ø§Ù†Ø¬Ø§Ù… Ø´Ø¯: Ø§Ù†ØªØ®Ø§Ø¨=${Number(result.selected_count || 0)}ØŒ ÙØ¹Ø§Ù„=${Number(result.to_enable_count || 0)}ØŒ ØºÛŒØ±ÙØ¹Ø§Ù„=${Number(result.to_disable_count || 0)}`;
+        setSiteCacheTokenMessage(summary, 'info');
+        tSuccess(summary);
     }
 
     function normalizeStoragePathForCompare(value) {
@@ -461,6 +2029,9 @@
             if (inputEl && inputEl.dataset) {
                 inputEl.dataset.storagePathDirty = '1';
             }
+            hideStorageStepSaved('paths');
+            markStorageStepDirty('paths');
+            updateStoragePathPreview();
             validateStoragePathConflict(true);
         };
         mdrInput.addEventListener('input', onInput);
@@ -512,9 +2083,34 @@
     }
 
     function activeGeneralPage() {
-        const el = document.querySelector('.general-settings-page.active');
-        if (!el?.id) return STORE.activePage || 'db';
+        const generalPanel = document.getElementById('tab-general');
+        const activeBtn = generalPanel?.querySelector('.general-settings-btn.active[data-general-tab]');
+        if (activeBtn?.dataset?.generalTab) return activeBtn.dataset.generalTab;
+        const el = generalPanel?.querySelector('.general-settings-page.active');
+        if (!el?.id) return STORE.activePage || 'db_sync';
         return el.id.replace('general-page-', '');
+    }
+
+    function toggleGeneralStorageSections(page) {
+        const dbPage = document.getElementById('general-page-db');
+        if (!dbPage) return;
+        const showStorage = page === 'storage';
+        const moduleNav = document.querySelector('.general-module-nav');
+        const settingsNav = document.querySelector('.general-settings-nav');
+        const dbOnlySections = Array.from(dbPage.querySelectorAll('.general-db-only'));
+        const storageOnlySections = Array.from(dbPage.querySelectorAll('.general-storage-only'));
+        if (moduleNav) {
+            moduleNav.style.display = showStorage ? 'none' : '';
+        }
+        if (settingsNav) {
+            settingsNav.style.display = showStorage ? 'none' : '';
+        }
+        dbOnlySections.forEach((el) => {
+            el.style.display = showStorage ? 'none' : '';
+        });
+        storageOnlySections.forEach((el) => {
+            el.style.display = showStorage ? '' : 'none';
+        });
     }
 
     function isGeneralButtonVisibleForDomain(buttonEl, domain) {
@@ -523,8 +2119,9 @@
         return buttonDomain === domain || buttonDomain === 'common';
     }
 
-    function applyGeneralDomainVisibility(domain = 'all') {
-        const buttons = Array.from(document.querySelectorAll('.general-settings-btn[data-general-tab]'));
+    function applyGeneralDomainVisibility(domain = 'common') {
+        const generalPanel = document.getElementById('tab-general');
+        const buttons = Array.from(generalPanel?.querySelectorAll('.general-settings-btn[data-general-tab]') || []);
         let firstVisible = null;
         let firstDomainVisible = null;
         buttons.forEach((button) => {
@@ -540,11 +2137,25 @@
 
     async function loadGeneralPageData(page, force = false) {
         STORE.activePage = page;
-        if (page === 'db') {
+        toggleGeneralStorageSections(page);
+        if (page === 'db_sync') {
             await loadOverview();
-            await loadStoragePaths(force);
             await loadEntity('projects', force);
             refreshProjectCards();
+            return;
+        }
+        if (page === 'storage') {
+            bindStorageWorkflowInputs();
+            setStorageWizardStep('paths', { force: true });
+            await loadStoragePaths(force);
+            await loadStoragePolicy(force);
+            try {
+                await loadSiteCache(force);
+            } catch (err) {
+                setSiteCacheTokenMessage(`Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Site Cache: ${err.message}`, 'error');
+            }
+            updateStoragePathPreview();
+            updateStorageActionBarState();
             return;
         }
         if (page === 'transmittal_config') {
@@ -567,6 +2178,8 @@
             const actionEl = event && event.target && event.target.closest
                 ? event.target.closest('[data-general-action]')
                 : null;
+            const insideTokenMulti = Boolean(event?.target?.closest?.('.token-multi-root'));
+            if (!insideTokenMulti) closeSiteCacheTokenMultiDropdown('');
             if (!actionEl) return;
 
             const action = String(actionEl.dataset.generalAction || '').trim();
@@ -577,13 +2190,79 @@
                     window.switchGeneralSettingsPage(actionEl.dataset.generalTab || '', actionEl);
                     break;
                 case 'switch-domain':
-                    window.switchGeneralSettingsDomain(actionEl.dataset.generalDomain || 'all', actionEl);
+                    window.switchGeneralSettingsDomain(actionEl.dataset.generalDomain || 'common', actionEl);
                     break;
                 case 'run-seed':
                     window.localRunSeed();
                     break;
                 case 'save-storage-paths':
                     window.saveStoragePaths();
+                    break;
+                case 'save-storage-policy':
+                    window.saveStoragePolicySettings();
+                    break;
+                case 'save-storage-integrations':
+                    window.saveStorageIntegrationsSettings();
+                    break;
+                case 'run-storage-google-drive-sync':
+                    window.runStorageGoogleDriveSync();
+                    break;
+                case 'run-storage-openproject-sync':
+                    window.runStorageOpenProjectSync();
+                    break;
+                case 'storage-switch-step':
+                    setStorageWizardStep(actionEl.dataset.storageStep || 'paths');
+                    break;
+                case 'storage-step-prev':
+                    moveStorageWizardStep(-1);
+                    break;
+                case 'storage-step-next':
+                    moveStorageWizardStep(1);
+                    break;
+                case 'storage-save-current':
+                    saveCurrentStorageWizardStep();
+                    break;
+                case 'storage-policy-preset':
+                    applyStoragePolicyPreset(actionEl.dataset.storagePreset || 'standard');
+                    break;
+                case 'save-site-cache-profile':
+                    window.saveSiteCacheProfileSetting();
+                    break;
+                case 'reset-site-cache-profile':
+                    window.resetSiteCacheProfileSetting();
+                    break;
+                case 'open-edit-site-cache-profile':
+                    window.openEditSiteCacheProfileById(actionEl.dataset.profileId || '');
+                    break;
+                case 'delete-site-cache-profile':
+                    window.deleteSiteCacheProfileById(actionEl.dataset.profileId || '');
+                    break;
+                case 'refresh-site-cache':
+                    window.refreshSiteCacheSettings();
+                    break;
+                case 'save-site-cache-cidr':
+                    window.saveSiteCacheCidrSetting();
+                    break;
+                case 'delete-site-cache-cidr':
+                    window.deleteSiteCacheCidrSetting(actionEl.dataset.cidrId || '');
+                    break;
+                case 'save-site-cache-rule':
+                    window.saveSiteCacheRuleSetting();
+                    break;
+                case 'delete-site-cache-rule':
+                    window.deleteSiteCacheRuleSetting(actionEl.dataset.ruleId || '');
+                    break;
+                case 'mint-site-cache-token':
+                    window.mintSiteCacheTokenSetting();
+                    break;
+                case 'revoke-site-cache-token':
+                    window.revokeSiteCacheTokenSetting(actionEl.dataset.tokenId || '');
+                    break;
+                case 'rebuild-site-cache-pins':
+                    window.rebuildSiteCachePinsSetting();
+                    break;
+                case 'switch-site-cache-list-tab':
+                    setSiteCacheListTab(actionEl.dataset.siteCacheListTab || 'cidr');
                     break;
                 case 'save-project':
                     window.saveProjectSetting();
@@ -727,7 +2406,27 @@
             const actionEl = event && event.target && event.target.closest
                 ? event.target.closest('[data-general-action]')
                 : null;
-            if (!actionEl) return;
+            if (!actionEl) {
+                const target = event?.target;
+                if (target?.id === 'siteCacheProfileSelect') {
+                    const profileId = Number(target.value || 0);
+                    STORE.siteCache.activeProfileId = profileId;
+                    const profile = currentSiteCacheProfile();
+                    renderSiteCacheProfileDetails(profile);
+                    loadSiteCacheTokens(profileId);
+                } else if (target?.id === 'siteCacheRuleDisciplineInput') {
+                    fillSiteCacheRulePackageOptions(getMultiSelectValues(target));
+                } else if (target?.id === 'siteCacheRulePackageInput') {
+                    syncDisciplinesBySelectedPackages();
+                    updateSiteCacheRuleLiveSummary();
+                } else if (target?.id === 'siteCacheRuleProjectInput') {
+                    updateSiteCacheRuleLiveSummary();
+                }
+                if (target?.id && SITE_CACHE_TOKEN_MULTI_IDS.includes(target.id)) {
+                    refreshSiteCacheTokenMultiControl(target.id);
+                }
+                return;
+            }
             const action = String(actionEl.dataset.generalAction || '').trim();
             if (action !== 'page-size-entity') return;
             window.updateSettingsPageSize(actionEl.dataset.entity || '', actionEl.value || 10);
@@ -750,7 +2449,7 @@
                     await ensureSelects();
                     STORE.initialized = true;
                 }
-                await window.switchGeneralSettingsDomain(STORE.activeDomain || 'all', null, force);
+                await window.switchGeneralSettingsDomain(STORE.activeDomain || 'common', null, force);
             } catch (err) {
                 tError(`Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ: ${err.message}`);
             }
@@ -834,28 +2533,123 @@
         await loadOverview();
     }
 
+    window.saveSiteCacheProfileSetting = async function saveSiteCacheProfileSetting() {
+        try {
+            await saveSiteCacheProfile();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.resetSiteCacheProfileSetting = function resetSiteCacheProfileSetting() {
+        resetSiteCacheProfileForm();
+        setSiteCacheTokenMessage('');
+    };
+
+    window.openEditSiteCacheProfileById = function openEditSiteCacheProfileById(profileId) {
+        openEditSiteCacheProfile(profileId);
+    };
+
+    window.deleteSiteCacheProfileById = async function deleteSiteCacheProfileById(profileId) {
+        try {
+            await disableSiteCacheProfile(profileId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.refreshSiteCacheSettings = async function refreshSiteCacheSettings() {
+        try {
+            await loadSiteCache(true);
+            setSiteCacheTokenMessage('Ø§Ø·Ù„Ø§Ø¹Ø§Øª Site Cache Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø¨Ø§Ø²Ø®ÙˆØ§Ù†ÛŒ Ø´Ø¯.', 'info');
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.saveSiteCacheCidrSetting = async function saveSiteCacheCidrSetting() {
+        try {
+            await addSiteCacheCidr();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.deleteSiteCacheCidrSetting = async function deleteSiteCacheCidrSetting(cidrId) {
+        try {
+            await deleteSiteCacheCidr(cidrId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.saveSiteCacheRuleSetting = async function saveSiteCacheRuleSetting() {
+        try {
+            await addSiteCacheRule();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.deleteSiteCacheRuleSetting = async function deleteSiteCacheRuleSetting(ruleId) {
+        try {
+            await deleteSiteCacheRule(ruleId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.mintSiteCacheTokenSetting = async function mintSiteCacheTokenSetting() {
+        try {
+            await mintSiteCacheToken();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.revokeSiteCacheTokenSetting = async function revokeSiteCacheTokenSetting(tokenId) {
+        try {
+            await revokeSiteCacheToken(tokenId);
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.rebuildSiteCachePinsSetting = async function rebuildSiteCachePinsSetting() {
+        try {
+            await rebuildSiteCachePins();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
     window.switchGeneralSettingsPage = async function switchGeneralSettingsPage(page, btnEl = null, force = false) {
         if (!page) return;
-        document.querySelectorAll('.general-settings-btn').forEach((b) => b.classList.remove('active'));
-        document.querySelectorAll('.general-settings-page').forEach((p) => p.classList.remove('active'));
-        const btn = btnEl || document.querySelector(`.general-settings-btn[data-general-tab="${page}"]`);
+        const generalPanel = document.getElementById('tab-general');
+        if (!generalPanel) return;
+        generalPanel.querySelectorAll('.general-settings-btn').forEach((b) => b.classList.remove('active'));
+        generalPanel.querySelectorAll('.general-settings-page').forEach((p) => p.classList.remove('active'));
+        const btn = btnEl || generalPanel.querySelector(`.general-settings-btn[data-general-tab="${page}"]`);
         if (btn) btn.classList.add('active');
-        const tab = document.getElementById(`general-page-${page}`);
+        const physicalPage = page === 'storage' || page === 'db_sync' ? 'db' : page;
+        const tab = document.getElementById(`general-page-${physicalPage}`);
         if (!tab) return;
         tab.classList.add('active');
         await loadGeneralPageData(page, force);
     };
 
-    window.switchGeneralSettingsDomain = async function switchGeneralSettingsDomain(domain = 'all', btnEl = null, force = false) {
-        const normalizedDomain = norm(domain).toLowerCase() || 'all';
+    window.switchGeneralSettingsDomain = async function switchGeneralSettingsDomain(domain = 'common', btnEl = null, force = false) {
+        const normalizedDomain = norm(domain).toLowerCase() || 'common';
         STORE.activeDomain = normalizedDomain;
+        const generalPanel = document.getElementById('tab-general');
+        if (!generalPanel) return;
 
-        document.querySelectorAll('.general-module-btn').forEach((b) => b.classList.remove('active'));
-        const moduleBtn = btnEl || document.querySelector(`.general-module-btn[data-general-domain="${normalizedDomain}"]`);
+        generalPanel.querySelectorAll('.general-module-btn').forEach((b) => b.classList.remove('active'));
+        const moduleBtn = btnEl || generalPanel.querySelector(`.general-module-btn[data-general-domain="${normalizedDomain}"]`);
         if (moduleBtn) moduleBtn.classList.add('active');
 
         const preferredVisible = applyGeneralDomainVisibility(normalizedDomain);
-        const activeBtn = document.querySelector('.general-settings-btn.active');
+        const activeBtn = generalPanel.querySelector('.general-settings-btn.active');
         const activeBtnDomain = norm(activeBtn?.dataset?.generalDomain || 'common').toLowerCase();
         const keepCurrentActive = Boolean(
             activeBtn &&
@@ -908,26 +2702,86 @@
             bindStoragePathValidation();
             const mdr_storage_path = norm(document.getElementById('mdrStoragePathInput')?.value);
             const correspondence_storage_path = norm(document.getElementById('correspondenceStoragePathInput')?.value);
-            requireVal(mdr_storage_path, 'MDR storage path');
-            requireVal(correspondence_storage_path, 'Correspondence storage path');
+            const network_username = norm(document.getElementById('storageNetworkUsernameInput')?.value);
+            const network_password = String(document.getElementById('storageNetworkPasswordInput')?.value || '').trim();
+            requireVal(mdr_storage_path, 'Ù…Ø³ÛŒØ± Ø°Ø®ÛŒØ±Ù‡ Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ');
+            requireVal(correspondence_storage_path, 'Ù…Ø³ÛŒØ± Ø°Ø®ÛŒØ±Ù‡ Ù…Ú©Ø§ØªØ¨Ø§Øª');
             if (!validateStoragePathConflict(true)) return;
 
             const payload = await request(`${API_BASE}/storage-paths`, {
                 method: 'POST',
-                body: JSON.stringify({ mdr_storage_path, correspondence_storage_path }),
+                body: JSON.stringify({
+                    mdr_storage_path,
+                    correspondence_storage_path,
+                    network_username,
+                    network_password,
+                }),
             });
 
             document.getElementById('mdrStoragePathInput').value = norm(payload?.mdr_storage_path || mdr_storage_path);
             document.getElementById('correspondenceStoragePathInput').value = norm(
                 payload?.correspondence_storage_path || correspondence_storage_path
             );
+            const networkPasswordInput = document.getElementById('storageNetworkPasswordInput');
+            if (networkPasswordInput) networkPasswordInput.value = '';
             document.getElementById('mdrStoragePathInput').dataset.storagePathDirty = '0';
             document.getElementById('correspondenceStoragePathInput').dataset.storagePathDirty = '0';
+            updateStoragePathPreview();
             setStoragePathConflictError('');
             STORE.storagePathsLoaded = true;
-            tSuccess('Storage paths saved.');
+            clearStorageStepDirty('paths');
+            showStorageStepSaved('paths', 'Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø¨Ø§ Ù…ÙˆÙÙ‚ÛŒØª Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯Ù†Ø¯.');
+            tSuccess('Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯.');
+        } catch (err) {
+            const lines = Array.isArray(err?.details)
+                ? err.details
+                    .map((item) => {
+                        if (!item || typeof item !== 'object') return norm(item);
+                        const field = norm(item.field || '');
+                        const text = norm(item.message || item.detail || '');
+                        if (field && text) return `${field}: ${text}`;
+                        return text;
+                    })
+                    .filter(Boolean)
+                : [];
+            if (lines.length) setStoragePathConflictError(lines.join(' | '));
+            tError(err.message);
+        }
+    };
+
+    window.saveStoragePolicySettings = async function saveStoragePolicySettings() {
+        try {
+            await saveStoragePolicy();
         } catch (err) {
             tError(err.message);
+        }
+    };
+
+    window.saveStorageIntegrationsSettings = async function saveStorageIntegrationsSettings() {
+        try {
+            await saveStorageIntegrations();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.runStorageGoogleDriveSync = async function runStorageGoogleDriveSync() {
+        try {
+            await runStorageSyncJob('google_drive');
+        } catch (err) {
+            const detail = String(err?.message || 'Google Drive sync failed.');
+            setStorageSyncResult(`Ø§Ø¬Ø±Ø§ÛŒ Sync Ú¯ÙˆÚ¯Ù„â€ŒØ¯Ø±Ø§ÛŒÙˆ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯: ${detail}`, 'error');
+            tError(`Sync Ú¯ÙˆÚ¯Ù„â€ŒØ¯Ø±Ø§ÛŒÙˆ Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯. ${detail}`);
+        }
+    };
+
+    window.runStorageOpenProjectSync = async function runStorageOpenProjectSync() {
+        try {
+            await runStorageSyncJob('openproject');
+        } catch (err) {
+            const detail = String(err?.message || 'OpenProject sync failed.');
+            setStorageSyncResult(`Ø§Ø¬Ø±Ø§ÛŒ Sync Ø§ÙˆÙ¾Ù†â€ŒÙ¾Ø±Ø§Ø¬Ú©Øª Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯: ${detail}`, 'error');
+            tError(`Sync Ø§ÙˆÙ¾Ù†â€ŒÙ¾Ø±Ø§Ø¬Ú©Øª Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯. ${detail}`);
         }
     };
 
@@ -1303,4 +3157,6 @@
     };
 
     window.initGeneralSettings = initGeneralSettings;
+    window.initSettingsIntegrations = initSettingsIntegrations;
 })();
+

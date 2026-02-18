@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import path from "node:path";
 
 import { expect, test, type APIResponse } from "@playwright/test";
 
@@ -16,6 +17,74 @@ async function expectOkJson(response: APIResponse, label: string): Promise<any> 
   } catch {
     return {};
   }
+}
+
+async function ensureCommItemsContext(
+  request: any,
+  resolvedBaseUrl: string,
+  headers: Record<string, string>
+): Promise<{ projectCode: string; disciplineCode: string; organizationId: number }> {
+  const projectsRes = await request.get(`${resolvedBaseUrl}/api/v1/settings/projects`, { headers });
+  const projectsBody = await expectOkJson(projectsRes, "settings projects");
+  let projectCode = String(
+    projectsBody?.items?.[0]?.code || projectsBody?.items?.[0]?.project_code || ""
+  )
+    .trim()
+    .toUpperCase();
+  if (!projectCode) {
+    projectCode = `UTP${Date.now()}`.slice(0, 10).toUpperCase();
+    await expectOkJson(
+      await request.post(`${resolvedBaseUrl}/api/v1/settings/projects/upsert`, {
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        data: { code: projectCode, name_e: `Project ${projectCode}`, is_active: true },
+      }),
+      "settings project upsert"
+    );
+  }
+
+  const disciplinesRes = await request.get(`${resolvedBaseUrl}/api/v1/settings/disciplines`, { headers });
+  const disciplinesBody = await expectOkJson(disciplinesRes, "settings disciplines");
+  let disciplineCode = String(
+    disciplinesBody?.items?.[0]?.code || disciplinesBody?.items?.[0]?.discipline_code || ""
+  )
+    .trim()
+    .toUpperCase();
+  if (!disciplineCode) {
+    disciplineCode = `D${Date.now()}`.slice(0, 6).toUpperCase();
+    await expectOkJson(
+      await request.post(`${resolvedBaseUrl}/api/v1/settings/disciplines/upsert`, {
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        data: { code: disciplineCode, name_e: `Discipline ${disciplineCode}` },
+      }),
+      "settings discipline upsert"
+    );
+  }
+
+  const orgRes = await request.get(`${resolvedBaseUrl}/api/v1/settings/organizations`, { headers });
+  const orgBody = await expectOkJson(orgRes, "settings organizations");
+  let organizationId = Number(orgBody?.items?.[0]?.id || 0);
+  if (!organizationId) {
+    const orgCode = `ORG${Date.now()}`.slice(0, 10).toUpperCase();
+    const upsertOrgBody = await expectOkJson(
+      await request.post(`${resolvedBaseUrl}/api/v1/settings/organizations/upsert`, {
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        data: { code: orgCode, name: `Org ${orgCode}`, org_type: "contractor", is_active: true },
+      }),
+      "settings organization upsert"
+    );
+    organizationId = Number(upsertOrgBody?.id || upsertOrgBody?.data?.id || 0);
+  }
+
+  return { projectCode, disciplineCode, organizationId };
 }
 
 test("critical e2e: login/auth and EDMS navigation", async ({ page, request, baseURL }) => {
@@ -292,6 +361,62 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
   }
 });
 
+test("critical e2e: comm items RFI export and print actions", async ({ page, request, baseURL }) => {
+  const resolvedBaseUrl = resolveBaseUrl(baseURL);
+  const token = await apiLoginToken(request, resolvedBaseUrl);
+  const headers = bearerHeaders(token);
+  const context = await ensureCommItemsContext(request, resolvedBaseUrl, headers);
+
+  const title = `Critical E2E RFI ${Date.now()}`;
+  const createBody = await expectOkJson(
+    await request.post(`${resolvedBaseUrl}/api/v1/comm-items/create`, {
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      data: {
+        item_type: "RFI",
+        project_code: context.projectCode,
+        discipline_code: context.disciplineCode,
+        organization_id: context.organizationId,
+        title,
+        status_code: "DRAFT",
+        priority: "NORMAL",
+        rfi: {
+          question_text: "Please clarify the approved technical detail at this interface for field execution.",
+          proposed_solution: "Use the latest approved detail set and align to issued structural references.",
+        },
+      },
+    }),
+    "comm items create rfi"
+  );
+  expect(createBody?.ok).toBeTruthy();
+  const createdId = Number(createBody?.data?.id || 0);
+  expect(createdId).toBeGreaterThan(0);
+
+  await seedAuthToken(page, request, resolvedBaseUrl);
+  await page.goto("/");
+  await page.locator("#nav-contractor").click();
+  await expect(page.locator("#view-contractor")).toHaveClass(/active/);
+  await page.locator(".contractor-tab-btn[data-contractor-tab='requests']").click();
+  await expect(page.locator("#contractor-panel-requests")).toHaveClass(/active/);
+
+  const exportButton = page.locator("#contractor-panel-requests [data-ci-action='export-rfi-excel']").first();
+  await expect(exportButton).toBeVisible({ timeout: 15000 });
+
+  const row = page.locator("#ci-tbody-contractor-requests tr", { hasText: title }).first();
+  await expect(row).toBeVisible({ timeout: 15000 });
+  await expect(row.locator("button[data-ci-action='print-rfi-form']")).toBeVisible({ timeout: 15000 });
+
+  const [download] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
+  expect(download.suggestedFilename()).toMatch(/^RFI_List_contractor_requests_/);
+
+  await row.locator("button[data-ci-action='open-detail']").click();
+  await expect(
+    page.locator("#ci-detail-summary-contractor-requests [data-ci-action='print-rfi-form']").first()
+  ).toBeVisible({ timeout: 15000 });
+});
+
 test("critical e2e: settings critical actions", async ({ page, request, baseURL }) => {
   const resolvedBaseUrl = resolveBaseUrl(baseURL);
   const token = await apiLoginToken(request, resolvedBaseUrl);
@@ -307,9 +432,24 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
   const beforeCorrespondencePath = String(
     beforePathsBody?.correspondence_storage_path || "./files/correspondence"
   );
+  const beforeIntegrationsResponse = await request.get(
+    `${resolvedBaseUrl}/api/v1/settings/storage-integrations`,
+    { headers }
+  );
+  const beforeIntegrationsBody = await expectOkJson(
+    beforeIntegrationsResponse,
+    "settings storage-integrations get"
+  );
+  expect(beforeIntegrationsBody?.ok).toBeTruthy();
+  const beforeGdrive = beforeIntegrationsBody?.integrations?.google_drive || {};
+  const beforeOpenproject = beforeIntegrationsBody?.integrations?.openproject || {};
+  const beforeLocalCache = beforeIntegrationsBody?.integrations?.local_cache || {};
 
-  const nextMdrPath = `./files/e2e_technical_${Date.now()}`;
-  const nextCorrespondencePath = `./files/e2e_correspondence_${Date.now()}`;
+  const storageRoot = path.resolve(process.cwd(), "archive_storage", `e2e_storage_${Date.now()}`);
+  const nextMdrPath = path.join(storageRoot, "technical").replace(/\\/g, "/");
+  const nextCorrespondencePath = path.join(storageRoot, "correspondence").replace(/\\/g, "/");
+  const nextSharedDriveId = `e2e-shared-${Date.now()}`;
+  const nextWorkPackageId = "321";
 
   let createdUserId = 0;
   const createdUserEmail = `critical.e2e.${Date.now()}@mdr.local`;
@@ -331,6 +471,34 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
         return `${body?.mdr_storage_path || ""}|${body?.correspondence_storage_path || ""}`;
       })
       .toBe(`${nextMdrPath}|${nextCorrespondencePath}`);
+
+    await page.locator("button[data-settings-tab='true'][data-tab='integrations']").click();
+    await expect(page.locator("#tab-integrations")).toHaveClass(/active/);
+    await expect(page.locator("#settingsIntegrationsRoot")).toBeVisible();
+
+    const openProjectEnabledInput = page.locator("#storageOpenProjectEnabledInput");
+    await openProjectEnabledInput.check();
+    await page.locator("#storageOpenProjectBaseUrlInput").fill("");
+    await page.locator("#storageOpenProjectDefaultWpInput").fill(nextWorkPackageId);
+    await page.locator("#storageGoogleDriveDriveIdInput").fill(nextSharedDriveId);
+    await page.locator("[data-integrations-action='save-integrations']").click();
+
+    await expect
+      .poll(async () => {
+        const res = await request.get(`${resolvedBaseUrl}/api/v1/settings/storage-integrations`, {
+          headers,
+        });
+        const body = await res.json();
+        const op = body?.integrations?.openproject || {};
+        const gd = body?.integrations?.google_drive || {};
+        return `${Boolean(op?.enabled)}|${String(op?.default_work_package_id || "")}|${String(gd?.shared_drive_id || "")}`;
+      })
+      .toBe(`true|${nextWorkPackageId}|${nextSharedDriveId}`);
+
+    await page.locator("[data-integrations-action='ping-openproject']").click();
+    const pingResult = page.locator("#storageSyncResult");
+    await expect(pingResult).toBeVisible({ timeout: 15000 });
+    await expect(pingResult).toContainText("Ping OpenProject");
 
     await page.locator("button[data-settings-tab='true'][data-tab='users']").click();
     await expect(page.locator("#tab-users")).toHaveClass(/active/);
@@ -375,14 +543,40 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     expect(String(getUserBody?.full_name || "")).toContain("Updated");
     expect(Boolean(getUserBody?.is_active)).toBeFalsy();
   } finally {
+    const restoreMdrPath = path.isAbsolute(beforeMdrPath) ? beforeMdrPath : nextMdrPath;
+    const restoreCorrespondencePath = path.isAbsolute(beforeCorrespondencePath)
+      ? beforeCorrespondencePath
+      : nextCorrespondencePath;
     await request.post(`${resolvedBaseUrl}/api/v1/settings/storage-paths`, {
       headers: {
         ...headers,
         "Content-Type": "application/json",
       },
       data: {
-        mdr_storage_path: beforeMdrPath,
-        correspondence_storage_path: beforeCorrespondencePath,
+        mdr_storage_path: restoreMdrPath,
+        correspondence_storage_path: restoreCorrespondencePath,
+      },
+    });
+    await request.post(`${resolvedBaseUrl}/api/v1/settings/storage-integrations`, {
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      data: {
+        google_drive: {
+          enabled: Boolean(beforeGdrive?.enabled),
+          shared_drive_id: String(beforeGdrive?.shared_drive_id || ""),
+        },
+        openproject: {
+          enabled: Boolean(beforeOpenproject?.enabled),
+          base_url: String(beforeOpenproject?.base_url || ""),
+          default_work_package_id: String(
+            beforeOpenproject?.default_work_package_id || beforeOpenproject?.default_project_id || ""
+          ),
+        },
+        local_cache: {
+          enabled: Boolean(beforeLocalCache?.enabled),
+        },
       },
     });
 
@@ -391,4 +585,3 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     }
   }
 });
-

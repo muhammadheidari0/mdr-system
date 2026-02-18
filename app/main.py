@@ -151,6 +151,7 @@ def create_app() -> FastAPI:
                 "app_name": settings.APP_NAME,
                 "version": settings.APP_VERSION,
                 "api_prefix": API_V1_PREFIX,
+                "feature_comm_items_v1": bool(settings.FEATURE_COMM_ITEMS_V1),
             },
         )
 
@@ -180,6 +181,7 @@ def create_app() -> FastAPI:
                 "app_name": settings.APP_NAME,
                 "version": settings.APP_VERSION,
                 "api_prefix": API_V1_PREFIX,
+                "feature_comm_items_v1": bool(settings.FEATURE_COMM_ITEMS_V1),
             },
         )
 

@@ -5,12 +5,14 @@ import io
 import os
 import re
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.main import app
 from app.db.models import Level, MdrDocument, Package
 from app.db.session import engine
@@ -95,14 +97,25 @@ def test_regression_auth_navigation_edms_tabs(admin_headers: dict[str, str]) -> 
 
 
 def test_regression_settings_storage_paths_roundtrip(admin_headers: dict[str, str]) -> None:
+    original_allowed_roots = settings.STORAGE_ALLOWED_ROOTS
+    original_require_absolute = settings.STORAGE_REQUIRE_ABSOLUTE_PATHS
+    original_validate_writable = settings.STORAGE_VALIDATE_WRITABLE_ON_SAVE
+    tmp_root = (Path(settings.BASE_DIR) / "database" / f"reg_storage_{uuid.uuid4().hex[:6]}").resolve()
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    settings.STORAGE_ALLOWED_ROOTS = str(tmp_root)
+    settings.STORAGE_REQUIRE_ABSOLUTE_PATHS = True
+    settings.STORAGE_VALIDATE_WRITABLE_ON_SAVE = True
+
     get_res = client.get("/api/v1/settings/storage-paths", headers=admin_headers)
     assert get_res.status_code == 200, get_res.text
     before = get_res.json()
     assert before.get("ok") is True
 
     payload = {
-        "mdr_storage_path": f"./files/technical_{uuid.uuid4().hex[:6]}",
-        "correspondence_storage_path": f"./files/correspondence_{uuid.uuid4().hex[:6]}",
+        "mdr_storage_path": str((tmp_root / f"technical_{uuid.uuid4().hex[:6]}").resolve()),
+        "correspondence_storage_path": str(
+            (tmp_root / f"correspondence_{uuid.uuid4().hex[:6]}").resolve()
+        ),
     }
 
     try:
@@ -123,6 +136,9 @@ def test_regression_settings_storage_paths_roundtrip(admin_headers: dict[str, st
         assert verify_body.get("mdr_storage_path") == payload["mdr_storage_path"]
         assert verify_body.get("correspondence_storage_path") == payload["correspondence_storage_path"]
     finally:
+        settings.STORAGE_REQUIRE_ABSOLUTE_PATHS = False
+        settings.STORAGE_VALIDATE_WRITABLE_ON_SAVE = False
+        settings.STORAGE_ALLOWED_ROOTS = ""
         restore_payload = {
             "mdr_storage_path": before.get("mdr_storage_path") or "./files/technical",
             "correspondence_storage_path": before.get("correspondence_storage_path") or "./files/correspondence",
@@ -133,6 +149,9 @@ def test_regression_settings_storage_paths_roundtrip(admin_headers: dict[str, st
             headers=admin_headers,
         )
         assert restore_res.status_code == 200, restore_res.text
+        settings.STORAGE_ALLOWED_ROOTS = original_allowed_roots
+        settings.STORAGE_REQUIRE_ABSOLUTE_PATHS = original_require_absolute
+        settings.STORAGE_VALIDATE_WRITABLE_ON_SAVE = original_validate_writable
 
 
 def test_regression_archive_files_dual_file_columns_exist() -> None:

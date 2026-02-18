@@ -1,0 +1,10 @@
+[Unit]
+Description=MDR Site Sync Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mdr
+WorkingDirectory=/opt/mdr_app
+ExecStart=/usr/bin/python3 /opt/mdr_app/tools/mdr_sync_agent.py --base-url https://your-domain.com --site-code SITE_A --site-token YOUR_SITE_TOKEN --out-dir /opt/mdr_site_cache --prune --max-workers 6

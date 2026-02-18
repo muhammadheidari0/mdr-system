@@ -141,15 +141,15 @@ cp /path/to/.env.production /opt/mdr_app/.env
 Set this in `.env` (or keep default):
 
 - `MDR_DATA_ROOT=/opt/mdr_data`
+- `MDR_DOMAIN=<your-public-domain>`
 - `POSTGRES_PORT_BIND=127.0.0.1:5432:5432`
 - `WEB_PORT_BIND=127.0.0.1:8000:8000`
+- `APP_UID=1000`, `APP_GID=1000`
+- `WEB_CONCURRENCY=2`
 - `DATABASE_URL=postgresql+psycopg://mdr:<password>@postgres:5432/mdr_app`
 - `COMPOSE_DATABASE_URL=postgresql+psycopg://mdr:<password>@postgres:5432/mdr_app`
 
-Update domain in Caddy config:
-
-- Edit `/opt/mdr_app/docker/Caddyfile`
-- Replace `your-domain.com` with your real domain.
+Domain is read from `.env` (`MDR_DOMAIN`), no Caddyfile edit is needed for each release.
 
 Start stack:
 

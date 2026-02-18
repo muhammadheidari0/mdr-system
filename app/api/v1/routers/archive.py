@@ -23,6 +23,7 @@ from app.db.models import (
     Discipline,
     DocumentRevision,
     Level,
+    LocalSyncManifest,
     MdrCategory,
     MdrDocument,
     Package,
@@ -30,8 +31,43 @@ from app.db.models import (
     Project,
 )
 from app.services import archive_service, docnum_service, mdr_service
+from app.services.openproject_status import (
+    ENTITY_ARCHIVE_FILE,
+    default_openproject_sync_status,
+    get_openproject_status_map,
+    is_openproject_integration_enabled,
+)
+from app.services.site_cache import (
+    build_archive_relative_path,
+    normalize_site_code,
+    site_manifest_policy_scope,
+)
 
 router = APIRouter(prefix="/archive", tags=["Archive"])
+
+
+def _archive_openproject_status_map(db: Session, file_ids: list[int]) -> tuple[dict[tuple[str, int], dict], str]:
+    clean_ids = [int(file_id) for file_id in file_ids if int(file_id or 0) > 0]
+    if not clean_ids:
+        return {}, default_openproject_sync_status(integration_enabled=is_openproject_integration_enabled(db))
+    integration_enabled = is_openproject_integration_enabled(db)
+    fallback_status = default_openproject_sync_status(integration_enabled=integration_enabled)
+    status_map = get_openproject_status_map(
+        db,
+        [(ENTITY_ARCHIVE_FILE, file_id) for file_id in clean_ids],
+        integration_enabled=integration_enabled,
+    )
+    return status_map, fallback_status
+
+
+def _archive_openproject_payload(status_map: dict[tuple[str, int], dict], fallback_status: str, file_id: int) -> dict:
+    row = status_map.get((ENTITY_ARCHIVE_FILE, int(file_id or 0)), {})
+    return {
+        "openproject_sync_status": str(row.get("sync_status") or fallback_status),
+        "openproject_work_package_id": row.get("work_package_id"),
+        "openproject_attachment_id": row.get("openproject_attachment_id"),
+        "openproject_last_synced_at": row.get("last_synced_at"),
+    }
 
 
 def _file_kind(value: str | None) -> str:
@@ -39,18 +75,25 @@ def _file_kind(value: str | None) -> str:
     return kind if kind in {"pdf", "native"} else "pdf"
 
 
-def _revision_file_ids(revision: DocumentRevision | None) -> tuple[int | None, int | None]:
+def _revision_file_meta(
+    revision: DocumentRevision | None,
+) -> tuple[int | None, str | None, int | None, str | None]:
     if not revision:
-        return None, None
+        return None, None, None, None
     pdf_id: int | None = None
+    pdf_name: str | None = None
     native_id: int | None = None
+    native_name: str | None = None
     for item in revision.archive_files or []:
-        if _file_kind(item.file_kind) == "native":
+        kind = _file_kind(item.file_kind)
+        if kind == "native":
             if native_id is None:
                 native_id = item.id
+                native_name = item.original_name
         elif pdf_id is None:
             pdf_id = item.id
-    return pdf_id, native_id
+            pdf_name = item.original_name
+    return pdf_id, pdf_name, native_id, native_name
 
 
 def _parse_filter_date(value: str | None, field_name: str) -> datetime | None:
@@ -297,6 +340,7 @@ async def upload_file(
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
+        status_map, fallback_status = _archive_openproject_status_map(db, [int(result.id or 0)])
         return {
             "ok": True,
             "message": "???? ?? ?????? ????? ??.",
@@ -307,9 +351,7 @@ async def upload_file(
             "detected_mime": result.detected_mime,
             "validation_status": result.validation_status,
             "mirror_status": result.mirror_status,
-            "openproject_sync_status": "pending"
-            if str(result.mirror_status or "").strip().lower() in {"pending", "mirrored"}
-            else "disabled",
+            **_archive_openproject_payload(status_map, fallback_status, int(result.id or 0)),
         }
     except HTTPException:
         raise
@@ -350,6 +392,9 @@ async def upload_dual_files(
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
+        status_map, fallback_status = _archive_openproject_status_map(
+            db, [int(pdf_entry.id or 0), int(native_entry.id or 0)]
+        )
         return {
             "ok": True,
             "message": "Dual files uploaded successfully.",
@@ -366,6 +411,14 @@ async def upload_dual_files(
             "mirror_status": {
                 "pdf": pdf_entry.mirror_status,
                 "native": native_entry.mirror_status,
+            },
+            "openproject_sync_status": {
+                "pdf": _archive_openproject_payload(status_map, fallback_status, int(pdf_entry.id or 0))[
+                    "openproject_sync_status"
+                ],
+                "native": _archive_openproject_payload(
+                    status_map, fallback_status, int(native_entry.id or 0)
+                )["openproject_sync_status"],
             },
         }
     except HTTPException:
@@ -432,6 +485,7 @@ async def register_and_upload(
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
+        status_map, fallback_status = _archive_openproject_status_map(db, [int(result.id or 0)])
 
         return {
             "ok": True,
@@ -442,9 +496,7 @@ async def register_and_upload(
             "detected_mime": result.detected_mime,
             "validation_status": result.validation_status,
             "mirror_status": result.mirror_status,
-            "openproject_sync_status": "pending"
-            if str(result.mirror_status or "").strip().lower() in {"pending", "mirrored"}
-            else "disabled",
+            **_archive_openproject_payload(status_map, fallback_status, int(result.id or 0)),
         }
     except HTTPException:
         raise
@@ -508,6 +560,9 @@ async def register_and_upload_dual(
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
         )
+        status_map, fallback_status = _archive_openproject_status_map(
+            db, [int(pdf_entry.id or 0), int(native_entry.id or 0)]
+        )
 
         return {
             "ok": True,
@@ -523,6 +578,14 @@ async def register_and_upload_dual(
             "mirror_status": {
                 "pdf": pdf_entry.mirror_status,
                 "native": native_entry.mirror_status,
+            },
+            "openproject_sync_status": {
+                "pdf": _archive_openproject_payload(status_map, fallback_status, int(pdf_entry.id or 0))[
+                    "openproject_sync_status"
+                ],
+                "native": _archive_openproject_payload(
+                    status_map, fallback_status, int(native_entry.id or 0)
+                )["openproject_sync_status"],
             },
         }
     except HTTPException:
@@ -542,13 +605,22 @@ async def list_archives(
     status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    site_code: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
 ):
     query = (
         db.query(ArchiveFile)
         .options(
-            joinedload(ArchiveFile.document_revision).joinedload(DocumentRevision.document),
+            joinedload(ArchiveFile.document_revision)
+            .joinedload(DocumentRevision.document)
+            .joinedload(MdrDocument.project),
+            joinedload(ArchiveFile.document_revision)
+            .joinedload(DocumentRevision.document)
+            .joinedload(MdrDocument.discipline),
+            joinedload(ArchiveFile.document_revision)
+            .joinedload(DocumentRevision.document)
+            .joinedload(MdrDocument.package),
             joinedload(ArchiveFile.document_revision).joinedload(DocumentRevision.archive_files),
         )
         .join(DocumentRevision)
@@ -605,21 +677,68 @@ async def list_archives(
 
     total = query.count()
     files = query.order_by(ArchiveFile.uploaded_at.desc()).offset(skip).limit(limit).all()
+    status_map, fallback_status = _archive_openproject_status_map(
+        db, [int(row.id or 0) for row in files]
+    )
+    normalized_site_code = normalize_site_code(site_code)
+    site_scope = site_manifest_policy_scope(normalized_site_code) if normalized_site_code else ""
+    pinned_ids: set[int] = set()
+    if site_scope:
+        file_ids = [int(row.id or 0) for row in files if int(row.id or 0) > 0]
+        if file_ids:
+            pinned_rows = (
+                db.query(LocalSyncManifest.file_id)
+                .filter(
+                    LocalSyncManifest.file_id.in_(file_ids),
+                    LocalSyncManifest.policy_scope == site_scope,
+                    LocalSyncManifest.is_pinned.is_(True),
+                )
+                .all()
+            )
+            pinned_ids = {int(row.file_id) for row in pinned_rows}
 
     data = []
     for f in files:
         revision_row = f.document_revision
         document_row = revision_row.document if revision_row else None
         doc_num = document_row.doc_number if document_row else "Unknown"
-        pdf_file_id, native_file_id = _revision_file_ids(revision_row)
+        pdf_file_id, pdf_file_name, native_file_id, native_file_name = _revision_file_meta(revision_row)
+        pdf_relative_path = None
+        native_relative_path = None
+        if revision_row:
+            for item in revision_row.archive_files or []:
+                kind = _file_kind(item.file_kind)
+                rel_path = build_archive_relative_path(item)
+                if kind == "native":
+                    if native_relative_path is None:
+                        native_relative_path = rel_path
+                elif pdf_relative_path is None:
+                    pdf_relative_path = rel_path
+        op_payload = _archive_openproject_payload(status_map, fallback_status, int(f.id or 0))
+        project_name = None
+        discipline_name = None
+        package_name = None
+        if document_row:
+            if document_row.project:
+                project_name = document_row.project.name_p or document_row.project.name_e
+            if document_row.discipline:
+                discipline_name = document_row.discipline.name_p or document_row.discipline.name_e
+            if document_row.package:
+                package_name = document_row.package.name_p or document_row.package.name_e
         data.append(
             {
                 "id": f.id,
                 "name": f.original_name,
                 "doc_number": doc_num,
                 "document_id": document_row.id if document_row else None,
+                "doc_title_e": document_row.doc_title_e if document_row else None,
+                "doc_title_p": document_row.doc_title_p if document_row else None,
                 "project_code": document_row.project_code if document_row else None,
+                "project_name": project_name,
                 "discipline_code": document_row.discipline_code if document_row else None,
+                "discipline_name": discipline_name,
+                "package_code": document_row.package_code if document_row else None,
+                "package_name": package_name,
                 "revision_id": revision_row.id if revision_row else None,
                 "revision": f.revision,
                 "size": f.size_bytes,
@@ -637,7 +756,15 @@ async def list_archives(
                 "is_primary": True if f.is_primary is None else bool(f.is_primary),
                 "companion_file_id": f.companion_file_id,
                 "pdf_file_id": pdf_file_id,
+                "pdf_file_name": pdf_file_name,
+                "pdf_relative_path": pdf_relative_path,
                 "native_file_id": native_file_id,
+                "native_file_name": native_file_name,
+                "native_relative_path": native_relative_path,
+                "site_relative_path": build_archive_relative_path(f),
+                "site_pinned": bool(int(f.id or 0) in pinned_ids) if site_scope else None,
+                "site_scope": site_scope or None,
+                **op_payload,
             }
         )
 
@@ -665,6 +792,11 @@ async def revision_history(
         project_code=document.project_code,
         discipline_code=document.discipline_code,
     )
+    all_file_ids: list[int] = []
+    for rev in document.revisions or []:
+        for af in rev.archive_files or []:
+            all_file_ids.append(int(af.id or 0))
+    status_map, fallback_status = _archive_openproject_status_map(db, all_file_ids)
 
     revisions_payload = []
     for rev in sorted(
@@ -678,6 +810,7 @@ async def revision_history(
             key=lambda r: (r.uploaded_at is not None, r.uploaded_at or ""),
             reverse=True,
         ):
+            op_payload = _archive_openproject_payload(status_map, fallback_status, int(af.id or 0))
             files_payload.append(
                 {
                     "id": af.id,
@@ -696,6 +829,7 @@ async def revision_history(
                     "is_primary": True if af.is_primary is None else bool(af.is_primary),
                     "companion_file_id": af.companion_file_id,
                     "uploaded_at": af.uploaded_at.isoformat() if af.uploaded_at else None,
+                    **op_payload,
                 }
             )
 
@@ -765,6 +899,8 @@ async def get_file_integrity(
             project_code=doc.project_code,
             discipline_code=doc.discipline_code,
         )
+    status_map, fallback_status = _archive_openproject_status_map(db, [int(file_record.id or 0)])
+    op_payload = _archive_openproject_payload(status_map, fallback_status, int(file_record.id or 0))
     return {
         "ok": True,
         "file_id": file_record.id,
@@ -777,6 +913,7 @@ async def get_file_integrity(
         "mirror_updated_at": file_record.mirror_updated_at.isoformat()
         if file_record.mirror_updated_at
         else None,
+        **op_payload,
     }
 
 

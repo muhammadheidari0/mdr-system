@@ -62,13 +62,25 @@
 
         <div class="module-workspace-panels">
             <section id="contractor-panel-execution" class="module-workspace-panel active">
+                {% if feature_comm_items_v1 %}
+                <div class="site-logs-root" data-module="contractor" data-tab="execution" data-title="گزارش کارگاه"></div>
+                {% else %}
                 <div class="module-crud-root" data-module="contractor" data-tab="execution" data-title="دفتر فنی و اجرا"></div>
+                {% endif %}
             </section>
             <section id="contractor-panel-requests" class="module-workspace-panel">
+                {% if feature_comm_items_v1 %}
+                <div class="comm-items-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها و RFI"></div>
+                {% else %}
                 <div class="module-crud-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها و RFI"></div>
+                {% endif %}
             </section>
             <section id="contractor-panel-quality" class="module-workspace-panel">
+                {% if feature_comm_items_v1 %}
+                <div class="comm-items-root" data-module="contractor" data-tab="quality" data-title="کیفیت و NCR"></div>
+                {% else %}
                 <div class="module-crud-root" data-module="contractor" data-tab="quality" data-title="کیفیت و NCR"></div>
+                {% endif %}
             </section>
         </div>
     </div>

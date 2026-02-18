@@ -18,10 +18,17 @@ DEFAULT_STORAGE_POLICY: dict[str, Any] = {
         "application/pdf",
         "image/png",
         "image/jpeg",
+        "application/vnd.ms-excel",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/zip",
         "application/x-dwg",
+        "application/acad",
+        "image/vnd.dwg",
+        "application/dxf",
+        "image/vnd.dxf",
+        "model/ifc",
+        "application/x-step",
     ],
     "allowed_mimes_by_kind": {
         "pdf": ["application/pdf"],
@@ -30,23 +37,34 @@ DEFAULT_STORAGE_POLICY: dict[str, Any] = {
             "image/png",
             "image/jpeg",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/zip",
             "application/x-dwg",
             "application/acad",
             "image/vnd.dwg",
+            "application/dxf",
+            "image/vnd.dxf",
+            "model/ifc",
+            "application/x-step",
             "application/octet-stream",
+            "text/plain",
         ],
         "attachment": [
             "application/pdf",
             "image/png",
             "image/jpeg",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-excel",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/zip",
             "application/x-dwg",
             "application/acad",
             "image/vnd.dwg",
+            "application/dxf",
+            "image/vnd.dxf",
+            "model/ifc",
+            "application/x-step",
             "application/octet-stream",
             "text/plain",
         ],
@@ -78,7 +96,8 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
         "enabled": False,
         "sync_mode": "link_only",  # link_only | attachment
         "base_url": "",
-        "default_project_id": "",
+        "api_token": "",
+        "default_work_package_id": "",
     },
     "local_cache": {
         "enabled": True,
@@ -188,9 +207,14 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
         merged["google_drive"].get("root_folder_id") or ""
     ).strip()
     merged["openproject"]["base_url"] = str(merged["openproject"].get("base_url") or "").strip()
-    merged["openproject"]["default_project_id"] = str(
-        merged["openproject"].get("default_project_id") or ""
+    merged["openproject"]["api_token"] = str(merged["openproject"].get("api_token") or "").strip()
+    default_wp = str(
+        merged["openproject"].get("default_work_package_id")
+        or merged["openproject"].get("default_project_id")
+        or ""
     ).strip()
+    merged["openproject"]["default_work_package_id"] = default_wp
+    merged["openproject"].pop("default_project_id", None)
     merged["local_cache"]["default_scope"] = str(
         merged["local_cache"].get("default_scope") or "user"
     ).strip() or "user"
