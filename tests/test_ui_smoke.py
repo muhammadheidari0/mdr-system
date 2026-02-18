@@ -122,8 +122,13 @@ def test_ui_smoke_priority_a_templates_have_no_inline_scripts_or_handlers() -> N
         assert inline_handler_pattern.search(content) is None, f"Inline handler found in {path}"
 
 
-def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
+def test_ui_smoke_settings_storage_paths_roundtrip(monkeypatch, tmp_path: Path) -> None:
     headers = _admin_headers()
+    allowed_root = (tmp_path / "ui_smoke_storage").resolve()
+    allowed_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", str(allowed_root))
+    monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True)
+    monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", True)
 
     before_res = client.get("/api/v1/settings/storage-paths", headers=headers)
     assert before_res.status_code == 200, before_res.text
@@ -131,8 +136,10 @@ def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
     assert before.get("ok") is True
 
     payload = {
-        "mdr_storage_path": f"./files/ui_smoke_technical_{uuid.uuid4().hex[:8]}",
-        "correspondence_storage_path": f"./files/ui_smoke_correspondence_{uuid.uuid4().hex[:8]}",
+        "mdr_storage_path": str((allowed_root / f"technical_{uuid.uuid4().hex[:8]}").resolve()),
+        "correspondence_storage_path": str(
+            (allowed_root / f"correspondence_{uuid.uuid4().hex[:8]}").resolve()
+        ),
     }
 
     try:
@@ -143,6 +150,9 @@ def test_ui_smoke_settings_storage_paths_roundtrip() -> None:
         assert save_body.get("mdr_storage_path") == payload["mdr_storage_path"]
         assert save_body.get("correspondence_storage_path") == payload["correspondence_storage_path"]
     finally:
+        monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", False)
+        monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", False)
+        monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", "")
         restore_payload = {
             "mdr_storage_path": before.get("mdr_storage_path") or "./files/technical",
             "correspondence_storage_path": before.get("correspondence_storage_path") or "./files/correspondence",

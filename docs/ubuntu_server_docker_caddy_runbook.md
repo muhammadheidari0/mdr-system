@@ -115,6 +115,9 @@ Set required values in `.env`:
 - `COMPOSE_DATABASE_URL=postgresql+psycopg://mdr:<strong-password>@postgres:5432/mdr_app`
 - `MDR_DOMAIN=<your-public-domain>`
 - `MDR_DATA_ROOT=/opt/mdr_data`
+- `STORAGE_ALLOWED_ROOTS=/app/archive_storage,/app/data_store`
+- `STORAGE_REQUIRE_ABSOLUTE_PATHS=true`
+- `STORAGE_VALIDATE_WRITABLE_ON_SAVE=true`
 - `POSTGRES_PORT_BIND=127.0.0.1:5432:5432`
 - `WEB_PORT_BIND=127.0.0.1:8000:8000`
 - `APP_UID=1000`, `APP_GID=1000`
@@ -129,6 +132,23 @@ If integrations are enabled, also set:
 - `OPENPROJECT_API_TOKEN`
 - `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - (optional legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
+
+## 4.1) Network Mount for Archive Storage
+
+Use host-level mount (CIFS/NFS), then bind it into container paths configured in compose.
+
+Example host mount points:
+
+- `/opt/mdr_data/archive_storage`
+- `/opt/mdr_data/data_store`
+
+Operational rules:
+
+- Never configure `smb://...` paths in app settings.
+- Save only absolute storage paths inside container, for example:
+  - `/app/archive_storage/technical`
+  - `/app/archive_storage/correspondence`
+- `Save Storage Paths` returns `422` when a path is relative, خارج از `STORAGE_ALLOWED_ROOTS`, or not writable.
 
 ## 5) Configure Caddy Domain + Deploy
 

@@ -9,6 +9,9 @@
 - [ ] `API_PREFIX=/api/v1`
 - [ ] `MDR_DOMAIN=<دامنه‌ عمومی>`
 - [ ] `MDR_DATA_ROOT=<مسیر داده سرور>` (مثال: `/opt/mdr_data`)
+- [ ] `STORAGE_ALLOWED_ROOTS=<CSV مسیرهای absolute>` (مثال: `/app/archive_storage,/app/data_store`)
+- [ ] `STORAGE_REQUIRE_ABSOLUTE_PATHS=true`
+- [ ] `STORAGE_VALIDATE_WRITABLE_ON_SAVE=true`
 - [ ] `POSTGRES_PORT_BIND=127.0.0.1:5432:5432`
 - [ ] `WEB_PORT_BIND=127.0.0.1:8000:8000`
 - [ ] `POSTGRES_DB=<نام دیتابیس>`
@@ -32,6 +35,13 @@
 - [ ] `OPENPROJECT_API_TOKEN`
 - [ ] `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - [ ] (اختیاری، legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
+
+## گیت ذخیره‌سازی شبکه
+
+- [ ] شبکه‌درایو روی خود سرور (CIFS/NFS) mount شده باشد.
+- [ ] mount با bind وارد کانتینر شود و مسیر canonical ثابت داشته باشد (مثال: `/app/archive_storage`).
+- [ ] مالکیت/مجوز mount با `APP_UID:APP_GID` هم‌راستا باشد.
+- [ ] مسیرهای ذخیره‌شده در UI absolute باشند و زیر `STORAGE_ALLOWED_ROOTS` قرار بگیرند.
 
 ## اعتبارسنجی سریع
 

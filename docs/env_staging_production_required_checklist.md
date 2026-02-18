@@ -9,6 +9,9 @@ Use this checklist before running `docker compose up -d --build` on staging or p
 - [ ] `API_PREFIX=/api/v1`
 - [ ] `MDR_DOMAIN=<public-domain>`
 - [ ] `MDR_DATA_ROOT=<server-data-root>` (example: `/opt/mdr_data`)
+- [ ] `STORAGE_ALLOWED_ROOTS=<absolute-roots-csv>` (example: `/app/archive_storage,/app/data_store`)
+- [ ] `STORAGE_REQUIRE_ABSOLUTE_PATHS=true`
+- [ ] `STORAGE_VALIDATE_WRITABLE_ON_SAVE=true`
 - [ ] `POSTGRES_PORT_BIND=127.0.0.1:5432:5432`
 - [ ] `WEB_PORT_BIND=127.0.0.1:8000:8000`
 - [ ] `POSTGRES_DB=<db-name>`
@@ -32,6 +35,13 @@ Use this checklist before running `docker compose up -d --build` on staging or p
 - [ ] `OPENPROJECT_API_TOKEN`
 - [ ] `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - [ ] (optional legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
+
+## Storage Mount Gate
+
+- [ ] Network storage is mounted on host OS (CIFS/NFS) before container start.
+- [ ] Mount is bound into container as a stable absolute path (for example `/app/archive_storage`).
+- [ ] Mount ownership/permissions are aligned with `APP_UID:APP_GID`.
+- [ ] Storage paths saved in UI are absolute and under `STORAGE_ALLOWED_ROOTS`.
 
 ## Quick Validation
 

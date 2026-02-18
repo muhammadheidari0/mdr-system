@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import path from "node:path";
 
 import { expect, test, type APIResponse } from "@playwright/test";
 
@@ -444,8 +445,9 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
   const beforeOpenproject = beforeIntegrationsBody?.integrations?.openproject || {};
   const beforeLocalCache = beforeIntegrationsBody?.integrations?.local_cache || {};
 
-  const nextMdrPath = `./files/e2e_technical_${Date.now()}`;
-  const nextCorrespondencePath = `./files/e2e_correspondence_${Date.now()}`;
+  const storageRoot = path.resolve(process.cwd(), "archive_storage", `e2e_storage_${Date.now()}`);
+  const nextMdrPath = path.join(storageRoot, "technical").replace(/\\/g, "/");
+  const nextCorrespondencePath = path.join(storageRoot, "correspondence").replace(/\\/g, "/");
   const nextSharedDriveId = `e2e-shared-${Date.now()}`;
   const nextWorkPackageId = "321";
 
@@ -541,14 +543,18 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     expect(String(getUserBody?.full_name || "")).toContain("Updated");
     expect(Boolean(getUserBody?.is_active)).toBeFalsy();
   } finally {
+    const restoreMdrPath = path.isAbsolute(beforeMdrPath) ? beforeMdrPath : nextMdrPath;
+    const restoreCorrespondencePath = path.isAbsolute(beforeCorrespondencePath)
+      ? beforeCorrespondencePath
+      : nextCorrespondencePath;
     await request.post(`${resolvedBaseUrl}/api/v1/settings/storage-paths`, {
       headers: {
         ...headers,
         "Content-Type": "application/json",
       },
       data: {
-        mdr_storage_path: beforeMdrPath,
-        correspondence_storage_path: beforeCorrespondencePath,
+        mdr_storage_path: restoreMdrPath,
+        correspondence_storage_path: restoreCorrespondencePath,
       },
     });
     await request.post(`${resolvedBaseUrl}/api/v1/settings/storage-integrations`, {

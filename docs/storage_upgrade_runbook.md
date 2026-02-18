@@ -69,3 +69,14 @@ python tools/backfill_file_integrity.py --execute
 - `OPENPROJECT_API_TOKEN`
 - `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - legacy alias: `OPENPROJECT_DEFAULT_PROJECT_ID` (optional, backward compatible)
+- `STORAGE_ALLOWED_ROOTS` (CSV of absolute roots, example: `/app/archive_storage,/app/data_store`)
+- `STORAGE_REQUIRE_ABSOLUTE_PATHS` (`true` recommended for staging/production)
+- `STORAGE_VALIDATE_WRITABLE_ON_SAVE` (`true` recommended for staging/production)
+
+## Storage Path Hardening (Production Gate)
+
+- Mount network storage on host OS first (CIFS/NFS).
+- Bind mount into container with stable absolute paths.
+- Ensure mount ownership aligns with `APP_UID:APP_GID`.
+- Save storage paths only as absolute paths under `STORAGE_ALLOWED_ROOTS`.
+- Save is rejected (`422`) if path is relative, خارج از root مجاز, or not writable by service account.
