@@ -401,6 +401,17 @@ function ensureBoards(moduleKey: string, deps: CommItemsUiDeps): boolean {
   return true;
 }
 
+function hasBoardRoot(moduleKey: string, tabKey: string): boolean {
+  const moduleValue = normalize(moduleKey);
+  const tabValue = normalize(tabKey);
+  if (!moduleValue || !tabValue) return false;
+  try {
+    return !!document.querySelector(`.comm-items-root[data-module="${moduleValue}"][data-tab="${tabValue}"]`);
+  } catch {
+    return false;
+  }
+}
+
 function contextFromElement(el: HTMLElement | null): { moduleKey: string; tabKey: string; key: string } | null {
   if (!el) return null;
   const card = el.closest(".comm-items-card[data-module][data-tab]") as HTMLElement | null;
@@ -987,6 +998,7 @@ async function onTabOpened(moduleKey: string, tabKey: string, deps: CommItemsUiD
   const m = normalize(moduleKey);
   const t = normalize(tabKey);
   if (!m || !t) return false;
+  if (!hasBoardRoot(m, t)) return false;
   await ensureCatalog(deps);
   ensureBoards(m, deps);
   bindActions(() => deps);

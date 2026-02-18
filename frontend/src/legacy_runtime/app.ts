@@ -962,11 +962,15 @@ function switchModuleTab(tabName, tabToPanelMap, tabButtonSelector, dataAttrName
     return normalized;
 }
 
-function hasCommItemsRoots(moduleKey) {
+function hasCommItemsRoots(moduleKey, tabKey = null) {
     const normalized = String(moduleKey || '').trim().toLowerCase();
     if (!normalized) return false;
+    const tab = String(tabKey || '').trim().toLowerCase();
     try {
-        return !!document.querySelector(`.comm-items-root[data-module="${normalized}"][data-tab]`);
+        const selector = tab
+            ? `.comm-items-root[data-module="${normalized}"][data-tab="${tab}"]`
+            : `.comm-items-root[data-module="${normalized}"][data-tab]`;
+        return !!document.querySelector(selector);
     } catch (error) {
         return false;
     }
@@ -1004,7 +1008,7 @@ function openContractorTab(tabName, btnEl = null) {
     const normalized = switchModuleTab(tabName, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
     if (!normalized) return;
     let handledByCommBridge = false;
-    if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('contractor')) {
+    if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('contractor', normalized)) {
         handledByCommBridge = true;
         Promise.resolve(
             TS_COMM_ITEMS_UI.onTabOpened('contractor', normalized, buildCommItemsUiDeps())
@@ -1056,7 +1060,7 @@ function openConsultantTab(tabName, btnEl = null) {
     const normalized = switchModuleTab(tabName, CONSULTANT_TAB_TO_PANEL, '.consultant-tab-btn', 'data-consultant-tab', btnEl);
     if (!normalized) return;
     let handledByCommBridge = false;
-    if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('consultant')) {
+    if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('consultant', normalized)) {
         handledByCommBridge = true;
         Promise.resolve(
             TS_COMM_ITEMS_UI.onTabOpened('consultant', normalized, buildCommItemsUiDeps())
