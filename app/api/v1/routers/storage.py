@@ -5,10 +5,10 @@ import hashlib
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
@@ -29,9 +29,13 @@ from app.db.models import (
     DocumentRevision,
     LocalSyncManifest,
     MdrDocument,
+    OpenProjectImportRow,
+    OpenProjectImportRun,
+    OpenProjectLink,
     SiteCacheAgentToken,
     SiteCacheProfile,
 )
+from app.core.config import settings
 from app.services.openproject_status import (
     ENTITY_ARCHIVE_FILE,
     ENTITY_CORRESPONDENCE_ATTACHMENT,
@@ -48,6 +52,11 @@ from app.services.storage_sync import (
     run_storage_jobs,
 )
 from app.services.openproject_adapter import OpenProjectAdapter
+from app.services.openproject_import import (
+    build_work_package_create_payload,
+    parse_summary_json,
+    parse_task_table_from_bytes,
+)
 from app.services.storage_policy import get_storage_integrations
 from app.services.site_cache import (
     build_site_manifest,
@@ -246,6 +255,99 @@ class SiteAgentHeartbeatIn(BaseModel):
     summary: dict = Field(default_factory=dict)
 
 
+class OpenProjectImportExecuteIn(BaseModel):
+    target_parent_work_package_id: Optional[int] = Field(default=None, ge=1)
+
+
+def _safe_json_dumps(value: dict[str, Any]) -> str:
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _parse_json_object(value: str | None) -> dict[str, Any]:
+    raw = str(value or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _serialize_openproject_import_run(run: OpenProjectImportRun) -> dict[str, Any]:
+    summary = parse_summary_json(run.summary_json)
+    started_by = run.started_by.full_name if run.started_by else None
+    if not started_by and run.started_by:
+        started_by = run.started_by.email
+    return {
+        "id": int(run.id),
+        "run_no": str(run.run_no or ""),
+        "status_code": str(run.status_code or ""),
+        "source_file_name": run.source_file_name,
+        "source_sha256": run.source_sha256,
+        "target_parent_work_package_id": run.target_parent_work_package_id,
+        "started_by_id": run.started_by_id,
+        "started_by_name": started_by,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "total_rows": int(run.total_rows or 0),
+        "valid_rows": int(run.valid_rows or 0),
+        "invalid_rows": int(run.invalid_rows or 0),
+        "created_rows": int(run.created_rows or 0),
+        "failed_rows": int(run.failed_rows or 0),
+        "summary": summary,
+        "error_message": run.error_message,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+        "updated_at": run.updated_at.isoformat() if run.updated_at else None,
+    }
+
+
+def _serialize_openproject_import_row(row: OpenProjectImportRow) -> dict[str, Any]:
+    return {
+        "id": int(row.id),
+        "run_id": int(row.run_id),
+        "row_no": int(row.row_no or 0),
+        "task_name": row.task_name,
+        "duration_raw": row.duration_raw,
+        "start_raw": row.start_raw,
+        "finish_raw": row.finish_raw,
+        "predecessors_raw": row.predecessors_raw,
+        "resource_names_raw": row.resource_names_raw,
+        "normalized_start_date": row.normalized_start_date,
+        "normalized_finish_date": row.normalized_finish_date,
+        "validation_status": str(row.validation_status or ""),
+        "execution_status": str(row.execution_status or ""),
+        "created_work_package_id": row.created_work_package_id,
+        "openproject_href": row.openproject_href,
+        "error_message": row.error_message,
+        "payload": _parse_json_object(row.payload_json),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def _load_openproject_import_run_or_404(db: Session, run_id: int) -> OpenProjectImportRun:
+    row = (
+        db.query(OpenProjectImportRun)
+        .options(joinedload(OpenProjectImportRun.started_by))
+        .filter(OpenProjectImportRun.id == int(run_id))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Import run not found")
+    return row
+
+
+def _extract_href(value: dict[str, Any], key: str) -> str:
+    links = value.get("_links") if isinstance(value, dict) else None
+    if not isinstance(links, dict):
+        return ""
+    node = links.get(key)
+    if not isinstance(node, dict):
+        return ""
+    return str(node.get("href") or "").strip()
+
+
 @router.post("/sync/google-drive/run")
 def run_google_drive_jobs(
     limit: int = Query(default=25, ge=1, le=200),
@@ -341,6 +443,347 @@ def ping_openproject(
             "token_source": token_source,
             "message": "OpenProject is unreachable (network/TLS error).",
         }
+
+
+@router.get("/openproject/import/template")
+def download_openproject_import_template(
+    user: User = Depends(allow_admin),
+):
+    del user
+    template_path = Path(settings.BASE_DIR) / "data_sources" / "openproject template.xlsx"
+    if not template_path.exists():
+        raise HTTPException(status_code=404, detail="OpenProject template file not found")
+    return FileResponse(
+        path=str(template_path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="openproject template.xlsx",
+    )
+
+
+@router.post("/openproject/import/validate")
+def validate_openproject_import_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    file_name = str(file.filename or "").strip() or "openproject_import.xlsx"
+    if not file_name.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are supported")
+
+    content = file.file.read()
+    try:
+        parsed = parse_task_table_from_bytes(content, source_file_name=file_name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    summary = dict(parsed.get("summary") or {})
+    now = datetime.utcnow()
+    run = OpenProjectImportRun(
+        run_no="OPENPROJECT-IMPORT-PENDING",
+        status_code="VALIDATED",
+        source_file_name=file_name,
+        source_sha256=str(parsed.get("source_sha256") or ""),
+        started_by_id=int(getattr(user, "id", 0) or 0) or None,
+        started_at=now,
+        total_rows=int(summary.get("total_rows") or 0),
+        valid_rows=int(summary.get("valid_rows") or 0),
+        invalid_rows=int(summary.get("invalid_rows") or 0),
+        created_rows=0,
+        failed_rows=0,
+        summary_json=_safe_json_dumps(summary),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(run)
+    db.flush()
+    run.run_no = f"OPI-{datetime.utcnow():%Y%m%d}-{int(run.id):06d}"
+
+    for row in parsed.get("rows") or []:
+        db.add(
+            OpenProjectImportRow(
+                run_id=int(run.id),
+                row_no=int(row.get("row_no") or 0),
+                task_name=row.get("task_name"),
+                duration_raw=row.get("duration_raw"),
+                start_raw=row.get("start_raw"),
+                finish_raw=row.get("finish_raw"),
+                predecessors_raw=row.get("predecessors_raw"),
+                resource_names_raw=row.get("resource_names_raw"),
+                normalized_start_date=row.get("normalized_start_date"),
+                normalized_finish_date=row.get("normalized_finish_date"),
+                validation_status=str(row.get("validation_status") or "INVALID"),
+                execution_status=str(row.get("execution_status") or "PENDING"),
+                error_message=row.get("error_message"),
+                payload_json=row.get("payload_json"),
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    db.commit()
+    return {
+        "ok": True,
+        "run": _serialize_openproject_import_run(run),
+        "summary": parse_summary_json(run.summary_json),
+    }
+
+
+@router.post("/openproject/import/runs/{run_id}/execute")
+def execute_openproject_import_run(
+    run_id: int,
+    payload: OpenProjectImportExecuteIn = Body(default={}),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    run = _load_openproject_import_run_or_404(db, run_id)
+    status_code = str(run.status_code or "").upper()
+    if status_code == "COMPLETED":
+        raise HTTPException(status_code=409, detail="Import run is already completed")
+    if status_code == "RUNNING":
+        raise HTTPException(status_code=409, detail="Import run is already running")
+    if status_code not in {"VALIDATED", "FAILED"}:
+        raise HTTPException(status_code=409, detail=f"Import run status `{status_code}` is not executable")
+
+    integrations = get_storage_integrations(db)
+    runtime = resolve_openproject_runtime(integrations)
+    if not bool(runtime.get("enabled")):
+        raise HTTPException(status_code=400, detail="OpenProject integration is disabled")
+
+    runtime_wp = runtime.get("default_work_package_id")
+    target_parent_id = (
+        int(payload.target_parent_work_package_id)
+        if payload and payload.target_parent_work_package_id
+        else int(runtime_wp or 0)
+    )
+    if target_parent_id <= 0:
+        raise HTTPException(status_code=400, detail="default_work_package_id is required before execute")
+
+    base_url = str(runtime.get("base_url") or "").strip()
+    token = str(runtime.get("api_token") or "").strip()
+    if not base_url or not token:
+        raise HTTPException(status_code=400, detail="OpenProject base URL and API token are required")
+
+    adapter = OpenProjectAdapter(
+        base_url=base_url,
+        api_token=token,
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+
+    try:
+        parent_wp = adapter.get_work_package(target_parent_id)
+    except RuntimeError as exc:
+        message = str(exc)
+        status = 400 if "HTTP 404" in message else 502
+        raise HTTPException(status_code=status, detail=message) from exc
+
+    project_href = _extract_href(parent_wp, "project")
+    type_href = _extract_href(parent_wp, "type")
+    if not project_href or not type_href:
+        raise HTTPException(status_code=502, detail="Failed to resolve project/type from parent work package")
+
+    now = datetime.utcnow()
+    run.status_code = "RUNNING"
+    run.target_parent_work_package_id = int(target_parent_id)
+    run.created_rows = 0
+    run.failed_rows = 0
+    run.finished_at = None
+    run.error_message = None
+    run.updated_at = now
+    db.commit()
+
+    rows = (
+        db.query(OpenProjectImportRow)
+        .filter(OpenProjectImportRow.run_id == int(run.id))
+        .order_by(OpenProjectImportRow.row_no.asc(), OpenProjectImportRow.id.asc())
+        .all()
+    )
+    total_created = 0
+    total_failed = 0
+
+    for row in rows:
+        if str(row.validation_status or "").upper() != "VALID":
+            row.execution_status = "SKIPPED"
+            row.updated_at = datetime.utcnow()
+            db.commit()
+            continue
+
+        row.execution_status = "PENDING"
+        row.error_message = None
+        row.created_work_package_id = None
+        row.openproject_href = None
+        row.updated_at = datetime.utcnow()
+        db.commit()
+
+        create_payload = build_work_package_create_payload(
+            row_task_name=str(row.task_name or f"Imported Task {int(row.row_no)}"),
+            row_start_date=row.normalized_start_date,
+            row_finish_date=row.normalized_finish_date,
+            row_no=int(row.row_no or 0),
+            run_no=str(run.run_no or ""),
+            parent_work_package_id=target_parent_id,
+            project_href=project_href,
+            type_href=type_href,
+        )
+        try:
+            created = adapter.create_work_package(create_payload)
+            created_id_raw = created.get("id")
+            created_id = int(created_id_raw) if str(created_id_raw or "").isdigit() else None
+            row.execution_status = "CREATED"
+            row.created_work_package_id = created_id
+            row.openproject_href = _extract_href(created, "self") or (
+                f"/api/v3/work_packages/{created_id}" if created_id else None
+            )
+            row.error_message = None
+            total_created += 1
+        except Exception as exc:
+            row.execution_status = "FAILED"
+            row.error_message = str(exc)[:4000]
+            row.created_work_package_id = None
+            row.openproject_href = None
+            total_failed += 1
+
+        row.updated_at = datetime.utcnow()
+        run.created_rows = int(total_created)
+        run.failed_rows = int(total_failed)
+        run.updated_at = datetime.utcnow()
+        db.commit()
+
+    run = _load_openproject_import_run_or_404(db, int(run.id))
+    summary = parse_summary_json(run.summary_json)
+    summary["created_rows"] = int(total_created)
+    summary["failed_rows"] = int(total_failed)
+    summary["target_parent_work_package_id"] = int(target_parent_id)
+    summary["executed_at"] = datetime.utcnow().isoformat()
+
+    run.status_code = "COMPLETED"
+    run.created_rows = int(total_created)
+    run.failed_rows = int(total_failed)
+    run.finished_at = datetime.utcnow()
+    run.summary_json = _safe_json_dumps(summary)
+    run.updated_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True, "run": _serialize_openproject_import_run(run)}
+
+
+@router.get("/openproject/import/runs")
+def list_openproject_import_runs(
+    status_code: Optional[str] = Query(default=None),
+    limit: int = Query(default=30, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    query = db.query(OpenProjectImportRun).options(joinedload(OpenProjectImportRun.started_by))
+    normalized_status = str(status_code or "").strip().upper()
+    if normalized_status:
+        query = query.filter(OpenProjectImportRun.status_code == normalized_status)
+    rows = query.order_by(OpenProjectImportRun.created_at.desc(), OpenProjectImportRun.id.desc()).limit(limit).all()
+    return {"ok": True, "runs": [_serialize_openproject_import_run(row) for row in rows]}
+
+
+@router.get("/openproject/import/runs/{run_id}")
+def get_openproject_import_run(
+    run_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    row = _load_openproject_import_run_or_404(db, run_id)
+    return {"ok": True, "run": _serialize_openproject_import_run(row)}
+
+
+@router.get("/openproject/import/runs/{run_id}/rows")
+def list_openproject_import_rows(
+    run_id: int,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    _load_openproject_import_run_or_404(db, run_id)
+    rows = (
+        db.query(OpenProjectImportRow)
+        .filter(OpenProjectImportRow.run_id == int(run_id))
+        .order_by(OpenProjectImportRow.row_no.asc(), OpenProjectImportRow.id.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    total = (
+        db.query(OpenProjectImportRow)
+        .filter(OpenProjectImportRow.run_id == int(run_id))
+        .count()
+    )
+    return {
+        "ok": True,
+        "rows": [_serialize_openproject_import_row(row) for row in rows],
+        "total": int(total),
+        "skip": int(skip),
+        "limit": int(limit),
+    }
+
+
+@router.get("/openproject/activity")
+def list_openproject_activity(
+    limit: int = Query(default=30, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    activity: list[dict[str, Any]] = []
+
+    import_rows = (
+        db.query(OpenProjectImportRow, OpenProjectImportRun)
+        .join(OpenProjectImportRun, OpenProjectImportRun.id == OpenProjectImportRow.run_id)
+        .filter(OpenProjectImportRow.execution_status.in_(["CREATED", "FAILED"]))
+        .order_by(OpenProjectImportRow.updated_at.desc(), OpenProjectImportRow.id.desc())
+        .limit(limit)
+        .all()
+    )
+    for row, run in import_rows:
+        event_at = row.updated_at or row.created_at or run.updated_at or run.created_at
+        activity.append(
+            {
+                "source": "import",
+                "kind": "work_package_created"
+                if str(row.execution_status or "").upper() == "CREATED"
+                else "work_package_failed",
+                "event_at": event_at.isoformat() if event_at else None,
+                "run_id": int(run.id),
+                "run_no": run.run_no,
+                "row_no": int(row.row_no or 0),
+                "task_name": row.task_name,
+                "created_work_package_id": row.created_work_package_id,
+                "error_message": row.error_message,
+            }
+        )
+
+    sync_rows = (
+        db.query(OpenProjectLink)
+        .order_by(OpenProjectLink.last_synced_at.desc(), OpenProjectLink.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+    for row in sync_rows:
+        event_at = row.last_synced_at or row.updated_at or row.created_at
+        activity.append(
+            {
+                "source": "sync",
+                "kind": "external_link_sync",
+                "event_at": event_at.isoformat() if event_at else None,
+                "entity_type": row.entity_type,
+                "entity_id": int(row.entity_id or 0),
+                "work_package_id": int(row.work_package_id or 0),
+                "sync_status": row.sync_status,
+                "openproject_attachment_id": row.openproject_attachment_id,
+            }
+        )
+
+    activity.sort(key=lambda item: str(item.get("event_at") or ""), reverse=True)
+    return {"ok": True, "items": activity[: int(limit)]}
 
 
 @router.post("/openproject/status")

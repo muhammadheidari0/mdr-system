@@ -1320,6 +1320,83 @@ class OpenProjectLink(Base):
     )
 
 
+class OpenProjectImportRun(Base):
+    __tablename__ = "openproject_import_runs"
+    __table_args__ = (
+        Index("ix_openproject_import_runs_status_created", "status_code", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_no: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    status_code: Mapped[str] = mapped_column(String(32), nullable=False, default="VALIDATED", index=True)
+    source_file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    target_parent_work_package_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    valid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    invalid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    started_by: Mapped["User | None"] = relationship("User", foreign_keys=[started_by_id])
+    rows: Mapped[List["OpenProjectImportRow"]] = relationship(
+        "OpenProjectImportRow",
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+
+
+class OpenProjectImportRow(Base):
+    __tablename__ = "openproject_import_rows"
+    __table_args__ = (
+        UniqueConstraint("run_id", "row_no", name="uq_openproject_import_rows_run_row"),
+        Index("ix_openproject_import_rows_run_exec", "run_id", "execution_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("openproject_import_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    row_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    task_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    duration_raw: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    start_raw: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    finish_raw: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    predecessors_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resource_names_raw: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    normalized_start_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    normalized_finish_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    validation_status: Mapped[str] = mapped_column(String(16), nullable=False, default="INVALID", index=True)
+    execution_status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING", index=True)
+    created_work_package_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    openproject_href: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    run: Mapped["OpenProjectImportRun"] = relationship("OpenProjectImportRun", back_populates="rows")
+
+
 class LocalSyncManifest(Base):
     __tablename__ = "local_sync_manifest"
     __table_args__ = (

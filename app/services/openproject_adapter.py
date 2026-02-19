@@ -94,3 +94,24 @@ class OpenProjectAdapter:
                 f"OpenProject sync failed for work package {work_package_id}: HTTP {response.status_code}"
             )
         return response.json()
+
+    def get_work_package(self, work_package_id: int) -> dict[str, Any]:
+        response = self._request("GET", f"work_packages/{int(work_package_id)}")
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"OpenProject work package fetch failed for {work_package_id}: HTTP {response.status_code}"
+            )
+        return response.json()
+
+    def create_work_package(self, payload: dict[str, Any]) -> dict[str, Any]:
+        response = self._request(
+            "POST",
+            "work_packages",
+            headers={"Content-Type": "application/json"},
+            json=payload,
+        )
+        if response.status_code >= 400:
+            raise RuntimeError(
+                f"OpenProject work package create failed: HTTP {response.status_code}"
+            )
+        return response.json()
