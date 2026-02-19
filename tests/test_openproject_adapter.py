@@ -75,3 +75,26 @@ def test_openproject_adapter_attach_external_link_contract(monkeypatch) -> None:
     assert captured["kwargs"]["auth"] == ("apikey", "token-abc")
     payload = captured["kwargs"]["json"]
     assert payload["description"]["raw"].startswith("Attachment Title")
+
+
+def test_openproject_adapter_get_and_create_work_package_contract(monkeypatch) -> None:
+    captured: list[tuple[str, str, dict[str, Any]]] = []
+
+    def _fake_request(method: str, url: str, **kwargs: Any) -> _FakeResponse:
+        captured.append((method, url, kwargs))
+        if method == "GET":
+            return _FakeResponse(200, {"id": 321})
+        return _FakeResponse(201, {"id": 654})
+
+    monkeypatch.setattr(requests, "request", _fake_request)
+
+    adapter = OpenProjectAdapter(base_url="https://open-project.example.com", api_token="token-xyz")
+    got = adapter.get_work_package(321)
+    created = adapter.create_work_package({"subject": "Task A"})
+
+    assert got.get("id") == 321
+    assert created.get("id") == 654
+    assert captured[0][0] == "GET"
+    assert captured[0][1] == "https://open-project.example.com/api/v3/work_packages/321"
+    assert captured[1][0] == "POST"
+    assert captured[1][1] == "https://open-project.example.com/api/v3/work_packages"

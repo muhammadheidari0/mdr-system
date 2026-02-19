@@ -170,6 +170,12 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'id="settingsIntegrationsRoot"' in html
     assert 'data-integrations-action="save-integrations"' in html
     assert 'data-integrations-action="ping-openproject"' in html
+    assert 'data-op-tab="connection"' in html
+    assert 'data-op-tab="import"' in html
+    assert 'data-op-tab="logs"' in html
+    assert 'id="storageOpenProjectImportFileInput"' in html
+    assert 'id="storageOpenProjectImportRunsBody"' in html
+    assert 'id="storageOpenProjectActivityBody"' in html
     assert 'id="storageOpenProjectTokenSourceBadge"' in html
 
     base_dir = Path(__file__).resolve().parents[1]

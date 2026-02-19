@@ -475,6 +475,12 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await page.locator("button[data-settings-tab='true'][data-tab='integrations']").click();
     await expect(page.locator("#tab-integrations")).toHaveClass(/active/);
     await expect(page.locator("#settingsIntegrationsRoot")).toBeVisible();
+    await expect(page.locator("[data-op-tab='connection']")).toBeVisible();
+    await expect(page.locator("[data-op-tab='import']")).toBeVisible();
+    await expect(page.locator("[data-op-tab='logs']")).toBeVisible();
+    await page.locator("[data-op-tab='logs']").click();
+    await expect(page.locator("#storageOpenProjectImportRunsBody")).toBeVisible();
+    await page.locator("[data-op-tab='connection']").click();
 
     const openProjectEnabledInput = page.locator("#storageOpenProjectEnabledInput");
     await openProjectEnabledInput.check();
