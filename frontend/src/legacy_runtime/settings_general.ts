@@ -39,6 +39,12 @@
             activeListTab: 'cidr',
             tokenMulti: {},
         },
+        openprojectImport: {
+            activeTab: 'connection',
+            selectedRunId: 0,
+            lastValidatedRunId: 0,
+            pollingTimer: null,
+        },
         paging: {},
     };
 
@@ -580,6 +586,69 @@
         tSuccess('ØªÙ†Ø¸ÛŒÙ…Ø§Øª Site Cache Ø¨Ø§ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ÛŒ Ø¯Ø§Ø®Ù„ÛŒ Ù‡Ù…ÛŒÙ† ØµÙØ­Ù‡ Ø°Ø®ÛŒØ±Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.');
     }
 
+    function stopOpenProjectImportPolling() {
+        const timer = STORE.openprojectImport?.pollingTimer;
+        if (timer) {
+            clearTimeout(timer);
+            STORE.openprojectImport.pollingTimer = null;
+        }
+    }
+
+    function setOpenProjectImportSummary(message = '', level = 'info') {
+        const box = document.getElementById('storageOpenProjectImportSummary');
+        if (!box) return;
+        if (!message) {
+            box.style.display = 'none';
+            box.textContent = '';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.style.display = 'block';
+        box.textContent = message;
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function setOpenProjectImportProgress(total = 0, done = 0, statusCode = '') {
+        const wrap = document.getElementById('storageOpenProjectImportProgressWrap');
+        const bar = document.getElementById('storageOpenProjectImportProgressBar');
+        const text = document.getElementById('storageOpenProjectImportProgressText');
+        const safeTotal = Math.max(0, Number(total) || 0);
+        const safeDone = Math.max(0, Number(done) || 0);
+        if (!wrap || !bar || !text) return;
+        if (!safeTotal) {
+            wrap.style.display = 'none';
+            bar.style.width = '0%';
+            text.textContent = '';
+            return;
+        }
+        const pct = Math.max(0, Math.min(100, Math.round((safeDone / safeTotal) * 100)));
+        wrap.style.display = 'block';
+        bar.style.width = `${pct}%`;
+        text.textContent = `پیشرفت: ${safeDone} از ${safeTotal} (${pct}%)${statusCode ? ` | ${statusCode}` : ''}`;
+    }
+
+    function setOpenProjectSubTab(nextTab = 'connection') {
+        const activeTab = ['connection', 'import', 'logs'].includes(String(nextTab || '').toLowerCase())
+            ? String(nextTab || '').toLowerCase()
+            : 'connection';
+        STORE.openprojectImport.activeTab = activeTab;
+        document.querySelectorAll('.storage-openproject-subtab[data-op-tab]').forEach((btn) => {
+            const key = String(btn?.dataset?.opTab || '').toLowerCase();
+            const isActive = key === activeTab;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-op-tab-content]').forEach((panel) => {
+            const key = String(panel?.dataset?.opTabContent || '').toLowerCase();
+            const isActive = key === activeTab;
+            panel.classList.toggle('active', isActive);
+            panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        });
+    }
+
     function updateStorageIntegrationsFieldState() {
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
@@ -595,11 +664,13 @@
         const gdriveSyncBtn = document.getElementById('storageGoogleDriveSyncRunBtn');
         const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
         const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
+        const executeBtn = document.getElementById('storageOpenProjectImportExecuteBtn');
         const tokenSource = norm(tokenBadge?.dataset?.tokenSource || 'none').toLowerCase();
         const envManagedToken = tokenSource === 'env';
 
         const gdriveOn = Boolean(gdriveEnabled?.checked);
         const openprojectOn = Boolean(openprojectEnabled?.checked);
+        const readyForExecute = openprojectOn && Number(STORE.openprojectImport?.lastValidatedRunId || 0) > 0;
 
         if (gdriveDriveId) gdriveDriveId.disabled = !gdriveOn;
         if (openprojectBaseUrl) openprojectBaseUrl.disabled = !openprojectOn;
@@ -611,6 +682,7 @@
         if (openprojectWrap) openprojectWrap.classList.toggle('is-disabled', !openprojectOn);
         if (gdriveSyncBtn) gdriveSyncBtn.disabled = !gdriveOn;
         if (openprojectSyncBtn) openprojectSyncBtn.disabled = !openprojectOn;
+        if (executeBtn) executeBtn.disabled = !readyForExecute;
         if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
     }
 
@@ -862,6 +934,204 @@
         tSuccess('تنظیمات یکپارچه‌سازی ذخیره شد.');
     }
 
+    function runSummaryText(run) {
+        const total = Number(run?.total_rows || 0);
+        const valid = Number(run?.valid_rows || 0);
+        const invalid = Number(run?.invalid_rows || 0);
+        const created = Number(run?.created_rows || 0);
+        const failed = Number(run?.failed_rows || 0);
+        const status = String(run?.status_code || '-');
+        return `Run=${status} | Total=${total} | Valid=${valid} | Invalid=${invalid} | Created=${created} | Failed=${failed}`;
+    }
+
+    function renderOpenProjectImportRuns(rows = []) {
+        const tbody = document.getElementById('storageOpenProjectImportRunsBody');
+        if (!tbody) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center muted">داده ای ثبت نشده است.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((row) => {
+            const runId = Number(row?.id || 0);
+            return `
+                <tr data-import-run-id="${esc(runId)}">
+                  <td>${esc(row?.run_no || '-')}</td>
+                  <td>${esc(row?.status_code || '-')}</td>
+                  <td>${esc(String(row?.valid_rows || 0))}/${esc(String(row?.total_rows || 0))}</td>
+                  <td>${esc(String(row?.created_rows || 0))}/${esc(String(row?.failed_rows || 0))}</td>
+                  <td>
+                    <div class="general-row-actions">
+                      <button class="btn-archive-icon" type="button" data-integrations-action="select-openproject-import-run" data-run-id="${esc(runId)}">Rows</button>
+                    </div>
+                  </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function renderOpenProjectImportRows(rows = []) {
+        const tbody = document.getElementById('storageOpenProjectImportRowsBody');
+        if (!tbody) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center muted">رکوردی یافت نشد.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((row) => `
+            <tr>
+              <td>${esc(row?.row_no || '-')}</td>
+              <td>${esc(row?.task_name || '-')}</td>
+              <td>${esc(row?.validation_status || '-')}</td>
+              <td>${esc(row?.execution_status || '-')}</td>
+              <td>${esc(row?.created_work_package_id || '-')}</td>
+              <td class="text-left">${esc(row?.error_message || '-')}</td>
+            </tr>
+        `).join('');
+    }
+
+    function renderOpenProjectActivity(rows = []) {
+        const tbody = document.getElementById('storageOpenProjectActivityBody');
+        if (!tbody) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center muted">فعالیتی ثبت نشده است.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((row) => {
+            const details = row?.source === 'import'
+                ? `run=${row?.run_no || '-'} | row=${row?.row_no || '-'} | wp=${row?.created_work_package_id || '-'}`
+                : `entity=${row?.entity_type || '-'}:${row?.entity_id || '-'} | wp=${row?.work_package_id || '-'}`;
+            return `
+                <tr>
+                  <td>${esc(row?.event_at || '-')}</td>
+                  <td>${esc(row?.source || '-')}</td>
+                  <td>${esc(row?.kind || '-')}</td>
+                  <td>${esc(details)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function loadOpenProjectImportRuns(selectRunId = 0) {
+        const payload = await request('/api/v1/storage/openproject/import/runs?limit=50');
+        const runs = Array.isArray(payload?.runs) ? payload.runs : [];
+        renderOpenProjectImportRuns(runs);
+        const selected = Number(selectRunId || STORE.openprojectImport?.selectedRunId || 0);
+        if (selected > 0) {
+            await loadOpenProjectImportRows(selected);
+        }
+        return runs;
+    }
+
+    async function loadOpenProjectImportRows(runId) {
+        const safeRunId = Number(runId || 0);
+        STORE.openprojectImport.selectedRunId = safeRunId;
+        if (safeRunId <= 0) {
+            renderOpenProjectImportRows([]);
+            return [];
+        }
+        const payload = await request(`/api/v1/storage/openproject/import/runs/${safeRunId}/rows?skip=0&limit=500`);
+        const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+        renderOpenProjectImportRows(rows);
+        return rows;
+    }
+
+    async function loadOpenProjectActivities() {
+        const payload = await request('/api/v1/storage/openproject/activity?limit=50');
+        const rows = Array.isArray(payload?.items) ? payload.items : [];
+        renderOpenProjectActivity(rows);
+        return rows;
+    }
+
+    async function refreshOpenProjectImportData() {
+        await loadOpenProjectImportRuns();
+        await loadOpenProjectActivities();
+    }
+
+    async function validateOpenProjectImportFile() {
+        const input = document.getElementById('storageOpenProjectImportFileInput');
+        const file = input?.files?.[0] || null;
+        if (!file) {
+            throw new Error('ابتدا فایل اکسل را انتخاب کنید.');
+        }
+        if (!String(file.name || '').toLowerCase().endsWith('.xlsx')) {
+            throw new Error('فرمت فایل باید .xlsx باشد.');
+        }
+        setOpenProjectImportSummary('در حال اعتبارسنجی فایل اکسل ...', 'info');
+
+        const formData = new FormData();
+        formData.append('file', file, file.name);
+        const payload = await request('/api/v1/storage/openproject/import/validate', {
+            method: 'POST',
+            body: formData,
+        });
+        const run = payload?.run || {};
+        const runId = Number(run?.id || 0);
+        STORE.openprojectImport.lastValidatedRunId = runId;
+        STORE.openprojectImport.selectedRunId = runId;
+        const runInput = document.getElementById('storageOpenProjectImportRunIdInput');
+        if (runInput) runInput.value = String(runId || '');
+        setOpenProjectImportSummary(runSummaryText(run), 'success');
+        setOpenProjectImportProgress(Number(run?.total_rows || 0), 0, String(run?.status_code || 'VALIDATED'));
+        updateStorageIntegrationsFieldState();
+        await refreshOpenProjectImportData();
+        setOpenProjectSubTab('logs');
+        tSuccess('اعتبارسنجی فایل OpenProject انجام شد.');
+        return run;
+    }
+
+    async function executeOpenProjectImportRun() {
+        const selectedRunId = Number(
+            STORE.openprojectImport?.lastValidatedRunId ||
+            STORE.openprojectImport?.selectedRunId ||
+            document.getElementById('storageOpenProjectImportRunIdInput')?.value ||
+            0
+        );
+        if (selectedRunId <= 0) {
+            throw new Error('ابتدا Validate (Dry-run) انجام دهید.');
+        }
+
+        setOpenProjectImportSummary('پردازش ردیف های معتبر شروع شد ...', 'info');
+        const payload = await request(`/api/v1/storage/openproject/import/runs/${selectedRunId}/execute`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+        const run = payload?.run || {};
+        const total = Number(run?.valid_rows || run?.total_rows || 0);
+        const done = Number(run?.created_rows || 0) + Number(run?.failed_rows || 0);
+        setOpenProjectImportProgress(total, done, String(run?.status_code || 'COMPLETED'));
+        setOpenProjectImportSummary(runSummaryText(run), Number(run?.failed_rows || 0) > 0 ? 'error' : 'success');
+        await refreshOpenProjectImportData();
+        setOpenProjectSubTab('logs');
+        if (Number(run?.failed_rows || 0) > 0) {
+            tError('پردازش اجرا شد ولی بعضی ردیف ها خطا داشتند.');
+        } else {
+            tSuccess('پردازش OpenProject با موفقیت انجام شد.');
+        }
+        return run;
+    }
+
+    async function pollOpenProjectRun(runId) {
+        stopOpenProjectImportPolling();
+        const safeRunId = Number(runId || 0);
+        if (safeRunId <= 0) return;
+        const loop = async () => {
+            try {
+                const payload = await request(`/api/v1/storage/openproject/import/runs/${safeRunId}`);
+                const run = payload?.run || {};
+                const total = Number(run?.valid_rows || run?.total_rows || 0);
+                const done = Number(run?.created_rows || 0) + Number(run?.failed_rows || 0);
+                setOpenProjectImportProgress(total, done, String(run?.status_code || ''));
+                if (String(run?.status_code || '').toUpperCase() === 'RUNNING') {
+                    STORE.openprojectImport.pollingTimer = setTimeout(loop, 1200);
+                    return;
+                }
+                await refreshOpenProjectImportData();
+            } catch (_err) {
+                stopOpenProjectImportPolling();
+            }
+        };
+        STORE.openprojectImport.pollingTimer = setTimeout(loop, 300);
+    }
+
     async function clearOpenProjectStoredToken() {
         const payload = await request(`${API_BASE}/storage-integrations/openproject/clear-token`, {
             method: 'POST',
@@ -908,6 +1178,12 @@
         const root = document.getElementById('settingsIntegrationsRoot');
         if (!root || root.dataset.integrationsActionsBound === '1') return;
         root.addEventListener('click', async (event) => {
+            const tabEl = event?.target?.closest?.('[data-op-tab]');
+            if (tabEl && root.contains(tabEl)) {
+                event.preventDefault();
+                setOpenProjectSubTab(tabEl.dataset.opTab || 'connection');
+                return;
+            }
             const actionEl = event?.target?.closest?.('[data-integrations-action]');
             if (!actionEl || !root.contains(actionEl)) return;
             event.preventDefault();
@@ -931,6 +1207,32 @@
                 }
                 if (action === 'clear-openproject-token') {
                     await clearOpenProjectStoredToken();
+                    return;
+                }
+                if (action === 'download-openproject-template') {
+                    window.open('/api/v1/storage/openproject/import/template', '_blank');
+                    return;
+                }
+                if (action === 'validate-openproject-import') {
+                    const run = await validateOpenProjectImportFile();
+                    await pollOpenProjectRun(run?.id);
+                    return;
+                }
+                if (action === 'execute-openproject-import') {
+                    const run = await executeOpenProjectImportRun();
+                    await pollOpenProjectRun(run?.id);
+                    return;
+                }
+                if (action === 'refresh-openproject-import-data') {
+                    await refreshOpenProjectImportData();
+                    return;
+                }
+                if (action === 'select-openproject-import-run') {
+                    const runId = Number(actionEl.dataset.runId || 0);
+                    if (runId > 0) {
+                        await loadOpenProjectImportRows(runId);
+                    }
+                    return;
                 }
             } catch (err) {
                 tError(err.message);
@@ -943,8 +1245,12 @@
     }
 
     async function initSettingsIntegrations(force = false) {
+        stopOpenProjectImportPolling();
         bindIntegrationsActions();
         await loadStorageIntegrations(force);
+        await refreshOpenProjectImportData();
+        setOpenProjectSubTab(STORE.openprojectImport?.activeTab || 'connection');
+        setOpenProjectImportSummary('');
         updateStorageIntegrationsFieldState();
     }
 

@@ -2372,6 +2372,30 @@
         ]
       }
     },
+    "/api/v1/settings/storage-integrations/openproject/clear-token": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Clear Storage Openproject Token",
+        "operationId": "clear_storage_openproject_token_api_v1_settings_storage_integrations_openproject_clear_token_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/permissions/matrix": {
       "get": {
         "tags": [
@@ -4103,6 +4127,378 @@
               "maximum": 200,
               "minimum": 1,
               "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/openproject/ping": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Ping Openproject",
+        "operationId": "ping_openproject_api_v1_storage_openproject_ping_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/openproject/import/template": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Download Openproject Import Template",
+        "operationId": "download_openproject_import_template_api_v1_storage_openproject_import_template_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/openproject/import/validate": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Validate Openproject Import File",
+        "operationId": "validate_openproject_import_file_api_v1_storage_openproject_import_validate_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_validate_openproject_import_file_api_v1_storage_openproject_import_validate_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/openproject/import/runs/{run_id}/execute": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Execute Openproject Import Run",
+        "operationId": "execute_openproject_import_run_api_v1_storage_openproject_import_runs__run_id__execute_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenProjectImportExecuteIn",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/openproject/import/runs": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "List Openproject Import Runs",
+        "operationId": "list_openproject_import_runs_api_v1_storage_openproject_import_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Code"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 30,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/openproject/import/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Get Openproject Import Run",
+        "operationId": "get_openproject_import_run_api_v1_storage_openproject_import_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/openproject/import/runs/{run_id}/rows": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "List Openproject Import Rows",
+        "operationId": "list_openproject_import_rows_api_v1_storage_openproject_import_runs__run_id__rows_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/openproject/activity": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "List Openproject Activity",
+        "operationId": "list_openproject_activity_api_v1_storage_openproject_activity_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 30,
               "title": "Limit"
             }
           }
@@ -11972,6 +12368,20 @@
         ],
         "title": "Body_upload_file_api_v1_archive_upload_post"
       },
+      "Body_validate_openproject_import_file_api_v1_storage_openproject_import_validate_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_validate_openproject_import_file_api_v1_storage_openproject_import_validate_post"
+      },
       "BulkImportRequest": {
         "properties": {
           "text_data": {
@@ -14226,6 +14636,24 @@
         "type": "object",
         "title": "NcrDetailIn"
       },
+      "OpenProjectImportExecuteIn": {
+        "properties": {
+          "target_parent_work_package_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Parent Work Package Id"
+          }
+        },
+        "type": "object",
+        "title": "OpenProjectImportExecuteIn"
+      },
       "OpenProjectStatusIn": {
         "properties": {
           "items": {
@@ -15532,6 +15960,30 @@
             "maxLength": 1024,
             "minLength": 1,
             "title": "Correspondence Storage Path"
+          },
+          "network_username": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Username"
+          },
+          "network_password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network Password"
           }
         },
         "type": "object",
