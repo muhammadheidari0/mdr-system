@@ -66,10 +66,15 @@ def test_openproject_import_validate_success_and_runs_list() -> None:
         body = response.json()
         assert body.get("ok") is True
         run = body.get("run") or {}
+        summary = body.get("summary") or {}
         run_id = int(run.get("id") or 0)
         assert run_id > 0
         assert run.get("status_code") == "VALIDATED"
         assert int(run.get("valid_rows") or 0) == 1
+        assert "pass1_created_rows" in summary
+        assert "pass1_failed_rows" in summary
+        assert "pass2_relation_created" in summary
+        assert "pass2_relation_failed" in summary
 
         runs_res = client.get("/api/v1/storage/openproject/import/runs?limit=10", headers=headers)
         assert runs_res.status_code == 200, runs_res.text

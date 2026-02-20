@@ -3685,6 +3685,49 @@ body.ci-drawer-open {
     margin-bottom: 8px;
 }
 
+#storageOpenProjectImportRowsBody tr {
+    cursor: pointer;
+}
+
+#storageOpenProjectImportRowsBody tr.is-selected {
+    background: #eff6ff;
+}
+
+.storage-openproject-row-details {
+    margin-top: 10px;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 10px;
+    color: #334155;
+    font-size: 0.82rem;
+}
+
+.storage-openproject-row-details-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+}
+
+.storage-openproject-row-details-full {
+    grid-column: 1 / -1;
+}
+
+.status-success {
+    color: #166534;
+    font-weight: 700;
+}
+
+.status-danger {
+    color: #b91c1c;
+    font-weight: 700;
+}
+
+.status-muted {
+    color: #64748b;
+    font-weight: 700;
+}
+
 .storage-integrations-secondary {
     border-top: 1px dashed #d0d8ea;
     padding-top: 12px;
@@ -4490,6 +4533,10 @@ body.ci-drawer-open {
     .storage-max-size-grid,
     .storage-openproject-import-grid,
     .storage-openproject-project-import-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .storage-openproject-row-details-grid {
         grid-template-columns: 1fr;
     }
 

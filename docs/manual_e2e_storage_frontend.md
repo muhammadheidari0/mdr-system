@@ -77,6 +77,10 @@ Expected:
 Expected:
 - Run appears in `Data & Logs` with `OPI-` prefix.
 - Progress and final status are visible.
+- Summary includes pass counters:
+  - `Pass1 created/failed`
+  - `Pass2 relations created/failed`
+- In `Row Logs`, selecting a row shows mapping/relation/custom-field summary.
 
 ## 7) Google integration
 1. Switch to provider tab `Google`.

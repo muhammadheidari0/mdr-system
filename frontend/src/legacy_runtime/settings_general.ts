@@ -1094,8 +1094,60 @@
         const invalid = Number(run?.invalid_rows || 0);
         const created = Number(run?.created_rows || 0);
         const failed = Number(run?.failed_rows || 0);
+        const summary = run?.summary || {};
+        const pass1Created = Number(summary?.pass1_created_rows || 0);
+        const pass1Failed = Number(summary?.pass1_failed_rows || 0);
+        const pass2Created = Number(summary?.pass2_relation_created || 0);
+        const pass2Failed = Number(summary?.pass2_relation_failed || 0);
         const status = String(run?.status_code || '-');
-        return `Run=${status} | Total=${total} | Valid=${valid} | Invalid=${invalid} | Created=${created} | Failed=${failed}`;
+        return `Run=${status} | Total=${total} | Valid=${valid} | Invalid=${invalid} | Created=${created} | Failed=${failed} | Pass1=${pass1Created}/${pass1Failed} | Pass2=${pass2Created}/${pass2Failed}`;
+    }
+
+    function rowExecutionStatusClass(value) {
+        const key = norm(value).toUpperCase();
+        if (!key) return '';
+        if (key === 'CREATED' || key === 'RELATION_CREATED' || key === 'IMPORTED') {
+            return 'status-success';
+        }
+        if (key === 'FAILED' || key === 'RELATION_FAILED') {
+            return 'status-danger';
+        }
+        if (key === 'SKIPPED') {
+            return 'status-muted';
+        }
+        return '';
+    }
+
+    function renderOpenProjectImportRowDetails(row) {
+        const box = document.getElementById('storageOpenProjectImportRowDetails');
+        if (!box) return;
+        if (!row || typeof row !== 'object') {
+            box.innerHTML = 'Select a row to view mapping and relation details.';
+            return;
+        }
+        const payload = row?.payload || {};
+        const mapped = payload?.mapped_fields || {};
+        const customFields = payload?.custom_fields || {};
+        const executionMeta = payload?.execution_meta || {};
+        const relations = Array.isArray(executionMeta?.relations) ? executionMeta.relations : [];
+        const relationCreated = relations.filter((it) => String(it?.status || '').toUpperCase() === 'CREATED').length;
+        const relationFailed = relations.filter((it) => String(it?.status || '').toUpperCase() === 'FAILED').length;
+        const customSummary = Object.keys(customFields || {})
+            .slice(0, 8)
+            .map((key) => `${key}: ${customFields[key]}`)
+            .join(' | ');
+        box.innerHTML = `
+            <div class="storage-openproject-row-details-grid">
+              <div><strong>Row:</strong> ${esc(row?.row_no || '-')}</div>
+              <div><strong>WBS:</strong> ${esc(mapped?.wbs_code || '-')}</div>
+              <div><strong>Type:</strong> ${esc(mapped?.type_text || '-')}</div>
+              <div><strong>Priority:</strong> ${esc(mapped?.priority_text || '-')}</div>
+              <div><strong>Done %:</strong> ${esc(mapped?.done_ratio ?? '-')}</div>
+              <div><strong>Relations:</strong> ${esc(`${relationCreated} success / ${relationFailed} failed`)}</div>
+              <div class="storage-openproject-row-details-full"><strong>Custom Fields:</strong> ${esc(customSummary || '-')}</div>
+              <div class="storage-openproject-row-details-full"><strong>Error:</strong> ${esc(row?.error_message || '-')}</div>
+            </div>
+        `;
     }
 
     function setOpenProjectProjectImportSummary(message = '', tone = 'info') {
@@ -1226,18 +1278,32 @@
         if (!tbody) return;
         if (!Array.isArray(rows) || rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center muted">رکوردی یافت نشد.</td></tr>';
+            renderOpenProjectImportRowDetails(null);
             return;
         }
-        tbody.innerHTML = rows.map((row) => `
-            <tr>
+        tbody.innerHTML = rows.map((row, index) => `
+            <tr data-row-index="${esc(index)}">
               <td>${esc(row?.row_no || '-')}</td>
               <td>${esc(row?.task_name || '-')}</td>
               <td>${esc(row?.validation_status || '-')}</td>
-              <td>${esc(row?.execution_status || '-')}</td>
+              <td><span class="${esc(rowExecutionStatusClass(row?.execution_status))}">${esc(row?.execution_status || '-')}</span></td>
               <td>${esc(row?.created_work_package_id || '-')}</td>
               <td class="text-left">${esc(row?.error_message || '-')}</td>
             </tr>
         `).join('');
+        const tableRows = Array.from(tbody.querySelectorAll('tr[data-row-index]'));
+        tableRows.forEach((tr) => {
+            tr.addEventListener('click', () => {
+                tableRows.forEach((rowEl) => rowEl.classList.remove('is-selected'));
+                tr.classList.add('is-selected');
+                const idx = Number(tr.getAttribute('data-row-index') || 0);
+                renderOpenProjectImportRowDetails(rows[idx] || null);
+            });
+        });
+        if (tableRows.length > 0) {
+            tableRows[0].classList.add('is-selected');
+            renderOpenProjectImportRowDetails(rows[0]);
+        }
     }
 
     function renderOpenProjectActivity(rows = []) {
@@ -1448,6 +1514,48 @@
         else tError(`Google ${safeService} ping completed but needs configuration/auth fix.`);
     }
 
+    async function downloadOpenProjectTemplate() {
+        const fetcher = typeof window.fetchWithAuth === 'function' ? window.fetchWithAuth : fetch;
+        setStorageSyncResult('در حال دانلود تمپلیت OpenProject ...', 'info');
+        const response = await fetcher('/api/v1/storage/openproject/import/template');
+        if (!response.ok) {
+            let message = `دانلود تمپلیت ناموفق بود (${response.status})`;
+            try {
+                const body = await response.clone().json();
+                message = body?.detail || body?.message || message;
+            } catch (_) {
+                try {
+                    const text = await response.text();
+                    if (norm(text)) message = text;
+                } catch (_) {}
+            }
+            throw new Error(String(message || 'Not authenticated'));
+        }
+        const blob = await response.blob();
+        const contentDisposition = String(response.headers.get('content-disposition') || '');
+        let filename = 'openproject template.xlsx';
+        const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+        const asciiMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+        if (utf8Match?.[1]) {
+            try {
+                filename = decodeURIComponent(String(utf8Match[1]));
+            } catch (_) {
+                filename = String(utf8Match[1]);
+            }
+        } else if (asciiMatch?.[1]) {
+            filename = String(asciiMatch[1]);
+        }
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+        setStorageSyncResult('تمپلیت OpenProject دانلود شد.', 'success');
+    }
+
     async function runStorageSyncJob(kind) {
         const endpoint = kind === 'openproject'
             ? '/api/v1/storage/sync/openproject/run'
@@ -1530,7 +1638,7 @@
                     return;
                 }
                 if (action === 'download-openproject-template') {
-                    window.open('/api/v1/storage/openproject/import/template', '_blank');
+                    await downloadOpenProjectTemplate();
                     return;
                 }
                 if (action === 'validate-openproject-import') {

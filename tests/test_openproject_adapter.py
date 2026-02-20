@@ -12,6 +12,8 @@ class _FakeResponse:
     def __init__(self, status_code: int = 200, payload: dict[str, Any] | None = None) -> None:
         self.status_code = status_code
         self._payload = payload or {}
+        self.text = str(self._payload)
+        self.content = b"{}"
 
     def json(self) -> dict[str, Any]:
         return dict(self._payload)
@@ -123,3 +125,41 @@ def test_openproject_adapter_get_and_create_work_package_contract(monkeypatch) -
     assert captured[0][1] == "https://open-project.example.com/api/v3/work_packages/321"
     assert captured[1][0] == "POST"
     assert captured[1][1] == "https://open-project.example.com/api/v3/work_packages"
+
+
+def test_openproject_adapter_create_relation_contract(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def _fake_request(method: str, url: str, **kwargs: Any) -> _FakeResponse:
+        captured["method"] = method
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return _FakeResponse(201, {"id": 10})
+
+    monkeypatch.setattr(requests, "request", _fake_request)
+
+    adapter = OpenProjectAdapter(base_url="https://open-project.example.com", api_token="token-rel")
+    response = adapter.create_work_package_relation(
+        current_work_package_id=321,
+        predecessor_work_package_id=123,
+        lag_days=2,
+    )
+
+    assert response.get("id") == 10
+    assert captured["method"] == "POST"
+    assert captured["url"] == "https://open-project.example.com/api/v3/work_packages/321/relations"
+    relation_payload = captured["kwargs"]["json"]
+    assert relation_payload["type"] == "follows"
+    assert relation_payload["_links"]["to"]["href"] == "/api/v3/work_packages/123"
+    assert relation_payload["lag"] == 2
+
+
+def test_openproject_adapter_resolve_catalog_href_variants() -> None:
+    items = [
+        {"id": 1, "name": "Task", "_links": {"self": {"href": "/api/v3/types/1"}}},
+        {"id": 7, "title": "High", "_links": {"self": {"href": "/api/v3/priorities/7"}}},
+    ]
+    assert OpenProjectAdapter.resolve_catalog_href(items, "task", fallback_resource="types") == "/api/v3/types/1"
+    assert OpenProjectAdapter.resolve_catalog_href(items, "1", fallback_resource="types") == "/api/v3/types/1"
+    assert OpenProjectAdapter.resolve_catalog_href(items, "high", fallback_resource="priorities") == "/api/v3/priorities/7"
+    assert OpenProjectAdapter.resolve_catalog_href(items, "/api/v3/priorities/7", fallback_resource="priorities") == "/api/v3/priorities/7"

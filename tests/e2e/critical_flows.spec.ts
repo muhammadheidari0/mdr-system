@@ -483,6 +483,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await expect(page.locator("[data-op-tab='logs']")).toBeVisible();
     await page.locator("[data-op-tab='logs']").click();
     await expect(page.locator("#storageOpenProjectImportRunsBody")).toBeVisible();
+    await expect(page.locator("#storageOpenProjectImportRowDetails")).toBeVisible();
     await page.locator("[data-op-tab='connection']").click();
 
     const openProjectEnabledInput = page.locator("#storageOpenProjectEnabledInput");

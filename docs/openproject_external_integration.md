@@ -63,10 +63,24 @@ OpenProject sub-tabs:
 - Input file: `openproject template.xlsx`
 - Uses only sheet `Task_Table1`
 - Flow:
-  1. `Validate (Dry-run)`
-  2. `Start Processing`
+  1. `Validate (Dry-run)` with parser + row persistence
+  2. `Start Processing`:
+     - Pass-1: create WBS hierarchy (parent resolution by WBS)
+     - Pass-2: create predecessor relations
 - Run prefix: `OPI-`
 - `summary.run_type`: `excel_import`
+
+Excel parser compatibility:
+- Legacy template columns: `Name, Duration, Start_Date, Finish_Date, Predecessors, Resource_Names`
+- New template aliases: `Subject, Type, Priority, %complete, WBS, Start Date, Finish Date`
+- If `WBS` column is missing (legacy), sequential WBS is auto-generated.
+- `Predecessors` supports only `FS` with optional lag (`12`, `12FS+2`, `12FS-1`).
+
+Execution details:
+- Type/Priority are resolved via OpenProject catalogs (`types`, `priorities`).
+- Type fallback on mismatch: parent type.
+- Priority fallback on mismatch: omitted with warning.
+- `doneRatio` is sent first, with one fallback retry to `percentageDone` for field-compatibility.
 
 ## API endpoints (Admin)
 Connection/sync:

@@ -25,9 +25,23 @@ def _build_upload_bytes_with_invalid_row() -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Task_Table1"
-    ws.append(["Name", "Duration", "Start_Date", "Finish_Date", "Predecessors", "Resource_Names"])
-    ws.append(["Task A", "5 days", "14 February 2026 08:00 AM", "19 February 2026 05:00 PM", "", "Crew A"])
-    ws.append(["", "3 days", "bad-date", "", "", ""])
+    ws.append(
+        [
+            "Subject",
+            "WBS",
+            "Type",
+            "Priority",
+            "Start Date",
+            "Finish Date",
+            "%complete",
+            "Predecessors",
+            "CustomCode",
+        ]
+    )
+    ws.append(["Task A", "1", "Task", "High", "2026-02-14", "2026-02-19", "10", "", "C-100"])
+    ws.append(["Task A.1", "1.1", "Task", "Normal", "2026-02-20", "2026-02-22", "40", "1FS+2", "C-110"])
+    ws.append(["Task B", "2", "Task", "Normal", "2026-02-23", "2026-02-24", "70", "99FS+1", "C-200"])
+    ws.append(["", "3", "Task", "Normal", "bad-date", "", "10", "", "C-300"])
     stream = BytesIO()
     wb.save(stream)
     return stream.getvalue()
@@ -55,6 +69,7 @@ def test_openproject_import_execute_success_and_idempotency(monkeypatch) -> None
     before_integrations = _read_integrations()
     run_id = 0
     create_calls: list[dict[str, Any]] = []
+    relation_calls: list[dict[str, Any]] = []
 
     def _fake_get_work_package(self, work_package_id: int) -> dict[str, Any]:
         return {
@@ -70,11 +85,45 @@ def test_openproject_import_execute_success_and_idempotency(monkeypatch) -> None
         created_id = 8000 + len(create_calls)
         return {
             "id": created_id,
-            "_links": {"self": {"href": f"/api/v3/work_packages/{created_id}"}},
+            "_links": {
+                "self": {"href": f"/api/v3/work_packages/{created_id}"},
+                "type": {"href": str(payload.get("_links", {}).get("type", {}).get("href") or "/api/v3/types/1")},
+            },
         }
+
+    def _fake_list_types(self) -> list[dict[str, Any]]:
+        return [
+            {"id": 1, "name": "Task", "_links": {"self": {"href": "/api/v3/types/1"}}},
+            {"id": 2, "name": "Milestone", "_links": {"self": {"href": "/api/v3/types/2"}}},
+        ]
+
+    def _fake_list_priorities(self) -> list[dict[str, Any]]:
+        return [
+            {"id": 7, "name": "Normal", "_links": {"self": {"href": "/api/v3/priorities/7"}}},
+            {"id": 8, "name": "High", "_links": {"self": {"href": "/api/v3/priorities/8"}}},
+        ]
+
+    def _fake_create_relation(
+        self,
+        *,
+        current_work_package_id: int,
+        predecessor_work_package_id: int,
+        lag_days: int = 0,
+    ) -> dict[str, Any]:
+        relation_calls.append(
+            {
+                "current": int(current_work_package_id),
+                "predecessor": int(predecessor_work_package_id),
+                "lag": int(lag_days),
+            }
+        )
+        return {"_links": {"self": {"href": f"/api/v3/relations/{len(relation_calls)}"}}}
 
     monkeypatch.setattr(OpenProjectAdapter, "get_work_package", _fake_get_work_package)
     monkeypatch.setattr(OpenProjectAdapter, "create_work_package", _fake_create_work_package)
+    monkeypatch.setattr(OpenProjectAdapter, "list_types", _fake_list_types)
+    monkeypatch.setattr(OpenProjectAdapter, "list_priorities", _fake_list_priorities)
+    monkeypatch.setattr(OpenProjectAdapter, "create_work_package_relation", _fake_create_relation)
 
     try:
         validate_res = client.post(
@@ -109,9 +158,10 @@ def test_openproject_import_execute_success_and_idempotency(monkeypatch) -> None
         assert execute_res.status_code == 200, execute_res.text
         run = execute_res.json().get("run") or {}
         assert run.get("status_code") == "COMPLETED"
-        assert int(run.get("created_rows") or 0) == 1
-        assert int(run.get("failed_rows") or 0) == 0
-        assert len(create_calls) == 1
+        assert int(run.get("created_rows") or 0) == 2
+        assert int(run.get("failed_rows") or 0) == 1
+        assert len(create_calls) == 3
+        assert len(relation_calls) == 1
 
         rows_res = client.get(
             f"/api/v1/storage/openproject/import/runs/{run_id}/rows?skip=0&limit=20",
@@ -120,8 +170,21 @@ def test_openproject_import_execute_success_and_idempotency(monkeypatch) -> None
         assert rows_res.status_code == 200, rows_res.text
         rows = rows_res.json().get("rows") or []
         statuses = {int(row.get("row_no") or 0): str(row.get("execution_status") or "") for row in rows}
+        assert "RELATION_CREATED" in statuses.values()
+        assert "RELATION_FAILED" in statuses.values()
         assert "CREATED" in statuses.values()
         assert "SKIPPED" in statuses.values()
+
+        run_detail = client.get(
+            f"/api/v1/storage/openproject/import/runs/{run_id}",
+            headers=headers,
+        )
+        assert run_detail.status_code == 200, run_detail.text
+        summary = run_detail.json().get("run", {}).get("summary", {})
+        assert int(summary.get("pass1_created_rows") or 0) == 3
+        assert int(summary.get("pass1_failed_rows") or 0) == 0
+        assert int(summary.get("pass2_relation_created") or 0) == 1
+        assert int(summary.get("pass2_relation_failed") or 0) == 1
 
         activity_res = client.get("/api/v1/storage/openproject/activity?limit=20", headers=headers)
         assert activity_res.status_code == 200, activity_res.text

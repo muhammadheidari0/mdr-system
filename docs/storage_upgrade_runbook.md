@@ -69,6 +69,11 @@ Integrity:
 - Snapshot import is persisted in existing import tables:
   - project snapshot run prefix: `OPP-`
   - excel import run prefix: `OPI-`
+- Excel import execution is two-pass:
+  - Pass-1: create WBS hierarchy
+  - Pass-2: create predecessor relations
+- Parser supports dual template headers (legacy + new aliases).
+- `Predecessors` support in this phase: `FS` with optional lag only.
 
 ## Env vars
 - `GDRIVE_SERVICE_ACCOUNT_JSON`

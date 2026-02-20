@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 from urllib.parse import quote
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 import urllib3
@@ -42,18 +42,78 @@ class OpenProjectAdapter:
         path = re.sub(r"/api/v3/?$", "", str(parts.path or ""), flags=re.IGNORECASE).rstrip("/")
         return urlunsplit((parts.scheme, parts.netloc, path, "", "")).rstrip("/")
 
-    def _api_url(self, resource: str = "") -> str:
-        suffix = str(resource or "").strip().lstrip("/")
-        if not suffix:
-            return f"{self.base_url}/api/v3"
-        return f"{self.base_url}/api/v3/{suffix}"
-
     @staticmethod
     def _project_ref(project_ref: str | int) -> str:
         value = str(project_ref or "").strip()
         if not value:
             raise RuntimeError("OpenProject project reference is empty.")
         return quote(value, safe="")
+
+    @staticmethod
+    def _response_error_detail(response: Response) -> str:
+        text = ""
+        try:
+            text = str(getattr(response, "text", "") or "").strip()
+        except Exception:
+            text = ""
+        if not text:
+            return ""
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:1000]
+
+    @staticmethod
+    def _extract_href(item: dict[str, Any]) -> str:
+        links = item.get("_links") if isinstance(item, dict) else None
+        if not isinstance(links, dict):
+            return ""
+        self_link = links.get("self")
+        if not isinstance(self_link, dict):
+            return ""
+        return str(self_link.get("href") or "").strip()
+
+    @staticmethod
+    def _normalize_lookup_key(value: Any) -> str:
+        text = str(value or "").strip().lower()
+        return re.sub(r"\s+", " ", text)
+
+    @classmethod
+    def resolve_catalog_href(
+        cls,
+        items: list[dict[str, Any]],
+        raw_value: Any,
+        *,
+        fallback_resource: str,
+    ) -> str | None:
+        value = cls._normalize_lookup_key(raw_value)
+        if not value:
+            return None
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            href = cls._extract_href(item)
+            candidates = [
+                item_id,
+                item.get("name"),
+                item.get("title"),
+                href,
+            ]
+            matched = any(cls._normalize_lookup_key(candidate) == value for candidate in candidates)
+            if not matched:
+                continue
+            if href:
+                return href
+            if str(item_id or "").isdigit():
+                safe_resource = str(fallback_resource or "").strip().strip("/")
+                if safe_resource:
+                    return f"/api/v3/{safe_resource}/{int(item_id)}"
+        return None
+
+    def _api_url(self, resource: str = "") -> str:
+        suffix = str(resource or "").strip().lstrip("/")
+        if not suffix:
+            return f"{self.base_url}/api/v3"
+        return f"{self.base_url}/api/v3/{suffix}"
 
     def _request(self, method: str, resource: str, **kwargs: Any) -> Response:
         if not self.tls_verify and not OpenProjectAdapter._insecure_warning_suppressed:
@@ -71,13 +131,33 @@ class OpenProjectAdapter:
             **kwargs,
         )
 
+    def _list_collection(self, resource: str, *, page_size: int = 500) -> list[dict[str, Any]]:
+        safe_page_size = max(1, min(1000, int(page_size or 500)))
+        response = self._request("GET", resource, params={"pageSize": safe_page_size, "offset": 0})
+        if response.status_code >= 400:
+            detail = self._response_error_detail(response)
+            message = f"OpenProject `{resource}` list failed: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
+        payload = response.json() if response.content else {}
+        embedded = payload.get("_embedded") if isinstance(payload, dict) else None
+        elements = embedded.get("elements") if isinstance(embedded, dict) else None
+        if isinstance(elements, list):
+            return [item for item in elements if isinstance(item, dict)]
+        return []
+
     def ping_raw(self) -> Response:
         return self._request("GET", "")
 
     def ping(self) -> dict[str, Any]:
         response = self.ping_raw()
         if response.status_code >= 400:
-            raise RuntimeError(f"OpenProject API ping failed: HTTP {response.status_code}")
+            detail = self._response_error_detail(response)
+            message = f"OpenProject API ping failed: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
         try:
             return response.json()
         except Exception:
@@ -104,17 +184,21 @@ class OpenProjectAdapter:
             json=patch_payload,
         )
         if response.status_code >= 400:
-            raise RuntimeError(
-                f"OpenProject sync failed for work package {work_package_id}: HTTP {response.status_code}"
-            )
+            detail = self._response_error_detail(response)
+            message = f"OpenProject sync failed for work package {work_package_id}: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
         return response.json()
 
     def get_work_package(self, work_package_id: int) -> dict[str, Any]:
         response = self._request("GET", f"work_packages/{int(work_package_id)}")
         if response.status_code >= 400:
-            raise RuntimeError(
-                f"OpenProject work package fetch failed for {work_package_id}: HTTP {response.status_code}"
-            )
+            detail = self._response_error_detail(response)
+            message = f"OpenProject work package fetch failed for {work_package_id}: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
         return response.json()
 
     def create_work_package(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -125,18 +209,60 @@ class OpenProjectAdapter:
             json=payload,
         )
         if response.status_code >= 400:
-            raise RuntimeError(
-                f"OpenProject work package create failed: HTTP {response.status_code}"
-            )
+            detail = self._response_error_detail(response)
+            message = f"OpenProject work package create failed: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
         return response.json()
+
+    def create_work_package_relation(
+        self,
+        *,
+        current_work_package_id: int,
+        predecessor_work_package_id: int,
+        lag_days: int = 0,
+    ) -> dict[str, Any]:
+        relation_payload: dict[str, Any] = {
+            "type": "follows",
+            "_links": {
+                "to": {"href": f"/api/v3/work_packages/{int(predecessor_work_package_id)}"},
+            },
+        }
+        if int(lag_days or 0) != 0:
+            relation_payload["lag"] = int(lag_days)
+        response = self._request(
+            "POST",
+            f"work_packages/{int(current_work_package_id)}/relations",
+            headers={"Content-Type": "application/json"},
+            json=relation_payload,
+        )
+        if response.status_code >= 400:
+            detail = self._response_error_detail(response)
+            message = (
+                "OpenProject work package relation create failed "
+                f"for {current_work_package_id} -> {predecessor_work_package_id}: HTTP {response.status_code}"
+            )
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
+        return response.json()
+
+    def list_types(self) -> list[dict[str, Any]]:
+        return self._list_collection("types")
+
+    def list_priorities(self) -> list[dict[str, Any]]:
+        return self._list_collection("priorities")
 
     def get_project(self, project_ref: str | int) -> dict[str, Any]:
         encoded_ref = self._project_ref(project_ref)
         response = self._request("GET", f"projects/{encoded_ref}")
         if response.status_code >= 400:
-            raise RuntimeError(
-                f"OpenProject project fetch failed for `{project_ref}`: HTTP {response.status_code}"
-            )
+            detail = self._response_error_detail(response)
+            message = f"OpenProject project fetch failed for `{project_ref}`: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
         return response.json()
 
     def list_project_work_packages_page(
@@ -155,9 +281,11 @@ class OpenProjectAdapter:
             params={"offset": safe_skip, "pageSize": safe_limit},
         )
         if response.status_code >= 400:
-            raise RuntimeError(
-                f"OpenProject project work packages list failed for `{project_ref}`: HTTP {response.status_code}"
-            )
+            detail = self._response_error_detail(response)
+            message = f"OpenProject project work packages list failed for `{project_ref}`: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
         payload = response.json()
         embedded = payload.get("_embedded") if isinstance(payload, dict) else None
         items = (

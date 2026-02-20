@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
@@ -408,6 +409,101 @@ def _openproject_http_error_status(message: str) -> int:
     if "HTTP 400" in text:
         return 400
     return 502
+
+
+_DONE_RATIO_FIELD_RE = re.compile(r"(doneRatio|percentageDone)", flags=re.IGNORECASE)
+
+
+def _norm_text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _safe_int(value: Any, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _safe_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _parse_wbs_segments(value: Any) -> list[int]:
+    raw = _norm_text(value)
+    if not raw:
+        return []
+    if not re.fullmatch(r"\d+(?:\.\d+)*", raw):
+        return []
+    try:
+        return [int(part) for part in raw.split(".")]
+    except Exception:
+        return []
+
+
+def _wbs_parent(value: Any) -> str | None:
+    segments = _parse_wbs_segments(value)
+    if len(segments) <= 1:
+        return None
+    return ".".join(str(part) for part in segments[:-1])
+
+
+def _wbs_sort_key(value: Any) -> tuple[int, tuple[int, ...]]:
+    segments = _parse_wbs_segments(value)
+    if not segments:
+        return (999, ())
+    return (len(segments), tuple(segments))
+
+
+def _row_payload_dict(row: OpenProjectImportRow) -> dict[str, Any]:
+    payload = _parse_json_object(row.payload_json)
+    if not isinstance(payload, dict):
+        return {}
+    return payload
+
+
+def _set_row_payload(row: OpenProjectImportRow, payload: dict[str, Any]) -> None:
+    row.payload_json = _safe_json_dumps(payload if isinstance(payload, dict) else {})
+
+
+def _done_ratio_fallback_required(message: str) -> bool:
+    text = _norm_text(message).lower()
+    if "http 422" not in text:
+        return False
+    return bool(_DONE_RATIO_FIELD_RE.search(text))
+
+
+def _extract_created_id(value: dict[str, Any]) -> int | None:
+    raw = str((value or {}).get("id") or "").strip()
+    return int(raw) if raw.isdigit() else None
+
+
+def _resolve_predecessor_work_package_id(
+    ref: str,
+    *,
+    created_by_wbs: dict[str, int],
+    created_by_row_index: dict[int, int],
+    created_by_row_no: dict[int, int],
+) -> int | None:
+    raw_ref = _norm_text(ref)
+    if not raw_ref:
+        return None
+    by_wbs = created_by_wbs.get(raw_ref)
+    if by_wbs:
+        return int(by_wbs)
+    if raw_ref.isdigit():
+        by_row_index = created_by_row_index.get(int(raw_ref))
+        if by_row_index:
+            return int(by_row_index)
+        by_row_no = created_by_row_no.get(int(raw_ref))
+        if by_row_no:
+            return int(by_row_no)
+    return None
 
 
 @router.post("/sync/google-drive/run")
@@ -947,67 +1043,441 @@ def execute_openproject_import_run(
         .order_by(OpenProjectImportRow.row_no.asc(), OpenProjectImportRow.id.asc())
         .all()
     )
-    total_created = 0
-    total_failed = 0
+    if not rows:
+        raise HTTPException(status_code=400, detail="Import run does not contain any rows")
 
+    mapping_warnings: list[str] = []
+    try:
+        type_catalog = adapter.list_types()
+    except Exception as exc:
+        type_catalog = []
+        mapping_warnings.append(f"Type catalog lookup failed: {str(exc)[:400]}")
+    try:
+        priority_catalog = adapter.list_priorities()
+    except Exception as exc:
+        priority_catalog = []
+        mapping_warnings.append(f"Priority catalog lookup failed: {str(exc)[:400]}")
+
+    row_contexts: list[dict[str, Any]] = []
     for row in rows:
+        payload_obj = _row_payload_dict(row)
+        mapped_fields = payload_obj.get("mapped_fields") if isinstance(payload_obj.get("mapped_fields"), dict) else {}
+        wbs_meta = payload_obj.get("wbs_meta") if isinstance(payload_obj.get("wbs_meta"), dict) else {}
+        predecessor_tokens = (
+            payload_obj.get("predecessor_tokens")
+            if isinstance(payload_obj.get("predecessor_tokens"), list)
+            else []
+        )
+        execution_meta = payload_obj.get("execution_meta") if isinstance(payload_obj.get("execution_meta"), dict) else {}
+        if not isinstance(execution_meta, dict):
+            execution_meta = {}
+        execution_meta["pass1"] = {}
+        execution_meta["pass2"] = {}
+        execution_meta["relations"] = []
+        payload_obj["execution_meta"] = execution_meta
+
+        wbs_code = _norm_text(mapped_fields.get("wbs_code") or wbs_meta.get("wbs_code"))
+        parent_wbs = _norm_text(wbs_meta.get("parent_wbs") or _wbs_parent(wbs_code))
+        row_index = _safe_int(mapped_fields.get("row_index"), default=_safe_int(row.row_no, default=0))
+
         if str(row.validation_status or "").upper() != "VALID":
             row.execution_status = "SKIPPED"
+            row.created_work_package_id = None
+            row.openproject_href = None
+            execution_meta["pass1"] = {"status": "SKIPPED", "reason": "validation_status"}
+            _set_row_payload(row, payload_obj)
             row.updated_at = datetime.utcnow()
-            db.commit()
             continue
 
         row.execution_status = "PENDING"
         row.error_message = None
         row.created_work_package_id = None
         row.openproject_href = None
+        _set_row_payload(row, payload_obj)
         row.updated_at = datetime.utcnow()
-        db.commit()
+        row_contexts.append(
+            {
+                "row": row,
+                "payload": payload_obj,
+                "mapped": mapped_fields,
+                "wbs_code": wbs_code,
+                "parent_wbs": parent_wbs or None,
+                "wbs_sort": _wbs_sort_key(wbs_code),
+                "row_index": int(row_index),
+                "predecessor_tokens": predecessor_tokens,
+            }
+        )
+    db.commit()
+
+    sorted_contexts = sorted(
+        row_contexts,
+        key=lambda item: (
+            item.get("wbs_sort", (999, ())),
+            _safe_int(item.get("row_index"), default=0),
+            _safe_int(getattr(item.get("row"), "row_no", 0), default=0),
+        ),
+    )
+
+    created_by_wbs: dict[str, int] = {}
+    created_type_by_wbs: dict[str, str] = {}
+    created_by_row_index: dict[int, int] = {}
+    created_by_row_no: dict[int, int] = {}
+
+    pass1_created_rows = 0
+    pass1_failed_rows = 0
+    pass2_relation_created = 0
+    pass2_relation_failed = 0
+
+    for item in sorted_contexts:
+        row = item["row"]
+        payload_obj = _row_payload_dict(row)
+        mapped_fields = payload_obj.get("mapped_fields") if isinstance(payload_obj.get("mapped_fields"), dict) else {}
+        execution_meta = payload_obj.get("execution_meta") if isinstance(payload_obj.get("execution_meta"), dict) else {}
+        if not isinstance(execution_meta, dict):
+            execution_meta = {}
+        execution_meta["relations"] = []
+        payload_obj["execution_meta"] = execution_meta
+
+        wbs_code = _norm_text(item.get("wbs_code"))
+        parent_wbs = _norm_text(item.get("parent_wbs"))
+        row_index = _safe_int(item.get("row_index"), default=_safe_int(row.row_no, default=0))
+
+        if parent_wbs:
+            parent_work_package_id = _safe_int(created_by_wbs.get(parent_wbs), default=0)
+            parent_type_href = _norm_text(created_type_by_wbs.get(parent_wbs) or type_href)
+            if parent_work_package_id <= 0:
+                row.execution_status = "FAILED"
+                row.error_message = f"Parent WBS `{parent_wbs}` was not created."
+                row.updated_at = datetime.utcnow()
+                pass1_failed_rows += 1
+                execution_meta["pass1"] = {
+                    "status": "FAILED",
+                    "parent_wbs": parent_wbs,
+                    "error": row.error_message,
+                }
+                _set_row_payload(row, payload_obj)
+                db.commit()
+                continue
+        else:
+            parent_work_package_id = int(target_parent_id)
+            parent_type_href = str(type_href)
+
+        type_text = _norm_text(mapped_fields.get("type_text"))
+        resolved_type_href = None
+        if type_text:
+            resolved_type_href = OpenProjectAdapter.resolve_catalog_href(
+                type_catalog,
+                type_text,
+                fallback_resource="types",
+            )
+            if not resolved_type_href:
+                resolved_type_href = parent_type_href
+                mapping_warnings.append(
+                    f"Row {int(row.row_no or 0)}: type `{type_text}` not found; fallback to parent type."
+                )
+        else:
+            resolved_type_href = parent_type_href
+
+        if not _norm_text(resolved_type_href):
+            row.execution_status = "FAILED"
+            row.error_message = "Type href could not be resolved for create payload."
+            row.updated_at = datetime.utcnow()
+            pass1_failed_rows += 1
+            execution_meta["pass1"] = {
+                "status": "FAILED",
+                "parent_work_package_id": int(parent_work_package_id),
+                "error": row.error_message,
+            }
+            _set_row_payload(row, payload_obj)
+            db.commit()
+            continue
+
+        priority_text = _norm_text(mapped_fields.get("priority_text"))
+        priority_href = None
+        if priority_text:
+            priority_href = OpenProjectAdapter.resolve_catalog_href(
+                priority_catalog,
+                priority_text,
+                fallback_resource="priorities",
+            )
+            if not priority_href:
+                mapping_warnings.append(
+                    f"Row {int(row.row_no or 0)}: priority `{priority_text}` not found; omitted."
+                )
+
+        done_ratio = _safe_float(mapped_fields.get("done_ratio"))
+        row_task_name = _norm_text(mapped_fields.get("subject") or row.task_name or f"Imported Task {int(row.row_no)}")
+        done_ratio_field = "doneRatio"
 
         create_payload = build_work_package_create_payload(
-            row_task_name=str(row.task_name or f"Imported Task {int(row.row_no)}"),
+            row_task_name=row_task_name,
             row_start_date=row.normalized_start_date,
             row_finish_date=row.normalized_finish_date,
+            row_done_ratio=done_ratio,
             row_no=int(row.row_no or 0),
             run_no=str(run.run_no or ""),
-            parent_work_package_id=target_parent_id,
+            parent_work_package_id=int(parent_work_package_id),
             project_href=project_href,
-            type_href=type_href,
+            type_href=str(resolved_type_href),
+            priority_href=priority_href,
+            done_ratio_field=done_ratio_field,
         )
+
+        created: dict[str, Any] | None = None
+        create_error: str | None = None
         try:
             created = adapter.create_work_package(create_payload)
-            created_id_raw = created.get("id")
-            created_id = int(created_id_raw) if str(created_id_raw or "").isdigit() else None
-            row.execution_status = "CREATED"
-            row.created_work_package_id = created_id
-            row.openproject_href = _extract_href(created, "self") or (
-                f"/api/v3/work_packages/{created_id}" if created_id else None
-            )
-            row.error_message = None
-            total_created += 1
         except Exception as exc:
+            create_error = str(exc)
+            if done_ratio is not None and _done_ratio_fallback_required(create_error):
+                done_ratio_field = "percentageDone"
+                retry_payload = build_work_package_create_payload(
+                    row_task_name=row_task_name,
+                    row_start_date=row.normalized_start_date,
+                    row_finish_date=row.normalized_finish_date,
+                    row_done_ratio=done_ratio,
+                    row_no=int(row.row_no or 0),
+                    run_no=str(run.run_no or ""),
+                    parent_work_package_id=int(parent_work_package_id),
+                    project_href=project_href,
+                    type_href=str(resolved_type_href),
+                    priority_href=priority_href,
+                    done_ratio_field=done_ratio_field,
+                )
+                try:
+                    created = adapter.create_work_package(retry_payload)
+                    create_error = None
+                    mapping_warnings.append(
+                        f"Row {int(row.row_no or 0)}: done ratio sent with fallback field `percentageDone`."
+                    )
+                except Exception as retry_exc:
+                    create_error = str(retry_exc)
+
+        if not created:
             row.execution_status = "FAILED"
-            row.error_message = str(exc)[:4000]
+            row.error_message = _norm_text(create_error)[:4000] or "Work package create failed."
             row.created_work_package_id = None
             row.openproject_href = None
-            total_failed += 1
+            row.updated_at = datetime.utcnow()
+            pass1_failed_rows += 1
+            execution_meta["pass1"] = {
+                "status": "FAILED",
+                "parent_work_package_id": int(parent_work_package_id),
+                "parent_wbs": parent_wbs or None,
+                "type_href": resolved_type_href,
+                "priority_href": priority_href,
+                "done_ratio_field": done_ratio_field,
+                "error": row.error_message,
+            }
+            _set_row_payload(row, payload_obj)
+            db.commit()
+            continue
 
+        created_id = _extract_created_id(created)
+        if not created_id:
+            row.execution_status = "FAILED"
+            row.error_message = "OpenProject create response did not include work package id."
+            row.created_work_package_id = None
+            row.openproject_href = None
+            row.updated_at = datetime.utcnow()
+            pass1_failed_rows += 1
+            execution_meta["pass1"] = {
+                "status": "FAILED",
+                "parent_work_package_id": int(parent_work_package_id),
+                "parent_wbs": parent_wbs or None,
+                "type_href": resolved_type_href,
+                "priority_href": priority_href,
+                "done_ratio_field": done_ratio_field,
+                "error": row.error_message,
+            }
+            _set_row_payload(row, payload_obj)
+            db.commit()
+            continue
+
+        created_href = _extract_href(created, "self") or f"/api/v3/work_packages/{int(created_id)}"
+        created_type_href = _extract_href(created, "type") or str(resolved_type_href)
+
+        row.execution_status = "CREATED"
+        row.error_message = None
+        row.created_work_package_id = int(created_id)
+        row.openproject_href = str(created_href)
         row.updated_at = datetime.utcnow()
-        run.created_rows = int(total_created)
-        run.failed_rows = int(total_failed)
-        run.updated_at = datetime.utcnow()
+        execution_meta["pass1"] = {
+            "status": "CREATED",
+            "parent_work_package_id": int(parent_work_package_id),
+            "parent_wbs": parent_wbs or None,
+            "type_href": created_type_href,
+            "priority_href": priority_href,
+            "done_ratio_field": done_ratio_field,
+            "created_work_package_id": int(created_id),
+            "openproject_href": created_href,
+        }
+        _set_row_payload(row, payload_obj)
+
+        pass1_created_rows += 1
+        created_by_row_no[int(row.row_no or 0)] = int(created_id)
+        created_by_row_index[int(row_index)] = int(created_id)
+        if wbs_code:
+            created_by_wbs[wbs_code] = int(created_id)
+            if created_type_href:
+                created_type_by_wbs[wbs_code] = str(created_type_href)
+        db.commit()
+
+    for item in sorted_contexts:
+        row = item["row"]
+        if str(row.execution_status or "").upper() != "CREATED":
+            continue
+        current_wp_id = _safe_int(row.created_work_package_id, default=0)
+        if current_wp_id <= 0:
+            continue
+
+        payload_obj = _row_payload_dict(row)
+        predecessor_tokens = (
+            payload_obj.get("predecessor_tokens")
+            if isinstance(payload_obj.get("predecessor_tokens"), list)
+            else []
+        )
+        execution_meta = payload_obj.get("execution_meta") if isinstance(payload_obj.get("execution_meta"), dict) else {}
+        if not isinstance(execution_meta, dict):
+            execution_meta = {}
+        relation_entries: list[dict[str, Any]] = []
+        relation_created = 0
+        relation_failed = 0
+
+        for token in predecessor_tokens:
+            if not isinstance(token, dict):
+                continue
+            if not bool(token.get("valid")):
+                continue
+            raw_ref = _norm_text(token.get("ref"))
+            lag_days = _safe_int(token.get("lag_days"), default=0)
+            predecessor_wp_id = _resolve_predecessor_work_package_id(
+                raw_ref,
+                created_by_wbs=created_by_wbs,
+                created_by_row_index=created_by_row_index,
+                created_by_row_no=created_by_row_no,
+            )
+            if predecessor_wp_id is None or predecessor_wp_id <= 0:
+                relation_failed += 1
+                pass2_relation_failed += 1
+                relation_entries.append(
+                    {
+                        "raw": token.get("raw"),
+                        "ref": raw_ref,
+                        "relation_type": "FS",
+                        "lag_days": int(lag_days),
+                        "status": "FAILED",
+                        "error": "Predecessor reference was not resolved.",
+                    }
+                )
+                continue
+            if int(predecessor_wp_id) == int(current_wp_id):
+                relation_failed += 1
+                pass2_relation_failed += 1
+                relation_entries.append(
+                    {
+                        "raw": token.get("raw"),
+                        "ref": raw_ref,
+                        "relation_type": "FS",
+                        "lag_days": int(lag_days),
+                        "status": "FAILED",
+                        "error": "Self relation is not allowed.",
+                    }
+                )
+                continue
+            try:
+                relation_response = adapter.create_work_package_relation(
+                    current_work_package_id=int(current_wp_id),
+                    predecessor_work_package_id=int(predecessor_wp_id),
+                    lag_days=int(lag_days),
+                )
+                relation_created += 1
+                pass2_relation_created += 1
+                relation_entries.append(
+                    {
+                        "raw": token.get("raw"),
+                        "ref": raw_ref,
+                        "relation_type": "FS",
+                        "lag_days": int(lag_days),
+                        "status": "CREATED",
+                        "to_work_package_id": int(predecessor_wp_id),
+                        "relation_href": _extract_href(relation_response, "self") or None,
+                    }
+                )
+            except Exception as exc:
+                relation_failed += 1
+                pass2_relation_failed += 1
+                relation_entries.append(
+                    {
+                        "raw": token.get("raw"),
+                        "ref": raw_ref,
+                        "relation_type": "FS",
+                        "lag_days": int(lag_days),
+                        "status": "FAILED",
+                        "to_work_package_id": int(predecessor_wp_id),
+                        "error": str(exc)[:4000],
+                    }
+                )
+
+        if relation_failed > 0:
+            row.execution_status = "RELATION_FAILED"
+            row.error_message = "One or more predecessor relations failed."
+        elif relation_created > 0:
+            row.execution_status = "RELATION_CREATED"
+            row.error_message = None
+        else:
+            row.execution_status = "CREATED"
+            row.error_message = None
+
+        execution_meta["relations"] = relation_entries
+        execution_meta["pass2"] = {
+            "relation_created": int(relation_created),
+            "relation_failed": int(relation_failed),
+        }
+        payload_obj["execution_meta"] = execution_meta
+        _set_row_payload(row, payload_obj)
+        row.updated_at = datetime.utcnow()
         db.commit()
 
     run = _load_openproject_import_run_or_404(db, int(run.id))
+    final_rows = (
+        db.query(OpenProjectImportRow)
+        .filter(OpenProjectImportRow.run_id == int(run.id))
+        .all()
+    )
+    final_created_rows = sum(
+        1
+        for row in final_rows
+        if str(row.execution_status or "").upper() in {"CREATED", "RELATION_CREATED"}
+    )
+    final_failed_rows = sum(
+        1
+        for row in final_rows
+        if str(row.execution_status or "").upper() in {"FAILED", "RELATION_FAILED"}
+    )
+
     summary = parse_summary_json(run.summary_json)
-    summary["created_rows"] = int(total_created)
-    summary["failed_rows"] = int(total_failed)
+    existing_warnings = summary.get("mapping_warnings") if isinstance(summary.get("mapping_warnings"), list) else []
+    merged_warnings: list[str] = []
+    for warning in [*(existing_warnings or []), *mapping_warnings]:
+        normalized = _norm_text(warning)
+        if not normalized or normalized in merged_warnings:
+            continue
+        merged_warnings.append(normalized)
+
+    summary["created_rows"] = int(final_created_rows)
+    summary["failed_rows"] = int(final_failed_rows)
+    summary["pass1_created_rows"] = int(pass1_created_rows)
+    summary["pass1_failed_rows"] = int(pass1_failed_rows)
+    summary["pass2_relation_created"] = int(pass2_relation_created)
+    summary["pass2_relation_failed"] = int(pass2_relation_failed)
+    summary["mapping_warnings"] = merged_warnings
     summary["target_parent_work_package_id"] = int(target_parent_id)
     summary["executed_at"] = datetime.utcnow().isoformat()
 
     run.status_code = "COMPLETED"
-    run.created_rows = int(total_created)
-    run.failed_rows = int(total_failed)
+    run.created_rows = int(final_created_rows)
+    run.failed_rows = int(final_failed_rows)
     run.finished_at = datetime.utcnow()
     run.summary_json = _safe_json_dumps(summary)
     run.updated_at = datetime.utcnow()
@@ -1086,7 +1556,11 @@ def list_openproject_activity(
     import_rows = (
         db.query(OpenProjectImportRow, OpenProjectImportRun)
         .join(OpenProjectImportRun, OpenProjectImportRun.id == OpenProjectImportRow.run_id)
-        .filter(OpenProjectImportRow.execution_status.in_(["CREATED", "FAILED", "IMPORTED"]))
+        .filter(
+            OpenProjectImportRow.execution_status.in_(
+                ["CREATED", "FAILED", "IMPORTED", "RELATION_CREATED", "RELATION_FAILED"]
+            )
+        )
         .order_by(OpenProjectImportRow.updated_at.desc(), OpenProjectImportRow.id.desc())
         .limit(limit)
         .all()
@@ -1096,6 +1570,10 @@ def list_openproject_activity(
         execution_status = str(row.execution_status or "").upper()
         if execution_status == "CREATED":
             kind = "work_package_created"
+        elif execution_status == "RELATION_CREATED":
+            kind = "work_package_relation_created"
+        elif execution_status == "RELATION_FAILED":
+            kind = "work_package_relation_failed"
         elif execution_status == "IMPORTED":
             kind = "work_package_imported_snapshot"
         else:
