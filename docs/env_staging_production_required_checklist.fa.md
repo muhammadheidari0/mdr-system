@@ -7,7 +7,7 @@
 - [ ] `APP_ENV=staging` یا `APP_ENV=production`
 - [ ] `DEBUG=false`
 - [ ] `API_PREFIX=/api/v1`
-- [ ] `MDR_DOMAIN=<دامنه‌ عمومی>`
+- [ ] `MDR_DOMAIN=<دامنه عمومی>`
 - [ ] `MDR_DATA_ROOT=<مسیر داده سرور>` (مثال: `/opt/mdr_data`)
 - [ ] `STORAGE_ALLOWED_ROOTS=<CSV مسیرهای absolute>` (مثال: `/app/archive_storage,/app/data_store`)
 - [ ] `STORAGE_REQUIRE_ABSOLUTE_PATHS=true`
@@ -37,6 +37,12 @@
 - [ ] (اختیاری) `OPENPROJECT_TLS_VERIFY_FORCE=<true|false>` برای override مرکزی
 - [ ] `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - [ ] (اختیاری، legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
+- [ ] `NEXTCLOUD_BASE_URL` (اگر mirror provider روی `nextcloud` است)
+- [ ] `NEXTCLOUD_USERNAME` (اگر mirror provider روی `nextcloud` است)
+- [ ] `NEXTCLOUD_APP_PASSWORD` (اگر mirror provider روی `nextcloud` است)
+- [ ] `NEXTCLOUD_ROOT_PATH` (اگر mirror provider روی `nextcloud` است)
+- [ ] `NEXTCLOUD_TLS_VERIFY=true` (پیش‌فرض امن)
+- [ ] (اختیاری) `NEXTCLOUD_TLS_VERIFY_FORCE=<true|false>`
 
 ## گیت ذخیره‌سازی شبکه
 

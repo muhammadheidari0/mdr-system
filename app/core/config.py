@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     OPENPROJECT_DEFAULT_WORK_PACKAGE_ID: str = ""
     # Legacy alias kept for backward compatibility in env files/docs.
     OPENPROJECT_DEFAULT_PROJECT_ID: str = ""
+    NEXTCLOUD_BASE_URL: str = ""
+    NEXTCLOUD_USERNAME: str = ""
+    NEXTCLOUD_APP_PASSWORD: str = ""
+    NEXTCLOUD_ROOT_PATH: str = ""
+    NEXTCLOUD_CONNECT_TIMEOUT_SECONDS: int = 5
+    NEXTCLOUD_READ_TIMEOUT_SECONDS: int = 10
+    NEXTCLOUD_TLS_VERIFY: bool = True
+    NEXTCLOUD_TLS_VERIFY_FORCE: str = ""
     STORAGE_ALLOWED_ROOTS: str = ""
     STORAGE_REQUIRE_ABSOLUTE_PATHS: bool = True
     STORAGE_VALIDATE_WRITABLE_ON_SAVE: bool = True

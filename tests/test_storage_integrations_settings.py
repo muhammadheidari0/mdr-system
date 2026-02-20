@@ -214,3 +214,89 @@ def test_storage_integrations_google_oauth_fields_and_redaction() -> None:
         assert google_refresh not in str(row.get("after_json") or "")
     finally:
         _restore_integrations_raw(before)
+
+
+def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(monkeypatch) -> None:
+    headers = _admin_headers()
+    before = _read_integrations_raw()
+    nextcloud_password = "nextcloud-app-password-xyz"
+    monkeypatch.setattr(settings, "NEXTCLOUD_USERNAME", "")
+    monkeypatch.setattr(settings, "NEXTCLOUD_APP_PASSWORD", "")
+    monkeypatch.setattr(settings, "NEXTCLOUD_TLS_VERIFY", True)
+    monkeypatch.setattr(settings, "NEXTCLOUD_TLS_VERIFY_FORCE", "")
+    try:
+        save_res = client.post(
+            "/api/v1/settings/storage-integrations",
+            json={
+                "mirror": {"provider": "nextcloud"},
+                "nextcloud": {
+                    "enabled": True,
+                    "base_url": "https://nextcloud.example.com",
+                    "username": "nc-user",
+                    "app_password": nextcloud_password,
+                    "root_path": "/mdr",
+                    "skip_ssl_verify": True,
+                },
+            },
+            headers=headers,
+        )
+        assert save_res.status_code == 200, save_res.text
+        body = save_res.json()
+        mirror = body.get("integrations", {}).get("mirror", {})
+        nextcloud = body.get("integrations", {}).get("nextcloud", {})
+        assert mirror.get("provider") == "nextcloud"
+        assert nextcloud.get("enabled") is True
+        assert nextcloud.get("base_url") == "https://nextcloud.example.com"
+        assert nextcloud.get("username") == "nc-user"
+        assert nextcloud.get("root_path") == "/mdr"
+        assert nextcloud.get("credential_source") == "settings"
+        assert nextcloud.get("credentials_configured") is True
+        assert nextcloud.get("skip_ssl_verify") is True
+        assert nextcloud.get("ssl_source") == "settings"
+        assert nextcloud.get("ssl_force_active") is False
+        assert "app_password" not in nextcloud
+
+        read_res = client.get("/api/v1/settings/storage-integrations", headers=headers)
+        assert read_res.status_code == 200, read_res.text
+        read_nextcloud = read_res.json().get("integrations", {}).get("nextcloud", {})
+        assert read_nextcloud.get("credential_source") == "settings"
+        assert read_nextcloud.get("credentials_configured") is True
+        assert "app_password" not in read_nextcloud
+
+        preserve_res = client.post(
+            "/api/v1/settings/storage-integrations",
+            json={
+                "nextcloud": {
+                    "app_password": "",
+                }
+            },
+            headers=headers,
+        )
+        assert preserve_res.status_code == 200, preserve_res.text
+        preserve_nextcloud = preserve_res.json().get("integrations", {}).get("nextcloud", {})
+        assert preserve_nextcloud.get("credential_source") == "settings"
+        assert preserve_nextcloud.get("credentials_configured") is True
+
+        invalid_provider_res = client.post(
+            "/api/v1/settings/storage-integrations",
+            json={"mirror": {"provider": "invalid-provider"}},
+            headers=headers,
+        )
+        assert invalid_provider_res.status_code == 200, invalid_provider_res.text
+        invalid_mirror = invalid_provider_res.json().get("integrations", {}).get("mirror", {})
+        assert invalid_mirror.get("provider") == "none"
+
+        audit_res = client.get(
+            "/api/v1/settings/audit-logs?action=storage_integrations.update&page_size=5",
+            headers=headers,
+        )
+        assert audit_res.status_code == 200, audit_res.text
+        items = audit_res.json().get("items", [])
+        assert items
+        combined = " ".join(
+            f"{item.get('before_json') or ''} {item.get('after_json') or ''}"
+            for item in items
+        )
+        assert nextcloud_password not in combined
+    finally:
+        _restore_integrations_raw(before)

@@ -443,6 +443,8 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
   expect(beforeIntegrationsBody?.ok).toBeTruthy();
   const beforeGdrive = beforeIntegrationsBody?.integrations?.google_drive || {};
   const beforeOpenproject = beforeIntegrationsBody?.integrations?.openproject || {};
+  const beforeNextcloud = beforeIntegrationsBody?.integrations?.nextcloud || {};
+  const beforeMirror = beforeIntegrationsBody?.integrations?.mirror || {};
   const beforeLocalCache = beforeIntegrationsBody?.integrations?.local_cache || {};
 
   const storageRoot = path.resolve(process.cwd(), "archive_storage", `e2e_storage_${Date.now()}`);
@@ -477,6 +479,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await expect(page.locator("#settingsIntegrationsRoot")).toBeVisible();
     await expect(page.locator("[data-integrations-provider-tab='openproject']")).toBeVisible();
     await expect(page.locator("[data-integrations-provider-tab='google']")).toBeVisible();
+    await expect(page.locator("[data-integrations-provider-tab='nextcloud']")).toBeVisible();
     await expect(page.locator("[data-op-tab='connection']")).toBeVisible();
     await expect(page.locator("[data-op-tab='project-import']")).toBeVisible();
     await expect(page.locator("[data-op-tab='import']")).toBeVisible();
@@ -502,6 +505,16 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await page.locator("#storageGoogleDriveDriveIdInput").fill(nextSharedDriveId);
     await page.locator("[data-integrations-action='save-integrations']").click();
 
+    await page.locator("[data-integrations-provider-tab='nextcloud']").click();
+    await expect(page.locator("[data-integrations-provider-panel='nextcloud']")).toHaveClass(/active/);
+    await page.locator("#storageMirrorProviderSelect").selectOption("nextcloud");
+    await page.locator("#storageNextcloudEnabledInput").check();
+    await page.locator("#storageNextcloudBaseUrlInput").fill("https://nextcloud.example.com");
+    await page.locator("#storageNextcloudUsernameInput").fill("nextcloud-user");
+    await page.locator("#storageNextcloudAppPasswordInput").fill("nextcloud-app-password");
+    await page.locator("#storageNextcloudRootPathInput").fill("/mdr");
+    await page.locator("[data-integrations-action='save-integrations']").click();
+
     await expect
       .poll(async () => {
         const res = await request.get(`${resolvedBaseUrl}/api/v1/settings/storage-integrations`, {
@@ -510,9 +523,11 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
         const body = await res.json();
         const op = body?.integrations?.openproject || {};
         const gd = body?.integrations?.google_drive || {};
-        return `${Boolean(op?.enabled)}|${String(op?.default_work_package_id || "")}|${Boolean(op?.skip_ssl_verify)}|${String(gd?.shared_drive_id || "")}`;
+        const nc = body?.integrations?.nextcloud || {};
+        const mirror = body?.integrations?.mirror || {};
+        return `${Boolean(op?.enabled)}|${String(op?.default_work_package_id || "")}|${Boolean(op?.skip_ssl_verify)}|${String(gd?.shared_drive_id || "")}|${Boolean(nc?.enabled)}|${String(mirror?.provider || "")}`;
       })
-      .toBe(`true|${nextWorkPackageId}|true|${nextSharedDriveId}`);
+      .toBe(`true|${nextWorkPackageId}|true|${nextSharedDriveId}|true|nextcloud`);
 
     await page.locator("[data-integrations-provider-tab='openproject']").click();
     await page.locator("[data-op-tab='connection']").click();
@@ -584,6 +599,9 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
         "Content-Type": "application/json",
       },
       data: {
+        mirror: {
+          provider: String(beforeMirror?.provider || "none"),
+        },
         google_drive: {
           enabled: Boolean(beforeGdrive?.enabled),
           shared_drive_id: String(beforeGdrive?.shared_drive_id || ""),
@@ -595,6 +613,13 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
             beforeOpenproject?.default_work_package_id || beforeOpenproject?.default_project_id || ""
           ),
           skip_ssl_verify: Boolean(beforeOpenproject?.skip_ssl_verify),
+        },
+        nextcloud: {
+          enabled: Boolean(beforeNextcloud?.enabled),
+          base_url: String(beforeNextcloud?.base_url || ""),
+          username: String(beforeNextcloud?.username || ""),
+          root_path: String(beforeNextcloud?.root_path || ""),
+          skip_ssl_verify: Boolean(beforeNextcloud?.skip_ssl_verify),
         },
         local_cache: {
           enabled: Boolean(beforeLocalCache?.enabled),

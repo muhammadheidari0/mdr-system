@@ -172,8 +172,11 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'data-integrations-action="ping-openproject"' in html
     assert 'data-integrations-provider-tab="openproject"' in html
     assert 'data-integrations-provider-tab="google"' in html
+    assert 'data-integrations-provider-tab="nextcloud"' in html
     assert 'data-integrations-provider-panel="openproject"' in html
     assert 'data-integrations-provider-panel="google"' in html
+    assert 'data-integrations-provider-panel="nextcloud"' in html
+    assert 'id="storageMirrorProviderSelect"' in html
     assert 'data-op-tab="connection"' in html
     assert 'data-op-tab="project-import"' in html
     assert 'data-op-tab="import"' in html
@@ -194,9 +197,18 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'id="storageGoogleOauthRefreshTokenInput"' in html
     assert 'id="storageGoogleGmailEnabledInput"' in html
     assert 'id="storageGoogleCalendarEnabledInput"' in html
+    assert 'id="storageNextcloudEnabledInput"' in html
+    assert 'id="storageNextcloudBaseUrlInput"' in html
+    assert 'id="storageNextcloudUsernameInput"' in html
+    assert 'id="storageNextcloudAppPasswordInput"' in html
+    assert 'id="storageNextcloudRootPathInput"' in html
+    assert 'id="storageNextcloudSkipSslVerifyInput"' in html
+    assert 'id="storageNextcloudCredentialSourceBadge"' in html
     assert 'data-integrations-action="ping-google-drive"' in html
     assert 'data-integrations-action="ping-google-gmail"' in html
     assert 'data-integrations-action="ping-google-calendar"' in html
+    assert 'data-integrations-action="ping-nextcloud"' in html
+    assert 'data-integrations-action="run-nextcloud-sync"' in html
     assert "storageLocalCacheEnabledInput" not in html
 
     base_dir = Path(__file__).resolve().parents[1]

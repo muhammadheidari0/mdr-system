@@ -37,7 +37,7 @@ from app.services.openproject_status import (
 )
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
-from app.services.storage_sync import enqueue_correspondence_mirror_job
+from app.services.storage_sync import enqueue_correspondence_mirror_job, resolve_mirror_enqueue_plan
 
 router = APIRouter(prefix="/correspondence", tags=["Correspondence"])
 AUTO_REFERENCE_MAX_RETRIES = 8
@@ -406,6 +406,9 @@ def _serialize_attachment(
         "size_bytes": row.size_bytes,
         "storage_backend": row.storage_backend,
         "gdrive_file_id": row.gdrive_file_id,
+        "mirror_provider": getattr(row, "mirror_provider", None),
+        "mirror_remote_id": getattr(row, "mirror_remote_id", None),
+        "mirror_remote_url": getattr(row, "mirror_remote_url", None),
         "mirror_status": row.mirror_status,
         "mirror_updated_at": row.mirror_updated_at.isoformat() if row.mirror_updated_at else None,
         "uploaded_by_id": row.uploaded_by_id,
@@ -1147,8 +1150,9 @@ def upload_correspondence_attachment(
     path_obj = Path(saved.stored_path)
 
     integrations = get_storage_integrations(db)
-    gdrive_enabled = bool(integrations.get("google_drive", {}).get("enabled"))
-    mirror_status = "pending" if gdrive_enabled else "disabled"
+    mirror_plan = resolve_mirror_enqueue_plan(integrations)
+    mirror_provider = str(mirror_plan.get("provider") or "")
+    mirror_status = str(mirror_plan.get("status") or "disabled")
 
     row = CorrespondenceAttachment(
         correspondence_id=correspondence_id,
@@ -1163,13 +1167,16 @@ def upload_correspondence_attachment(
         size_bytes=saved.size_bytes,
         storage_backend="local",
         gdrive_file_id=None,
+        mirror_provider=mirror_provider or None,
+        mirror_remote_id=None,
+        mirror_remote_url=None,
         mirror_status=mirror_status,
         mirror_updated_at=datetime.utcnow(),
         uploaded_by_id=getattr(user, "id", None),
     )
     db.add(row)
     db.flush()
-    if gdrive_enabled:
+    if bool(mirror_plan.get("enqueue")):
         enqueue_correspondence_mirror_job(
             db,
             attachment_id=row.id,

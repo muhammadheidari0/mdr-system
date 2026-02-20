@@ -48,10 +48,13 @@ from app.services.openproject_status import (
 )
 from app.services.storage_sync import (
     JOB_GOOGLE_DRIVE_MIRROR,
+    JOB_NEXTCLOUD_MIRROR,
     JOB_OPENPROJECT_SYNC,
+    resolve_nextcloud_runtime,
     resolve_openproject_runtime,
     run_storage_jobs,
 )
+from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.openproject_adapter import OpenProjectAdapter
 from app.services.google_oauth_adapter import GoogleOAuthAdapter
 from app.services.openproject_import import (
@@ -279,6 +282,14 @@ class GooglePingIn(BaseModel):
     oauth_refresh_token: Optional[str] = Field(default=None, max_length=4096)
     sender_email: Optional[str] = Field(default=None, max_length=255)
     calendar_id: Optional[str] = Field(default=None, max_length=255)
+
+
+class NextcloudPingIn(BaseModel):
+    base_url: Optional[str] = Field(default=None, max_length=1024)
+    username: Optional[str] = Field(default=None, max_length=255)
+    app_password: Optional[str] = Field(default=None, max_length=4096)
+    root_path: Optional[str] = Field(default=None, max_length=1024)
+    skip_ssl_verify: Optional[bool] = Field(default=None)
 
 
 def _safe_json_dumps(value: dict[str, Any]) -> str:
@@ -528,6 +539,17 @@ def run_openproject_jobs(
     return {"ok": True, **result}
 
 
+@router.post("/sync/nextcloud/run")
+def run_nextcloud_jobs(
+    limit: int = Query(default=25, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    result = run_storage_jobs(db, limit=limit, job_types=[JOB_NEXTCLOUD_MIRROR])
+    return {"ok": True, **result}
+
+
 @router.post("/openproject/ping")
 def ping_openproject(
     payload: Optional[OpenProjectPingIn] = Body(default=None),
@@ -625,6 +647,134 @@ def ping_openproject(
             "ssl_source": ssl_source,
             "tls_verify_effective": tls_verify_effective,
             "message": "OpenProject is unreachable (network/TLS error).",
+        }
+
+
+@router.post("/nextcloud/ping")
+def ping_nextcloud(
+    payload: Optional[NextcloudPingIn] = Body(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    integrations = get_storage_integrations(db)
+    runtime_integrations = dict(integrations or {})
+    incoming = payload.model_dump(exclude_unset=True) if payload else {}
+    if incoming:
+        nextcloud = dict(runtime_integrations.get("nextcloud") or {})
+        incoming_base_url = str(incoming.get("base_url") or "").strip()
+        incoming_username = str(incoming.get("username") or "").strip()
+        incoming_password = str(incoming.get("app_password") or "").strip()
+        incoming_root_path = str(incoming.get("root_path") or "").strip()
+        if incoming_base_url:
+            nextcloud["base_url"] = incoming_base_url
+        if incoming_username:
+            nextcloud["username"] = incoming_username
+        if incoming_password:
+            nextcloud["app_password"] = incoming_password
+        if incoming_root_path:
+            nextcloud["root_path"] = incoming_root_path
+        if "skip_ssl_verify" in incoming:
+            nextcloud["skip_ssl_verify"] = bool(incoming.get("skip_ssl_verify"))
+        runtime_integrations["nextcloud"] = nextcloud
+
+    runtime = resolve_nextcloud_runtime(runtime_integrations)
+    credential_source = str(runtime.get("credential_source") or "none")
+    ssl_source = str(runtime.get("ssl_source") or "env_default")
+    tls_verify_effective = bool(runtime.get("tls_verify"))
+    base_url = NextcloudAdapter.normalize_base_url(str(runtime.get("base_url") or ""))
+    username = str(runtime.get("username") or "").strip()
+    app_password = str(runtime.get("app_password") or "").strip()
+    if not base_url:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "credential_source": credential_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
+            "message": "Nextcloud base URL is not configured.",
+        }
+    if not username or not app_password:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "credential_source": credential_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
+            "message": "Nextcloud username/app password is not configured.",
+        }
+
+    adapter = NextcloudAdapter(
+        base_url=base_url,
+        username=username,
+        app_password=app_password,
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+    try:
+        response = adapter.ping_raw()
+        status_code = int(response.status_code)
+        reachable = True
+        auth_ok = status_code < 400
+        if status_code in {401, 403}:
+            auth_ok = False
+            message = "Nextcloud WebDAV is reachable, but authentication failed."
+        elif status_code == 404:
+            auth_ok = False
+            message = "Nextcloud WebDAV path not found (check base URL/path)."
+        elif status_code >= 400:
+            auth_ok = False
+            message = f"Nextcloud returned HTTP {status_code}."
+        else:
+            message = "Nextcloud WebDAV reachable and authenticated."
+        return {
+            "ok": True,
+            "reachable": reachable,
+            "auth_ok": auth_ok,
+            "status_code": status_code,
+            "credential_source": credential_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
+            "message": message,
+        }
+    except requests.Timeout:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "credential_source": credential_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
+            "message": "Nextcloud ping timed out.",
+        }
+    except requests.RequestException:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "credential_source": credential_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
+            "message": "Nextcloud is unreachable (network/TLS error).",
+        }
+    except RuntimeError as exc:
+        return {
+            "ok": True,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "credential_source": credential_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
+            "message": str(exc),
         }
 
 
@@ -891,9 +1041,7 @@ def ping_google(
 
 @router.get("/openproject/import/template")
 def download_openproject_import_template(
-    user: User = Depends(allow_admin),
 ):
-    del user
     candidates = [
         Path(settings.BASE_DIR) / "data_sources" / "templates" / "openproject template.xlsx",
         Path(settings.BASE_DIR) / "data_sources" / "openproject template.xlsx",  # legacy fallback
@@ -1880,6 +2028,9 @@ def pin_local_cache_file(
     file_name = ""
     version_hash = ""
     mirror_status = None
+    mirror_provider = None
+    mirror_remote_id = None
+    mirror_remote_url = None
 
     if entity_type == ENTITY_ARCHIVE_FILE:
         archive = _resolve_archive_for_pin(db, file_id)
@@ -1888,6 +2039,9 @@ def pin_local_cache_file(
         _enforce_archive_scope(db, user, archive)
         file_name = str(archive.original_name or "")
         mirror_status = archive.mirror_status
+        mirror_provider = getattr(archive, "mirror_provider", None)
+        mirror_remote_id = getattr(archive, "mirror_remote_id", None)
+        mirror_remote_url = getattr(archive, "mirror_remote_url", None)
         version_hash = str(archive.sha256 or "").strip() or _sha256_for_path(archive.stored_path)
     elif entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT:
         attachment = _resolve_attachment_for_pin(db, file_id)
@@ -1896,6 +2050,9 @@ def pin_local_cache_file(
         _enforce_attachment_scope(db, user, attachment)
         file_name = str(attachment.file_name or "")
         mirror_status = attachment.mirror_status
+        mirror_provider = getattr(attachment, "mirror_provider", None)
+        mirror_remote_id = getattr(attachment, "mirror_remote_id", None)
+        mirror_remote_url = getattr(attachment, "mirror_remote_url", None)
         version_hash = str(attachment.sha256 or "").strip() or _sha256_for_path(attachment.stored_path)
     else:
         raise HTTPException(status_code=400, detail="Unsupported entity_type")
@@ -1925,6 +2082,9 @@ def pin_local_cache_file(
             "is_pinned": bool(row.is_pinned),
             "policy_scope": manifest_scope,
             "mirror_status": mirror_status,
+            "mirror_provider": mirror_provider,
+            "mirror_remote_id": mirror_remote_id,
+            "mirror_remote_url": mirror_remote_url,
             "last_modified_at": row.last_modified_at.isoformat() if row.last_modified_at else None,
         },
     }
@@ -2001,6 +2161,9 @@ def get_local_cache_manifest(
             file_name = archive.original_name
             sha256 = archive.sha256
             mirror_status = archive.mirror_status
+            mirror_provider = getattr(archive, "mirror_provider", None)
+            mirror_remote_id = getattr(archive, "mirror_remote_id", None)
+            mirror_remote_url = getattr(archive, "mirror_remote_url", None)
         elif row_entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT:
             attachment = _resolve_attachment_for_pin(db, int(row.file_id))
             if not attachment:
@@ -2012,6 +2175,9 @@ def get_local_cache_manifest(
             file_name = attachment.file_name
             sha256 = attachment.sha256
             mirror_status = attachment.mirror_status
+            mirror_provider = getattr(attachment, "mirror_provider", None)
+            mirror_remote_id = getattr(attachment, "mirror_remote_id", None)
+            mirror_remote_url = getattr(attachment, "mirror_remote_url", None)
         else:
             continue
 
@@ -2025,6 +2191,9 @@ def get_local_cache_manifest(
                 "is_pinned": bool(row.is_pinned),
                 "policy_scope": row_scope,
                 "mirror_status": mirror_status,
+                "mirror_provider": mirror_provider,
+                "mirror_remote_id": mirror_remote_id,
+                "mirror_remote_url": mirror_remote_url,
                 "last_modified_at": row.last_modified_at.isoformat() if row.last_modified_at else None,
             }
         )

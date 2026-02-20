@@ -86,6 +86,9 @@ DEFAULT_STORAGE_POLICY: dict[str, Any] = {
 }
 
 DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
+    "mirror": {
+        "provider": "none",  # none | google_drive | nextcloud
+    },
     "google_drive": {
         "enabled": False,
         "mirror_mode": "async",
@@ -106,6 +109,14 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
         "base_url": "",
         "api_token": "",
         "default_work_package_id": "",
+        "skip_ssl_verify": None,
+    },
+    "nextcloud": {
+        "enabled": False,
+        "base_url": "",
+        "username": "",
+        "app_password": "",
+        "root_path": "",
         "skip_ssl_verify": None,
     },
     "local_cache": {
@@ -206,13 +217,18 @@ def _normalize_policy(raw: dict[str, Any]) -> dict[str, Any]:
 
 def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
     merged = deepcopy(DEFAULT_STORAGE_INTEGRATIONS)
-    for top_key in ("google_drive", "openproject", "local_cache"):
+    for top_key in ("mirror", "google_drive", "openproject", "nextcloud", "local_cache"):
         if isinstance(raw.get(top_key), dict):
             merged[top_key].update(raw[top_key])
 
-    for key in ("google_drive", "openproject", "local_cache"):
+    for key in ("google_drive", "openproject", "nextcloud", "local_cache"):
         enabled = bool(merged[key].get("enabled", False))
         merged[key]["enabled"] = enabled
+
+    provider = str(merged.get("mirror", {}).get("provider") or "").strip().lower()
+    if provider not in {"none", "google_drive", "nextcloud"}:
+        provider = "none"
+    merged["mirror"]["provider"] = provider
 
     merged["google_drive"]["mirror_mode"] = (
         "sync" if str(merged["google_drive"].get("mirror_mode") or "").strip().lower() == "sync" else "async"
@@ -258,6 +274,11 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
     merged["openproject"]["default_work_package_id"] = default_wp
     merged["openproject"]["skip_ssl_verify"] = _to_optional_bool(merged["openproject"].get("skip_ssl_verify"))
     merged["openproject"].pop("default_project_id", None)
+    merged["nextcloud"]["base_url"] = str(merged["nextcloud"].get("base_url") or "").strip()
+    merged["nextcloud"]["username"] = str(merged["nextcloud"].get("username") or "").strip()
+    merged["nextcloud"]["app_password"] = str(merged["nextcloud"].get("app_password") or "").strip()
+    merged["nextcloud"]["root_path"] = str(merged["nextcloud"].get("root_path") or "").strip()
+    merged["nextcloud"]["skip_ssl_verify"] = _to_optional_bool(merged["nextcloud"].get("skip_ssl_verify"))
     merged["local_cache"]["default_scope"] = str(
         merged["local_cache"].get("default_scope") or "user"
     ).strip() or "user"

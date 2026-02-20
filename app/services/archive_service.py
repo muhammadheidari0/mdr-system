@@ -12,7 +12,7 @@ from app.db.models import ArchiveFile, DocumentRevision, MdrDocument
 from app.services import docnum_service, folder_service, mdr_service
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
-from app.services.storage_sync import enqueue_archive_mirror_job
+from app.services.storage_sync import enqueue_archive_mirror_job, resolve_mirror_enqueue_plan
 
 # ---------------------------------------------------------
 # 1. Helper: Calculate Next Revision
@@ -300,8 +300,9 @@ def save_upload_file(
     rev.file_name = clean_name
 
     integrations = get_storage_integrations(db)
-    gdrive_enabled = bool(integrations.get("google_drive", {}).get("enabled"))
-    mirror_status = "pending" if gdrive_enabled else "disabled"
+    mirror_plan = resolve_mirror_enqueue_plan(integrations)
+    mirror_provider = str(mirror_plan.get("provider") or "")
+    mirror_status = str(mirror_plan.get("status") or "disabled")
 
     archive_entry = ArchiveFile(
         revision_id=rev.id,
@@ -314,6 +315,9 @@ def save_upload_file(
         size_bytes=saved.size_bytes,
         storage_backend="local",
         gdrive_file_id=None,
+        mirror_provider=mirror_provider or None,
+        mirror_remote_id=None,
+        mirror_remote_url=None,
         mirror_status=mirror_status,
         mirror_updated_at=datetime.utcnow(),
         file_kind=normalized_kind,
@@ -327,7 +331,7 @@ def save_upload_file(
 
     db.add(archive_entry)
     db.flush()
-    if gdrive_enabled:
+    if bool(mirror_plan.get("enqueue")):
         enqueue_archive_mirror_job(
             db,
             archive_file_id=archive_entry.id,

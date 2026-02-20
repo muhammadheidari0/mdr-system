@@ -6,7 +6,8 @@
   - Policy
   - Site Cache
 - `Settings > Integrations`
-  - Provider tabs: `OpenProject`, `Google`
+  - Provider tabs: `OpenProject`, `Google`, `Nextcloud`
+  - Mirror selector: `none | google_drive | nextcloud`
   - OpenProject sub-tabs: `Connection Settings`, `Project Import`, `Excel Import`, `Data & Logs`
 
 ## Preconditions
@@ -35,6 +36,11 @@ Expected:
 2. Verify provider tabs exist:
   - `OpenProject`
   - `Google`
+  - `Nextcloud`
+3. Verify mirror selector exists with values:
+  - `None`
+  - `Google Drive`
+  - `Nextcloud`
 3. Verify Local Cache controls are not present here.
 
 ## 4) OpenProject connection
@@ -102,3 +108,22 @@ Expected:
 - Navigate away and back to Integrations.
 - Confirm saved non-secret fields are loaded.
 - Confirm secret fields are not returned in plain text.
+
+## 9) Nextcloud integration
+1. Switch provider tab to `Nextcloud`.
+2. Set:
+  - enabled
+  - base URL
+  - username
+  - app password
+  - root path
+3. (Optional) toggle `Ignore SSL errors (internal/test only)`.
+4. Set mirror provider to `nextcloud`.
+5. Click `Save Nextcloud Settings`.
+6. Click `Test Nextcloud Connection`.
+7. Click `Run Nextcloud Sync`.
+
+Expected:
+- Save succeeds.
+- Ping summary is shown in result box with `tls_verify_effective` and `ssl_source`.
+- Sync run action returns processed/success/failed counters.

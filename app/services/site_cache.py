@@ -394,6 +394,10 @@ def build_site_manifest(
                 "sha256": archive.sha256,
                 "size_bytes": archive.size_bytes,
                 "uploaded_at": archive.uploaded_at.isoformat() if archive.uploaded_at else None,
+                "gdrive_file_id": archive.gdrive_file_id,
+                "mirror_provider": getattr(archive, "mirror_provider", None),
+                "mirror_remote_id": getattr(archive, "mirror_remote_id", None),
+                "mirror_remote_url": getattr(archive, "mirror_remote_url", None),
                 "mirror_status": archive.mirror_status,
                 "mirror_updated_at": archive.mirror_updated_at.isoformat() if archive.mirror_updated_at else None,
             }

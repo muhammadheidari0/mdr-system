@@ -45,6 +45,7 @@ from app.db.models import (
 from app.services.folder_service import safe_name
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
+from app.services.storage_sync import enqueue_comm_item_mirror_job, resolve_mirror_enqueue_plan
 
 
 router = APIRouter(prefix="/comm-items", tags=["Communication Items"])
@@ -1063,7 +1064,12 @@ def _serialize_attachment(row: ItemAttachment) -> dict[str, Any]:
         "sha256": row.sha256,
         "size_bytes": row.size_bytes,
         "validation_status": row.validation_status,
+        "gdrive_file_id": row.gdrive_file_id,
+        "mirror_provider": getattr(row, "mirror_provider", None),
+        "mirror_remote_id": getattr(row, "mirror_remote_id", None),
+        "mirror_remote_url": getattr(row, "mirror_remote_url", None),
         "mirror_status": row.mirror_status,
+        "mirror_updated_at": _to_iso(row.mirror_updated_at),
         "uploaded_by_id": row.uploaded_by_id,
         "uploaded_by_name": getattr(getattr(row, "uploaded_by", None), "full_name", None),
         "uploaded_at": _to_iso(row.uploaded_at),
@@ -1952,8 +1958,9 @@ def upload_comm_item_attachment(
     )
 
     integrations = get_storage_integrations(db)
-    gdrive_enabled = bool(integrations.get("google_drive", {}).get("enabled"))
-    mirror_status = "pending" if gdrive_enabled else "disabled"
+    mirror_plan = resolve_mirror_enqueue_plan(integrations)
+    mirror_provider = str(mirror_plan.get("provider") or "")
+    mirror_status = str(mirror_plan.get("status") or "disabled")
     row = ItemAttachment(
         item_id=item_id,
         file_name=original_name,
@@ -1969,12 +1976,22 @@ def upload_comm_item_attachment(
         size_bytes=saved.size_bytes,
         storage_backend="local",
         gdrive_file_id=None,
+        mirror_provider=mirror_provider or None,
+        mirror_remote_id=None,
+        mirror_remote_url=None,
         mirror_status=mirror_status,
         mirror_updated_at=datetime.utcnow(),
         uploaded_by_id=getattr(user, "id", None),
         uploaded_at=datetime.utcnow(),
     )
     db.add(row)
+    db.flush()
+    if bool(mirror_plan.get("enqueue")):
+        enqueue_comm_item_mirror_job(
+            db,
+            attachment_id=row.id,
+            work_package_id=None,
+        )
     db.commit()
     db.refresh(row)
     return {"ok": True, "data": _serialize_attachment(row)}

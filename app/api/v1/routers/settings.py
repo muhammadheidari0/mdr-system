@@ -48,7 +48,7 @@ from app.services.storage_policy import (
     set_storage_integrations,
     set_storage_policy,
 )
-from app.services.storage_sync import resolve_openproject_runtime
+from app.services.storage_sync import resolve_nextcloud_runtime, resolve_openproject_runtime
 from app.services.storage import StorageManager
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(allow_admin)])
@@ -134,8 +134,10 @@ class StoragePolicyIn(BaseModel):
 
 
 class StorageIntegrationsIn(BaseModel):
+    mirror: Optional[Dict[str, Any]] = None
     google_drive: Optional[Dict[str, Any]] = None
     openproject: Optional[Dict[str, Any]] = None
+    nextcloud: Optional[Dict[str, Any]] = None
     local_cache: Optional[Dict[str, Any]] = None
 
 class BlockIn(BaseModel):
@@ -383,6 +385,19 @@ def _storage_integrations_openproject_token_source(integrations: Dict[str, Any])
     return "none"
 
 
+def _storage_integrations_nextcloud_credential_source(integrations: Dict[str, Any]) -> str:
+    nextcloud = dict((integrations or {}).get("nextcloud") or {})
+    env_username = str(settings.NEXTCLOUD_USERNAME or "").strip()
+    env_password = str(settings.NEXTCLOUD_APP_PASSWORD or "").strip()
+    settings_username = str(nextcloud.get("username") or "").strip()
+    settings_password = str(nextcloud.get("app_password") or "").strip()
+    if env_username and env_password:
+        return "env"
+    if settings_username and settings_password:
+        return "settings"
+    return "none"
+
+
 def _masked_storage_integrations_payload(integrations: Dict[str, Any]) -> Dict[str, Any]:
     masked = dict(integrations or {})
     openproject = dict(masked.get("openproject", {}))
@@ -409,6 +424,24 @@ def _masked_storage_integrations_payload(integrations: Dict[str, Any]) -> Dict[s
     gdrive.pop("oauth_client_secret", None)
     gdrive.pop("oauth_refresh_token", None)
     masked["google_drive"] = gdrive
+
+    mirror = dict(masked.get("mirror") or {})
+    provider = str(mirror.get("provider") or "").strip().lower()
+    if provider not in {"none", "google_drive", "nextcloud"}:
+        provider = "none"
+    mirror["provider"] = provider
+    masked["mirror"] = mirror
+
+    nextcloud = dict(masked.get("nextcloud") or {})
+    nextcloud_runtime = resolve_nextcloud_runtime(integrations)
+    credential_source = _storage_integrations_nextcloud_credential_source(integrations)
+    nextcloud["credential_source"] = credential_source
+    nextcloud["credentials_configured"] = credential_source in {"env", "settings"}
+    nextcloud["skip_ssl_verify"] = bool(nextcloud_runtime.get("skip_ssl_verify_effective"))
+    nextcloud["ssl_source"] = str(nextcloud_runtime.get("ssl_source") or "env_default")
+    nextcloud["ssl_force_active"] = bool(nextcloud_runtime.get("ssl_force_active"))
+    nextcloud.pop("app_password", None)
+    masked["nextcloud"] = nextcloud
 
     return redact_secrets(masked)
 
@@ -2137,8 +2170,13 @@ def save_storage_integrations_settings(
         if "api_token" in openproject_incoming and not str(openproject_incoming.get("api_token") or "").strip():
             openproject_incoming["api_token"] = str((before.get("openproject") or {}).get("api_token") or "")
 
+    nextcloud_incoming = incoming.get("nextcloud")
+    if isinstance(nextcloud_incoming, dict):
+        if "app_password" in nextcloud_incoming and not str(nextcloud_incoming.get("app_password") or "").strip():
+            nextcloud_incoming["app_password"] = str((before.get("nextcloud") or {}).get("app_password") or "")
+
     merged = dict(before)
-    for key in ("google_drive", "openproject", "local_cache"):
+    for key in ("mirror", "google_drive", "openproject", "nextcloud", "local_cache"):
         if isinstance(incoming.get(key), dict):
             current = dict(merged.get(key) or {})
             current.update(incoming.get(key) or {})

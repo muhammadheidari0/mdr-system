@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.db.models import ArchiveFile, CorrespondenceAttachment, OpenProjectLink, StorageJob
+from app.db.models import ArchiveFile, CorrespondenceAttachment, ItemAttachment, OpenProjectLink, StorageJob
 from app.services.google_drive_adapter import GoogleDriveAdapter
+from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.openproject_adapter import OpenProjectAdapter
 from app.services.storage_jobs import (
     claim_pending_jobs,
@@ -19,7 +21,12 @@ from app.services.storage_jobs import (
 from app.services.storage_policy import get_storage_integrations
 
 JOB_GOOGLE_DRIVE_MIRROR = "google_drive_mirror"
+JOB_NEXTCLOUD_MIRROR = "nextcloud_mirror"
 JOB_OPENPROJECT_SYNC = "openproject_sync"
+
+ENTITY_ARCHIVE_FILE = "archive_file"
+ENTITY_CORRESPONDENCE_ATTACHMENT = "correspondence_attachment"
+ENTITY_COMM_ITEM_ATTACHMENT = "comm_item_attachment"
 
 
 def _to_positive_int_or_none(value: Any) -> int | None:
@@ -85,6 +92,102 @@ def resolve_openproject_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def resolve_nextcloud_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
+    nextcloud_cfg = dict(integrations.get("nextcloud") or {})
+    env_base_url = str(settings.NEXTCLOUD_BASE_URL or "").strip()
+    env_username = str(settings.NEXTCLOUD_USERNAME or "").strip()
+    env_password = str(settings.NEXTCLOUD_APP_PASSWORD or "").strip()
+    env_root_path = str(settings.NEXTCLOUD_ROOT_PATH or "").strip()
+
+    base_url = env_base_url or str(nextcloud_cfg.get("base_url") or "").strip()
+    username = env_username or str(nextcloud_cfg.get("username") or "").strip()
+    app_password = env_password or str(nextcloud_cfg.get("app_password") or "").strip()
+    root_path = env_root_path or str(nextcloud_cfg.get("root_path") or "").strip() or "/"
+
+    force_tls_verify = _to_optional_bool(getattr(settings, "NEXTCLOUD_TLS_VERIFY_FORCE", ""))
+    settings_skip_ssl_verify = _to_optional_bool(nextcloud_cfg.get("skip_ssl_verify"))
+    if force_tls_verify is not None:
+        tls_verify = bool(force_tls_verify)
+        ssl_source = "env_force"
+    elif settings_skip_ssl_verify is not None:
+        tls_verify = not bool(settings_skip_ssl_verify)
+        ssl_source = "settings"
+    else:
+        tls_verify = bool(settings.NEXTCLOUD_TLS_VERIFY)
+        ssl_source = "env_default"
+
+    credential_source = "none"
+    if env_username and env_password:
+        credential_source = "env"
+    elif str(nextcloud_cfg.get("username") or "").strip() and str(nextcloud_cfg.get("app_password") or "").strip():
+        credential_source = "settings"
+
+    return {
+        "enabled": bool(nextcloud_cfg.get("enabled")),
+        "base_url": base_url,
+        "username": username,
+        "app_password": app_password,
+        "root_path": root_path,
+        "credential_source": credential_source,
+        "connect_timeout": int(settings.NEXTCLOUD_CONNECT_TIMEOUT_SECONDS or 5),
+        "read_timeout": int(settings.NEXTCLOUD_READ_TIMEOUT_SECONDS or 10),
+        "tls_verify": bool(tls_verify),
+        "skip_ssl_verify_effective": not bool(tls_verify),
+        "ssl_source": ssl_source,
+        "ssl_force_active": force_tls_verify is not None,
+    }
+
+
+def resolve_active_mirror_provider(integrations: dict[str, Any]) -> str:
+    mirror_cfg = dict(integrations.get("mirror") or {})
+    provider = str(mirror_cfg.get("provider") or "").strip().lower()
+    if provider not in {"google_drive", "nextcloud"}:
+        return "none"
+    return provider
+
+
+def _is_google_mirror_configured(integrations: dict[str, Any]) -> bool:
+    gdrive_cfg = dict(integrations.get("google_drive") or {})
+    service_account_json = str(settings.GDRIVE_SERVICE_ACCOUNT_JSON or "").strip()
+    return bool(gdrive_cfg.get("enabled")) and bool(service_account_json)
+
+
+def _is_nextcloud_mirror_configured(integrations: dict[str, Any]) -> bool:
+    runtime = resolve_nextcloud_runtime(integrations)
+    return bool(
+        runtime.get("enabled")
+        and str(runtime.get("base_url") or "").strip()
+        and str(runtime.get("username") or "").strip()
+        and str(runtime.get("app_password") or "").strip()
+    )
+
+
+def resolve_mirror_enqueue_plan(integrations: dict[str, Any]) -> dict[str, Any]:
+    provider = resolve_active_mirror_provider(integrations)
+    if provider == "google_drive":
+        configured = _is_google_mirror_configured(integrations)
+        return {
+            "provider": provider,
+            "status": "pending" if configured else "disabled",
+            "enqueue": configured,
+            "job_type": JOB_GOOGLE_DRIVE_MIRROR if configured else None,
+        }
+    if provider == "nextcloud":
+        configured = _is_nextcloud_mirror_configured(integrations)
+        return {
+            "provider": provider,
+            "status": "pending" if configured else "disabled",
+            "enqueue": configured,
+            "job_type": JOB_NEXTCLOUD_MIRROR if configured else None,
+        }
+    return {
+        "provider": None,
+        "status": "disabled",
+        "enqueue": False,
+        "job_type": None,
+    }
+
+
 def _resolve_default_work_package_id(
     db: Session,
     *,
@@ -111,17 +214,22 @@ def enqueue_archive_mirror_job(
     *,
     archive_file_id: int,
     work_package_id: int | None = None,
-) -> StorageJob:
+) -> StorageJob | None:
+    integrations = get_storage_integrations(db)
+    mirror_plan = resolve_mirror_enqueue_plan(integrations)
+    if not bool(mirror_plan.get("enqueue")):
+        return None
     effective_work_package_id = _effective_work_package_id(db, work_package_id)
     payload = {
-        "entity_type": "archive_file",
+        "entity_type": ENTITY_ARCHIVE_FILE,
         "entity_id": int(archive_file_id),
+        "mirror_provider": str(mirror_plan.get("provider") or ""),
     }
     if effective_work_package_id:
         payload["work_package_id"] = int(effective_work_package_id)
     return enqueue_storage_job(
         db,
-        job_type=JOB_GOOGLE_DRIVE_MIRROR,
+        job_type=str(mirror_plan.get("job_type") or ""),
         file_id=int(archive_file_id),
         payload=payload,
     )
@@ -132,17 +240,48 @@ def enqueue_correspondence_mirror_job(
     *,
     attachment_id: int,
     work_package_id: int | None = None,
-) -> StorageJob:
+) -> StorageJob | None:
+    integrations = get_storage_integrations(db)
+    mirror_plan = resolve_mirror_enqueue_plan(integrations)
+    if not bool(mirror_plan.get("enqueue")):
+        return None
     effective_work_package_id = _effective_work_package_id(db, work_package_id)
     payload = {
-        "entity_type": "correspondence_attachment",
+        "entity_type": ENTITY_CORRESPONDENCE_ATTACHMENT,
         "entity_id": int(attachment_id),
+        "mirror_provider": str(mirror_plan.get("provider") or ""),
     }
     if effective_work_package_id:
         payload["work_package_id"] = int(effective_work_package_id)
     return enqueue_storage_job(
         db,
-        job_type=JOB_GOOGLE_DRIVE_MIRROR,
+        job_type=str(mirror_plan.get("job_type") or ""),
+        file_id=int(attachment_id),
+        payload=payload,
+    )
+
+
+def enqueue_comm_item_mirror_job(
+    db: Session,
+    *,
+    attachment_id: int,
+    work_package_id: int | None = None,
+) -> StorageJob | None:
+    integrations = get_storage_integrations(db)
+    mirror_plan = resolve_mirror_enqueue_plan(integrations)
+    if not bool(mirror_plan.get("enqueue")):
+        return None
+    effective_work_package_id = _effective_work_package_id(db, work_package_id)
+    payload = {
+        "entity_type": ENTITY_COMM_ITEM_ATTACHMENT,
+        "entity_id": int(attachment_id),
+        "mirror_provider": str(mirror_plan.get("provider") or ""),
+    }
+    if effective_work_package_id:
+        payload["work_package_id"] = int(effective_work_package_id)
+    return enqueue_storage_job(
+        db,
+        job_type=str(mirror_plan.get("job_type") or ""),
         file_id=int(attachment_id),
         payload=payload,
     )
@@ -172,6 +311,63 @@ def enqueue_openproject_job(
     )
 
 
+def _safe_path_part(value: Any, fallback: str = "unknown") -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"[^\w\-.]+", "_", text, flags=re.UNICODE).strip("._")
+    return text or fallback
+
+
+def _entity_context(entity_type: str, row: Any) -> dict[str, str]:
+    project_code = "unknown"
+    discipline_code = "unknown"
+    item_type = "unknown"
+    if entity_type == ENTITY_ARCHIVE_FILE:
+        revision = getattr(row, "document_revision", None)
+        document = getattr(revision, "document", None) if revision else None
+        project_code = _safe_path_part(getattr(document, "project_code", "unknown"))
+        discipline_code = _safe_path_part(getattr(document, "discipline_code", "unknown"))
+    elif entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT:
+        corr = getattr(row, "correspondence", None)
+        project_code = _safe_path_part(getattr(corr, "project_code", "unknown"))
+        discipline_code = _safe_path_part(getattr(corr, "discipline_code", "unknown"))
+    elif entity_type == ENTITY_COMM_ITEM_ATTACHMENT:
+        item = getattr(row, "item", None)
+        project_code = _safe_path_part(getattr(item, "project_code", "unknown"))
+        discipline_code = _safe_path_part(getattr(item, "discipline_code", "unknown"))
+        item_type = _safe_path_part(getattr(item, "item_type", "unknown")).lower()
+    return {
+        "project_code": project_code or "unknown",
+        "discipline_code": discipline_code or "unknown",
+        "item_type": item_type or "unknown",
+    }
+
+
+def _nextcloud_relative_path(entity_type: str, row: Any, display_name: str) -> str:
+    context = _entity_context(entity_type, row)
+    now = datetime.utcnow()
+    year = now.strftime("%Y")
+    month = now.strftime("%m")
+    safe_file_name = _safe_path_part(display_name, fallback=f"file_{int(getattr(row, 'id', 0) or 0)}")
+    unique_name = f"{now.strftime('%Y%m%d%H%M%S')}_{int(getattr(row, 'id', 0) or 0)}_{safe_file_name}"
+    if entity_type == ENTITY_ARCHIVE_FILE:
+        prefix = "archive"
+        return "/".join([prefix, context["project_code"], context["discipline_code"], year, month, unique_name])
+    if entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT:
+        prefix = "correspondence"
+        return "/".join([prefix, context["project_code"], context["discipline_code"], year, month, unique_name])
+    return "/".join(
+        [
+            "comm-items",
+            context["project_code"],
+            context["discipline_code"],
+            context["item_type"],
+            year,
+            month,
+            unique_name,
+        ]
+    )
+
+
 def _resolve_entity_file(
     db: Session,
     *,
@@ -179,15 +375,20 @@ def _resolve_entity_file(
     entity_id: int,
 ) -> tuple[str, str, str, Any]:
     key = str(entity_type or "").strip().lower()
-    if key == "archive_file":
+    if key == ENTITY_ARCHIVE_FILE:
         row = db.query(ArchiveFile).filter(ArchiveFile.id == int(entity_id)).first()
         if not row:
             raise RuntimeError(f"Archive file not found: {entity_id}")
         return (row.stored_path, row.original_name, row.mime_type or "application/octet-stream", row)
-    if key == "correspondence_attachment":
+    if key == ENTITY_CORRESPONDENCE_ATTACHMENT:
         row = db.query(CorrespondenceAttachment).filter(CorrespondenceAttachment.id == int(entity_id)).first()
         if not row:
             raise RuntimeError(f"Correspondence attachment not found: {entity_id}")
+        return (row.stored_path, row.file_name, row.mime_type or "application/octet-stream", row)
+    if key == ENTITY_COMM_ITEM_ATTACHMENT:
+        row = db.query(ItemAttachment).filter(ItemAttachment.id == int(entity_id)).first()
+        if not row:
+            raise RuntimeError(f"Comm item attachment not found: {entity_id}")
         return (row.stored_path, row.file_name, row.mime_type or "application/octet-stream", row)
     raise RuntimeError(f"Unsupported entity type for storage sync: {entity_type}")
 
@@ -195,10 +396,17 @@ def _resolve_entity_file(
 def _set_mirror_result(
     *,
     row: Any,
-    gdrive_file_id: str | None,
+    provider: str | None,
+    remote_id: str | None,
+    remote_url: str | None,
     status: str,
 ) -> None:
-    row.gdrive_file_id = str(gdrive_file_id or "").strip() or None
+    normalized_provider = str(provider or "").strip().lower() or None
+    row.mirror_provider = normalized_provider
+    row.mirror_remote_id = str(remote_id or "").strip() or None
+    row.mirror_remote_url = str(remote_url or "").strip() or None
+    if normalized_provider == "google_drive":
+        row.gdrive_file_id = str(remote_id or "").strip() or None
     row.mirror_status = str(status or "").strip() or "pending"
     row.mirror_updated_at = datetime.utcnow()
 
@@ -210,11 +418,19 @@ def _sync_google_drive(db: Session, job: StorageJob, integrations: dict[str, Any
     if not entity_type or entity_id <= 0:
         raise RuntimeError("Invalid google drive mirror payload.")
 
-    gdrive_cfg = integrations.get("google_drive", {})
-    if not bool(gdrive_cfg.get("enabled")):
+    active_provider = resolve_active_mirror_provider(integrations)
+    gdrive_cfg = dict(integrations.get("google_drive") or {})
+    service_account_json = str(settings.GDRIVE_SERVICE_ACCOUNT_JSON or "").strip()
+    if active_provider != "google_drive" or not bool(gdrive_cfg.get("enabled")) or not service_account_json:
         path, _, _, row = _resolve_entity_file(db, entity_type=entity_type, entity_id=entity_id)
         _ = path
-        _set_mirror_result(row=row, gdrive_file_id=None, status="disabled")
+        _set_mirror_result(
+            row=row,
+            provider=active_provider if active_provider in {"google_drive", "nextcloud"} else None,
+            remote_id=None,
+            remote_url=None,
+            status="disabled",
+        )
         return {"status": "disabled"}
 
     local_path, display_name, mime_type, row = _resolve_entity_file(
@@ -223,7 +439,7 @@ def _sync_google_drive(db: Session, job: StorageJob, integrations: dict[str, Any
         entity_id=entity_id,
     )
     adapter = GoogleDriveAdapter(
-        service_account_json=str(settings.GDRIVE_SERVICE_ACCOUNT_JSON or "").strip(),
+        service_account_json=service_account_json,
         shared_drive_id=str(settings.GDRIVE_SHARED_DRIVE_ID or "").strip(),
         root_folder_id=str(gdrive_cfg.get("root_folder_id") or ""),
     )
@@ -232,7 +448,13 @@ def _sync_google_drive(db: Session, job: StorageJob, integrations: dict[str, Any
         display_name=display_name,
         mime_type=mime_type,
     )
-    _set_mirror_result(row=row, gdrive_file_id=upload_result.get("file_id"), status="mirrored")
+    _set_mirror_result(
+        row=row,
+        provider="google_drive",
+        remote_id=str(upload_result.get("file_id") or ""),
+        remote_url=str(upload_result.get("web_view_link") or ""),
+        status="mirrored",
+    )
 
     work_package_id = int(payload.get("work_package_id") or 0)
     if work_package_id > 0:
@@ -248,6 +470,67 @@ def _sync_google_drive(db: Session, job: StorageJob, integrations: dict[str, Any
         "status": "mirrored",
         "gdrive_file_id": upload_result.get("file_id"),
         "web_view_link": upload_result.get("web_view_link"),
+    }
+
+
+def _sync_nextcloud(db: Session, job: StorageJob, integrations: dict[str, Any]) -> dict[str, Any]:
+    payload = job_payload(job)
+    entity_type = str(payload.get("entity_type") or "").strip()
+    entity_id = int(payload.get("entity_id") or 0)
+    if not entity_type or entity_id <= 0:
+        raise RuntimeError("Invalid nextcloud mirror payload.")
+
+    active_provider = resolve_active_mirror_provider(integrations)
+    runtime = resolve_nextcloud_runtime(integrations)
+    if (
+        active_provider != "nextcloud"
+        or not bool(runtime.get("enabled"))
+        or not str(runtime.get("base_url") or "").strip()
+        or not str(runtime.get("username") or "").strip()
+        or not str(runtime.get("app_password") or "").strip()
+    ):
+        path, _, _, row = _resolve_entity_file(db, entity_type=entity_type, entity_id=entity_id)
+        _ = path
+        _set_mirror_result(
+            row=row,
+            provider=active_provider if active_provider in {"google_drive", "nextcloud"} else None,
+            remote_id=None,
+            remote_url=None,
+            status="disabled",
+        )
+        return {"status": "disabled"}
+
+    local_path, display_name, _mime_type, row = _resolve_entity_file(
+        db,
+        entity_type=entity_type,
+        entity_id=entity_id,
+    )
+    adapter = NextcloudAdapter(
+        base_url=str(runtime.get("base_url") or ""),
+        username=str(runtime.get("username") or ""),
+        app_password=str(runtime.get("app_password") or ""),
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+    remote_rel_path = _nextcloud_relative_path(entity_type, row, display_name)
+    upload_result = adapter.upload_file(
+        local_path=local_path,
+        remote_relative_path=remote_rel_path,
+    )
+    _set_mirror_result(
+        row=row,
+        provider="nextcloud",
+        remote_id=str(upload_result.get("remote_id") or ""),
+        remote_url=str(upload_result.get("remote_url") or ""),
+        status="mirrored",
+    )
+    return {
+        "status": "mirrored",
+        "mirror_provider": "nextcloud",
+        "mirror_remote_id": upload_result.get("remote_id"),
+        "mirror_remote_url": upload_result.get("remote_url"),
     }
 
 
@@ -335,6 +618,8 @@ def _sync_openproject(db: Session, job: StorageJob, integrations: dict[str, Any]
 def process_job(db: Session, job: StorageJob, integrations: dict[str, Any]) -> dict[str, Any]:
     if job.job_type == JOB_GOOGLE_DRIVE_MIRROR:
         return _sync_google_drive(db, job, integrations)
+    if job.job_type == JOB_NEXTCLOUD_MIRROR:
+        return _sync_nextcloud(db, job, integrations)
     if job.job_type == JOB_OPENPROJECT_SYNC:
         return _sync_openproject(db, job, integrations)
     raise RuntimeError(f"Unsupported storage job type: {job.job_type}")

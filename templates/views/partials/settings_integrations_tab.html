@@ -6,7 +6,19 @@
       </h3>
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">info</span>
-        <div>OpenProject and Google integrations are managed here. Local Cache remains under Storage > Site Cache.</div>
+        <div>OpenProject, Google, and Nextcloud integrations are managed here. Local Cache remains under Storage > Site Cache.</div>
+      </div>
+
+      <div class="general-form-grid storage-integrations-grid storage-integrations-mirror-grid">
+        <div id="storageMirrorProviderWrap">
+          <label class="form-label-sm">Active Mirror Provider</label>
+          <select id="storageMirrorProviderSelect" class="form-input">
+            <option value="none">None (disable mirror queue)</option>
+            <option value="google_drive">Google Drive</option>
+            <option value="nextcloud">Nextcloud</option>
+          </select>
+          <div class="form-help">Only one provider is active for mirror jobs at a time.</div>
+        </div>
       </div>
 
       <div class="integrations-provider-tabs" role="tablist" aria-label="Integration Providers">
@@ -27,6 +39,15 @@
           aria-controls="integrations-provider-google"
         >
           Google
+        </button>
+        <button
+          type="button"
+          class="integrations-provider-tab"
+          data-integrations-provider-tab="nextcloud"
+          aria-selected="false"
+          aria-controls="integrations-provider-nextcloud"
+        >
+          Nextcloud
         </button>
       </div>
 
@@ -380,6 +401,83 @@
               <button class="btn btn-secondary" type="button" data-integrations-action="ping-google-gmail">Test Gmail</button>
               <button class="btn btn-secondary" type="button" data-integrations-action="ping-google-calendar">Test Calendar</button>
               <button id="storageGoogleDriveSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-google-sync">Run Google Sync</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="integrations-provider-nextcloud"
+        class="integrations-provider-panel"
+        data-integrations-provider-panel="nextcloud"
+        aria-hidden="true"
+      >
+        <div class="storage-openproject-shell">
+          <div class="storage-openproject-head">
+            <div class="storage-openproject-title-wrap">
+              <h4 class="storage-openproject-title">Nextcloud</h4>
+              <div class="form-help">WebDAV integration for EDMS file mirror (Archive / Correspondence / Comm Items).</div>
+            </div>
+          </div>
+
+          <div class="storage-openproject-panel active" style="display:block;">
+            <div class="general-form-grid storage-integrations-grid">
+              <label class="checkbox-label">
+                <input id="storageNextcloudEnabledInput" type="checkbox">
+                <span class="checkmark"></span>Nextcloud Enabled
+              </label>
+
+              <div id="storageNextcloudBaseUrlWrap">
+                <label class="form-label-sm">Base URL</label>
+                <input id="storageNextcloudBaseUrlInput" class="form-input" placeholder="https://nextcloud.example.com">
+              </div>
+
+              <div id="storageNextcloudUsernameWrap">
+                <label class="form-label-sm">Username</label>
+                <input id="storageNextcloudUsernameInput" class="form-input" placeholder="nextcloud user">
+              </div>
+
+              <div id="storageNextcloudRootPathWrap">
+                <label class="form-label-sm">Root Path</label>
+                <input id="storageNextcloudRootPathInput" class="form-input" placeholder="/mdr">
+              </div>
+
+              <div id="storageNextcloudSslWrap" class="storage-openproject-ssl-wrap">
+                <label class="checkbox-label">
+                  <input id="storageNextcloudSkipSslVerifyInput" type="checkbox">
+                  <span class="checkmark"></span>Ignore SSL errors (internal/test only)
+                </label>
+                <div id="storageNextcloudSslManagedHint" class="form-help"></div>
+                <div
+                  id="storageNextcloudSkipSslWarning"
+                  class="general-settings-note general-settings-note-warning storage-openproject-ssl-warning"
+                  style="display:none;"
+                >
+                  <span class="material-icons-round">warning</span>
+                  <div>This mode is insecure and should be used only for internal/testing servers.</div>
+                </div>
+              </div>
+
+              <div id="storageNextcloudTokenWrap">
+                <div class="settings-integration-token-head">
+                  <label class="form-label-sm">App Password</label>
+                  <span id="storageNextcloudCredentialSourceBadge" class="settings-token-source-badge">none</span>
+                </div>
+                <input
+                  id="storageNextcloudAppPasswordInput"
+                  class="form-input"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Nextcloud app password"
+                >
+                <div id="storageNextcloudCredentialManagedHint" class="form-help"></div>
+              </div>
+            </div>
+
+            <div class="general-form-actions storage-integrations-actions">
+              <button class="btn btn-primary" type="button" data-integrations-action="save-integrations">Save Nextcloud Settings</button>
+              <button class="btn btn-secondary" type="button" data-integrations-action="ping-nextcloud">Test Nextcloud Connection</button>
+              <button id="storageNextcloudSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-nextcloud-sync">Run Nextcloud Sync</button>
             </div>
           </div>
         </div>

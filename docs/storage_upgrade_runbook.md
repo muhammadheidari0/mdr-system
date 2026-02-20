@@ -5,6 +5,7 @@
 - Upload pipeline computes `sha256`, detects MIME by content/signature, and stores validation status.
 - Async storage jobs exist for:
   - Google Drive mirror (`google_drive_mirror`)
+  - Nextcloud mirror (`nextcloud_mirror`)
   - OpenProject sync (`openproject_sync`)
 - Local cache manifest APIs are available for pin/unpin workflows.
 
@@ -24,6 +25,7 @@ Settings:
 
 Storage jobs:
 - `POST /api/v1/storage/sync/google-drive/run`
+- `POST /api/v1/storage/sync/nextcloud/run`
 - `POST /api/v1/storage/sync/openproject/run`
 
 OpenProject:
@@ -41,6 +43,9 @@ OpenProject:
 Google:
 - `POST /api/v1/storage/google/ping`
 
+Nextcloud:
+- `POST /api/v1/storage/nextcloud/ping`
+
 Local cache:
 - `POST /api/v1/storage/local-cache/pin`
 - `POST /api/v1/storage/local-cache/unpin`
@@ -57,6 +62,8 @@ Integrity:
 - `Settings > Integrations`
   - Provider tab `OpenProject`
   - Provider tab `Google`
+  - Provider tab `Nextcloud`
+  - Mirror provider selector (`none|google_drive|nextcloud`)
   - Local Cache is not configured in Integrations anymore.
 
 ## OpenProject UX
@@ -84,6 +91,12 @@ Integrity:
 - `OPENPROJECT_TLS_VERIFY_FORCE` (optional override: `true|false|1|0|yes|no|on|off`)
 - `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - legacy alias: `OPENPROJECT_DEFAULT_PROJECT_ID`
+- `NEXTCLOUD_BASE_URL`
+- `NEXTCLOUD_USERNAME`
+- `NEXTCLOUD_APP_PASSWORD`
+- `NEXTCLOUD_ROOT_PATH`
+- `NEXTCLOUD_TLS_VERIFY` (secure default: `true`)
+- `NEXTCLOUD_TLS_VERIFY_FORCE` (optional override: `true|false|1|0|yes|no|on|off`)
 - `STORAGE_ALLOWED_ROOTS` (CSV absolute roots, e.g. `/app/archive_storage,/app/data_store`)
 - `STORAGE_REQUIRE_ABSOLUTE_PATHS=true` (recommended for staging/prod)
 - `STORAGE_VALIDATE_WRITABLE_ON_SAVE=true` (recommended for staging/prod)
@@ -92,6 +105,11 @@ TLS precedence:
 1. `OPENPROJECT_TLS_VERIFY_FORCE` (if set)
 2. UI `skip_ssl_verify`
 3. `OPENPROJECT_TLS_VERIFY`
+
+Nextcloud TLS precedence:
+1. `NEXTCLOUD_TLS_VERIFY_FORCE` (if set)
+2. UI `nextcloud.skip_ssl_verify`
+3. `NEXTCLOUD_TLS_VERIFY`
 
 ## Production path hardening
 - Mount network storage on host OS first (CIFS/NFS).

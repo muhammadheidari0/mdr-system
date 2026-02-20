@@ -37,6 +37,12 @@ Use this checklist before running `docker compose up -d --build` on staging or p
 - [ ] (optional override) `OPENPROJECT_TLS_VERIFY_FORCE=<true|false>`
 - [ ] `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - [ ] (optional legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
+- [ ] `NEXTCLOUD_BASE_URL` (if mirror provider is `nextcloud`)
+- [ ] `NEXTCLOUD_USERNAME` (if mirror provider is `nextcloud`)
+- [ ] `NEXTCLOUD_APP_PASSWORD` (if mirror provider is `nextcloud`)
+- [ ] `NEXTCLOUD_ROOT_PATH` (if mirror provider is `nextcloud`)
+- [ ] `NEXTCLOUD_TLS_VERIFY=true` (secure default)
+- [ ] (optional override) `NEXTCLOUD_TLS_VERIFY_FORCE=<true|false>`
 
 ## Storage Mount Gate
 

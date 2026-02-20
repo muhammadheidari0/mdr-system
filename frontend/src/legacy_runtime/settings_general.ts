@@ -651,7 +651,7 @@
     }
 
     function setIntegrationsProviderTab(nextTab = 'openproject') {
-        const activeTab = ['openproject', 'google'].includes(String(nextTab || '').toLowerCase())
+        const activeTab = ['openproject', 'google', 'nextcloud'].includes(String(nextTab || '').toLowerCase())
             ? String(nextTab || '').toLowerCase()
             : 'openproject';
         STORE.integrationsProviderTab = activeTab;
@@ -694,6 +694,7 @@
     }
 
     function updateStorageIntegrationsFieldState() {
+        const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const googleEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const googleDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
         const googleGmailEnabled = document.getElementById('storageGoogleGmailEnabledInput');
@@ -733,20 +734,43 @@
         const gdriveSyncBtn = document.getElementById('storageGoogleDriveSyncRunBtn');
         const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
         const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
+        const nextcloudBaseUrlWrap = document.getElementById('storageNextcloudBaseUrlWrap');
+        const nextcloudUsernameWrap = document.getElementById('storageNextcloudUsernameWrap');
+        const nextcloudRootPathWrap = document.getElementById('storageNextcloudRootPathWrap');
+        const nextcloudTokenWrap = document.getElementById('storageNextcloudTokenWrap');
+        const nextcloudSslWrap = document.getElementById('storageNextcloudSslWrap');
+        const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudCredentialHint = document.getElementById('storageNextcloudCredentialManagedHint');
+        const nextcloudSslHint = document.getElementById('storageNextcloudSslManagedHint');
+        const nextcloudSslWarning = document.getElementById('storageNextcloudSkipSslWarning');
+        const nextcloudSyncBtn = document.getElementById('storageNextcloudSyncRunBtn');
         const executeBtn = document.getElementById('storageOpenProjectImportExecuteBtn');
         const tokenSource = norm(tokenBadge?.dataset?.tokenSource || 'none').toLowerCase();
         const sslSource = norm(openprojectSkipSsl?.dataset?.sslSource || 'env_default').toLowerCase();
         const sslForceActive = String(openprojectSkipSsl?.dataset?.sslForceActive || '').toLowerCase() === 'true';
         const envManagedToken = tokenSource === 'env';
         const envManagedSsl = sslForceActive || sslSource === 'env_force';
+        const nextcloudCredentialSource = norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase();
+        const nextcloudSslSource = norm(nextcloudSkipSsl?.dataset?.sslSource || 'env_default').toLowerCase();
+        const nextcloudSslForceActive = String(nextcloudSkipSsl?.dataset?.sslForceActive || '').toLowerCase() === 'true';
+        const nextcloudEnvManagedCred = nextcloudCredentialSource === 'env';
+        const nextcloudEnvManagedSsl = nextcloudSslForceActive || nextcloudSslSource === 'env_force';
 
         const googleOn = Boolean(googleEnabled?.checked);
         const googleDriveOn = googleOn && Boolean(googleDriveEnabled?.checked);
         const googleGmailOn = googleOn && Boolean(googleGmailEnabled?.checked);
         const googleCalendarOn = googleOn && Boolean(googleCalendarEnabled?.checked);
         const openprojectOn = Boolean(openprojectEnabled?.checked);
+        const nextcloudOn = Boolean(nextcloudEnabled?.checked);
         const readyForExecute = openprojectOn && Number(STORE.openprojectImport?.lastValidatedRunId || 0) > 0;
 
+        if (mirrorProvider) mirrorProvider.disabled = false;
         if (googleOauthClientId) googleOauthClientId.disabled = !googleOn;
         if (googleOauthClientSecret) googleOauthClientSecret.disabled = !googleOn;
         if (googleOauthRefreshToken) googleOauthRefreshToken.disabled = !googleOn;
@@ -770,6 +794,11 @@
         if (openprojectProjectRef) openprojectProjectRef.disabled = !openprojectOn;
         if (openprojectProjectMaxItems) openprojectProjectMaxItems.disabled = !openprojectOn;
         if (openprojectProjectPageSize) openprojectProjectPageSize.disabled = !openprojectOn;
+        if (nextcloudBaseUrl) nextcloudBaseUrl.disabled = !nextcloudOn;
+        if (nextcloudUsername) nextcloudUsername.disabled = !nextcloudOn;
+        if (nextcloudAppPassword) nextcloudAppPassword.disabled = !nextcloudOn || nextcloudEnvManagedCred;
+        if (nextcloudRootPath) nextcloudRootPath.disabled = !nextcloudOn;
+        if (nextcloudSkipSsl) nextcloudSkipSsl.disabled = !nextcloudOn || nextcloudEnvManagedSsl;
 
         if (openprojectBaseUrlWrap) openprojectBaseUrlWrap.classList.toggle('is-disabled', !openprojectOn);
         if (openprojectTokenWrap) openprojectTokenWrap.classList.toggle('is-disabled', !openprojectOn);
@@ -780,8 +809,24 @@
             const showWarning = openprojectOn && Boolean(openprojectSkipSsl?.checked);
             openprojectSslWarning.style.display = showWarning ? 'flex' : 'none';
         }
+        if (nextcloudBaseUrlWrap) nextcloudBaseUrlWrap.classList.toggle('is-disabled', !nextcloudOn);
+        if (nextcloudUsernameWrap) nextcloudUsernameWrap.classList.toggle('is-disabled', !nextcloudOn);
+        if (nextcloudTokenWrap) nextcloudTokenWrap.classList.toggle('is-disabled', !nextcloudOn);
+        if (nextcloudRootPathWrap) nextcloudRootPathWrap.classList.toggle('is-disabled', !nextcloudOn);
+        if (nextcloudSslWrap) nextcloudSslWrap.classList.toggle('is-disabled', !nextcloudOn || nextcloudEnvManagedSsl);
+        if (nextcloudCredentialHint) {
+            nextcloudCredentialHint.textContent = nextcloudEnvManagedCred ? 'Credentials are managed by environment' : '';
+        }
+        if (nextcloudSslHint) {
+            nextcloudSslHint.textContent = nextcloudEnvManagedSsl ? 'SSL policy is managed by environment' : '';
+        }
+        if (nextcloudSslWarning) {
+            const showWarning = nextcloudOn && Boolean(nextcloudSkipSsl?.checked);
+            nextcloudSslWarning.style.display = showWarning ? 'flex' : 'none';
+        }
         if (gdriveSyncBtn) gdriveSyncBtn.disabled = !googleOn;
         if (openprojectSyncBtn) openprojectSyncBtn.disabled = !openprojectOn;
+        if (nextcloudSyncBtn) nextcloudSyncBtn.disabled = !nextcloudOn;
         if (executeBtn) executeBtn.disabled = !readyForExecute;
         if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
         updateOpenProjectTokenSavedState(tokenSource, norm(openprojectToken?.value));
@@ -962,6 +1007,7 @@
     }
 
     function applyStorageIntegrationsToForm(integrations = {}) {
+        const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const gdriveDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
         const gdriveGmailEnabled = document.getElementById('storageGoogleGmailEnabledInput');
@@ -982,13 +1028,34 @@
         const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
         const openprojectSslHint = document.getElementById('storageOpenProjectSslManagedHint');
         const openprojectSslWarning = document.getElementById('storageOpenProjectSkipSslWarning');
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
+        const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudCredentialHint = document.getElementById('storageNextcloudCredentialManagedHint');
+        const nextcloudSslHint = document.getElementById('storageNextcloudSslManagedHint');
+        const nextcloudSslWarning = document.getElementById('storageNextcloudSkipSslWarning');
 
+        const mirror = integrations?.mirror || {};
         const gdrive = integrations?.google_drive || {};
         const openproject = integrations?.openproject || {};
+        const nextcloud = integrations?.nextcloud || {};
+        const mirrorProviderValue = ['none', 'google_drive', 'nextcloud'].includes(norm(mirror.provider).toLowerCase())
+            ? norm(mirror.provider).toLowerCase()
+            : 'none';
         const tokenSource = norm(openproject.token_source || 'none').toLowerCase();
         const sslSource = norm(openproject.ssl_source || 'env_default').toLowerCase();
         const sslForceActive = Boolean(openproject.ssl_force_active);
         const skipSslVerify = Boolean(openproject.skip_ssl_verify);
+        const nextcloudCredentialSource = norm(nextcloud.credential_source || 'none').toLowerCase();
+        const nextcloudSslSource = norm(nextcloud.ssl_source || 'env_default').toLowerCase();
+        const nextcloudSslForceActive = Boolean(nextcloud.ssl_force_active);
+        const nextcloudSkipSslVerify = Boolean(nextcloud.skip_ssl_verify);
+
+        if (mirrorProvider) mirrorProvider.value = mirrorProviderValue;
 
         if (gdriveEnabled) gdriveEnabled.checked = Boolean(gdrive.enabled);
         if (gdriveDriveEnabled) gdriveDriveEnabled.checked = Boolean(gdrive.drive_enabled);
@@ -1021,6 +1088,31 @@
         if (openprojectSslWarning) {
             openprojectSslWarning.style.display = skipSslVerify ? 'flex' : 'none';
         }
+        if (nextcloudEnabled) nextcloudEnabled.checked = Boolean(nextcloud.enabled);
+        if (nextcloudBaseUrl) nextcloudBaseUrl.value = String(nextcloud.base_url || '');
+        if (nextcloudUsername) nextcloudUsername.value = String(nextcloud.username || '');
+        if (nextcloudAppPassword) nextcloudAppPassword.value = '';
+        if (nextcloudRootPath) nextcloudRootPath.value = String(nextcloud.root_path || '');
+        if (nextcloudSkipSsl) {
+            nextcloudSkipSsl.checked = nextcloudSkipSslVerify;
+            nextcloudSkipSsl.dataset.sslSource = nextcloudSslSource || 'env_default';
+            nextcloudSkipSsl.dataset.sslForceActive = nextcloudSslForceActive ? 'true' : 'false';
+        }
+        if (nextcloudCredentialBadge) {
+            nextcloudCredentialBadge.textContent = nextcloudCredentialSource || 'none';
+            nextcloudCredentialBadge.dataset.tokenSource = nextcloudCredentialSource || 'none';
+        }
+        if (nextcloudCredentialHint) {
+            nextcloudCredentialHint.textContent = nextcloudCredentialSource === 'env'
+                ? 'Credentials are managed by environment'
+                : '';
+        }
+        if (nextcloudSslHint) {
+            nextcloudSslHint.textContent = nextcloudSslForceActive ? 'SSL policy is managed by environment' : '';
+        }
+        if (nextcloudSslWarning) {
+            nextcloudSslWarning.style.display = nextcloudSkipSslVerify ? 'flex' : 'none';
+        }
         updateStorageIntegrationsFieldState();
     }
 
@@ -1034,6 +1126,7 @@
     }
 
     async function saveStorageIntegrations() {
+        const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const gdriveDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
         const gdriveGmailEnabled = document.getElementById('storageGoogleGmailEnabledInput');
@@ -1050,7 +1143,28 @@
         const gdriveRootFolder = document.getElementById('storageGoogleDriveRootFolderInput');
         const gdriveSenderEmail = document.getElementById('storageGoogleSenderEmailInput');
         const gdriveCalendarId = document.getElementById('storageGoogleCalendarIdInput');
-        if (!gdriveEnabled || !openprojectEnabled || !openprojectWp || !gdriveDriveId || !openprojectBaseUrl || !openprojectToken || !openprojectSkipSsl) return;
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
+        if (
+            !mirrorProvider
+            || !gdriveEnabled
+            || !openprojectEnabled
+            || !openprojectWp
+            || !gdriveDriveId
+            || !openprojectBaseUrl
+            || !openprojectToken
+            || !openprojectSkipSsl
+            || !nextcloudEnabled
+            || !nextcloudBaseUrl
+            || !nextcloudUsername
+            || !nextcloudAppPassword
+            || !nextcloudRootPath
+            || !nextcloudSkipSsl
+        ) return;
 
         const sslForceActive = String(openprojectSkipSsl.dataset.sslForceActive || '').toLowerCase() === 'true';
         const openprojectPayload = {
@@ -1062,10 +1176,27 @@
         if (!sslForceActive) {
             openprojectPayload.skip_ssl_verify = Boolean(openprojectSkipSsl.checked);
         }
+        const nextcloudSslForceActive = String(nextcloudSkipSsl.dataset.sslForceActive || '').toLowerCase() === 'true';
+        const nextcloudPayload = {
+            enabled: Boolean(nextcloudEnabled.checked),
+            base_url: norm(nextcloudBaseUrl.value),
+            username: norm(nextcloudUsername.value),
+            app_password: norm(nextcloudAppPassword.value),
+            root_path: norm(nextcloudRootPath.value),
+        } as Record<string, unknown>;
+        if (!nextcloudSslForceActive) {
+            nextcloudPayload.skip_ssl_verify = Boolean(nextcloudSkipSsl.checked);
+        }
+        const selectedMirrorProvider = ['none', 'google_drive', 'nextcloud'].includes(norm(mirrorProvider.value).toLowerCase())
+            ? norm(mirrorProvider.value).toLowerCase()
+            : 'none';
 
         const payload = await request(`${API_BASE}/storage-integrations`, {
             method: 'POST',
             body: JSON.stringify({
+                mirror: {
+                    provider: selectedMirrorProvider,
+                },
                 google_drive: {
                     enabled: Boolean(gdriveEnabled.checked),
                     shared_drive_id: norm(gdriveDriveId.value),
@@ -1080,6 +1211,7 @@
                     calendar_id: norm(gdriveCalendarId?.value),
                 },
                 openproject: openprojectPayload,
+                nextcloud: nextcloudPayload,
             }),
         });
         applyStorageIntegrationsToForm(payload?.integrations || {});
@@ -1514,6 +1646,37 @@
         else tError(`Google ${safeService} ping completed but needs configuration/auth fix.`);
     }
 
+    async function pingNextcloud() {
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
+        const pingBody = {
+            base_url: norm(nextcloudBaseUrl?.value),
+            username: norm(nextcloudUsername?.value),
+            app_password: norm(nextcloudAppPassword?.value),
+            root_path: norm(nextcloudRootPath?.value),
+            skip_ssl_verify: Boolean(nextcloudSkipSsl?.checked),
+        };
+        setStorageSyncResult('Testing Nextcloud connection ...', 'info');
+        const payload = await request('/api/v1/storage/nextcloud/ping', {
+            method: 'POST',
+            body: JSON.stringify(pingBody),
+        });
+        const reachable = Boolean(payload?.reachable);
+        const authOk = Boolean(payload?.auth_ok);
+        const statusCode = payload?.status_code ?? '-';
+        const credentialSource = String(payload?.credential_source || 'none');
+        const sslSource = String(payload?.ssl_source || 'env_default');
+        const tlsVerifyEffective = Boolean(payload?.tls_verify_effective);
+        const message = String(payload?.message || '');
+        const summary = `Ping Nextcloud: reachable=${reachable} | auth_ok=${authOk} | status=${statusCode} | credential_source=${credentialSource} | tls_verify=${tlsVerifyEffective} | ssl_source=${sslSource}`;
+        setStorageSyncResult(`${summary}${message ? ` | ${message}` : ''}`, authOk ? 'success' : (reachable ? 'info' : 'error'));
+        if (authOk) tSuccess('Nextcloud connection verified.');
+        else tError('Nextcloud ping completed but needs configuration/auth fix.');
+    }
+
     async function downloadOpenProjectTemplate() {
         const fetcher = typeof window.fetchWithAuth === 'function' ? window.fetchWithAuth : fetch;
         setStorageSyncResult('در حال دانلود تمپلیت OpenProject ...', 'info');
@@ -1559,8 +1722,10 @@
     async function runStorageSyncJob(kind) {
         const endpoint = kind === 'openproject'
             ? '/api/v1/storage/sync/openproject/run'
-            : '/api/v1/storage/sync/google-drive/run';
-        const title = kind === 'openproject' ? 'OpenProject' : 'Google Drive';
+            : kind === 'nextcloud'
+                ? '/api/v1/storage/sync/nextcloud/run'
+                : '/api/v1/storage/sync/google-drive/run';
+        const title = kind === 'openproject' ? 'OpenProject' : (kind === 'nextcloud' ? 'Nextcloud' : 'Google Drive');
         setStorageSyncResult(`Ø¯Ø± Ø­Ø§Ù„ Ø§Ø¬Ø±Ø§ÛŒ Sync ${title} ...`, 'info');
         const payload = await request(endpoint, { method: 'POST' });
         const processed = Number(payload?.processed || 0);
@@ -1579,20 +1744,36 @@
     function bindIntegrationsActions() {
         const root = document.getElementById('settingsIntegrationsRoot');
         if (!root || root.dataset.integrationsActionsBound === '1') return;
+        const findEventTargetEl = (event, selector) => {
+            if (!event || !selector) return null;
+            const directTarget = event.target;
+            if (directTarget instanceof Element) {
+                const directMatch = directTarget.closest(selector);
+                if (directMatch) return directMatch;
+            }
+            const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+            for (const node of path) {
+                if (!(node instanceof Element)) continue;
+                if (node.matches(selector)) return node;
+                const match = node.closest(selector);
+                if (match) return match;
+            }
+            return null;
+        };
         root.addEventListener('click', async (event) => {
-            const providerTabEl = event?.target?.closest?.('[data-integrations-provider-tab]');
+            const providerTabEl = findEventTargetEl(event, '[data-integrations-provider-tab]');
             if (providerTabEl && root.contains(providerTabEl)) {
                 event.preventDefault();
                 setIntegrationsProviderTab(providerTabEl.dataset.integrationsProviderTab || 'openproject');
                 return;
             }
-            const tabEl = event?.target?.closest?.('[data-op-tab]');
+            const tabEl = findEventTargetEl(event, '[data-op-tab]');
             if (tabEl && root.contains(tabEl)) {
                 event.preventDefault();
                 setOpenProjectSubTab(tabEl.dataset.opTab || 'connection');
                 return;
             }
-            const actionEl = event?.target?.closest?.('[data-integrations-action]');
+            const actionEl = findEventTargetEl(event, '[data-integrations-action]');
             if (!actionEl || !root.contains(actionEl)) return;
             event.preventDefault();
             const action = norm(actionEl.dataset.integrationsAction || '').toLowerCase();
@@ -1603,6 +1784,10 @@
                 }
                 if (action === 'run-google-sync') {
                     await runStorageSyncJob('google_drive');
+                    return;
+                }
+                if (action === 'run-nextcloud-sync') {
+                    await runStorageSyncJob('nextcloud');
                     return;
                 }
                 if (action === 'run-openproject-sync') {
@@ -1623,6 +1808,10 @@
                 }
                 if (action === 'ping-google-calendar') {
                     await pingGoogle('calendar');
+                    return;
+                }
+                if (action === 'ping-nextcloud') {
+                    await pingNextcloud();
                     return;
                 }
                 if (action === 'clear-openproject-token') {
@@ -2954,6 +3143,9 @@
                 case 'run-storage-openproject-sync':
                     window.runStorageOpenProjectSync();
                     break;
+                case 'run-storage-nextcloud-sync':
+                    window.runStorageNextcloudSync();
+                    break;
                 case 'storage-switch-step':
                     setStorageWizardStep(actionEl.dataset.storageStep || 'paths');
                     break;
@@ -3526,6 +3718,16 @@
             const detail = String(err?.message || 'OpenProject sync failed.');
             setStorageSyncResult(`Ø§Ø¬Ø±Ø§ÛŒ Sync Ø§ÙˆÙ¾Ù†â€ŒÙ¾Ø±Ø§Ø¬Ú©Øª Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯: ${detail}`, 'error');
             tError(`Sync Ø§ÙˆÙ¾Ù†â€ŒÙ¾Ø±Ø§Ø¬Ú©Øª Ø§Ù†Ø¬Ø§Ù… Ù†Ø´Ø¯. ${detail}`);
+        }
+    };
+
+    window.runStorageNextcloudSync = async function runStorageNextcloudSync() {
+        try {
+            await runStorageSyncJob('nextcloud');
+        } catch (err) {
+            const detail = String(err?.message || 'Nextcloud sync failed.');
+            setStorageSyncResult(`Nextcloud sync failed: ${detail}`, 'error');
+            tError(`Nextcloud sync failed. ${detail}`);
         }
     };
 
