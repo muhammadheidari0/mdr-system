@@ -170,13 +170,33 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'id="settingsIntegrationsRoot"' in html
     assert 'data-integrations-action="save-integrations"' in html
     assert 'data-integrations-action="ping-openproject"' in html
+    assert 'data-integrations-provider-tab="openproject"' in html
+    assert 'data-integrations-provider-tab="google"' in html
+    assert 'data-integrations-provider-panel="openproject"' in html
+    assert 'data-integrations-provider-panel="google"' in html
     assert 'data-op-tab="connection"' in html
+    assert 'data-op-tab="project-import"' in html
     assert 'data-op-tab="import"' in html
     assert 'data-op-tab="logs"' in html
+    assert 'id="storageOpenProjectProjectRefInput"' in html
+    assert 'id="storageOpenProjectProjectPreviewBody"' in html
     assert 'id="storageOpenProjectImportFileInput"' in html
     assert 'id="storageOpenProjectImportRunsBody"' in html
     assert 'id="storageOpenProjectActivityBody"' in html
     assert 'id="storageOpenProjectTokenSourceBadge"' in html
+    assert 'id="storageOpenProjectTokenSavedState"' in html
+    assert 'id="storageOpenProjectSkipSslVerifyInput"' in html
+    assert 'id="storageOpenProjectSkipSslWarning"' in html
+    assert 'id="storageOpenProjectSslManagedHint"' in html
+    assert 'id="storageGoogleOauthClientIdInput"' in html
+    assert 'id="storageGoogleOauthClientSecretInput"' in html
+    assert 'id="storageGoogleOauthRefreshTokenInput"' in html
+    assert 'id="storageGoogleGmailEnabledInput"' in html
+    assert 'id="storageGoogleCalendarEnabledInput"' in html
+    assert 'data-integrations-action="ping-google-drive"' in html
+    assert 'data-integrations-action="ping-google-gmail"' in html
+    assert 'data-integrations-action="ping-google-calendar"' in html
+    assert "storageLocalCacheEnabledInput" not in html
 
     base_dir = Path(__file__).resolve().parents[1]
     storage_partial = (

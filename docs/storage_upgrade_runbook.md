@@ -1,56 +1,102 @@
 # Storage Upgrade Runbook (Hybrid + Data Safety)
 
-## What Changed
+## What changed
 - Local filesystem remains the primary storage backend.
-- Upload pipeline now computes `sha256`, detects MIME by content/signature, and stores validation status.
-- Async storage job system added for:
+- Upload pipeline computes `sha256`, detects MIME by content/signature, and stores validation status.
+- Async storage jobs exist for:
   - Google Drive mirror (`google_drive_mirror`)
   - OpenProject sync (`openproject_sync`)
-- Local cache manifest APIs added for pin/unpin workflows.
-- Upload APIs support optional `openproject_work_package_id` to chain mirror -> OpenProject sync.
+- Local cache manifest APIs are available for pin/unpin workflows.
 
-## New/Updated APIs
-- `GET /api/v1/settings/storage-policy`
-- `POST /api/v1/settings/storage-policy`
-- `GET /api/v1/settings/storage-integrations`
-- `POST /api/v1/settings/storage-integrations`
-- `POST /api/v1/storage/sync/google-drive/run`
-- `POST /api/v1/storage/sync/openproject/run`
-- `POST /api/v1/storage/local-cache/pin`
-- `POST /api/v1/storage/local-cache/unpin`
-- `GET /api/v1/storage/local-cache/manifest`
-- `GET /api/v1/archive/files/{id}/integrity`
-
-## Worker
-- New worker entrypoint: `python -m app.workers.storage_worker`
-- Docker service: `worker` in `docker-compose.yml`.
-
-## Desktop Local Sync Agent
-- Script: `tools/mdr_sync_agent.py`
-- Example:
-
-```bash
-python tools/mdr_sync_agent.py \
-  --base-url https://your-domain.com \
-  --token <JWT_TOKEN> \
-  --out-dir ~/MDRSyncCache
-```
-
-- Behavior:
-  - Pull pinned manifest from API.
-  - Download only missing/changed files.
-  - Verify downloaded file hash (`sha256`).
-
-## Required Migration
+## Required migration
 Run:
 
 ```bash
 alembic upgrade head
 ```
 
-## Optional Backfill (Legacy Files)
+## New/updated APIs
+Settings:
+- `GET /api/v1/settings/storage-policy`
+- `POST /api/v1/settings/storage-policy`
+- `GET /api/v1/settings/storage-integrations`
+- `POST /api/v1/settings/storage-integrations`
 
-Dry run:
+Storage jobs:
+- `POST /api/v1/storage/sync/google-drive/run`
+- `POST /api/v1/storage/sync/openproject/run`
+
+OpenProject:
+- `POST /api/v1/storage/openproject/ping`
+- `GET /api/v1/storage/openproject/projects/{project_ref}/work-packages/preview`
+- `POST /api/v1/storage/openproject/projects/{project_ref}/import`
+- `GET /api/v1/storage/openproject/import/template`
+- `POST /api/v1/storage/openproject/import/validate`
+- `POST /api/v1/storage/openproject/import/runs/{run_id}/execute`
+- `GET /api/v1/storage/openproject/import/runs`
+- `GET /api/v1/storage/openproject/import/runs/{run_id}`
+- `GET /api/v1/storage/openproject/import/runs/{run_id}/rows`
+- `GET /api/v1/storage/openproject/activity`
+
+Google:
+- `POST /api/v1/storage/google/ping`
+
+Local cache:
+- `POST /api/v1/storage/local-cache/pin`
+- `POST /api/v1/storage/local-cache/unpin`
+- `GET /api/v1/storage/local-cache/manifest`
+
+Integrity:
+- `GET /api/v1/archive/files/{id}/integrity`
+
+## Settings UI split
+- `Settings > Storage`
+  - Paths
+  - Policy
+  - Site Cache
+- `Settings > Integrations`
+  - Provider tab `OpenProject`
+  - Provider tab `Google`
+  - Local Cache is not configured in Integrations anymore.
+
+## OpenProject UX
+- Sub-tabs:
+  - `Connection Settings`
+  - `Project Import`
+  - `Excel Import`
+  - `Data & Logs`
+- Project import supports project `ID` or `identifier`.
+- Snapshot import is persisted in existing import tables:
+  - project snapshot run prefix: `OPP-`
+  - excel import run prefix: `OPI-`
+
+## Env vars
+- `GDRIVE_SERVICE_ACCOUNT_JSON`
+- `GDRIVE_SHARED_DRIVE_ID`
+- `OPENPROJECT_BASE_URL`
+- `OPENPROJECT_API_TOKEN`
+- `OPENPROJECT_TLS_VERIFY` (secure default: `true`)
+- `OPENPROJECT_TLS_VERIFY_FORCE` (optional override: `true|false|1|0|yes|no|on|off`)
+- `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
+- legacy alias: `OPENPROJECT_DEFAULT_PROJECT_ID`
+- `STORAGE_ALLOWED_ROOTS` (CSV absolute roots, e.g. `/app/archive_storage,/app/data_store`)
+- `STORAGE_REQUIRE_ABSOLUTE_PATHS=true` (recommended for staging/prod)
+- `STORAGE_VALIDATE_WRITABLE_ON_SAVE=true` (recommended for staging/prod)
+
+TLS precedence:
+1. `OPENPROJECT_TLS_VERIFY_FORCE` (if set)
+2. UI `skip_ssl_verify`
+3. `OPENPROJECT_TLS_VERIFY`
+
+## Production path hardening
+- Mount network storage on host OS first (CIFS/NFS).
+- Bind-mount into container with stable absolute paths.
+- Ensure ownership aligns with `APP_UID:APP_GID`.
+- Save storage paths only under `STORAGE_ALLOWED_ROOTS`.
+- Save is rejected (`422`) if path is relative, outside allowed roots, or not writable.
+
+## Optional legacy backfill
+Dry-run:
 
 ```bash
 python tools/backfill_file_integrity.py
@@ -61,22 +107,3 @@ Execute:
 ```bash
 python tools/backfill_file_integrity.py --execute
 ```
-
-## New Env Vars
-- `GDRIVE_SERVICE_ACCOUNT_JSON`
-- `GDRIVE_SHARED_DRIVE_ID`
-- `OPENPROJECT_BASE_URL`
-- `OPENPROJECT_API_TOKEN`
-- `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
-- legacy alias: `OPENPROJECT_DEFAULT_PROJECT_ID` (optional, backward compatible)
-- `STORAGE_ALLOWED_ROOTS` (CSV of absolute roots, example: `/app/archive_storage,/app/data_store`)
-- `STORAGE_REQUIRE_ABSOLUTE_PATHS` (`true` recommended for staging/production)
-- `STORAGE_VALIDATE_WRITABLE_ON_SAVE` (`true` recommended for staging/production)
-
-## Storage Path Hardening (Production Gate)
-
-- Mount network storage on host OS first (CIFS/NFS).
-- Bind mount into container with stable absolute paths.
-- Ensure mount ownership aligns with `APP_UID:APP_GID`.
-- Save storage paths only as absolute paths under `STORAGE_ALLOWED_ROOTS`.
-- Save is rejected (`422`) if path is relative, خارج از root مجاز, or not writable by service account.

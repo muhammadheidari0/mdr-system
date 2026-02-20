@@ -33,6 +33,8 @@
 - [ ] `GDRIVE_SHARED_DRIVE_ID`
 - [ ] `OPENPROJECT_BASE_URL`
 - [ ] `OPENPROJECT_API_TOKEN`
+- [ ] `OPENPROJECT_TLS_VERIFY=true` (پیش‌فرض امن)
+- [ ] (اختیاری) `OPENPROJECT_TLS_VERIFY_FORCE=<true|false>` برای override مرکزی
 - [ ] `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - [ ] (اختیاری، legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
 

@@ -475,7 +475,10 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await page.locator("button[data-settings-tab='true'][data-tab='integrations']").click();
     await expect(page.locator("#tab-integrations")).toHaveClass(/active/);
     await expect(page.locator("#settingsIntegrationsRoot")).toBeVisible();
+    await expect(page.locator("[data-integrations-provider-tab='openproject']")).toBeVisible();
+    await expect(page.locator("[data-integrations-provider-tab='google']")).toBeVisible();
     await expect(page.locator("[data-op-tab='connection']")).toBeVisible();
+    await expect(page.locator("[data-op-tab='project-import']")).toBeVisible();
     await expect(page.locator("[data-op-tab='import']")).toBeVisible();
     await expect(page.locator("[data-op-tab='logs']")).toBeVisible();
     await page.locator("[data-op-tab='logs']").click();
@@ -483,9 +486,18 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await page.locator("[data-op-tab='connection']").click();
 
     const openProjectEnabledInput = page.locator("#storageOpenProjectEnabledInput");
+    const openProjectSkipSslInput = page.locator("#storageOpenProjectSkipSslVerifyInput");
     await openProjectEnabledInput.check();
+    await expect(openProjectSkipSslInput).toBeVisible();
+    await openProjectSkipSslInput.check();
     await page.locator("#storageOpenProjectBaseUrlInput").fill("");
     await page.locator("#storageOpenProjectDefaultWpInput").fill(nextWorkPackageId);
+    await page.locator("[data-integrations-action='save-integrations']").click();
+
+    await page.locator("[data-integrations-provider-tab='google']").click();
+    await expect(page.locator("[data-integrations-provider-panel='google']")).toHaveClass(/active/);
+    await page.locator("#storageGoogleDriveEnabledInput").check();
+    await page.locator("#storageGoogleDriveDriveEnabledInput").check();
     await page.locator("#storageGoogleDriveDriveIdInput").fill(nextSharedDriveId);
     await page.locator("[data-integrations-action='save-integrations']").click();
 
@@ -497,10 +509,12 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
         const body = await res.json();
         const op = body?.integrations?.openproject || {};
         const gd = body?.integrations?.google_drive || {};
-        return `${Boolean(op?.enabled)}|${String(op?.default_work_package_id || "")}|${String(gd?.shared_drive_id || "")}`;
+        return `${Boolean(op?.enabled)}|${String(op?.default_work_package_id || "")}|${Boolean(op?.skip_ssl_verify)}|${String(gd?.shared_drive_id || "")}`;
       })
-      .toBe(`true|${nextWorkPackageId}|${nextSharedDriveId}`);
+      .toBe(`true|${nextWorkPackageId}|true|${nextSharedDriveId}`);
 
+    await page.locator("[data-integrations-provider-tab='openproject']").click();
+    await page.locator("[data-op-tab='connection']").click();
     await page.locator("[data-integrations-action='ping-openproject']").click();
     const pingResult = page.locator("#storageSyncResult");
     await expect(pingResult).toBeVisible({ timeout: 15000 });
@@ -579,6 +593,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
           default_work_package_id: String(
             beforeOpenproject?.default_work_package_id || beforeOpenproject?.default_project_id || ""
           ),
+          skip_ssl_verify: Boolean(beforeOpenproject?.skip_ssl_verify),
         },
         local_cache: {
           enabled: Boolean(beforeLocalCache?.enabled),

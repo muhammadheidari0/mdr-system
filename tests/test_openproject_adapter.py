@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import requests
+import urllib3
 
 from app.services.openproject_adapter import OpenProjectAdapter
 
@@ -49,6 +50,30 @@ def test_openproject_adapter_uses_basic_auth_with_timeouts_and_tls(monkeypatch) 
     assert captured["kwargs"]["auth"] == ("apikey", "token-123")
     assert tuple(captured["kwargs"]["timeout"]) == (7.0, 13.0)
     assert captured["kwargs"]["verify"] is True
+
+
+def test_openproject_adapter_suppresses_insecure_warning_once(monkeypatch) -> None:
+    captured: dict[str, Any] = {"disable_calls": 0}
+
+    def _fake_disable(_value: Any) -> None:
+        captured["disable_calls"] += 1
+
+    def _fake_request(method: str, url: str, **kwargs: Any) -> _FakeResponse:
+        return _FakeResponse(200, {"ok": True})
+
+    monkeypatch.setattr(urllib3, "disable_warnings", _fake_disable)
+    monkeypatch.setattr(requests, "request", _fake_request)
+    OpenProjectAdapter._insecure_warning_suppressed = False
+
+    adapter = OpenProjectAdapter(
+        base_url="https://open-project.example.com",
+        api_token="token-123",
+        tls_verify=False,
+    )
+    adapter.ping()
+    adapter.ping()
+
+    assert captured["disable_calls"] == 1
 
 
 def test_openproject_adapter_attach_external_link_contract(monkeypatch) -> None:

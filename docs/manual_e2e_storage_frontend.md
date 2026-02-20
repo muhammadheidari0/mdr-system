@@ -1,136 +1,100 @@
-# Manual E2E - Storage Management UX V1 (Workflow Focus)
+# Manual E2E - Storage and Integrations UX
 
 ## Scope
-- Settings > Storage Management (3-step workflow):
-  - Step 1: Paths
-  - Step 2: Policy
-  - Step 3: Site Cache
-- Settings > Integrations:
-  - OpenProject / Google Drive / Local Cache configuration
-  - OpenProject Ping + provider sync actions
-- Quick regression check for other settings tabs.
-
-## Out of Scope (V1)
-- Backend contract changes (all checks use existing APIs).
-- For full Site Cache scenarios, use `docs/manual_e2e_site_cache.md`.
+- `Settings > Storage`
+  - Paths
+  - Policy
+  - Site Cache
+- `Settings > Integrations`
+  - Provider tabs: `OpenProject`, `Google`
+  - OpenProject sub-tabs: `Connection Settings`, `Project Import`, `Excel Import`, `Data & Logs`
 
 ## Preconditions
 - Admin user is available.
-- API `/api/v1/health` is OK.
-- Browser cache is clear.
-- User has access to `Settings`.
+- `/api/v1/health` is healthy.
+- Browser cache cleared.
 
-## 1) Open Storage Management
+## 1) Storage page
 1. Open `Settings`.
-2. Open `Storage Management` (top nav card).
-3. Confirm Step 1 is active by default.
+2. Open `Storage` tab.
+3. Confirm stepper sections are visible: `Paths`, `Policy`, `Site Cache`.
 
 Expected:
-- Storage page opens on `Paths`.
-- Stepper is visible with 3 steps (Paths / Policy / Site Cache).
+- No OpenProject/Google provider fields are shown in Storage page.
 
-## 2) Stepper Navigation + Unsaved Guard
-1. In Step 1, edit one path field (do not save).
-2. Click Step 2 button, or `Next Step`.
-
-Expected:
-- Unsaved confirmation dialog appears.
-- Choosing `Cancel` keeps user in current step.
-- Choosing `OK` moves to next step.
-
-## 3) Step 1 - Paths
-1. Set `MDR path` and `Correspondence path` to different values.
-2. Confirm normalized preview updates live under each input.
-3. Set both paths equal (same value).
+## 2) Paths save
+1. Fill `MDR path` and `Correspondence path` with different valid paths.
+2. Click `Save Paths`.
 
 Expected:
-- Inline red conflict error appears immediately.
-- Both fields show error style.
+- Save succeeds.
+- Last saved time updates.
 
-4. Set different values again.
-5. Click `Save Paths`.
-
-Expected:
-- Save succeeds without full page reload.
-- Success note appears in same step.
-- `Last saved` timestamp is updated.
-
-## 4) Step 2 - Policy Presets + Numeric Sizes
-1. Go to Step 2.
-2. Click preset `Warning`, then `Standard`, then `Strict`.
-
-Expected:
-- Mode, blocked extensions, allowed MIME and size fields update each time.
-
-3. Edit numeric size fields:
-  - PDF (MB)
-  - Native (MB)
-  - Attachment (MB)
-4. Save policy.
-5. Refresh page and return to Storage Management Step 2.
-
-Expected:
-- Saved values are reloaded correctly.
-- Max size values persist as numbers (no raw JSON input in UI).
-
-## 5) Integrations Tab
+## 3) Integrations provider tabs
 1. Open `Settings > Integrations`.
-2. Toggle `Google Drive` OFF.
+2. Verify provider tabs exist:
+  - `OpenProject`
+  - `Google`
+3. Verify Local Cache controls are not present here.
+
+## 4) OpenProject connection
+1. In OpenProject provider, open `Connection Settings`.
+2. Set:
+  - enabled
+  - base URL
+  - default parent work package id
+  - api key
+3. (Optional) toggle `Ignore SSL errors (internal/test only)`.
+4. Click `Save OpenProject Settings`.
+5. Click `Test Connection`.
 
 Expected:
-- Google Drive dependent input is disabled.
-- `Run Google Drive Sync` button is disabled.
+- Save succeeds.
+- Ping summary is shown in result box.
+- If SSL is disabled, warning note is visible.
 
-3. Toggle `OpenProject` OFF.
-
-Expected:
-- OpenProject default WP input is disabled.
-- `Run OpenProject Sync` button is disabled.
-
-4. Re-enable providers and click `Save Integrations`.
+## 5) OpenProject project import (snapshot)
+1. Open sub-tab `Project Import`.
+2. Fill `Project ID / Identifier`.
+3. Click `Preview Work Packages`.
 
 Expected:
-- Save success message is shown.
+- Preview table shows live rows from OpenProject.
 
-5. Click `Ping OpenProject`.
-6. Click `Run Google Drive Sync`.
-7. Click `Run OpenProject Sync`.
-
-Expected:
-- Result panel first shows in-progress text.
-- Then final state is visible as success or error.
-- Error case should show friendly text plus short technical detail.
-
-## 6) Action Bar Behavior
-1. In each step, verify bottom sticky action bar is visible:
-  - `Previous Step`
-  - `Next Step`
-  - `Save Current Step`
-2. Verify:
-  - In Step 1, `Previous` is disabled.
-  - In Step 3, `Next` is disabled.
+4. Click `Import Snapshot`.
+5. Open `Data & Logs`.
 
 Expected:
-- Buttons state matches current step.
-- Save action stores the current step only.
+- New run exists with `OPP-` prefix.
+- Row logs are visible for the run.
 
-## 7) Regression - General Settings Tabs
-1. Open `General > DB Sync`.
-2. Open `General > Projects`.
-3. Open `Correspondence > Issuing`.
-4. Open `Correspondence > Categories`.
-5. Open `MDR > Disciplines/Packages`.
-
-Expected:
-- Tabs load without JS errors.
-- Existing CRUD behavior is unchanged.
-
-## 8) Final Smoke
-1. Login
-2. Open Settings
-3. Complete one full pass: Paths -> Policy -> Integrations
-4. Save each step
+## 6) OpenProject excel import
+1. Open sub-tab `Excel Import`.
+2. Upload `openproject template.xlsx`.
+3. Click `Validate (Dry-run)`.
+4. Click `Start Processing`.
 
 Expected:
-- No generic `Error` dialogs.
-- No broken tab navigation.
+- Run appears in `Data & Logs` with `OPI-` prefix.
+- Progress and final status are visible.
+
+## 7) Google integration
+1. Switch to provider tab `Google`.
+2. Fill OAuth fields:
+  - `OAuth Client ID`
+  - `OAuth Client Secret`
+  - `OAuth Refresh Token`
+3. Toggle services as needed:
+  - Drive / Gmail / Calendar
+4. Fill service-specific fields (`shared_drive_id`, `sender_email`, `calendar_id`).
+5. Click `Save Google Settings`.
+6. Click `Test Drive`, `Test Gmail`, `Test Calendar`.
+
+Expected:
+- Save succeeds.
+- Ping result is shown for each service.
+
+## 8) Regression check
+- Navigate away and back to Integrations.
+- Confirm saved non-secret fields are loaded.
+- Confirm secret fields are not returned in plain text.

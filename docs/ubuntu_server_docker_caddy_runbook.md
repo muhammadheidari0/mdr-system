@@ -155,6 +155,8 @@ If integrations are enabled, also set:
 - `GDRIVE_SHARED_DRIVE_ID`
 - `OPENPROJECT_BASE_URL`
 - `OPENPROJECT_API_TOKEN`
+- `OPENPROJECT_TLS_VERIFY` (default `true`)
+- `OPENPROJECT_TLS_VERIFY_FORCE` (optional override)
 - `OPENPROJECT_DEFAULT_WORK_PACKAGE_ID`
 - (optional legacy) `OPENPROJECT_DEFAULT_PROJECT_ID`
 
