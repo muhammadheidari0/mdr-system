@@ -3550,6 +3550,37 @@ body.ci-drawer-open {
     margin: 0;
 }
 
+.integrations-provider-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.integrations-provider-tab {
+    border: 1px solid #c5d3f7;
+    background: #f1f6ff;
+    color: #1e3a8a;
+    border-radius: 10px;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.integrations-provider-tab.active {
+    background: #2455c3;
+    border-color: #2455c3;
+    color: #fff;
+}
+
+.integrations-provider-panel {
+    display: none;
+}
+
+.integrations-provider-panel.active {
+    display: block;
+}
+
 .storage-openproject-shell {
     border: 1px solid #dbe1f5;
     border-radius: 16px;
@@ -3611,6 +3642,10 @@ body.ci-drawer-open {
     grid-template-columns: 1.2fr 1fr;
 }
 
+.storage-openproject-project-import-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .storage-openproject-progress {
     margin-top: 8px;
 }
@@ -3663,6 +3698,24 @@ body.ci-drawer-open {
     gap: 8px;
 }
 
+.storage-openproject-ssl-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.storage-openproject-ssl-warning {
+    margin-bottom: 0;
+    display: none;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.storage-openproject-ssl-warning .material-icons-round {
+    font-size: 18px;
+    margin-top: 1px;
+}
+
 .settings-token-source-badge {
     display: inline-flex;
     align-items: center;
@@ -3685,6 +3738,37 @@ body.ci-drawer-open {
     color: #1e3a8a;
     border-color: #93c5fd;
     background: #eff6ff;
+}
+
+.settings-token-saved-state {
+    margin-top: 6px;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 4px 8px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #334155;
+    background: #f8fafc;
+}
+
+.settings-token-saved-state[data-token-saved-state="settings"] {
+    color: #065f46;
+    border-color: #6ee7b7;
+    background: #ecfdf5;
+}
+
+.settings-token-saved-state[data-token-saved-state="env"] {
+    color: #1e3a8a;
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
+.settings-token-saved-state[data-token-saved-state="pending"] {
+    color: #9a3412;
+    border-color: #fdba74;
+    background: #fff7ed;
 }
 
 .settings-inline-actions {
@@ -4404,7 +4488,8 @@ body.ci-drawer-open {
     .storage-policy-grid,
     .storage-integrations-grid,
     .storage-max-size-grid,
-    .storage-openproject-import-grid {
+    .storage-openproject-import-grid,
+    .storage-openproject-project-import-grid {
         grid-template-columns: 1fr;
     }
 

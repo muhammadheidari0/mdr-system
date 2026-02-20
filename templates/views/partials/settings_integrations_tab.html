@@ -2,229 +2,385 @@
   <div class="general-settings-grid">
     <div class="general-settings-card">
       <h3 class="general-settings-title">
-        <span class="material-icons-round">hub</span> تنظیمات یکپارچه سازی ها
+        <span class="material-icons-round">hub</span> Integration Settings
       </h3>
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">info</span>
-        <div>مدیریت OpenProject، Google Drive و Local Cache از این بخش انجام می شود.</div>
+        <div>OpenProject and Google integrations are managed here. Local Cache remains under Storage > Site Cache.</div>
       </div>
 
-      <div class="storage-openproject-shell">
-        <div class="storage-openproject-head">
-          <div class="storage-openproject-title-wrap">
-            <h4 class="storage-openproject-title">OpenProject</h4>
-            <div class="form-help">API Key (Access Token) با username=`apikey` استفاده می شود.</div>
-          </div>
-          <div class="storage-openproject-subtabs" role="tablist" aria-label="OpenProject Tabs">
-            <button
-              class="storage-openproject-subtab active"
-              type="button"
-              data-op-tab="connection"
-              aria-selected="true"
-              aria-controls="openproject-tab-connection"
-            >
-              Connection Settings
-            </button>
-            <button
-              class="storage-openproject-subtab"
-              type="button"
-              data-op-tab="import"
-              aria-selected="false"
-              aria-controls="openproject-tab-import"
-            >
-              Excel Import
-            </button>
-            <button
-              class="storage-openproject-subtab"
-              type="button"
-              data-op-tab="logs"
-              aria-selected="false"
-              aria-controls="openproject-tab-logs"
-            >
-              Data & Logs
-            </button>
-          </div>
-        </div>
-
-        <section
-          id="openproject-tab-connection"
-          class="storage-openproject-panel active"
-          data-op-tab-content="connection"
-          aria-hidden="false"
+      <div class="integrations-provider-tabs" role="tablist" aria-label="Integration Providers">
+        <button
+          type="button"
+          class="integrations-provider-tab active"
+          data-integrations-provider-tab="openproject"
+          aria-selected="true"
+          aria-controls="integrations-provider-openproject"
         >
-          <div class="general-form-grid storage-integrations-grid">
-            <label class="checkbox-label">
-              <input id="storageOpenProjectEnabledInput" type="checkbox">
-              <span class="checkmark"></span>OpenProject فعال
-            </label>
+          OpenProject
+        </button>
+        <button
+          type="button"
+          class="integrations-provider-tab"
+          data-integrations-provider-tab="google"
+          aria-selected="false"
+          aria-controls="integrations-provider-google"
+        >
+          Google
+        </button>
+      </div>
 
-            <div id="storageOpenProjectBaseUrlWrap">
-              <label class="form-label-sm">Base URL</label>
-              <input id="storageOpenProjectBaseUrlInput" class="form-input" placeholder="https://open-project.htico.ir">
+      <section
+        id="integrations-provider-openproject"
+        class="integrations-provider-panel active"
+        data-integrations-provider-panel="openproject"
+        aria-hidden="false"
+      >
+        <div class="storage-openproject-shell">
+          <div class="storage-openproject-head">
+            <div class="storage-openproject-title-wrap">
+              <h4 class="storage-openproject-title">OpenProject</h4>
+              <div class="form-help">OpenProject API Key (Access Token) uses username=`apikey`.</div>
             </div>
-
-            <div id="storageOpenProjectDefaultWpWrap">
-              <label class="form-label-sm">Default Parent Work Package ID</label>
-              <input id="storageOpenProjectDefaultWpInput" class="form-input" placeholder="مثال: 321">
-            </div>
-
-            <div id="storageOpenProjectTokenWrap">
-              <div class="settings-integration-token-head">
-                <label class="form-label-sm">OpenProject API Key (Access Token)</label>
-                <span id="storageOpenProjectTokenSourceBadge" class="settings-token-source-badge">none</span>
-              </div>
-              <input
-                id="storageOpenProjectApiTokenInput"
-                class="form-input"
-                type="password"
-                autocomplete="new-password"
-                placeholder="کلید API کاربر یکپارچه سازی"
+            <div class="storage-openproject-subtabs" role="tablist" aria-label="OpenProject Tabs">
+              <button
+                class="storage-openproject-subtab active"
+                type="button"
+                data-op-tab="connection"
+                aria-selected="true"
+                aria-controls="openproject-tab-connection"
               >
-              <div id="storageOpenProjectTokenManagedHint" class="form-help"></div>
-              <div class="general-form-actions settings-inline-actions">
-                <button class="btn btn-secondary" type="button" data-integrations-action="ping-openproject">Test Connection</button>
-                <button class="btn btn-tertiary" type="button" data-integrations-action="clear-openproject-token">Clear Token</button>
-                <button id="storageOpenProjectSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-openproject-sync">Run Sync</button>
-              </div>
+                Connection Settings
+              </button>
+              <button
+                class="storage-openproject-subtab"
+                type="button"
+                data-op-tab="project-import"
+                aria-selected="false"
+                aria-controls="openproject-tab-project-import"
+              >
+                Project Import
+              </button>
+              <button
+                class="storage-openproject-subtab"
+                type="button"
+                data-op-tab="import"
+                aria-selected="false"
+                aria-controls="openproject-tab-import"
+              >
+                Excel Import
+              </button>
+              <button
+                class="storage-openproject-subtab"
+                type="button"
+                data-op-tab="logs"
+                aria-selected="false"
+                aria-controls="openproject-tab-logs"
+              >
+                Data & Logs
+              </button>
             </div>
           </div>
-        </section>
 
-        <section
-          id="openproject-tab-import"
-          class="storage-openproject-panel"
-          data-op-tab-content="import"
-          aria-hidden="true"
-        >
-          <div class="general-form-grid storage-openproject-import-grid">
-            <div class="storage-openproject-import-file">
-              <label class="form-label-sm">Excel Template</label>
-              <div class="general-form-actions settings-inline-actions">
-                <button class="btn btn-secondary" type="button" data-integrations-action="download-openproject-template">Download Template</button>
+          <section
+            id="openproject-tab-connection"
+            class="storage-openproject-panel active"
+            data-op-tab-content="connection"
+            aria-hidden="false"
+          >
+            <div class="general-form-grid storage-integrations-grid">
+              <label class="checkbox-label">
+                <input id="storageOpenProjectEnabledInput" type="checkbox">
+                <span class="checkmark"></span>OpenProject Enabled
+              </label>
+
+              <div id="storageOpenProjectBaseUrlWrap">
+                <label class="form-label-sm">Base URL</label>
+                <input id="storageOpenProjectBaseUrlInput" class="form-input" placeholder="https://open-project.htico.ir">
               </div>
-              <input id="storageOpenProjectImportFileInput" class="form-input" type="file" accept=".xlsx">
-              <div class="form-help">فقط فایل .xlsx و فقط شیت Task_Table1 در MVP پردازش می شود.</div>
-            </div>
-            <div class="storage-openproject-import-actions">
-              <div class="general-form-actions settings-inline-actions">
-                <button class="btn btn-secondary" type="button" data-integrations-action="validate-openproject-import">Validate (Dry-run)</button>
-                <button
-                  id="storageOpenProjectImportExecuteBtn"
-                  class="btn btn-primary"
-                  type="button"
-                  data-integrations-action="execute-openproject-import"
-                  disabled
+
+              <div id="storageOpenProjectDefaultWpWrap">
+                <label class="form-label-sm">Default Parent Work Package ID</label>
+                <input id="storageOpenProjectDefaultWpInput" class="form-input" placeholder="e.g. 321">
+              </div>
+
+              <div id="storageOpenProjectSslWrap" class="storage-openproject-ssl-wrap">
+                <label class="checkbox-label">
+                  <input id="storageOpenProjectSkipSslVerifyInput" type="checkbox">
+                  <span class="checkmark"></span>Ignore SSL errors (internal/test only)
+                </label>
+                <div id="storageOpenProjectSslManagedHint" class="form-help"></div>
+                <div
+                  id="storageOpenProjectSkipSslWarning"
+                  class="general-settings-note general-settings-note-warning storage-openproject-ssl-warning"
+                  style="display:none;"
                 >
-                  Start Processing
-                </button>
+                  <span class="material-icons-round">warning</span>
+                  <div>This mode is insecure and should be used only for internal/testing servers.</div>
+                </div>
               </div>
-              <input id="storageOpenProjectImportRunIdInput" type="hidden" value="">
-              <div id="storageOpenProjectImportSummary" class="general-settings-note" style="display:none;"></div>
-            </div>
-          </div>
-          <div id="storageOpenProjectImportProgressWrap" class="storage-openproject-progress" style="display:none;">
-            <div class="storage-openproject-progress-bar">
-              <span id="storageOpenProjectImportProgressBar" style="width:0%;"></span>
-            </div>
-            <div id="storageOpenProjectImportProgressText" class="form-help"></div>
-          </div>
-        </section>
 
-        <section
-          id="openproject-tab-logs"
-          class="storage-openproject-panel"
-          data-op-tab-content="logs"
-          aria-hidden="true"
-        >
-          <div class="general-form-actions settings-inline-actions">
-            <button class="btn btn-secondary" type="button" data-integrations-action="refresh-openproject-import-data">Refresh Logs</button>
-          </div>
-
-          <div class="storage-openproject-logs-grid">
-            <div class="storage-openproject-logs-card">
-              <div class="storage-openproject-logs-head">Import Runs</div>
-              <div class="table-wrap">
-                <table class="archive-table">
-                  <thead>
-                    <tr>
-                      <th>Run No</th>
-                      <th>Status</th>
-                      <th>Rows</th>
-                      <th>Created/Failed</th>
-                      <th>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody id="storageOpenProjectImportRunsBody">
-                    <tr><td colspan="5" class="text-center muted">داده ای ثبت نشده است.</td></tr>
-                  </tbody>
-                </table>
+              <div id="storageOpenProjectTokenWrap">
+                <div class="settings-integration-token-head">
+                  <label class="form-label-sm">OpenProject API Key (Access Token)</label>
+                  <span id="storageOpenProjectTokenSourceBadge" class="settings-token-source-badge">none</span>
+                </div>
+                <input
+                  id="storageOpenProjectApiTokenInput"
+                  class="form-input"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="OpenProject API key"
+                >
+                <div id="storageOpenProjectTokenManagedHint" class="form-help"></div>
+                <div id="storageOpenProjectTokenSavedState" class="settings-token-saved-state" data-token-saved-state="none">
+                  Token not saved
+                </div>
+                <div class="general-form-actions settings-inline-actions">
+                  <button class="btn btn-secondary" type="button" data-integrations-action="ping-openproject">Test Connection</button>
+                  <button class="btn btn-tertiary" type="button" data-integrations-action="clear-openproject-token">Clear Token</button>
+                  <button id="storageOpenProjectSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-openproject-sync">Run Sync</button>
+                  <button class="btn btn-primary" type="button" data-integrations-action="save-integrations">Save OpenProject Settings</button>
+                </div>
               </div>
             </div>
+          </section>
 
-            <div class="storage-openproject-logs-card">
-              <div class="storage-openproject-logs-head">Row Logs</div>
-              <div class="table-wrap">
-                <table class="archive-table">
-                  <thead>
-                    <tr>
-                      <th>Row</th>
-                      <th>Name</th>
-                      <th>Validation</th>
-                      <th>Execution</th>
-                      <th>WP</th>
-                      <th>Error</th>
-                    </tr>
-                  </thead>
-                  <tbody id="storageOpenProjectImportRowsBody">
-                    <tr><td colspan="6" class="text-center muted">یک run را انتخاب کنید.</td></tr>
-                  </tbody>
-                </table>
+          <section
+            id="openproject-tab-project-import"
+            class="storage-openproject-panel"
+            data-op-tab-content="project-import"
+            aria-hidden="true"
+          >
+            <div class="general-form-grid storage-openproject-project-import-grid">
+              <div>
+                <label class="form-label-sm">Project ID / Identifier</label>
+                <input id="storageOpenProjectProjectRefInput" class="form-input" placeholder="e.g. 5 or t202">
+              </div>
+              <div>
+                <label class="form-label-sm">Max Items</label>
+                <input id="storageOpenProjectProjectImportMaxItemsInput" class="form-input" type="number" min="1" max="50000" value="5000">
+              </div>
+              <div>
+                <label class="form-label-sm">Page Size</label>
+                <input id="storageOpenProjectProjectImportPageSizeInput" class="form-input" type="number" min="1" max="1000" value="200">
               </div>
             </div>
+            <div class="general-form-actions settings-inline-actions">
+              <button class="btn btn-secondary" type="button" data-integrations-action="preview-openproject-project-work-packages">Preview Work Packages</button>
+              <button class="btn btn-primary" type="button" data-integrations-action="import-openproject-project-work-packages">Import Snapshot</button>
+            </div>
+            <div id="storageOpenProjectProjectImportSummary" class="general-settings-note" style="display:none; margin-top:8px;"></div>
+            <div class="table-wrap" style="margin-top:8px;">
+              <table class="archive-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>WP</th>
+                    <th>Subject</th>
+                    <th>Status</th>
+                    <th>Type</th>
+                    <th>Assignee</th>
+                    <th>Start</th>
+                    <th>Due</th>
+                    <th>%</th>
+                  </tr>
+                </thead>
+                <tbody id="storageOpenProjectProjectPreviewBody">
+                  <tr><td colspan="9" class="text-center muted">No data.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-            <div class="storage-openproject-logs-card">
-              <div class="storage-openproject-logs-head">Recent OpenProject Activities</div>
-              <div class="table-wrap">
-                <table class="archive-table">
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>Source</th>
-                      <th>Kind</th>
-                      <th>Details</th>
-                    </tr>
-                  </thead>
-                  <tbody id="storageOpenProjectActivityBody">
-                    <tr><td colspan="4" class="text-center muted">فعالیتی ثبت نشده است.</td></tr>
-                  </tbody>
-                </table>
+          <section
+            id="openproject-tab-import"
+            class="storage-openproject-panel"
+            data-op-tab-content="import"
+            aria-hidden="true"
+          >
+            <div class="general-form-grid storage-openproject-import-grid">
+              <div class="storage-openproject-import-file">
+                <label class="form-label-sm">Excel Template</label>
+                <div class="general-form-actions settings-inline-actions">
+                  <button class="btn btn-secondary" type="button" data-integrations-action="download-openproject-template">Download Template</button>
+                </div>
+                <input id="storageOpenProjectImportFileInput" class="form-input" type="file" accept=".xlsx">
+                <div class="form-help">MVP currently processes only Task_Table1 sheet.</div>
               </div>
+              <div class="storage-openproject-import-actions">
+                <div class="general-form-actions settings-inline-actions">
+                  <button class="btn btn-secondary" type="button" data-integrations-action="validate-openproject-import">Validate (Dry-run)</button>
+                  <button
+                    id="storageOpenProjectImportExecuteBtn"
+                    class="btn btn-primary"
+                    type="button"
+                    data-integrations-action="execute-openproject-import"
+                    disabled
+                  >
+                    Start Processing
+                  </button>
+                </div>
+                <input id="storageOpenProjectImportRunIdInput" type="hidden" value="">
+                <div id="storageOpenProjectImportSummary" class="general-settings-note" style="display:none;"></div>
+              </div>
+            </div>
+            <div id="storageOpenProjectImportProgressWrap" class="storage-openproject-progress" style="display:none;">
+              <div class="storage-openproject-progress-bar">
+                <span id="storageOpenProjectImportProgressBar" style="width:0%;"></span>
+              </div>
+              <div id="storageOpenProjectImportProgressText" class="form-help"></div>
+            </div>
+          </section>
+
+          <section
+            id="openproject-tab-logs"
+            class="storage-openproject-panel"
+            data-op-tab-content="logs"
+            aria-hidden="true"
+          >
+            <div class="general-form-actions settings-inline-actions">
+              <button class="btn btn-secondary" type="button" data-integrations-action="refresh-openproject-import-data">Refresh Logs</button>
+            </div>
+
+            <div class="storage-openproject-logs-grid">
+              <div class="storage-openproject-logs-card">
+                <div class="storage-openproject-logs-head">Import Runs</div>
+                <div class="table-wrap">
+                  <table class="archive-table">
+                    <thead>
+                      <tr>
+                        <th>Run No</th>
+                        <th>Status</th>
+                        <th>Rows</th>
+                        <th>Created/Failed</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="storageOpenProjectImportRunsBody">
+                      <tr><td colspan="5" class="text-center muted">No data.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="storage-openproject-logs-card">
+                <div class="storage-openproject-logs-head">Row Logs</div>
+                <div class="table-wrap">
+                  <table class="archive-table">
+                    <thead>
+                      <tr>
+                        <th>Row</th>
+                        <th>Name</th>
+                        <th>Validation</th>
+                        <th>Execution</th>
+                        <th>WP</th>
+                        <th>Error</th>
+                      </tr>
+                    </thead>
+                    <tbody id="storageOpenProjectImportRowsBody">
+                      <tr><td colspan="6" class="text-center muted">Select a run.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="storage-openproject-logs-card">
+                <div class="storage-openproject-logs-head">Recent OpenProject Activities</div>
+                <div class="table-wrap">
+                  <table class="archive-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Source</th>
+                        <th>Kind</th>
+                        <th>Details</th>
+                      </tr>
+                    </thead>
+                    <tbody id="storageOpenProjectActivityBody">
+                      <tr><td colspan="4" class="text-center muted">No activity.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section
+        id="integrations-provider-google"
+        class="integrations-provider-panel"
+        data-integrations-provider-panel="google"
+        aria-hidden="true"
+      >
+        <div class="storage-openproject-shell">
+          <div class="storage-openproject-head">
+            <div class="storage-openproject-title-wrap">
+              <h4 class="storage-openproject-title">Google</h4>
+              <div class="form-help">OAuth Client configuration for Drive, Gmail, and Calendar services.</div>
             </div>
           </div>
-        </section>
-      </div>
 
-      <div class="storage-integrations-secondary">
-        <div class="general-form-grid storage-integrations-grid">
-          <label class="checkbox-label">
-            <input id="storageGoogleDriveEnabledInput" type="checkbox">
-            <span class="checkmark"></span>Google Drive فعال
-          </label>
-          <label class="checkbox-label">
-            <input id="storageLocalCacheEnabledInput" type="checkbox">
-            <span class="checkmark"></span>Local Cache فعال
-          </label>
+          <div class="storage-openproject-panel active" style="display:block;">
+            <div class="general-form-grid storage-integrations-grid">
+              <label class="checkbox-label">
+                <input id="storageGoogleDriveEnabledInput" type="checkbox">
+                <span class="checkmark"></span>Google Integration Enabled
+              </label>
+              <label class="checkbox-label">
+                <input id="storageGoogleDriveDriveEnabledInput" type="checkbox">
+                <span class="checkmark"></span>Drive Enabled
+              </label>
+              <label class="checkbox-label">
+                <input id="storageGoogleGmailEnabledInput" type="checkbox">
+                <span class="checkmark"></span>Gmail Enabled
+              </label>
+              <label class="checkbox-label">
+                <input id="storageGoogleCalendarEnabledInput" type="checkbox">
+                <span class="checkmark"></span>Calendar Enabled
+              </label>
 
-          <div id="storageGoogleDriveDriveIdWrap">
-            <label class="form-label-sm">Google Drive Shared Drive ID</label>
-            <input id="storageGoogleDriveDriveIdInput" class="form-input" placeholder="shared drive id">
+              <div id="storageGoogleOauthClientIdWrap">
+                <label class="form-label-sm">OAuth Client ID</label>
+                <input id="storageGoogleOauthClientIdInput" class="form-input" placeholder="Google OAuth Client ID">
+              </div>
+              <div id="storageGoogleOauthClientSecretWrap">
+                <label class="form-label-sm">OAuth Client Secret</label>
+                <input id="storageGoogleOauthClientSecretInput" class="form-input" type="password" autocomplete="new-password" placeholder="Google OAuth Client Secret">
+              </div>
+              <div id="storageGoogleOauthRefreshTokenWrap">
+                <label class="form-label-sm">OAuth Refresh Token</label>
+                <input id="storageGoogleOauthRefreshTokenInput" class="form-input" type="password" autocomplete="new-password" placeholder="Google OAuth Refresh Token">
+              </div>
+              <div id="storageGoogleDriveDriveIdWrap">
+                <label class="form-label-sm">Google Shared Drive ID</label>
+                <input id="storageGoogleDriveDriveIdInput" class="form-input" placeholder="shared drive id">
+              </div>
+              <div id="storageGoogleDriveRootFolderWrap">
+                <label class="form-label-sm">Google Root Folder ID</label>
+                <input id="storageGoogleDriveRootFolderInput" class="form-input" placeholder="root folder id (optional)">
+              </div>
+              <div id="storageGoogleSenderEmailWrap">
+                <label class="form-label-sm">Sender Email (Gmail)</label>
+                <input id="storageGoogleSenderEmailInput" class="form-input" placeholder="sender@example.com">
+              </div>
+              <div id="storageGoogleCalendarIdWrap">
+                <label class="form-label-sm">Calendar ID</label>
+                <input id="storageGoogleCalendarIdInput" class="form-input" placeholder="calendar id (optional)">
+              </div>
+            </div>
+
+            <div class="general-form-actions storage-integrations-actions">
+              <button class="btn btn-primary" type="button" data-integrations-action="save-integrations">Save Google Settings</button>
+              <button class="btn btn-secondary" type="button" data-integrations-action="ping-google-drive">Test Drive</button>
+              <button class="btn btn-secondary" type="button" data-integrations-action="ping-google-gmail">Test Gmail</button>
+              <button class="btn btn-secondary" type="button" data-integrations-action="ping-google-calendar">Test Calendar</button>
+              <button id="storageGoogleDriveSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-google-sync">Run Google Sync</button>
+            </div>
           </div>
         </div>
-        <div class="general-form-actions storage-integrations-actions">
-          <button class="btn btn-primary" type="button" data-integrations-action="save-integrations">Save Settings</button>
-          <button id="storageGoogleDriveSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-google-sync">Run Google Sync</button>
-        </div>
-      </div>
+      </section>
 
       <div id="storageSyncResult" class="general-settings-note" style="margin-top:10px; display:none;"></div>
     </div>

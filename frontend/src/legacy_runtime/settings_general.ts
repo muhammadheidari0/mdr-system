@@ -45,6 +45,7 @@
             lastValidatedRunId: 0,
             pollingTimer: null,
         },
+        integrationsProviderTab: 'openproject',
         paging: {},
     };
 
@@ -631,7 +632,7 @@
     }
 
     function setOpenProjectSubTab(nextTab = 'connection') {
-        const activeTab = ['connection', 'import', 'logs'].includes(String(nextTab || '').toLowerCase())
+        const activeTab = ['connection', 'project-import', 'import', 'logs'].includes(String(nextTab || '').toLowerCase())
             ? String(nextTab || '').toLowerCase()
             : 'connection';
         STORE.openprojectImport.activeTab = activeTab;
@@ -649,41 +650,141 @@
         });
     }
 
+    function setIntegrationsProviderTab(nextTab = 'openproject') {
+        const activeTab = ['openproject', 'google'].includes(String(nextTab || '').toLowerCase())
+            ? String(nextTab || '').toLowerCase()
+            : 'openproject';
+        STORE.integrationsProviderTab = activeTab;
+        document.querySelectorAll('.integrations-provider-tab[data-integrations-provider-tab]').forEach((btn) => {
+            const key = String(btn?.dataset?.integrationsProviderTab || '').toLowerCase();
+            const isActive = key === activeTab;
+            btn.classList.toggle('active', isActive);
+            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+        document.querySelectorAll('[data-integrations-provider-panel]').forEach((panel) => {
+            const key = String(panel?.dataset?.integrationsProviderPanel || '').toLowerCase();
+            const isActive = key === activeTab;
+            panel.classList.toggle('active', isActive);
+            panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        });
+    }
+
+    function updateOpenProjectTokenSavedState(tokenSource = 'none', tokenValue = '') {
+        const tokenSavedState = document.getElementById('storageOpenProjectTokenSavedState');
+        if (!tokenSavedState) return;
+        const source = norm(tokenSource).toLowerCase();
+        const hasTypedToken = Boolean(norm(tokenValue));
+        let state = 'none';
+        let text = 'Token not saved';
+        if (source === 'env') {
+            state = 'env';
+            text = 'Token managed by environment';
+        } else if (source === 'settings') {
+            state = 'settings';
+            text = 'Token saved';
+        }
+        if (hasTypedToken) {
+            state = 'pending';
+            text = source === 'settings'
+                ? 'New token entered (not saved yet)'
+                : 'Token entered (not saved yet)';
+        }
+        tokenSavedState.dataset.tokenSavedState = state;
+        tokenSavedState.textContent = text;
+    }
+
     function updateStorageIntegrationsFieldState() {
-        const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const googleEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const googleDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
+        const googleGmailEnabled = document.getElementById('storageGoogleGmailEnabledInput');
+        const googleCalendarEnabled = document.getElementById('storageGoogleCalendarEnabledInput');
+        const googleOauthClientId = document.getElementById('storageGoogleOauthClientIdInput');
+        const googleOauthClientSecret = document.getElementById('storageGoogleOauthClientSecretInput');
+        const googleOauthRefreshToken = document.getElementById('storageGoogleOauthRefreshTokenInput');
+        const googleDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        const googleRootFolderId = document.getElementById('storageGoogleDriveRootFolderInput');
+        const googleSenderEmail = document.getElementById('storageGoogleSenderEmailInput');
+        const googleCalendarId = document.getElementById('storageGoogleCalendarIdInput');
+
+        const googleOauthClientIdWrap = document.getElementById('storageGoogleOauthClientIdWrap');
+        const googleOauthClientSecretWrap = document.getElementById('storageGoogleOauthClientSecretWrap');
+        const googleOauthRefreshTokenWrap = document.getElementById('storageGoogleOauthRefreshTokenWrap');
+        const googleDriveWrap = document.getElementById('storageGoogleDriveDriveIdWrap');
+        const googleRootFolderWrap = document.getElementById('storageGoogleDriveRootFolderWrap');
+        const googleSenderEmailWrap = document.getElementById('storageGoogleSenderEmailWrap');
+        const googleCalendarWrap = document.getElementById('storageGoogleCalendarIdWrap');
+
         const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
         const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
         const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
-        const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
+        const openprojectSkipSsl = document.getElementById('storageOpenProjectSkipSslVerifyInput');
+        const openprojectProjectRef = document.getElementById('storageOpenProjectProjectRefInput');
+        const openprojectProjectMaxItems = document.getElementById('storageOpenProjectProjectImportMaxItemsInput');
+        const openprojectProjectPageSize = document.getElementById('storageOpenProjectProjectImportPageSizeInput');
+
         const openprojectWrap = document.getElementById('storageOpenProjectDefaultWpWrap');
         const openprojectBaseUrlWrap = document.getElementById('storageOpenProjectBaseUrlWrap');
         const openprojectTokenWrap = document.getElementById('storageOpenProjectTokenWrap');
-        const gdriveWrap = document.getElementById('storageGoogleDriveDriveIdWrap');
+        const openprojectSslWrap = document.getElementById('storageOpenProjectSslWrap');
+        const openprojectSslHint = document.getElementById('storageOpenProjectSslManagedHint');
+        const openprojectSslWarning = document.getElementById('storageOpenProjectSkipSslWarning');
         const openprojectSyncBtn = document.getElementById('storageOpenProjectSyncRunBtn');
         const gdriveSyncBtn = document.getElementById('storageGoogleDriveSyncRunBtn');
         const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
         const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
         const executeBtn = document.getElementById('storageOpenProjectImportExecuteBtn');
         const tokenSource = norm(tokenBadge?.dataset?.tokenSource || 'none').toLowerCase();
+        const sslSource = norm(openprojectSkipSsl?.dataset?.sslSource || 'env_default').toLowerCase();
+        const sslForceActive = String(openprojectSkipSsl?.dataset?.sslForceActive || '').toLowerCase() === 'true';
         const envManagedToken = tokenSource === 'env';
+        const envManagedSsl = sslForceActive || sslSource === 'env_force';
 
-        const gdriveOn = Boolean(gdriveEnabled?.checked);
+        const googleOn = Boolean(googleEnabled?.checked);
+        const googleDriveOn = googleOn && Boolean(googleDriveEnabled?.checked);
+        const googleGmailOn = googleOn && Boolean(googleGmailEnabled?.checked);
+        const googleCalendarOn = googleOn && Boolean(googleCalendarEnabled?.checked);
         const openprojectOn = Boolean(openprojectEnabled?.checked);
         const readyForExecute = openprojectOn && Number(STORE.openprojectImport?.lastValidatedRunId || 0) > 0;
 
-        if (gdriveDriveId) gdriveDriveId.disabled = !gdriveOn;
+        if (googleOauthClientId) googleOauthClientId.disabled = !googleOn;
+        if (googleOauthClientSecret) googleOauthClientSecret.disabled = !googleOn;
+        if (googleOauthRefreshToken) googleOauthRefreshToken.disabled = !googleOn;
+        if (googleDriveId) googleDriveId.disabled = !googleDriveOn;
+        if (googleRootFolderId) googleRootFolderId.disabled = !googleDriveOn;
+        if (googleSenderEmail) googleSenderEmail.disabled = !googleGmailOn;
+        if (googleCalendarId) googleCalendarId.disabled = !googleCalendarOn;
+
+        if (googleOauthClientIdWrap) googleOauthClientIdWrap.classList.toggle('is-disabled', !googleOn);
+        if (googleOauthClientSecretWrap) googleOauthClientSecretWrap.classList.toggle('is-disabled', !googleOn);
+        if (googleOauthRefreshTokenWrap) googleOauthRefreshTokenWrap.classList.toggle('is-disabled', !googleOn);
+        if (googleDriveWrap) googleDriveWrap.classList.toggle('is-disabled', !googleDriveOn);
+        if (googleRootFolderWrap) googleRootFolderWrap.classList.toggle('is-disabled', !googleDriveOn);
+        if (googleSenderEmailWrap) googleSenderEmailWrap.classList.toggle('is-disabled', !googleGmailOn);
+        if (googleCalendarWrap) googleCalendarWrap.classList.toggle('is-disabled', !googleCalendarOn);
+
         if (openprojectBaseUrl) openprojectBaseUrl.disabled = !openprojectOn;
         if (openprojectToken) openprojectToken.disabled = !openprojectOn || envManagedToken;
         if (openprojectWp) openprojectWp.disabled = !openprojectOn;
-        if (gdriveWrap) gdriveWrap.classList.toggle('is-disabled', !gdriveOn);
+        if (openprojectSkipSsl) openprojectSkipSsl.disabled = !openprojectOn || envManagedSsl;
+        if (openprojectProjectRef) openprojectProjectRef.disabled = !openprojectOn;
+        if (openprojectProjectMaxItems) openprojectProjectMaxItems.disabled = !openprojectOn;
+        if (openprojectProjectPageSize) openprojectProjectPageSize.disabled = !openprojectOn;
+
         if (openprojectBaseUrlWrap) openprojectBaseUrlWrap.classList.toggle('is-disabled', !openprojectOn);
         if (openprojectTokenWrap) openprojectTokenWrap.classList.toggle('is-disabled', !openprojectOn);
         if (openprojectWrap) openprojectWrap.classList.toggle('is-disabled', !openprojectOn);
-        if (gdriveSyncBtn) gdriveSyncBtn.disabled = !gdriveOn;
+        if (openprojectSslWrap) openprojectSslWrap.classList.toggle('is-disabled', !openprojectOn || envManagedSsl);
+        if (openprojectSslHint) openprojectSslHint.textContent = envManagedSsl ? 'SSL policy is managed by environment' : '';
+        if (openprojectSslWarning) {
+            const showWarning = openprojectOn && Boolean(openprojectSkipSsl?.checked);
+            openprojectSslWarning.style.display = showWarning ? 'flex' : 'none';
+        }
+        if (gdriveSyncBtn) gdriveSyncBtn.disabled = !googleOn;
         if (openprojectSyncBtn) openprojectSyncBtn.disabled = !openprojectOn;
         if (executeBtn) executeBtn.disabled = !readyForExecute;
         if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
+        updateOpenProjectTokenSavedState(tokenSource, norm(openprojectToken?.value));
     }
 
     function bindStorageWorkflowInputs() {
@@ -862,32 +963,64 @@
 
     function applyStorageIntegrationsToForm(integrations = {}) {
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const gdriveDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
+        const gdriveGmailEnabled = document.getElementById('storageGoogleGmailEnabledInput');
+        const gdriveCalendarEnabled = document.getElementById('storageGoogleCalendarEnabledInput');
+        const gdriveOauthClientId = document.getElementById('storageGoogleOauthClientIdInput');
+        const gdriveOauthClientSecret = document.getElementById('storageGoogleOauthClientSecretInput');
+        const gdriveOauthRefreshToken = document.getElementById('storageGoogleOauthRefreshTokenInput');
+        const gdriveRootFolder = document.getElementById('storageGoogleDriveRootFolderInput');
+        const gdriveSenderEmail = document.getElementById('storageGoogleSenderEmailInput');
+        const gdriveCalendarId = document.getElementById('storageGoogleCalendarIdInput');
         const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
-        const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
         const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
         const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const openprojectSkipSsl = document.getElementById('storageOpenProjectSkipSslVerifyInput');
         const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
         const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
         const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
+        const openprojectSslHint = document.getElementById('storageOpenProjectSslManagedHint');
+        const openprojectSslWarning = document.getElementById('storageOpenProjectSkipSslWarning');
 
         const gdrive = integrations?.google_drive || {};
         const openproject = integrations?.openproject || {};
-        const localCache = integrations?.local_cache || {};
         const tokenSource = norm(openproject.token_source || 'none').toLowerCase();
+        const sslSource = norm(openproject.ssl_source || 'env_default').toLowerCase();
+        const sslForceActive = Boolean(openproject.ssl_force_active);
+        const skipSslVerify = Boolean(openproject.skip_ssl_verify);
 
         if (gdriveEnabled) gdriveEnabled.checked = Boolean(gdrive.enabled);
+        if (gdriveDriveEnabled) gdriveDriveEnabled.checked = Boolean(gdrive.drive_enabled);
+        if (gdriveGmailEnabled) gdriveGmailEnabled.checked = Boolean(gdrive.gmail_enabled);
+        if (gdriveCalendarEnabled) gdriveCalendarEnabled.checked = Boolean(gdrive.calendar_enabled);
+        if (gdriveOauthClientId) gdriveOauthClientId.value = String(gdrive.oauth_client_id || '');
+        if (gdriveOauthClientSecret) gdriveOauthClientSecret.value = '';
+        if (gdriveOauthRefreshToken) gdriveOauthRefreshToken.value = '';
+        if (gdriveRootFolder) gdriveRootFolder.value = String(gdrive.root_folder_id || '');
+        if (gdriveSenderEmail) gdriveSenderEmail.value = String(gdrive.sender_email || '');
+        if (gdriveCalendarId) gdriveCalendarId.value = String(gdrive.calendar_id || '');
         if (openprojectEnabled) openprojectEnabled.checked = Boolean(openproject.enabled);
-        if (localCacheEnabled) localCacheEnabled.checked = Boolean(localCache.enabled);
         if (openprojectBaseUrl) openprojectBaseUrl.value = String(openproject.base_url || '');
         if (openprojectToken) openprojectToken.value = '';
         if (openprojectWp) openprojectWp.value = String(openproject.default_work_package_id || openproject.default_project_id || '');
+        if (openprojectSkipSsl) {
+            openprojectSkipSsl.checked = skipSslVerify;
+            openprojectSkipSsl.dataset.sslSource = sslSource || 'env_default';
+            openprojectSkipSsl.dataset.sslForceActive = sslForceActive ? 'true' : 'false';
+        }
         if (gdriveDriveId) gdriveDriveId.value = String(gdrive.shared_drive_id || '');
         if (tokenBadge) {
             tokenBadge.textContent = tokenSource || 'none';
             tokenBadge.dataset.tokenSource = tokenSource || 'none';
         }
         if (tokenHint) tokenHint.textContent = tokenSource === 'env' ? 'Token is managed by environment' : '';
+        if (openprojectSslHint) {
+            openprojectSslHint.textContent = sslForceActive ? 'SSL policy is managed by environment' : '';
+        }
+        if (openprojectSslWarning) {
+            openprojectSslWarning.style.display = skipSslVerify ? 'flex' : 'none';
+        }
         updateStorageIntegrationsFieldState();
     }
 
@@ -902,13 +1035,33 @@
 
     async function saveStorageIntegrations() {
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
+        const gdriveDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
+        const gdriveGmailEnabled = document.getElementById('storageGoogleGmailEnabledInput');
+        const gdriveCalendarEnabled = document.getElementById('storageGoogleCalendarEnabledInput');
+        const gdriveOauthClientId = document.getElementById('storageGoogleOauthClientIdInput');
+        const gdriveOauthClientSecret = document.getElementById('storageGoogleOauthClientSecretInput');
+        const gdriveOauthRefreshToken = document.getElementById('storageGoogleOauthRefreshTokenInput');
         const openprojectEnabled = document.getElementById('storageOpenProjectEnabledInput');
-        const localCacheEnabled = document.getElementById('storageLocalCacheEnabledInput');
         const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
         const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const openprojectSkipSsl = document.getElementById('storageOpenProjectSkipSslVerifyInput');
         const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
-        if (!gdriveEnabled || !openprojectEnabled || !localCacheEnabled || !openprojectWp || !gdriveDriveId || !openprojectBaseUrl || !openprojectToken) return;
+        const gdriveRootFolder = document.getElementById('storageGoogleDriveRootFolderInput');
+        const gdriveSenderEmail = document.getElementById('storageGoogleSenderEmailInput');
+        const gdriveCalendarId = document.getElementById('storageGoogleCalendarIdInput');
+        if (!gdriveEnabled || !openprojectEnabled || !openprojectWp || !gdriveDriveId || !openprojectBaseUrl || !openprojectToken || !openprojectSkipSsl) return;
+
+        const sslForceActive = String(openprojectSkipSsl.dataset.sslForceActive || '').toLowerCase() === 'true';
+        const openprojectPayload = {
+            enabled: Boolean(openprojectEnabled.checked),
+            base_url: norm(openprojectBaseUrl.value),
+            api_token: norm(openprojectToken.value),
+            default_work_package_id: norm(openprojectWp.value),
+        } as Record<string, unknown>;
+        if (!sslForceActive) {
+            openprojectPayload.skip_ssl_verify = Boolean(openprojectSkipSsl.checked);
+        }
 
         const payload = await request(`${API_BASE}/storage-integrations`, {
             method: 'POST',
@@ -916,16 +1069,17 @@
                 google_drive: {
                     enabled: Boolean(gdriveEnabled.checked),
                     shared_drive_id: norm(gdriveDriveId.value),
+                    root_folder_id: norm(gdriveRootFolder?.value),
+                    oauth_client_id: norm(gdriveOauthClientId?.value),
+                    oauth_client_secret: norm(gdriveOauthClientSecret?.value),
+                    oauth_refresh_token: norm(gdriveOauthRefreshToken?.value),
+                    drive_enabled: Boolean(gdriveDriveEnabled?.checked),
+                    gmail_enabled: Boolean(gdriveGmailEnabled?.checked),
+                    calendar_enabled: Boolean(gdriveCalendarEnabled?.checked),
+                    sender_email: norm(gdriveSenderEmail?.value),
+                    calendar_id: norm(gdriveCalendarId?.value),
                 },
-                openproject: {
-                    enabled: Boolean(openprojectEnabled.checked),
-                    base_url: norm(openprojectBaseUrl.value),
-                    api_token: norm(openprojectToken.value),
-                    default_work_package_id: norm(openprojectWp.value),
-                },
-                local_cache: {
-                    enabled: Boolean(localCacheEnabled.checked),
-                },
+                openproject: openprojectPayload,
             }),
         });
         applyStorageIntegrationsToForm(payload?.integrations || {});
@@ -942,6 +1096,104 @@
         const failed = Number(run?.failed_rows || 0);
         const status = String(run?.status_code || '-');
         return `Run=${status} | Total=${total} | Valid=${valid} | Invalid=${invalid} | Created=${created} | Failed=${failed}`;
+    }
+
+    function setOpenProjectProjectImportSummary(message = '', tone = 'info') {
+        const box = document.getElementById('storageOpenProjectProjectImportSummary');
+        if (!box) return;
+        if (!message) {
+            box.style.display = 'none';
+            box.textContent = '';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.style.display = 'block';
+        box.textContent = message;
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (tone === 'success') box.classList.add('storage-sync-result-success');
+        else if (tone === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function renderOpenProjectProjectPreview(rows = []) {
+        const tbody = document.getElementById('storageOpenProjectProjectPreviewBody');
+        if (!tbody) return;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center muted">No data.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((row) => `
+            <tr>
+              <td>${esc(row?.row_no || '-')}</td>
+              <td>${esc(row?.work_package_id || '-')}</td>
+              <td>${esc(row?.subject || '-')}</td>
+              <td>${esc(row?.status || '-')}</td>
+              <td>${esc(row?.type || '-')}</td>
+              <td>${esc(row?.assignee || '-')}</td>
+              <td>${esc(row?.start_date || '-')}</td>
+              <td>${esc(row?.due_date || '-')}</td>
+              <td>${esc(row?.done_ratio ?? '-')}</td>
+            </tr>
+        `).join('');
+    }
+
+    function getOpenProjectProjectImportParams() {
+        const projectRefInput = document.getElementById('storageOpenProjectProjectRefInput');
+        const maxItemsInput = document.getElementById('storageOpenProjectProjectImportMaxItemsInput');
+        const pageSizeInput = document.getElementById('storageOpenProjectProjectImportPageSizeInput');
+        const projectRef = norm(projectRefInput?.value);
+        if (!projectRef) {
+            throw new Error('Project ID / Identifier is required.');
+        }
+        const maxItems = Math.max(1, Number(maxItemsInput?.value || 5000) || 5000);
+        const pageSize = Math.max(1, Number(pageSizeInput?.value || 200) || 200);
+        return { projectRef, maxItems, pageSize };
+    }
+
+    async function previewOpenProjectProjectWorkPackages() {
+        const { projectRef, pageSize } = getOpenProjectProjectImportParams();
+        setOpenProjectProjectImportSummary('Loading project work packages preview ...', 'info');
+        const encodedRef = encodeURIComponent(projectRef);
+        const payload = await request(
+            `/api/v1/storage/openproject/projects/${encodedRef}/work-packages/preview?skip=0&limit=${Math.min(1000, pageSize)}`
+        );
+        const rows = Array.isArray(payload?.items) ? payload.items : [];
+        renderOpenProjectProjectPreview(rows);
+        const projectName = String(payload?.project?.name || payload?.project?.identifier || projectRef);
+        setOpenProjectProjectImportSummary(
+            `Preview loaded | project=${projectName} | rows=${rows.length} | total=${Number(payload?.total || rows.length)}`,
+            rows.length > 0 ? 'success' : 'info'
+        );
+    }
+
+    async function importOpenProjectProjectWorkPackages() {
+        const { projectRef, maxItems, pageSize } = getOpenProjectProjectImportParams();
+        setOpenProjectProjectImportSummary('Importing project snapshot ...', 'info');
+        const encodedRef = encodeURIComponent(projectRef);
+        const payload = await request(`/api/v1/storage/openproject/projects/${encodedRef}/import`, {
+            method: 'POST',
+            body: JSON.stringify({
+                max_items: maxItems,
+                page_size: pageSize,
+            }),
+        });
+        const run = payload?.run || {};
+        const runId = Number(run?.id || 0);
+        if (runId > 0) {
+            STORE.openprojectImport.selectedRunId = runId;
+            STORE.openprojectImport.lastValidatedRunId = 0;
+            const runInput = document.getElementById('storageOpenProjectImportRunIdInput');
+            if (runInput) runInput.value = String(runId);
+        }
+        setOpenProjectProjectImportSummary(runSummaryText(run), Number(run?.failed_rows || 0) > 0 ? 'error' : 'success');
+        await refreshOpenProjectImportData();
+        setOpenProjectSubTab('logs');
+        if (Number(run?.failed_rows || 0) > 0) {
+            tError('Project snapshot import completed with some failed rows.');
+        } else {
+            tSuccess('Project snapshot import completed.');
+        }
+        return run;
     }
 
     function renderOpenProjectImportRuns(rows = []) {
@@ -1141,17 +1393,59 @@
     }
 
     async function pingOpenProject() {
+        const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
+        const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
+        const openprojectSkipSsl = document.getElementById('storageOpenProjectSkipSslVerifyInput');
+        const pingBody = {
+            base_url: norm(openprojectBaseUrl?.value),
+            api_token: norm(openprojectToken?.value),
+            skip_ssl_verify: Boolean(openprojectSkipSsl?.checked),
+        };
         setStorageSyncResult('در حال بررسی اتصال OpenProject ...', 'info');
-        const payload = await request('/api/v1/storage/openproject/ping', { method: 'POST' });
+        const payload = await request('/api/v1/storage/openproject/ping', {
+            method: 'POST',
+            body: JSON.stringify(pingBody),
+        });
         const reachable = Boolean(payload?.reachable);
         const authOk = Boolean(payload?.auth_ok);
         const statusCode = payload?.status_code ?? '-';
         const tokenSource = String(payload?.token_source || 'none');
+        const sslSource = String(payload?.ssl_source || 'env_default');
+        const tlsVerifyEffective = Boolean(payload?.tls_verify_effective);
         const message = String(payload?.message || '');
-        const summary = `Ping OpenProject: reachable=${reachable} | auth_ok=${authOk} | status=${statusCode} | token_source=${tokenSource}`;
+        const summary = `Ping OpenProject: reachable=${reachable} | auth_ok=${authOk} | status=${statusCode} | token_source=${tokenSource} | tls_verify=${tlsVerifyEffective} | ssl_source=${sslSource}`;
         setStorageSyncResult(`${summary}${message ? ` | ${message}` : ''}`, authOk ? 'success' : (reachable ? 'info' : 'error'));
         if (authOk) tSuccess('اتصال OpenProject تایید شد.');
         else tError('Ping OpenProject انجام شد ولی احراز هویت/مسیر نیاز به اصلاح دارد.');
+    }
+
+    async function pingGoogle(service) {
+        const googleOauthClientId = document.getElementById('storageGoogleOauthClientIdInput');
+        const googleOauthClientSecret = document.getElementById('storageGoogleOauthClientSecretInput');
+        const googleOauthRefreshToken = document.getElementById('storageGoogleOauthRefreshTokenInput');
+        const googleSenderEmail = document.getElementById('storageGoogleSenderEmailInput');
+        const googleCalendarId = document.getElementById('storageGoogleCalendarIdInput');
+        const safeService = norm(service).toLowerCase();
+        setStorageSyncResult(`Testing Google ${safeService} connection ...`, 'info');
+        const payload = await request('/api/v1/storage/google/ping', {
+            method: 'POST',
+            body: JSON.stringify({
+                service: safeService,
+                oauth_client_id: norm(googleOauthClientId?.value),
+                oauth_client_secret: norm(googleOauthClientSecret?.value),
+                oauth_refresh_token: norm(googleOauthRefreshToken?.value),
+                sender_email: norm(googleSenderEmail?.value),
+                calendar_id: norm(googleCalendarId?.value),
+            }),
+        });
+        const reachable = Boolean(payload?.reachable);
+        const authOk = Boolean(payload?.auth_ok);
+        const statusCode = payload?.status_code ?? '-';
+        const message = String(payload?.message || '');
+        const summary = `Ping Google ${safeService}: reachable=${reachable} | auth_ok=${authOk} | status=${statusCode}`;
+        setStorageSyncResult(`${summary}${message ? ` | ${message}` : ''}`, authOk ? 'success' : (reachable ? 'info' : 'error'));
+        if (authOk) tSuccess(`Google ${safeService} connection verified.`);
+        else tError(`Google ${safeService} ping completed but needs configuration/auth fix.`);
     }
 
     async function runStorageSyncJob(kind) {
@@ -1178,6 +1472,12 @@
         const root = document.getElementById('settingsIntegrationsRoot');
         if (!root || root.dataset.integrationsActionsBound === '1') return;
         root.addEventListener('click', async (event) => {
+            const providerTabEl = event?.target?.closest?.('[data-integrations-provider-tab]');
+            if (providerTabEl && root.contains(providerTabEl)) {
+                event.preventDefault();
+                setIntegrationsProviderTab(providerTabEl.dataset.integrationsProviderTab || 'openproject');
+                return;
+            }
             const tabEl = event?.target?.closest?.('[data-op-tab]');
             if (tabEl && root.contains(tabEl)) {
                 event.preventDefault();
@@ -1205,8 +1505,28 @@
                     await pingOpenProject();
                     return;
                 }
+                if (action === 'ping-google-drive') {
+                    await pingGoogle('drive');
+                    return;
+                }
+                if (action === 'ping-google-gmail') {
+                    await pingGoogle('gmail');
+                    return;
+                }
+                if (action === 'ping-google-calendar') {
+                    await pingGoogle('calendar');
+                    return;
+                }
                 if (action === 'clear-openproject-token') {
                     await clearOpenProjectStoredToken();
+                    return;
+                }
+                if (action === 'preview-openproject-project-work-packages') {
+                    await previewOpenProjectProjectWorkPackages();
+                    return;
+                }
+                if (action === 'import-openproject-project-work-packages') {
+                    await importOpenProjectProjectWorkPackages();
                     return;
                 }
                 if (action === 'download-openproject-template') {
@@ -1241,6 +1561,13 @@
         root.addEventListener('change', () => {
             updateStorageIntegrationsFieldState();
         });
+        root.addEventListener('input', (event) => {
+            const target = event?.target;
+            if (!target) return;
+            if (target.id === 'storageOpenProjectApiTokenInput') {
+                updateStorageIntegrationsFieldState();
+            }
+        });
         root.dataset.integrationsActionsBound = '1';
     }
 
@@ -1249,8 +1576,11 @@
         bindIntegrationsActions();
         await loadStorageIntegrations(force);
         await refreshOpenProjectImportData();
+        setIntegrationsProviderTab(STORE.integrationsProviderTab || 'openproject');
         setOpenProjectSubTab(STORE.openprojectImport?.activeTab || 'connection');
         setOpenProjectImportSummary('');
+        setOpenProjectProjectImportSummary('');
+        renderOpenProjectProjectPreview([]);
         updateStorageIntegrationsFieldState();
     }
 
