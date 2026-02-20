@@ -33,6 +33,19 @@ def _to_positive_int_or_none(value: Any) -> int | None:
     return parsed if parsed > 0 else None
 
 
+def _to_optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return None
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
 def resolve_openproject_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
     openproject_cfg = dict(integrations.get("openproject") or {})
     env_token = str(settings.OPENPROJECT_API_TOKEN or "").strip()
@@ -45,6 +58,18 @@ def resolve_openproject_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
     settings_default_wp = str(
         openproject_cfg.get("default_work_package_id") or openproject_cfg.get("default_project_id") or ""
     ).strip()
+    force_tls_verify = _to_optional_bool(getattr(settings, "OPENPROJECT_TLS_VERIFY_FORCE", ""))
+    settings_skip_ssl_verify = _to_optional_bool(openproject_cfg.get("skip_ssl_verify"))
+    if force_tls_verify is not None:
+        tls_verify = bool(force_tls_verify)
+        ssl_source = "env_force"
+    elif settings_skip_ssl_verify is not None:
+        tls_verify = not bool(settings_skip_ssl_verify)
+        ssl_source = "settings"
+    else:
+        tls_verify = bool(settings.OPENPROJECT_TLS_VERIFY)
+        ssl_source = "env_default"
+
     return {
         "enabled": bool(openproject_cfg.get("enabled")),
         "base_url": base_url,
@@ -53,7 +78,10 @@ def resolve_openproject_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
         "default_work_package_id": _to_positive_int_or_none(env_default_wp or settings_default_wp),
         "connect_timeout": int(settings.OPENPROJECT_CONNECT_TIMEOUT_SECONDS or 5),
         "read_timeout": int(settings.OPENPROJECT_READ_TIMEOUT_SECONDS or 10),
-        "tls_verify": bool(settings.OPENPROJECT_TLS_VERIFY),
+        "tls_verify": bool(tls_verify),
+        "skip_ssl_verify_effective": not bool(tls_verify),
+        "ssl_source": ssl_source,
+        "ssl_force_active": force_tls_verify is not None,
     }
 
 

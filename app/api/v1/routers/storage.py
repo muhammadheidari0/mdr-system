@@ -52,6 +52,7 @@ from app.services.storage_sync import (
     run_storage_jobs,
 )
 from app.services.openproject_adapter import OpenProjectAdapter
+from app.services.google_oauth_adapter import GoogleOAuthAdapter
 from app.services.openproject_import import (
     build_work_package_create_payload,
     parse_summary_json,
@@ -259,6 +260,26 @@ class OpenProjectImportExecuteIn(BaseModel):
     target_parent_work_package_id: Optional[int] = Field(default=None, ge=1)
 
 
+class OpenProjectPingIn(BaseModel):
+    base_url: Optional[str] = Field(default=None, max_length=1024)
+    api_token: Optional[str] = Field(default=None, max_length=4096)
+    skip_ssl_verify: Optional[bool] = Field(default=None)
+
+
+class OpenProjectProjectImportIn(BaseModel):
+    max_items: int = Field(default=5000, ge=1, le=50000)
+    page_size: int = Field(default=200, ge=1, le=1000)
+
+
+class GooglePingIn(BaseModel):
+    service: str = Field(..., min_length=3, max_length=20)
+    oauth_client_id: Optional[str] = Field(default=None, max_length=2048)
+    oauth_client_secret: Optional[str] = Field(default=None, max_length=4096)
+    oauth_refresh_token: Optional[str] = Field(default=None, max_length=4096)
+    sender_email: Optional[str] = Field(default=None, max_length=255)
+    calendar_id: Optional[str] = Field(default=None, max_length=255)
+
+
 def _safe_json_dumps(value: dict[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -348,6 +369,47 @@ def _extract_href(value: dict[str, Any], key: str) -> str:
     return str(node.get("href") or "").strip()
 
 
+def _extract_link_title(value: dict[str, Any], key: str, fallback: str = "-") -> str:
+    links = value.get("_links") if isinstance(value, dict) else None
+    if not isinstance(links, dict):
+        return fallback
+    node = links.get(key)
+    if not isinstance(node, dict):
+        return fallback
+    title = str(node.get("title") or node.get("name") or "").strip()
+    if title:
+        return title
+    href = str(node.get("href") or "").strip()
+    return href or fallback
+
+
+def _serialize_project_snapshot_item(row_no: int, item: dict[str, Any]) -> dict[str, Any]:
+    raw_id = str(item.get("id") or "").strip()
+    wp_id = int(raw_id) if raw_id.isdigit() else None
+    return {
+        "row_no": int(row_no),
+        "work_package_id": wp_id,
+        "subject": str(item.get("subject") or "").strip(),
+        "status": _extract_link_title(item, "status"),
+        "type": _extract_link_title(item, "type"),
+        "assignee": _extract_link_title(item, "assignee"),
+        "start_date": str(item.get("startDate") or "").strip() or None,
+        "due_date": str(item.get("dueDate") or "").strip() or None,
+        "done_ratio": item.get("doneRatio"),
+        "updated_at": str(item.get("updatedAt") or "").strip() or None,
+        "href": _extract_href(item, "self") or None,
+    }
+
+
+def _openproject_http_error_status(message: str) -> int:
+    text = str(message or "")
+    if "HTTP 404" in text:
+        return 404
+    if "HTTP 400" in text:
+        return 400
+    return 502
+
+
 @router.post("/sync/google-drive/run")
 def run_google_drive_jobs(
     limit: int = Query(default=25, ge=1, le=200),
@@ -372,13 +434,30 @@ def run_openproject_jobs(
 
 @router.post("/openproject/ping")
 def ping_openproject(
+    payload: Optional[OpenProjectPingIn] = Body(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(allow_admin),
 ):
     del user
     integrations = get_storage_integrations(db)
-    runtime = resolve_openproject_runtime(integrations)
+    runtime_integrations = dict(integrations or {})
+    incoming = payload.model_dump(exclude_unset=True) if payload else {}
+    if incoming:
+        openproject = dict(runtime_integrations.get("openproject") or {})
+        incoming_base_url = str(incoming.get("base_url") or "").strip()
+        if incoming_base_url:
+            openproject["base_url"] = incoming_base_url
+        incoming_token = str(incoming.get("api_token") or "").strip()
+        if incoming_token:
+            openproject["api_token"] = incoming_token
+        if "skip_ssl_verify" in incoming:
+            openproject["skip_ssl_verify"] = bool(incoming.get("skip_ssl_verify"))
+        runtime_integrations["openproject"] = openproject
+
+    runtime = resolve_openproject_runtime(runtime_integrations)
     token_source = str(runtime.get("token_source") or "none")
+    ssl_source = str(runtime.get("ssl_source") or "env_default")
+    tls_verify_effective = bool(runtime.get("tls_verify"))
     base_url = OpenProjectAdapter.normalize_base_url(str(runtime.get("base_url") or ""))
     if not base_url:
         return {
@@ -387,6 +466,8 @@ def ping_openproject(
             "auth_ok": False,
             "status_code": None,
             "token_source": token_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
             "message": "OpenProject base URL is not configured.",
         }
 
@@ -423,6 +504,8 @@ def ping_openproject(
             "auth_ok": auth_ok,
             "status_code": status_code,
             "token_source": token_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
             "message": message,
         }
     except requests.Timeout:
@@ -432,6 +515,8 @@ def ping_openproject(
             "auth_ok": False,
             "status_code": None,
             "token_source": token_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
             "message": "OpenProject ping timed out.",
         }
     except requests.RequestException:
@@ -441,8 +526,271 @@ def ping_openproject(
             "auth_ok": False,
             "status_code": None,
             "token_source": token_source,
+            "ssl_source": ssl_source,
+            "tls_verify_effective": tls_verify_effective,
             "message": "OpenProject is unreachable (network/TLS error).",
         }
+
+
+@router.get("/openproject/projects/{project_ref}/work-packages/preview")
+def preview_openproject_project_work_packages(
+    project_ref: str,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    integrations = get_storage_integrations(db)
+    runtime = resolve_openproject_runtime(integrations)
+    if not bool(runtime.get("enabled")):
+        raise HTTPException(status_code=400, detail="OpenProject integration is disabled")
+
+    base_url = str(runtime.get("base_url") or "").strip()
+    token = str(runtime.get("api_token") or "").strip()
+    if not base_url or not token:
+        raise HTTPException(status_code=400, detail="OpenProject base URL and API token are required")
+
+    adapter = OpenProjectAdapter(
+        base_url=base_url,
+        api_token=token,
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+    try:
+        project = adapter.get_project(project_ref)
+        page = adapter.list_project_work_packages_page(project_ref, skip=skip, limit=limit)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=_openproject_http_error_status(str(exc)), detail=str(exc)) from exc
+
+    items = [
+        _serialize_project_snapshot_item(index + int(page.get("skip") or 0) + 1, wp)
+        for index, wp in enumerate(page.get("items") or [])
+    ]
+    return {
+        "ok": True,
+        "project": {
+            "id": project.get("id"),
+            "identifier": project.get("identifier"),
+            "name": project.get("name"),
+            "href": _extract_href(project, "self"),
+        },
+        "items": items,
+        "total": int(page.get("total") or len(items)),
+        "skip": int(page.get("skip") or 0),
+        "limit": int(page.get("limit") or 0),
+    }
+
+
+@router.post("/openproject/projects/{project_ref}/import")
+def import_openproject_project_work_packages(
+    project_ref: str,
+    payload: OpenProjectProjectImportIn = Body(default={}),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    integrations = get_storage_integrations(db)
+    runtime = resolve_openproject_runtime(integrations)
+    if not bool(runtime.get("enabled")):
+        raise HTTPException(status_code=400, detail="OpenProject integration is disabled")
+
+    base_url = str(runtime.get("base_url") or "").strip()
+    token = str(runtime.get("api_token") or "").strip()
+    if not base_url or not token:
+        raise HTTPException(status_code=400, detail="OpenProject base URL and API token are required")
+
+    adapter = OpenProjectAdapter(
+        base_url=base_url,
+        api_token=token,
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+
+    now = datetime.utcnow()
+    run = OpenProjectImportRun(
+        run_no="OPENPROJECT-PROJECT-IMPORT-PENDING",
+        status_code="RUNNING",
+        source_file_name=f"openproject_project:{project_ref}",
+        source_sha256=None,
+        target_parent_work_package_id=None,
+        started_by_id=int(getattr(user, "id", 0) or 0) or None,
+        started_at=now,
+        total_rows=0,
+        valid_rows=0,
+        invalid_rows=0,
+        created_rows=0,
+        failed_rows=0,
+        summary_json=_safe_json_dumps(
+            {
+                "run_type": "project_snapshot",
+                "project_ref": str(project_ref),
+                "total_rows": 0,
+                "valid_rows": 0,
+                "invalid_rows": 0,
+                "created_rows": 0,
+                "failed_rows": 0,
+            }
+        ),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(run)
+    db.flush()
+    run.run_no = f"OPP-{datetime.utcnow():%Y%m%d}-{int(run.id):06d}"
+    db.commit()
+
+    imported_count = 0
+    failed_count = 0
+    total_rows = 0
+    project_meta: dict[str, Any] | None = None
+    try:
+        project = adapter.get_project(project_ref)
+        project_meta = {
+            "id": project.get("id"),
+            "identifier": project.get("identifier"),
+            "name": project.get("name"),
+            "href": _extract_href(project, "self"),
+        }
+        for item in adapter.iter_project_work_packages(
+            project_ref,
+            page_size=int(payload.page_size or 200),
+            max_items=int(payload.max_items or 5000),
+        ):
+            total_rows += 1
+            snapshot = _serialize_project_snapshot_item(total_rows, item)
+            wp_id = snapshot.get("work_package_id")
+            execution_status = "IMPORTED"
+            validation_status = "VALID"
+            error_message = None
+            if not wp_id:
+                execution_status = "FAILED"
+                validation_status = "INVALID"
+                error_message = "Work package ID is missing."
+                failed_count += 1
+            else:
+                imported_count += 1
+
+            row_now = datetime.utcnow()
+            db.add(
+                OpenProjectImportRow(
+                    run_id=int(run.id),
+                    row_no=int(total_rows),
+                    task_name=snapshot.get("subject"),
+                    duration_raw=None,
+                    start_raw=snapshot.get("start_date"),
+                    finish_raw=snapshot.get("due_date"),
+                    predecessors_raw=None,
+                    resource_names_raw=snapshot.get("assignee"),
+                    normalized_start_date=snapshot.get("start_date"),
+                    normalized_finish_date=snapshot.get("due_date"),
+                    validation_status=validation_status,
+                    execution_status=execution_status,
+                    created_work_package_id=wp_id,
+                    openproject_href=snapshot.get("href"),
+                    error_message=error_message,
+                    payload_json=_safe_json_dumps(snapshot),
+                    created_at=row_now,
+                    updated_at=row_now,
+                )
+            )
+        run_db = _load_openproject_import_run_or_404(db, int(run.id))
+        summary = {
+            "run_type": "project_snapshot",
+            "project_ref": str(project_ref),
+            "project": project_meta or {},
+            "total_rows": int(total_rows),
+            "valid_rows": int(imported_count),
+            "invalid_rows": int(failed_count),
+            "created_rows": int(imported_count),
+            "failed_rows": int(failed_count),
+            "max_items": int(payload.max_items or 5000),
+            "page_size": int(payload.page_size or 200),
+            "imported_at": datetime.utcnow().isoformat(),
+        }
+        run_db.status_code = "COMPLETED"
+        run_db.total_rows = int(total_rows)
+        run_db.valid_rows = int(imported_count)
+        run_db.invalid_rows = int(failed_count)
+        run_db.created_rows = int(imported_count)
+        run_db.failed_rows = int(failed_count)
+        run_db.summary_json = _safe_json_dumps(summary)
+        run_db.finished_at = datetime.utcnow()
+        run_db.updated_at = datetime.utcnow()
+        run_db.error_message = None
+        db.commit()
+        return {"ok": True, "run": _serialize_openproject_import_run(run_db), "summary": summary}
+    except RuntimeError as exc:
+        run_db = _load_openproject_import_run_or_404(db, int(run.id))
+        summary = {
+            "run_type": "project_snapshot",
+            "project_ref": str(project_ref),
+            "project": project_meta or {},
+            "total_rows": int(total_rows),
+            "valid_rows": int(imported_count),
+            "invalid_rows": int(failed_count),
+            "created_rows": int(imported_count),
+            "failed_rows": int(failed_count),
+            "error_message": str(exc),
+        }
+        run_db.status_code = "FAILED"
+        run_db.total_rows = int(total_rows)
+        run_db.valid_rows = int(imported_count)
+        run_db.invalid_rows = int(failed_count)
+        run_db.created_rows = int(imported_count)
+        run_db.failed_rows = int(failed_count)
+        run_db.summary_json = _safe_json_dumps(summary)
+        run_db.error_message = str(exc)[:4000]
+        run_db.finished_at = datetime.utcnow()
+        run_db.updated_at = datetime.utcnow()
+        db.commit()
+        raise HTTPException(status_code=_openproject_http_error_status(str(exc)), detail=str(exc)) from exc
+
+
+@router.post("/google/ping")
+def ping_google(
+    payload: GooglePingIn = Body(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    service = str(payload.service or "").strip().lower()
+    if service not in {"drive", "gmail", "calendar"}:
+        raise HTTPException(status_code=400, detail="service must be one of drive|gmail|calendar")
+
+    integrations = get_storage_integrations(db)
+    google_cfg = dict((integrations or {}).get("google_drive") or {})
+    incoming = payload.model_dump(exclude_unset=True)
+    for key in ("oauth_client_id", "oauth_client_secret", "oauth_refresh_token", "sender_email", "calendar_id"):
+        if key not in incoming:
+            continue
+        raw_value = str(incoming.get(key) or "").strip()
+        if key in {"oauth_client_secret", "oauth_refresh_token"}:
+            if raw_value:
+                google_cfg[key] = raw_value
+        else:
+            google_cfg[key] = raw_value
+
+    adapter = GoogleOAuthAdapter(
+        oauth_client_id=str(google_cfg.get("oauth_client_id") or ""),
+        oauth_client_secret=str(google_cfg.get("oauth_client_secret") or ""),
+        oauth_refresh_token=str(google_cfg.get("oauth_refresh_token") or ""),
+        sender_email=str(google_cfg.get("sender_email") or ""),
+        calendar_id=str(google_cfg.get("calendar_id") or ""),
+    )
+    try:
+        result = adapter.ping(service)
+    except RuntimeError as exc:
+        return {
+            "ok": True,
+            "service": service,
+            "reachable": False,
+            "auth_ok": False,
+            "status_code": None,
+            "message": str(exc),
+        }
+    return {"ok": True, **result}
 
 
 @router.get("/openproject/import/template")
@@ -738,19 +1086,24 @@ def list_openproject_activity(
     import_rows = (
         db.query(OpenProjectImportRow, OpenProjectImportRun)
         .join(OpenProjectImportRun, OpenProjectImportRun.id == OpenProjectImportRow.run_id)
-        .filter(OpenProjectImportRow.execution_status.in_(["CREATED", "FAILED"]))
+        .filter(OpenProjectImportRow.execution_status.in_(["CREATED", "FAILED", "IMPORTED"]))
         .order_by(OpenProjectImportRow.updated_at.desc(), OpenProjectImportRow.id.desc())
         .limit(limit)
         .all()
     )
     for row, run in import_rows:
         event_at = row.updated_at or row.created_at or run.updated_at or run.created_at
+        execution_status = str(row.execution_status or "").upper()
+        if execution_status == "CREATED":
+            kind = "work_package_created"
+        elif execution_status == "IMPORTED":
+            kind = "work_package_imported_snapshot"
+        else:
+            kind = "work_package_failed"
         activity.append(
             {
                 "source": "import",
-                "kind": "work_package_created"
-                if str(row.execution_status or "").upper() == "CREATED"
-                else "work_package_failed",
+                "kind": kind,
                 "event_at": event_at.isoformat() if event_at else None,
                 "run_id": int(run.id),
                 "run_no": run.run_no,

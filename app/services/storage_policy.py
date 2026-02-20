@@ -91,6 +91,14 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
         "mirror_mode": "async",
         "shared_drive_id": "",
         "root_folder_id": "",
+        "oauth_client_id": "",
+        "oauth_client_secret": "",
+        "oauth_refresh_token": "",
+        "drive_enabled": False,
+        "gmail_enabled": False,
+        "calendar_enabled": False,
+        "sender_email": "",
+        "calendar_id": "",
     },
     "openproject": {
         "enabled": False,
@@ -98,6 +106,7 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
         "base_url": "",
         "api_token": "",
         "default_work_package_id": "",
+        "skip_ssl_verify": None,
     },
     "local_cache": {
         "enabled": True,
@@ -149,6 +158,19 @@ def _to_non_negative_int(value: Any, fallback: int) -> int:
     except Exception:
         return int(fallback)
     return parsed if parsed >= 0 else int(fallback)
+
+
+def _to_optional_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return None
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return None
 
 
 def _normalize_policy(raw: dict[str, Any]) -> dict[str, Any]:
@@ -206,6 +228,26 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
     merged["google_drive"]["root_folder_id"] = str(
         merged["google_drive"].get("root_folder_id") or ""
     ).strip()
+    merged["google_drive"]["oauth_client_id"] = str(
+        merged["google_drive"].get("oauth_client_id") or ""
+    ).strip()
+    merged["google_drive"]["oauth_client_secret"] = str(
+        merged["google_drive"].get("oauth_client_secret") or ""
+    ).strip()
+    merged["google_drive"]["oauth_refresh_token"] = str(
+        merged["google_drive"].get("oauth_refresh_token") or ""
+    ).strip()
+    merged["google_drive"]["drive_enabled"] = bool(
+        merged["google_drive"].get("drive_enabled", merged["google_drive"].get("enabled"))
+    )
+    merged["google_drive"]["gmail_enabled"] = bool(merged["google_drive"].get("gmail_enabled"))
+    merged["google_drive"]["calendar_enabled"] = bool(merged["google_drive"].get("calendar_enabled"))
+    merged["google_drive"]["sender_email"] = str(
+        merged["google_drive"].get("sender_email") or ""
+    ).strip()
+    merged["google_drive"]["calendar_id"] = str(
+        merged["google_drive"].get("calendar_id") or ""
+    ).strip()
     merged["openproject"]["base_url"] = str(merged["openproject"].get("base_url") or "").strip()
     merged["openproject"]["api_token"] = str(merged["openproject"].get("api_token") or "").strip()
     default_wp = str(
@@ -214,6 +256,7 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
         or ""
     ).strip()
     merged["openproject"]["default_work_package_id"] = default_wp
+    merged["openproject"]["skip_ssl_verify"] = _to_optional_bool(merged["openproject"].get("skip_ssl_verify"))
     merged["openproject"].pop("default_project_id", None)
     merged["local_cache"]["default_scope"] = str(
         merged["local_cache"].get("default_scope") or "user"

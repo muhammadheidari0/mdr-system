@@ -235,6 +235,7 @@ def parse_task_table_from_bytes(
         )
 
     summary = {
+        "run_type": "excel_import",
         "sheet": TASK_TABLE_SHEET,
         "source_file_name": _norm_text(source_file_name) or "openproject_import.xlsx",
         "source_sha256": digest,

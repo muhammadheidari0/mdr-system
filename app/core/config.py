@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     OPENPROJECT_CONNECT_TIMEOUT_SECONDS: int = 5
     OPENPROJECT_READ_TIMEOUT_SECONDS: int = 10
     OPENPROJECT_TLS_VERIFY: bool = True
+    OPENPROJECT_TLS_VERIFY_FORCE: str = ""
     OPENPROJECT_DEFAULT_WORK_PACKAGE_ID: str = ""
     # Legacy alias kept for backward compatibility in env files/docs.
     OPENPROJECT_DEFAULT_PROJECT_ID: str = ""

@@ -48,6 +48,7 @@ from app.services.storage_policy import (
     set_storage_integrations,
     set_storage_policy,
 )
+from app.services.storage_sync import resolve_openproject_runtime
 from app.services.storage import StorageManager
 
 router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(allow_admin)])
@@ -388,16 +389,26 @@ def _masked_storage_integrations_payload(integrations: Dict[str, Any]) -> Dict[s
     if not str(openproject.get("default_work_package_id") or "").strip():
         openproject["default_work_package_id"] = str(openproject.get("default_project_id") or "").strip()
     openproject.pop("default_project_id", None)
+    runtime = resolve_openproject_runtime(integrations)
     token_source = _storage_integrations_openproject_token_source(integrations)
     openproject["token_source"] = token_source
     openproject["api_token_configured"] = token_source in {"env", "settings"}
+    openproject["skip_ssl_verify"] = bool(runtime.get("skip_ssl_verify_effective"))
+    openproject["ssl_source"] = str(runtime.get("ssl_source") or "env_default")
+    openproject["ssl_force_active"] = bool(runtime.get("ssl_force_active"))
     openproject.pop("api_token", None)
     masked["openproject"] = openproject
 
+    gdrive = dict(masked.get("google_drive", {}))
+    oauth_client_id = str(gdrive.get("oauth_client_id") or "").strip()
+    oauth_client_secret = str(gdrive.get("oauth_client_secret") or "").strip()
+    oauth_refresh_token = str(gdrive.get("oauth_refresh_token") or "").strip()
+    gdrive["oauth_configured"] = bool(oauth_client_id and oauth_client_secret and oauth_refresh_token)
     if str(settings.GDRIVE_SERVICE_ACCOUNT_JSON or "").strip():
-        gdrive = dict(masked.get("google_drive", {}))
         gdrive["service_account_configured"] = True
-        masked["google_drive"] = gdrive
+    gdrive.pop("oauth_client_secret", None)
+    gdrive.pop("oauth_refresh_token", None)
+    masked["google_drive"] = gdrive
 
     return redact_secrets(masked)
 
@@ -2104,6 +2115,18 @@ def save_storage_integrations_settings(
 ):
     before = get_storage_integrations(db)
     incoming = payload.model_dump(exclude_unset=True)
+    gdrive_incoming = incoming.get("google_drive")
+    if isinstance(gdrive_incoming, dict):
+        before_google = dict(before.get("google_drive") or {})
+        if "oauth_client_secret" in gdrive_incoming and not str(
+            gdrive_incoming.get("oauth_client_secret") or ""
+        ).strip():
+            gdrive_incoming["oauth_client_secret"] = str(before_google.get("oauth_client_secret") or "")
+        if "oauth_refresh_token" in gdrive_incoming and not str(
+            gdrive_incoming.get("oauth_refresh_token") or ""
+        ).strip():
+            gdrive_incoming["oauth_refresh_token"] = str(before_google.get("oauth_refresh_token") or "")
+
     openproject_incoming = incoming.get("openproject")
     if isinstance(openproject_incoming, dict):
         raw_default_wp = str(
