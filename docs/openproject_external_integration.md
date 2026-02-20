@@ -62,6 +62,7 @@ OpenProject sub-tabs:
 ### Excel Import (MVP)
 - Input file: `openproject template.xlsx`
 - Uses only sheet `Task_Table1`
+- Template source in repository: `data_sources/templates/openproject template.xlsx`
 - Flow:
   1. `Validate (Dry-run)` with parser + row persistence
   2. `Start Processing`:
