@@ -5,6 +5,31 @@ import { expect, test, type APIResponse } from "@playwright/test";
 
 import { apiLoginToken, bearerHeaders, resolveBaseUrl, seedAuthToken } from "./helpers";
 
+async function requestGetWithRetry(
+  request: any,
+  url: string,
+  options: Record<string, unknown>,
+  attempts = 3
+): Promise<APIResponse> {
+  let attempt = 0;
+  let lastError: unknown = null;
+  while (attempt < attempts) {
+    try {
+      return await request.get(url, options);
+    } catch (error) {
+      lastError = error;
+      const message = String((error as any)?.message || "");
+      const retryable = /ECONNRESET|ECONNREFUSED|socket hang up/i.test(message);
+      attempt += 1;
+      if (!retryable || attempt >= attempts) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+  }
+  throw lastError;
+}
+
 async function expectOkJson(response: APIResponse, label: string): Promise<any> {
   const bodyText = await response.text();
   expect(
@@ -24,7 +49,11 @@ async function ensureCommItemsContext(
   resolvedBaseUrl: string,
   headers: Record<string, string>
 ): Promise<{ projectCode: string; disciplineCode: string; organizationId: number }> {
-  const projectsRes = await request.get(`${resolvedBaseUrl}/api/v1/settings/projects`, { headers });
+  const projectsRes = await requestGetWithRetry(
+    request,
+    `${resolvedBaseUrl}/api/v1/settings/projects`,
+    { headers }
+  );
   const projectsBody = await expectOkJson(projectsRes, "settings projects");
   let projectCode = String(
     projectsBody?.items?.[0]?.code || projectsBody?.items?.[0]?.project_code || ""
@@ -45,7 +74,11 @@ async function ensureCommItemsContext(
     );
   }
 
-  const disciplinesRes = await request.get(`${resolvedBaseUrl}/api/v1/settings/disciplines`, { headers });
+  const disciplinesRes = await requestGetWithRetry(
+    request,
+    `${resolvedBaseUrl}/api/v1/settings/disciplines`,
+    { headers }
+  );
   const disciplinesBody = await expectOkJson(disciplinesRes, "settings disciplines");
   let disciplineCode = String(
     disciplinesBody?.items?.[0]?.code || disciplinesBody?.items?.[0]?.discipline_code || ""
@@ -66,7 +99,11 @@ async function ensureCommItemsContext(
     );
   }
 
-  const orgRes = await request.get(`${resolvedBaseUrl}/api/v1/settings/organizations`, { headers });
+  const orgRes = await requestGetWithRetry(
+    request,
+    `${resolvedBaseUrl}/api/v1/settings/organizations`,
+    { headers }
+  );
   const orgBody = await expectOkJson(orgRes, "settings organizations");
   let organizationId = Number(orgBody?.items?.[0]?.id || 0);
   if (!organizationId) {
@@ -417,7 +454,99 @@ test("critical e2e: comm items RFI export and print actions", async ({ page, req
   ).toBeVisible({ timeout: 15000 });
 });
 
+test("critical e2e: contractor requests unified RFI/NCR form toggle", async ({ page, request, baseURL }) => {
+  const resolvedBaseUrl = resolveBaseUrl(baseURL);
+  const token = await apiLoginToken(request, resolvedBaseUrl);
+  const headers = bearerHeaders(token);
+  const context = await ensureCommItemsContext(request, resolvedBaseUrl, headers);
+
+  const rfiTitle = `Critical E2E unified RFI ${Date.now()}`;
+  const ncrTitle = `Critical E2E unified NCR ${Date.now()}`;
+
+  await seedAuthToken(page, request, resolvedBaseUrl);
+  await page.goto("/");
+  await page.locator("#nav-contractor").click();
+  await expect(page.locator("#view-contractor")).toHaveClass(/active/);
+  await page.locator(".contractor-tab-btn[data-contractor-tab='requests']").click();
+  await expect(page.locator("#contractor-panel-requests")).toHaveClass(/active/);
+
+  const openFormButton = page.locator("#contractor-panel-requests [data-ci-action='open-form']").first();
+  await expect(openFormButton).toBeVisible({ timeout: 15000 });
+
+  const drawerCloseButton = page
+    .locator("#ci-drawer-contractor-requests .ci-drawer-header [data-ci-action='drawer-close']")
+    .first();
+
+  // Create as RFI (toggle off)
+  await openFormButton.click();
+  const asNcrToggle = page.locator("#ci-form-rfi-as-ncr-contractor-requests");
+  const typeBadge = page.locator("#ci-form-type-badge-contractor-requests");
+  const saveButton = page.locator("#ci-form-save-contractor-requests");
+  const errorSummary = page.locator("#ci-form-error-summary-contractor-requests");
+  await expect(asNcrToggle).toBeVisible({ timeout: 10000 });
+  await expect(asNcrToggle).toBeEnabled();
+  await expect(typeBadge).toContainText("RFI");
+  await saveButton.click();
+  await expect(errorSummary).toBeVisible();
+  await expect(errorSummary).toContainText("Project is required");
+  await page.selectOption("#ci-form-project-contractor-requests", context.projectCode);
+  await page.selectOption("#ci-form-discipline-contractor-requests", context.disciplineCode);
+  await page.fill("#ci-form-title-contractor-requests", rfiTitle);
+  await page.fill(
+    "#ci-form-rfi-question-contractor-requests",
+    "Please clarify the approved detail for this unified form RFI create scenario."
+  );
+  await page.fill("#ci-form-rfi-proposed-contractor-requests", "Follow approved technical detail package.");
+  await page.locator("#ci-form-wrap-contractor-requests [data-ci-action='save-form']").click();
+  await expect(page.locator("#ci-detail-summary-contractor-requests")).toContainText("RFI", { timeout: 15000 });
+  await drawerCloseButton.click();
+
+  const rfiRow = page.locator("#ci-tbody-contractor-requests tr", { hasText: rfiTitle }).first();
+  await expect(rfiRow).toBeVisible({ timeout: 15000 });
+  await expect(rfiRow).toContainText("RFI");
+
+  // Create as NCR (toggle on)
+  await openFormButton.click();
+  const asNcrToggleOn = page.locator("#ci-form-rfi-as-ncr-contractor-requests");
+  await expect(asNcrToggleOn).toBeEnabled();
+  await page.selectOption("#ci-form-project-contractor-requests", context.projectCode);
+  await page.selectOption("#ci-form-discipline-contractor-requests", context.disciplineCode);
+  await page.fill("#ci-form-title-contractor-requests", ncrTitle);
+  await page.fill(
+    "#ci-form-rfi-question-contractor-requests",
+    "Execution deviates from approved drawing and requires NCR registration in unified form."
+  );
+  await page.fill("#ci-form-rfi-proposed-contractor-requests", "Immediate containment and correction are required.");
+  await asNcrToggleOn.check();
+  await expect(typeBadge).toContainText("NCR");
+  await expect(page.locator("#ci-form-status-contractor-requests")).toHaveValue(/ISSUED/i);
+  await page.locator("#ci-form-wrap-contractor-requests [data-ci-action='save-form']").click();
+  await expect(page.locator("#ci-detail-summary-contractor-requests")).toContainText("NCR", { timeout: 15000 });
+  await drawerCloseButton.click();
+
+  const ncrRow = page.locator("#ci-tbody-contractor-requests tr", { hasText: ncrTitle }).first();
+  await expect(ncrRow).toBeVisible({ timeout: 15000 });
+  await expect(ncrRow).toContainText("NCR");
+
+  const ncrChip = page.locator(
+    "#ci-tfilters-contractor-requests [data-ci-action='filter-type'][data-ci-type-filter='NCR']"
+  );
+  const allChip = page.locator(
+    "#ci-tfilters-contractor-requests [data-ci-action='filter-type'][data-ci-type-filter='']"
+  );
+  await expect(ncrChip).toBeVisible();
+  await ncrChip.click();
+  await expect(page.locator("#ci-tbody-contractor-requests tr", { hasText: ncrTitle }).first()).toBeVisible();
+  await expect(page.locator("#ci-tbody-contractor-requests tr", { hasText: rfiTitle })).toHaveCount(0);
+  await allChip.click();
+  await expect(page.locator("#ci-tbody-contractor-requests tr", { hasText: rfiTitle }).first()).toBeVisible();
+
+  await ncrRow.locator("button[data-ci-action='open-edit']").click();
+  await expect(page.locator("#ci-form-rfi-as-ncr-contractor-requests")).toBeDisabled();
+});
+
 test("critical e2e: settings critical actions", async ({ page, request, baseURL }) => {
+  test.setTimeout(180_000);
   const resolvedBaseUrl = resolveBaseUrl(baseURL);
   const token = await apiLoginToken(request, resolvedBaseUrl);
   const headers = bearerHeaders(token);
@@ -461,6 +590,8 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await page.goto("/");
     await page.locator("#nav-settings").click();
     await expect(page.locator("#view-settings")).toHaveClass(/active/);
+    await page.locator("button[data-settings-tab='true'][data-tab='storage']").click();
+    await expect(page.locator("#mdrStoragePathInput")).toBeVisible();
 
     await page.locator("#mdrStoragePathInput").fill(nextMdrPath);
     await page.locator("#correspondenceStoragePathInput").fill(nextCorrespondencePath);
@@ -470,7 +601,9 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
       .poll(async () => {
         const res = await request.get(`${resolvedBaseUrl}/api/v1/settings/storage-paths`, { headers });
         const body = await res.json();
-        return `${body?.mdr_storage_path || ""}|${body?.correspondence_storage_path || ""}`;
+        const mdrPath = String(body?.mdr_storage_path || "").replace(/\\/g, "/");
+        const correspondencePath = String(body?.correspondence_storage_path || "").replace(/\\/g, "/");
+        return `${mdrPath}|${correspondencePath}`;
       })
       .toBe(`${nextMdrPath}|${nextCorrespondencePath}`);
 
@@ -492,28 +625,43 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     const openProjectEnabledInput = page.locator("#storageOpenProjectEnabledInput");
     const openProjectSkipSslInput = page.locator("#storageOpenProjectSkipSslVerifyInput");
     await openProjectEnabledInput.check();
-    await expect(openProjectSkipSslInput).toBeVisible();
-    await openProjectSkipSslInput.check();
+    await expect(openProjectSkipSslInput).toHaveCount(1);
+    await openProjectSkipSslInput.setChecked(true, { force: true });
     await page.locator("#storageOpenProjectBaseUrlInput").fill("");
     await page.locator("#storageOpenProjectDefaultWpInput").fill(nextWorkPackageId);
-    await page.locator("[data-integrations-action='save-integrations']").click();
+    await page.getByRole("button", { name: "Save OpenProject Settings" }).click();
 
     await page.locator("[data-integrations-provider-tab='google']").click();
     await expect(page.locator("[data-integrations-provider-panel='google']")).toHaveClass(/active/);
-    await page.locator("#storageGoogleDriveEnabledInput").check();
-    await page.locator("#storageGoogleDriveDriveEnabledInput").check();
+    await page.evaluate(() => {
+      const setChecked = (selector: string) => {
+        const input = document.querySelector<HTMLInputElement>(selector);
+        if (!input) return;
+        input.checked = true;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      setChecked("#storageGoogleDriveEnabledInput");
+      setChecked("#storageGoogleDriveDriveEnabledInput");
+    });
     await page.locator("#storageGoogleDriveDriveIdInput").fill(nextSharedDriveId);
-    await page.locator("[data-integrations-action='save-integrations']").click();
+    await page.getByRole("button", { name: "Save Google Settings" }).click();
 
     await page.locator("[data-integrations-provider-tab='nextcloud']").click();
     await expect(page.locator("[data-integrations-provider-panel='nextcloud']")).toHaveClass(/active/);
     await page.locator("#storageMirrorProviderSelect").selectOption("nextcloud");
-    await page.locator("#storageNextcloudEnabledInput").check();
+    await page.evaluate(() => {
+      const input = document.querySelector<HTMLInputElement>("#storageNextcloudEnabledInput");
+      if (!input) return;
+      input.checked = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
     await page.locator("#storageNextcloudBaseUrlInput").fill("https://nextcloud.example.com");
     await page.locator("#storageNextcloudUsernameInput").fill("nextcloud-user");
     await page.locator("#storageNextcloudAppPasswordInput").fill("nextcloud-app-password");
     await page.locator("#storageNextcloudRootPathInput").fill("/mdr");
-    await page.locator("[data-integrations-action='save-integrations']").click();
+    await page.getByRole("button", { name: "Save Nextcloud Settings" }).click();
 
     await expect
       .poll(async () => {

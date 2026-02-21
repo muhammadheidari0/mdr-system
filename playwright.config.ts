@@ -37,6 +37,7 @@ export default defineConfig({
   ],
   use: {
     baseURL,
+    acceptDownloads: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: useSystemChrome ? "off" : "retain-on-failure",

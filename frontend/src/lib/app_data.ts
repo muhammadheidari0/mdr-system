@@ -27,6 +27,7 @@ export interface AppDataBridge {
 }
 
 const XLSX_SRC = "https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js";
+const XLSX_LOAD_TIMEOUT_MS = 4500;
 
 function asRecord(input: unknown): Record<string, unknown> | null {
   if (!input || typeof input !== "object") return null;
@@ -46,10 +47,26 @@ async function ensureXlsxLoaded(deps: AppDataXlsxDeps): Promise<EnsureXlsxResult
 
   await new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("XLSX load timeout."));
+    }, XLSX_LOAD_TIMEOUT_MS);
     script.src = XLSX_SRC;
     script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load XLSX library."));
+    script.onload = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve();
+    };
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      reject(new Error("Failed to load XLSX library."));
+    };
     document.head.appendChild(script);
   });
 
@@ -87,4 +104,3 @@ export function createAppDataBridge(): AppDataBridge {
     loadDictionary,
   };
 }
-

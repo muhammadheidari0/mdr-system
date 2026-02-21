@@ -428,8 +428,7 @@ def _item_storage_dir(db: Session, item: CommItem, file_kind: str, scope_code: s
 
 TAB_RULES: dict[tuple[str, str], dict[str, Any]] = {
     ("contractor", "execution"): {"item_types": ["TECH"]},
-    ("contractor", "requests"): {"item_types": ["RFI"]},
-    ("contractor", "quality"): {"item_types": ["NCR"]},
+    ("contractor", "requests"): {"item_types": ["RFI", "NCR"]},
     ("consultant", "defects"): {"item_types": ["NCR"]},
     ("consultant", "instructions"): {
         "item_types": ["TECH"],

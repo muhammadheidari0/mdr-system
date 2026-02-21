@@ -67,6 +67,10 @@ def test_ui_smoke_comm_items_feature_flag_template_switch() -> None:
         assert enabled.status_code == 200, enabled.text
         assert 'site-logs-root" data-module="contractor" data-tab="execution"' in enabled.text
         assert 'comm-items-root" data-module="contractor" data-tab="execution"' not in enabled.text
+        assert 'data-contractor-tab="quality"' not in enabled.text
+        assert 'id="contractor-panel-quality"' not in enabled.text
+        assert 'comm-items-root" data-module="contractor" data-tab="requests"' in enabled.text
+        assert 'data-title="درخواست‌ها (RFI/NCR)"' in enabled.text
         assert "data-dual-flow-action" not in enabled.text
         assert "module-crud-root" not in enabled.text
 
@@ -74,6 +78,8 @@ def test_ui_smoke_comm_items_feature_flag_template_switch() -> None:
         disabled = client.get("/ui/partial/contractor")
         assert disabled.status_code == 200, disabled.text
         assert "module-crud-root" in disabled.text
+        assert 'data-contractor-tab="quality"' not in disabled.text
+        assert 'id="contractor-panel-quality"' not in disabled.text
         assert "comm-items-root" not in disabled.text
         assert "site-logs-root" not in disabled.text
     finally:

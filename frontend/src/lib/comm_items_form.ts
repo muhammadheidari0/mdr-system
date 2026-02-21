@@ -95,7 +95,6 @@ function resolveItemType(input: { itemType?: unknown; moduleKey?: unknown; tabKe
   const mapping: Record<string, CommItemType> = {
     "contractor:execution": "TECH",
     "contractor:requests": "RFI",
-    "contractor:quality": "NCR",
     "consultant:defects": "NCR",
     "consultant:instructions": "TECH",
     "consultant:inspection": "TECH",

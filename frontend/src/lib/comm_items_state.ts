@@ -63,7 +63,7 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
         <tr>
           <td>${index + 1}</td>
           <td style="font-family:monospace;">${esc(row.item_no || "-")}</td>
-          <td>${esc(row.title || "-")}</td>
+          <td><div class="ci-row-title" title="${esc(row.title || "-")}">${esc(row.title || "-")}</div></td>
           <td><span class="module-crud-status is-${statusClass(row.item_type)}">${esc(itemTypeLabel(row.item_type))}</span></td>
           <td><span class="module-crud-status is-${statusClass(row.status_code)}">${esc(row.status_code || "-")}</span></td>
           <td><span class="module-crud-priority is-${String(row.priority || "").toLowerCase()}">${esc(row.priority || "-")}</span></td>

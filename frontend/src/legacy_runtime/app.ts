@@ -75,7 +75,6 @@ const EDMS_VIEW_TO_TAB = {
 const CONTRACTOR_TAB_TO_PANEL = {
     execution: 'contractor-panel-execution',
     requests: 'contractor-panel-requests',
-    quality: 'contractor-panel-quality',
 };
 
 const CONSULTANT_TAB_TO_PANEL = {
@@ -1005,7 +1004,9 @@ function initSiteLogsModule(moduleKey) {
 }
 
 function openContractorTab(tabName, btnEl = null) {
-    const normalized = switchModuleTab(tabName, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
+    const requested = String(tabName || '').trim().toLowerCase();
+    const normalizedTab = requested === 'quality' ? 'requests' : requested;
+    const normalized = switchModuleTab(normalizedTab, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
     if (!normalized) return;
     let handledByCommBridge = false;
     if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('contractor', normalized)) {

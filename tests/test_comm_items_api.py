@@ -200,6 +200,59 @@ def test_comm_items_crud_relation_and_attachment_flow() -> None:
     assert relation_delete.status_code == 200, relation_delete.text
 
 
+def test_comm_items_requests_tab_returns_rfi_and_ncr() -> None:
+    headers = _admin_headers()
+    project_code, discipline_code, _recipient_org_id = _ensure_context(headers)
+
+    rfi_payload = {
+        "item_type": "RFI",
+        "project_code": project_code,
+        "discipline_code": discipline_code,
+        "title": f"RFI mixed {uuid4().hex[:6]}",
+        "status_code": "DRAFT",
+        "priority": "NORMAL",
+        "rfi": {
+            "question_text": "Please confirm latest approved detail set for this mixed tab listing test.",
+        },
+    }
+    rfi_create = client.post("/api/v1/comm-items/create", json=rfi_payload, headers=headers)
+    assert rfi_create.status_code == 200, rfi_create.text
+    rfi_id = int(rfi_create.json().get("data", {}).get("id") or 0)
+    assert rfi_id > 0
+
+    ncr_payload = {
+        "item_type": "NCR",
+        "project_code": project_code,
+        "discipline_code": discipline_code,
+        "title": f"NCR mixed {uuid4().hex[:6]}",
+        "status_code": "ISSUED",
+        "priority": "NORMAL",
+        "ncr": {
+            "kind": "NCR",
+            "severity": "MINOR",
+            "nonconformance_text": "Execution is not aligned with approved drawing references in this listing test case.",
+        },
+    }
+    ncr_create = client.post("/api/v1/comm-items/create", json=ncr_payload, headers=headers)
+    assert ncr_create.status_code == 200, ncr_create.text
+    ncr_id = int(ncr_create.json().get("data", {}).get("id") or 0)
+    assert ncr_id > 0
+
+    list_res = client.get(
+        "/api/v1/comm-items/list?module_key=contractor&tab_key=requests&skip=0&limit=200",
+        headers=headers,
+    )
+    assert list_res.status_code == 200, list_res.text
+    list_body = list_res.json()
+    assert list_body.get("ok") is True
+    rows = list_body.get("data", [])
+    ids = {int(row.get("id", 0)) for row in rows}
+    types = {str(row.get("item_type") or "").upper() for row in rows if int(row.get("id", 0)) in {rfi_id, ncr_id}}
+    assert rfi_id in ids
+    assert ncr_id in ids
+    assert types == {"RFI", "NCR"}
+
+
 def test_comm_items_reject_cross_type_detail_payloads() -> None:
     headers = _admin_headers()
     project_code, discipline_code, recipient_org_id = _ensure_context(headers)

@@ -7,7 +7,7 @@
                         <span class="material-icons-round">construction</span>
                         دفتر فنی و اجرا (پیمانکار)
                     </h2>
-                    <p class="edms-shell-subtitle">مدیریت عملیات اجرایی، درخواست‌ها، کیفیت و پیگیری کارگاهی</p>
+                    <p class="edms-shell-subtitle">مدیریت عملیات اجرایی، درخواست‌ها و پیگیری کارگاهی</p>
                 </div>
             </div>
 
@@ -47,16 +47,7 @@
                 data-contractor-tab="requests"
             >
                 <span class="material-icons-round">outgoing_mail</span>
-                <span>درخواست‌ها و RFI</span>
-            </button>
-
-            <button
-                type="button"
-                class="edms-tab-btn contractor-tab-btn"
-                data-contractor-tab="quality"
-            >
-                <span class="material-icons-round">rule</span>
-                <span>کیفیت و NCR</span>
+                <span>درخواست‌ها (RFI/NCR)</span>
             </button>
         </div>
 
@@ -70,16 +61,9 @@
             </section>
             <section id="contractor-panel-requests" class="module-workspace-panel">
                 {% if feature_comm_items_v1 %}
-                <div class="comm-items-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها و RFI"></div>
+                <div class="comm-items-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها (RFI/NCR)"></div>
                 {% else %}
-                <div class="module-crud-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها و RFI"></div>
-                {% endif %}
-            </section>
-            <section id="contractor-panel-quality" class="module-workspace-panel">
-                {% if feature_comm_items_v1 %}
-                <div class="comm-items-root" data-module="contractor" data-tab="quality" data-title="کیفیت و NCR"></div>
-                {% else %}
-                <div class="module-crud-root" data-module="contractor" data-tab="quality" data-title="کیفیت و NCR"></div>
+                <div class="module-crud-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها (RFI/NCR)"></div>
                 {% endif %}
             </section>
         </div>
