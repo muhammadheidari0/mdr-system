@@ -64,3 +64,25 @@ def test_render_caddyfile_ip_mode(tmp_path: Path) -> None:
     text = output.read_text(encoding="utf-8")
     assert ":80 {" in text
     assert "Strict-Transport-Security" not in text
+
+
+@pytest.mark.skipif(not _has_working_bash(), reason="working bash is required")
+def test_render_caddyfile_domain_normalization_with_port_and_path(tmp_path: Path) -> None:
+    output = tmp_path / "Caddyfile.normalized"
+    result = subprocess.run(
+        [
+            "bash",
+            "tools/render_caddyfile.sh",
+            "--domain",
+            " https://esms.example.com:443/some/path ",
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    text = output.read_text(encoding="utf-8")
+    assert "esms.example.com {" in text
+    assert "Strict-Transport-Security" in text
