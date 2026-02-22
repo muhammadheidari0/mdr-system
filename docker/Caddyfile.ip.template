@@ -1,0 +1,11 @@
+# IPv4 mode: HTTP-only to avoid ACME/TLS failures on raw IP deployments.
+:80 {
+    encode zstd gzip
+    reverse_proxy web:8000
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
