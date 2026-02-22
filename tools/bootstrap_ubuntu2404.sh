@@ -26,6 +26,7 @@ POSTGRES_PASSWORD_EXPLICIT=0
 SKIP_UFW=0
 EXISTING_REPO=0
 DRY_RUN=0
+RESET_DB=0
 DOCKER_GROUP_CHANGED=0
 DOCKER_USE_SUDO=0
 
@@ -50,6 +51,7 @@ Options:
   --secret-key <value>        App secret key (required before deploy)
   --skip-ufw                  Skip UFW hardening
   --existing-repo             Use existing git repo in --app-dir instead of clone
+  --reset-db                  Drop compose volumes and purge postgres data directory
   --dry-run                   Print commands without changing system state
   -h, --help                  Show this help
 
@@ -148,6 +150,8 @@ parse_args() {
         SKIP_UFW=1; shift ;;
       --existing-repo)
         EXISTING_REPO=1; shift ;;
+      --reset-db)
+        RESET_DB=1; shift ;;
       --dry-run)
         DRY_RUN=1; shift ;;
       -h|--help)
@@ -175,48 +179,40 @@ validate_runtime() {
 }
 
 install_prerequisites() {
-  log_info "Installing host prerequisites (Docker install is disabled in this script)..."
+  log_info "Installing host prerequisites and Docker..."
 
   run_sudo apt-get update
   run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     ca-certificates curl gnupg lsb-release git openssh-client ufw jq
 
-  # Docker install section is intentionally disabled.
-  # Keep this block commented to skip Docker repository setup and package install.
-  # run_sudo install -m 0755 -d /etc/apt/keyrings
-  # if [[ "$DRY_RUN" -eq 1 || ! -f /etc/apt/keyrings/docker.gpg ]]; then
-  #   run_sudo_shell "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
-  # fi
-  # run_sudo chmod a+r /etc/apt/keyrings/docker.gpg
-  #
-  # local arch codename docker_list_line
-  # arch="$(dpkg --print-architecture)"
-  # codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
-  # docker_list_line="deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable"
-  #
-  # if [[ "$DRY_RUN" -eq 1 ]]; then
-  #   run_sudo_shell "echo '${docker_list_line}' > /etc/apt/sources.list.d/docker.list"
-  # else
-  #   if [[ ! -f /etc/apt/sources.list.d/docker.list ]] || ! grep -Fqx "$docker_list_line" /etc/apt/sources.list.d/docker.list; then
-  #     printf '%s\n' "$docker_list_line" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-  #   fi
-  # fi
-  #
-  # run_sudo apt-get update
-  # run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-  #   docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-  #
-  # run_sudo systemctl enable --now docker
-  #
-  # if ! id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
-  #   run_sudo usermod -aG docker "$USER"
-  #   DOCKER_GROUP_CHANGED=1
-  # fi
+  run_sudo install -m 0755 -d /etc/apt/keyrings
+  if [[ "$DRY_RUN" -eq 1 || ! -f /etc/apt/keyrings/docker.gpg ]]; then
+    run_sudo_shell "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+  fi
+  run_sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
-  if command -v docker >/dev/null 2>&1; then
-    log_info "Docker command detected; continuing with compose/bootstrap steps."
+  local arch codename docker_list_line
+  arch="$(dpkg --print-architecture)"
+  codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
+  docker_list_line="deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable"
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    run_sudo_shell "echo '${docker_list_line}' > /etc/apt/sources.list.d/docker.list"
   else
-    log_warn "Docker install is disabled and docker is not detected. Preinstall Docker before running compose steps."
+    if [[ ! -f /etc/apt/sources.list.d/docker.list ]] || ! grep -Fqx "$docker_list_line" /etc/apt/sources.list.d/docker.list; then
+      printf '%s\n' "$docker_list_line" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+    fi
+  fi
+
+  run_sudo apt-get update
+  run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  run_sudo systemctl enable --now docker
+
+  if ! id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
+    run_sudo usermod -aG docker "$USER"
+    DOCKER_GROUP_CHANGED=1
   fi
 }
 
@@ -282,6 +278,47 @@ env_set() {
   fi
 
   mv "$tmp" "$file"
+}
+
+trim_text() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+normalize_mdr_domain() {
+  local value
+  value="$(trim_text "$1")"
+  value="${value#http://}"
+  value="${value#https://}"
+  value="${value%%/*}"
+  if [[ "$value" =~ ^[^/:]+:[0-9]+$ ]]; then
+    value="${value%%:*}"
+  fi
+  printf '%s' "$value"
+}
+
+is_ipv4_address() {
+  local value="$1"
+  local a b c d octet
+  [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  IFS='.' read -r a b c d <<<"$value"
+  for octet in "$a" "$b" "$c" "$d"; do
+    ((octet >= 0 && octet <= 255)) || return 1
+  done
+  return 0
+}
+
+public_health_url() {
+  local domain_value normalized
+  domain_value="$1"
+  normalized="$(normalize_mdr_domain "$domain_value")"
+  if is_ipv4_address "$normalized"; then
+    printf 'http://%s/api/v1/health' "$normalized"
+  else
+    printf 'https://%s/api/v1/health' "$normalized"
+  fi
 }
 
 is_placeholder_value() {
@@ -388,7 +425,17 @@ prepare_env_file() {
     env_created=1
   fi
 
-  if [[ -n "$DOMAIN" ]]; then env_set MDR_DOMAIN "$DOMAIN" "$env_file"; fi
+  if [[ -n "$DOMAIN" ]]; then
+    DOMAIN="$(normalize_mdr_domain "$DOMAIN")"
+    env_set MDR_DOMAIN "$DOMAIN" "$env_file"
+  else
+    local existing_domain normalized_existing_domain
+    existing_domain="$(env_get MDR_DOMAIN "$env_file")"
+    normalized_existing_domain="$(normalize_mdr_domain "$existing_domain")"
+    if [[ -n "$normalized_existing_domain" && "$normalized_existing_domain" != "$existing_domain" ]]; then
+      env_set MDR_DOMAIN "$normalized_existing_domain" "$env_file"
+    fi
+  fi
   if [[ "$DATA_ROOT_EXPLICIT" -eq 1 ]]; then env_set MDR_DATA_ROOT "$DATA_ROOT" "$env_file"; fi
   if [[ -n "$ADMIN_EMAIL" ]]; then env_set ADMIN_EMAIL "$ADMIN_EMAIL" "$env_file"; fi
   if [[ -n "$ADMIN_PASSWORD" ]]; then env_set ADMIN_PASSWORD "$ADMIN_PASSWORD" "$env_file"; fi
@@ -410,6 +457,7 @@ prepare_env_file() {
   env_set STORAGE_ALLOWED_ROOTS "/app/archive_storage,/app/data_store" "$env_file"
   env_set STORAGE_REQUIRE_ABSOLUTE_PATHS "true" "$env_file"
   env_set STORAGE_VALIDATE_WRITABLE_ON_SAVE "true" "$env_file"
+  env_set CADDYFILE_PATH "./docker/Caddyfile.generated" "$env_file"
 
   if [[ "$env_created" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
     log_info "Created ${env_file} from template."
@@ -440,6 +488,13 @@ validate_env() {
     fi
   done
 
+  local domain_value normalized_domain
+  domain_value="$(env_get MDR_DOMAIN "$env_file")"
+  normalized_domain="$(normalize_mdr_domain "$domain_value")"
+  if [[ -z "$normalized_domain" ]]; then
+    missing+=("MDR_DOMAIN (invalid)")
+  fi
+
   local database_url compose_database_url
   database_url="$(env_get DATABASE_URL "$env_file")"
   compose_database_url="$(env_get COMPOSE_DATABASE_URL "$env_file")"
@@ -452,6 +507,92 @@ validate_env() {
     printf '  - %s\n' "${missing[@]}" >&2
     die "Fix .env values before deploy."
   fi
+
+  local admin_password admin_password_bytes
+  admin_password="$(env_get ADMIN_PASSWORD "$env_file")"
+  admin_password_bytes="$(printf '%s' "$admin_password" | wc -c | tr -d ' ')"
+  if [[ "${admin_password_bytes:-0}" -gt 72 ]]; then
+    die "ADMIN_PASSWORD exceeds bcrypt 72-byte limit (${admin_password_bytes} bytes)."
+  fi
+}
+
+render_caddyfile_runtime() {
+  local env_file="${APP_DIR}/.env"
+  local domain_value normalized_domain caddyfile_path output_path
+  domain_value="$(env_get MDR_DOMAIN "$env_file")"
+  normalized_domain="$(normalize_mdr_domain "$domain_value")"
+  [[ -n "$normalized_domain" ]] || die "MDR_DOMAIN is required to render Caddyfile."
+  env_set MDR_DOMAIN "$normalized_domain" "$env_file"
+
+  caddyfile_path="$(env_get CADDYFILE_PATH "$env_file")"
+  [[ -n "$caddyfile_path" ]] || caddyfile_path="./docker/Caddyfile.generated"
+  env_set CADDYFILE_PATH "$caddyfile_path" "$env_file"
+
+  if [[ "$caddyfile_path" = /* ]]; then
+    output_path="$caddyfile_path"
+  else
+    output_path="${APP_DIR}/${caddyfile_path#./}"
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log_info "[dry-run] would render Caddyfile for ${normalized_domain} -> ${output_path}"
+    return 0
+  fi
+
+  run_in_app bash ./tools/render_caddyfile.sh --domain "$normalized_domain" --output "$output_path"
+}
+
+reset_database_if_requested() {
+  local pg_data_dir="${DATA_ROOT}/postgres"
+  if [[ "$RESET_DB" -ne 1 ]]; then
+    return 0
+  fi
+
+  log_warn "--reset-db enabled: removing compose volumes and purging ${pg_data_dir}"
+  run_compose down -v --remove-orphans
+  run_sudo mkdir -p "$pg_data_dir"
+  run_sudo find "$pg_data_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+  run_sudo chown -R "$USER:$USER" "$pg_data_dir"
+}
+
+postgres_preflight() {
+  local env_file="${APP_DIR}/.env"
+  local pg_user pg_db pg_password
+  pg_user="$(env_get POSTGRES_USER "$env_file")"
+  pg_db="$(env_get POSTGRES_DB "$env_file")"
+  pg_password="$(env_get POSTGRES_PASSWORD "$env_file")"
+  [[ -n "$pg_user" ]] || pg_user="mdr"
+  [[ -n "$pg_db" ]] || pg_db="mdr_app"
+
+  log_info "Starting PostgreSQL preflight..."
+  run_compose up -d postgres
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log_info "[dry-run] would wait for pg_isready and verify DB credentials."
+    return 0
+  fi
+
+  local i
+  for i in $(seq 1 40); do
+    if run_compose exec -T postgres pg_isready -U "$pg_user" -d "$pg_db" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+  if [[ "$i" -eq 40 ]]; then
+    die "PostgreSQL did not become ready in time."
+  fi
+
+  if run_compose exec -T -e PGPASSWORD="$pg_password" postgres \
+    psql -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -c "select 1;" >/dev/null 2>&1; then
+    log_info "PostgreSQL credential preflight passed."
+    return 0
+  fi
+
+  if [[ "$RESET_DB" -eq 1 ]]; then
+    die "PostgreSQL credential preflight failed even with --reset-db; verify POSTGRES_* and .env."
+  fi
+  die "PostgreSQL auth mismatch detected. Update .env credentials or rerun with --reset-db."
 }
 
 apply_firewall() {
@@ -482,10 +623,16 @@ apply_firewall() {
 
 deploy_stack() {
   local first_run=0
+  local existing_names=""
   if [[ "$DRY_RUN" -eq 1 ]]; then
     first_run=1
   else
-    if ! docker ps -a --format '{{.Names}}' | grep -Eq '^(mdr_postgres|mdr_app|mdr_worker|mdr_caddy)$'; then
+    if [[ "$DOCKER_USE_SUDO" -eq 1 ]]; then
+      existing_names="$(run_in_app sudo docker ps -a --format '{{.Names}}' || true)"
+    else
+      existing_names="$(run_in_app docker ps -a --format '{{.Names}}' || true)"
+    fi
+    if ! printf '%s\n' "$existing_names" | grep -Eq '^(mdr_postgres|mdr_app|mdr_worker|mdr_caddy)$'; then
       first_run=1
     fi
   fi
@@ -504,11 +651,12 @@ deploy_stack() {
 
 post_deploy_checks() {
   local env_file="${APP_DIR}/.env"
-  local domain_value
+  local domain_value public_url
   domain_value="$(env_get MDR_DOMAIN "$env_file")"
+  public_url="$(public_health_url "$domain_value")"
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] would run health checks for local and https://${domain_value}/api/v1/health"
+    log_info "[dry-run] would run health checks for local and ${public_url}"
     return 0
   fi
 
@@ -525,10 +673,43 @@ post_deploy_checks() {
     die "Local health check failed at http://127.0.0.1:8000/api/v1/health"
   fi
 
-  if curl -fsS "https://${domain_value}/api/v1/health" >/dev/null 2>&1; then
-    log_info "Public HTTPS health check passed."
+  if curl -fsS "$public_url" >/dev/null 2>&1; then
+    log_info "Public health check passed: ${public_url}"
   else
-    log_warn "Public HTTPS health check failed (DNS/TLS may still be propagating): https://${domain_value}/api/v1/health"
+    log_warn "Public health check failed (DNS/TLS/network may still be propagating): ${public_url}"
+  fi
+}
+
+sync_admin_account() {
+  local env_file="${APP_DIR}/.env"
+  local admin_email admin_password admin_full_name admin_password_bytes
+  admin_email="$(env_get ADMIN_EMAIL "$env_file")"
+  admin_password="$(env_get ADMIN_PASSWORD "$env_file")"
+  admin_full_name="$(env_get ADMIN_FULL_NAME "$env_file")"
+  admin_password_bytes="$(printf '%s' "$admin_password" | wc -c | tr -d ' ')"
+
+  if [[ "${admin_password_bytes:-0}" -gt 72 ]]; then
+    die "ADMIN_PASSWORD exceeds bcrypt 72-byte limit (${admin_password_bytes} bytes)."
+  fi
+
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log_info "[dry-run] would sync admin account via create_admin.py"
+    return 0
+  fi
+
+  log_info "Syncing admin account..."
+  if [[ "$DOCKER_USE_SUDO" -eq 1 ]]; then
+    run_in_app sudo docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec -T \
+      -e ADMIN_EMAIL="$admin_email" \
+      -e ADMIN_PASSWORD="$admin_password" \
+      -e ADMIN_FULL_NAME="$admin_full_name" \
+      web python create_admin.py
+  else
+    run_in_app docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec -T \
+      -e ADMIN_EMAIL="$admin_email" \
+      -e ADMIN_PASSWORD="$admin_password" \
+      -e ADMIN_FULL_NAME="$admin_full_name" \
+      web python create_admin.py
   fi
 }
 
@@ -537,8 +718,7 @@ print_next_steps() {
   if [[ "$DOCKER_GROUP_CHANGED" -eq 1 ]]; then
     log_warn "Docker group membership changed. Re-login is required for non-sudo docker commands."
   fi
-  log_info "Admin bootstrap/update command:"
-  log_info "  cd ${APP_DIR} && docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec web python create_admin.py"
+  log_info "Admin account has been synced during bootstrap."
 }
 
 main() {
@@ -550,9 +730,13 @@ main() {
   fetch_code
   prepare_env_file
   validate_env
+  render_caddyfile_runtime
+  reset_database_if_requested
   apply_firewall
+  postgres_preflight
   deploy_stack
   post_deploy_checks
+  sync_admin_account
   print_next_steps
 }
 

@@ -35,6 +35,12 @@ tools/bootstrap_ubuntu2404.sh \
   --secret-key 'CHANGE_ME_LONG_RANDOM_SECRET'
 ```
 
+If you intentionally need a clean PostgreSQL re-init:
+
+```bash
+tools/bootstrap_ubuntu2404.sh ... --reset-db
+```
+
 Key flags:
 
 - `--repo-url` (default `git@github.com:muhammadheidari0/mdr-system.git`)
@@ -43,6 +49,7 @@ Key flags:
 - `--data-root` (default `/opt/mdr_data`)
 - `--skip-ufw`
 - `--existing-repo`
+- `--reset-db` (destructive: removes compose volumes + purges `${MDR_DATA_ROOT}/postgres`)
 - `--dry-run`
 
 ## 1) One-Time Server Preparation
@@ -138,7 +145,7 @@ Set required values in `.env`:
 - `POSTGRES_PASSWORD=<strong-password>`
 - `DATABASE_URL=postgresql+psycopg://mdr:<strong-password>@postgres:5432/mdr_app`
 - `COMPOSE_DATABASE_URL=postgresql+psycopg://mdr:<strong-password>@postgres:5432/mdr_app`
-- `MDR_DOMAIN=<your-public-domain>`
+- `MDR_DOMAIN=<public-domain-or-ipv4>`
 - `MDR_DATA_ROOT=/opt/mdr_data`
 - `STORAGE_ALLOWED_ROOTS=/app/archive_storage,/app/data_store`
 - `STORAGE_REQUIRE_ABSOLUTE_PATHS=true`
@@ -177,9 +184,19 @@ Operational rules:
   - `/app/archive_storage/correspondence`
 - `Save Storage Paths` returns `422` when a path is relative, خارج از `STORAGE_ALLOWED_ROOTS`, or not writable.
 
-## 5) Configure Caddy Domain + Deploy
+## 5) Configure Caddy Mode + Deploy
 
-Set `MDR_DOMAIN` in `.env` (for example: `MDR_DOMAIN=esms.example.com`).
+Set `MDR_DOMAIN` in `.env`:
+
+- Domain example: `MDR_DOMAIN=esms.example.com` (auto HTTPS)
+- IPv4 example: `MDR_DOMAIN=185.231.181.48` (HTTP-only on `:80`)
+
+Render Caddyfile from templates (recommended before deploy):
+
+```bash
+cd /opt/mdr_app
+bash tools/render_caddyfile.sh --domain "$(grep '^MDR_DOMAIN=' .env | cut -d= -f2)" --output /opt/mdr_app/docker/Caddyfile.generated
+```
 
 Deploy:
 
@@ -231,6 +248,9 @@ Health checks:
 
 ```bash
 curl -f http://127.0.0.1:8000/api/v1/health
+curl -I http://185.231.181.48
+curl -f http://185.231.181.48/api/v1/health
+# if MDR_DOMAIN is a real domain:
 curl -I https://your-domain.com
 curl -f https://your-domain.com/api/v1/health
 ```
@@ -238,8 +258,14 @@ curl -f https://your-domain.com/api/v1/health
 Create/update admin:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec web python create_admin.py
+docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec -T \
+  -e ADMIN_EMAIL="$(grep '^ADMIN_EMAIL=' .env | cut -d= -f2)" \
+  -e ADMIN_PASSWORD="$(grep '^ADMIN_PASSWORD=' .env | cut -d= -f2)" \
+  -e ADMIN_FULL_NAME="$(grep '^ADMIN_FULL_NAME=' .env | cut -d= -f2)" \
+  web python create_admin.py
 ```
+
+`bootstrap_ubuntu2404.sh` now runs this admin sync automatically after services become healthy.
 
 UI smoke checklist:
 
