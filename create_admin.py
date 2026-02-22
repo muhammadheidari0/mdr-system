@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from app.core.security import get_password_hash  # noqa: E402
+from app.core.security import MAX_BCRYPT_PASSWORD_BYTES, get_password_hash  # noqa: E402
 from app.db.models import User  # noqa: E402
 from app.db.session import engine  # noqa: E402
 
@@ -35,8 +35,11 @@ def _read_admin_config() -> tuple[str, str, str, bool]:
         raw_password = secrets.token_urlsafe(18)
         generated_password = True
 
-    if len(raw_password) > 72:
-        raise ValueError("ADMIN_PASSWORD is too long for bcrypt (>72 chars).")
+    password_bytes = len(raw_password.encode("utf-8"))
+    if password_bytes > MAX_BCRYPT_PASSWORD_BYTES:
+        raise ValueError(
+            f"ADMIN_PASSWORD exceeds bcrypt {MAX_BCRYPT_PASSWORD_BYTES}-byte limit."
+        )
 
     return email, full_name, raw_password, generated_password
 
