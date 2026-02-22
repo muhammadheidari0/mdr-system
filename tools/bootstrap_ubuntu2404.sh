@@ -175,40 +175,48 @@ validate_runtime() {
 }
 
 install_prerequisites() {
-  log_info "Installing host prerequisites and Docker..."
+  log_info "Installing host prerequisites (Docker install is disabled in this script)..."
 
   run_sudo apt-get update
   run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
     ca-certificates curl gnupg lsb-release git openssh-client ufw jq
 
-  run_sudo install -m 0755 -d /etc/apt/keyrings
-  if [[ "$DRY_RUN" -eq 1 || ! -f /etc/apt/keyrings/docker.gpg ]]; then
-    run_sudo_shell "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
-  fi
-  run_sudo chmod a+r /etc/apt/keyrings/docker.gpg
+  # Docker install section is intentionally disabled.
+  # Keep this block commented to skip Docker repository setup and package install.
+  # run_sudo install -m 0755 -d /etc/apt/keyrings
+  # if [[ "$DRY_RUN" -eq 1 || ! -f /etc/apt/keyrings/docker.gpg ]]; then
+  #   run_sudo_shell "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
+  # fi
+  # run_sudo chmod a+r /etc/apt/keyrings/docker.gpg
+  #
+  # local arch codename docker_list_line
+  # arch="$(dpkg --print-architecture)"
+  # codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
+  # docker_list_line="deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable"
+  #
+  # if [[ "$DRY_RUN" -eq 1 ]]; then
+  #   run_sudo_shell "echo '${docker_list_line}' > /etc/apt/sources.list.d/docker.list"
+  # else
+  #   if [[ ! -f /etc/apt/sources.list.d/docker.list ]] || ! grep -Fqx "$docker_list_line" /etc/apt/sources.list.d/docker.list; then
+  #     printf '%s\n' "$docker_list_line" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+  #   fi
+  # fi
+  #
+  # run_sudo apt-get update
+  # run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+  #   docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  #
+  # run_sudo systemctl enable --now docker
+  #
+  # if ! id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
+  #   run_sudo usermod -aG docker "$USER"
+  #   DOCKER_GROUP_CHANGED=1
+  # fi
 
-  local arch codename docker_list_line
-  arch="$(dpkg --print-architecture)"
-  codename="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
-  docker_list_line="deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${codename} stable"
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    run_sudo_shell "echo '${docker_list_line}' > /etc/apt/sources.list.d/docker.list"
+  if command -v docker >/dev/null 2>&1; then
+    log_info "Docker command detected; continuing with compose/bootstrap steps."
   else
-    if [[ ! -f /etc/apt/sources.list.d/docker.list ]] || ! grep -Fqx "$docker_list_line" /etc/apt/sources.list.d/docker.list; then
-      printf '%s\n' "$docker_list_line" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-    fi
-  fi
-
-  run_sudo apt-get update
-  run_sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-  run_sudo systemctl enable --now docker
-
-  if ! id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
-    run_sudo usermod -aG docker "$USER"
-    DOCKER_GROUP_CHANGED=1
+    log_warn "Docker install is disabled and docker is not detected. Preinstall Docker before running compose steps."
   fi
 }
 
