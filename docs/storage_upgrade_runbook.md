@@ -16,6 +16,21 @@ Run:
 alembic upgrade head
 ```
 
+## Deployment update flow (v2)
+Use the production update helper instead of manual git/compose steps:
+
+```bash
+cd /opt/mdr_app
+./update.sh --latest
+```
+
+Key behavior in `update.sh v2`:
+- pre-flight checks (docker permission, disk guard, env contract)
+- auto-stash + force checkout
+- mandatory DB backup before deploy
+- smart Caddyfile render before compose up
+- auto rollback on local health failure
+
 ## New/updated APIs
 Settings:
 - `GET /api/v1/settings/storage-policy`

@@ -245,47 +245,53 @@ Keep `restart: unless-stopped` for containers.
 
 ## 10) Upgrade Procedure (Tag Pull)
 
-1. Push new tag from desktop.
-2. On server backup DB:
-
-```bash
-docker exec -t mdr_postgres pg_dump -U mdr -d mdr_app -Fc > /opt/mdr_data/backups/backup_$(date +%F_%H%M).dump
-```
-
-3. Deploy new tag:
+Use `update.sh v2` from inside WSL Ubuntu:
 
 ```bash
 cd /opt/mdr_app
-git fetch origin --tags --prune
-git checkout --detach vX.Y.Z
-docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --build
+chmod +x update.sh
+./update.sh vX.Y.Z
+# or latest semantic tag:
+./update.sh --latest
 ```
 
-4. Run health + smoke checks.
+`update.sh v2` includes:
+
+- docker permission check (`docker info`, fallback `sudo -n docker info`)
+- disk guard (default minimum 10 GB)
+- env contract validation
+- auto-stash + force checkout
+- mandatory pre-deploy DB backup
+- automatic Caddyfile render before compose up
+- automatic rollback on local health failure (unless `--no-auto-rollback`)
+
+Optional flags:
+
+- `--min-free-gb <N>`
+- `--dry-run`
+- `--no-auto-rollback`
 
 ## 11) Rollback Procedure
 
-Trigger rollback on:
-
-- health failure
-- login failure
-- critical write-path failure
-
-Code rollback:
-
-- checkout previous tag and rebuild:
+Manual rollback using session metadata:
 
 ```bash
 cd /opt/mdr_app
-git checkout --detach vPREVIOUS
-docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --build
+./update.sh --rollback
 ```
 
-Data rollback (if needed):
+Rollback specific deploy session:
 
 ```bash
-cat /opt/mdr_data/backups/<backup>.dump | docker exec -i mdr_postgres pg_restore -U mdr -d mdr_app --clean --if-exists
+cd /opt/mdr_app
+./update.sh --rollback --session-id <SESSION_ID>
 ```
+
+Session metadata is stored at:
+
+- `/opt/mdr_data/backups/update_sessions/*.env`
+
+Rollback restores both code and DB dump from the selected deploy session.
 
 Then validate:
 

@@ -282,31 +282,54 @@ Use helper script:
 cd /opt/mdr_app
 chmod +x update.sh
 ./update.sh vX.Y.Z
+# or deploy latest semantic tag:
+./update.sh --latest
 ```
 
-`update.sh` workflow:
+`update.sh v2` workflow:
 
-1. fetch tags
-2. backup DB
-3. checkout target tag
-4. compose rebuild/up
-5. local health check
+1. pre-flight checks:
+   - docker permission (`docker info` / `sudo -n docker info`)
+   - disk guard (default minimum 10 GB)
+   - `.env` contract validation
+2. auto-stash local changes (kept for audit)
+3. force checkout target tag (`git checkout -f --detach`)
+4. mandatory DB backup before deploy
+5. render smart Caddyfile from `MDR_DOMAIN`
+6. compose rebuild/up
+7. local health check (rollback trigger)
+8. public health check (warning only)
+
+Useful flags:
+
+- `--min-free-gb <N>`
+- `--dry-run`
+- `--no-auto-rollback`
 
 ## 9) Rollback
 
-Rollback code:
+Manual rollback to latest successful deployed session:
 
 ```bash
 cd /opt/mdr_app
-git checkout --detach <PREVIOUS_TAG>
-docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml up -d --build
+./update.sh --rollback
 ```
 
-Rollback DB (if required):
+Manual rollback to specific session:
 
 ```bash
-cat /opt/mdr_data/backups/<backup>.dump | docker exec -i mdr_postgres pg_restore -U mdr -d mdr_app --clean --if-exists
+cd /opt/mdr_app
+./update.sh --rollback --session-id <SESSION_ID>
 ```
+
+`update.sh --rollback` restores both:
+
+1. code (`previous_commit` stored in session metadata)
+2. database dump captured before that deploy
+
+Session metadata location:
+
+- `/opt/mdr_data/backups/update_sessions/*.env`
 
 Validate rollback:
 
