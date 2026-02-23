@@ -54,7 +54,7 @@ reports/
 # --- Local helper artifacts ---
 tree.txt
 tree01.txt
-help.txt
+help.md
 *.log
 *.tmp
 *.temp
