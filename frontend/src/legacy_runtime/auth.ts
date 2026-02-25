@@ -256,15 +256,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Central authenticated request helper
 async function fetchWithAuth(url, options = {}) {
-    const headers = options.headers || {};
+    const headers = options.headers instanceof Headers
+        ? new Headers(options.headers)
+        : new Headers(options.headers || {});
     const token = localStorage.getItem('access_token');
 
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+    if (token && !headers.has('Authorization')) {
+        headers.set('Authorization', `Bearer ${token}`);
     }
 
-    if (!(options.body instanceof FormData) && !headers['Content-Type']) {
-        headers['Content-Type'] = 'application/json';
+    if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
     }
 
     const config = { ...options, headers };
