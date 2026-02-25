@@ -6,7 +6,7 @@
       </h3>
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">info</span>
-        <div>OpenProject, Google, and Nextcloud integrations are managed here. Local Cache remains under Storage > Site Cache.</div>
+        <div>OpenProject, Google, Nextcloud, and BIM/Revit integrations are managed here. Local Cache remains under Storage > Site Cache.</div>
       </div>
 
       <div class="general-form-grid storage-integrations-grid storage-integrations-mirror-grid">
@@ -48,6 +48,15 @@
           aria-controls="integrations-provider-nextcloud"
         >
           Nextcloud
+        </button>
+        <button
+          type="button"
+          class="integrations-provider-tab"
+          data-integrations-provider-tab="bim"
+          aria-selected="false"
+          aria-controls="integrations-provider-bim"
+        >
+          BIM / Revit
         </button>
       </div>
 
@@ -479,6 +488,87 @@
               <button class="btn btn-secondary" type="button" data-integrations-action="ping-nextcloud">Test Nextcloud Connection</button>
               <button id="storageNextcloudSyncRunBtn" class="btn btn-secondary" type="button" data-integrations-action="run-nextcloud-sync">Run Nextcloud Sync</button>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="integrations-provider-bim"
+        class="integrations-provider-panel"
+        data-integrations-provider-panel="bim"
+        aria-hidden="true"
+      >
+        <div class="storage-openproject-shell">
+          <div class="storage-openproject-head">
+            <div class="storage-openproject-title-wrap">
+              <h4 class="storage-openproject-title">BIM / Revit Plugin</h4>
+              <div class="form-help">Configure plugin endpoint and signature key for BIM Inbox workflow.</div>
+            </div>
+          </div>
+
+          <div class="storage-openproject-panel active" style="display:block;">
+            <div class="general-form-grid storage-integrations-grid">
+              <label class="checkbox-label">
+                <input id="storageBimRevitEnabledInput" type="checkbox">
+                <span class="checkmark"></span>BIM/Revit Integration Enabled
+              </label>
+
+              <label class="checkbox-label">
+                <input id="storageBimRevitRequireSignatureInput" type="checkbox">
+                <span class="checkmark"></span>Require Plugin Signature (HMAC)
+              </label>
+
+              <div>
+                <label class="form-label-sm">API Endpoint URL</label>
+                <input id="storageBimRevitApiEndpointInput" class="form-input" placeholder="https://mdr.example.com/api/v1/bim/edms/inbox/publish-batch">
+              </div>
+
+              <div>
+                <label class="form-label-sm">Plugin Key ID</label>
+                <input id="storageBimRevitPluginKeyIdInput" class="form-input" placeholder="BIM-ORG-001">
+              </div>
+
+              <div>
+                <div class="settings-integration-token-head">
+                  <label class="form-label-sm">Plugin Secret</label>
+                  <span id="storageBimRevitSecretStateBadge" class="settings-token-source-badge">none</span>
+                </div>
+                <input
+                  id="storageBimRevitPluginSecretInput"
+                  class="form-input"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Paste new secret (leave blank to keep current)"
+                >
+                <div class="form-help">Secret value is never returned by API after save. Use rotate for a one-time new secret.</div>
+              </div>
+
+              <div>
+                <label class="form-label-sm">Default Category ID (optional)</label>
+                <input id="storageBimRevitDefaultCategoryIdInput" class="form-input" type="number" min="1" placeholder="e.g. 10">
+              </div>
+
+              <div>
+                <label class="form-label-sm">Default Folder ID (optional)</label>
+                <input id="storageBimRevitDefaultFolderIdInput" class="form-input" type="number" min="1" placeholder="e.g. 55">
+              </div>
+
+              <div>
+                <label class="form-label-sm">Allowed MIME (comma separated)</label>
+                <input id="storageBimRevitAllowedMimeInput" class="form-input" placeholder="application/pdf,application/x-dwg,application/octet-stream">
+              </div>
+
+              <div>
+                <label class="form-label-sm">Max Batch Size</label>
+                <input id="storageBimRevitMaxBatchSizeInput" class="form-input" type="number" min="1" max="5000" value="100">
+              </div>
+            </div>
+
+            <div class="general-form-actions storage-integrations-actions">
+              <button class="btn btn-primary" type="button" data-integrations-action="save-integrations">Save BIM/Revit Settings</button>
+              <button class="btn btn-secondary" type="button" data-integrations-action="rotate-bim-revit-secret">Rotate Secret</button>
+            </div>
+            <div id="storageBimRevitRotateResult" class="general-settings-note" style="display:none; margin-top:8px;"></div>
           </div>
         </div>
       </section>

@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1.routers.archive import router as archive_router
 from app.api.v1.routers.auth import router as auth_router
+from app.api.v1.routers.bim import router as bim_router
 from app.api.v1.routers.communication_items import router as communication_items_router
 from app.api.v1.routers.correspondence import router as correspondence_router
 from app.api.v1.routers.dashboard import router as dashboard_router
@@ -33,3 +34,4 @@ api_router.include_router(correspondence_router)
 api_router.include_router(workboard_router)
 api_router.include_router(communication_items_router)
 api_router.include_router(site_logs_router)
+api_router.include_router(bim_router)

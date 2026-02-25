@@ -529,6 +529,9 @@ tr:hover {
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+    overflow-y: auto;
     z-index: 2000;
 }
 
@@ -541,6 +544,10 @@ tr:hover {
     max-height: 80vh;
     overflow-y: auto;
     box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+}
+
+body.users-modal-open {
+    overflow: hidden;
 }
 
 /* --- Loading --- */
@@ -1687,6 +1694,99 @@ body.ci-drawer-open {
 .archive-toolbar { padding: 15px 20px; background: #f9fafb; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; }
 .bulk-frame-card { min-height: auto; overflow: visible; }
 .bulk-frame-body { flex-grow: 1; position: relative; background: #f9fafb; overflow: visible; min-height: 460px; }
+.bulk-ops-card { min-height: auto; overflow: hidden; }
+.bulk-ops-header {
+    gap: 12px;
+    align-items: flex-start;
+}
+.bulk-ops-header-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.bulk-ops-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 20px 8px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+.bulk-ops-tab {
+    border: 1px solid #c5d3f7;
+    background: #f1f6ff;
+    color: #1e3a8a;
+    border-radius: 10px;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-weight: 700;
+}
+.bulk-ops-tab.active {
+    background: #2455c3;
+    border-color: #2455c3;
+    color: #fff;
+}
+.bulk-ops-panel {
+    display: none;
+    padding: 12px 20px 20px;
+}
+.bulk-ops-panel.active {
+    display: block;
+}
+.bulk-bim-filters {
+    margin-bottom: 10px;
+}
+.bulk-bim-actions {
+    margin-bottom: 10px;
+}
+.bulk-bim-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 12px;
+}
+.bulk-bim-section-title {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+    color: #163b6f;
+}
+.bulk-bim-table-wrap {
+    border: 1px solid #dbe1f5;
+    border-radius: 10px;
+    overflow: auto;
+    background: #fff;
+}
+.bulk-bim-table-wrap .archive-table th,
+.bulk-bim-table-wrap .archive-table td {
+    font-size: 0.82rem;
+}
+.bulk-bim-row-selected td {
+    background: #eef4ff;
+}
+.bulk-bim-meta {
+    border: 1px solid #d7deef;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+    color: #334155;
+    margin-bottom: 10px;
+}
+.bulk-bim-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+}
+.bulk-bim-approval {
+    margin-top: 10px;
+}
+@media (max-width: 1080px) {
+    .bulk-bim-layout {
+        grid-template-columns: 1fr;
+    }
+    .bulk-bim-meta-grid {
+        grid-template-columns: 1fr;
+    }
+}
 .archive-search-box { position: relative; flex: 1; max-width: 400px; }
 .archive-search-input { width: 100%; padding: 10px 40px 10px 15px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
 .archive-search-input:focus { border-color: #3b82f6; }
@@ -2847,9 +2947,33 @@ body.ci-drawer-open {
 .modal-header h3 { margin: 0; color: var(--text-main); }
 .modal-close { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted); padding: 4px; border-radius: 4px; }
 .modal-close:hover { background: var(--bg-gray); }
+.modal-close:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .modal-body { padding: 20px; }
 .modal-footer { padding: 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
 .modal-sm { max-width: 400px; }
+
+#userModal .modal-content {
+    width: min(680px, 92vw);
+    max-height: 88vh;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+#userModal .modal-body {
+    overflow-y: auto;
+    max-height: calc(88vh - 150px);
+}
+
+#userModal .modal-header,
+#userModal .modal-footer {
+    position: sticky;
+    background: #fff;
+    z-index: 1;
+}
+
+#userModal .modal-header { top: 0; }
+#userModal .modal-footer { bottom: 0; }
 
 /* Input Helpers */
 .form-input { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 1rem; }

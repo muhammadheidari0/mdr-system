@@ -1,20 +1,171 @@
-﻿<div class="archive-card bulk-frame-card">
-  <div class="archive-header" style="padding: 15px 20px; flex-shrink: 0;">
+<div id="settingsBulkRoot" class="archive-card bulk-ops-card">
+  <div class="archive-header bulk-ops-header" style="padding: 15px 20px; flex-shrink: 0;">
     <div class="archive-title">
       <span class="material-icons-round" style="color:#f59e0b; font-size:28px;">upload_file</span>
-      ثبت گروهی اسناد (Excel Import)
+      عملیات ثبت گروهی و صندوق BIM/Revit
     </div>
-    <a class="btn-archive-icon" href="/static/templates/mdr_template.xlsx" target="_blank" rel="noopener" title="دانلود فایل نمونه اکسل">
-      <span class="material-icons-round">download</span> نمونه فایل
-    </a>
+    <div class="bulk-ops-header-actions">
+      <a
+        class="btn-archive-icon"
+        href="/static/templates/mdr_template.xlsx"
+        target="_blank"
+        rel="noopener"
+        title="دانلود فایل نمونه اکسل"
+      >
+        <span class="material-icons-round">download</span>
+        نمونه فایل اکسل
+      </a>
+    </div>
   </div>
 
-  <div class="bulk-frame-body">
-    <iframe
-      id="bulkRegisterFrame"
-      src="/api/v1/mdr/bulk-register-page?v=20260215a"
-      style="width:100%; min-height:460px; height:460px; border:none; display:block;"
-      scrolling="auto"
-      title="Bulk Register Form"></iframe>
+  <div class="bulk-ops-tabs" role="tablist" aria-label="Bulk operation modes">
+    <button
+      type="button"
+      class="bulk-ops-tab active"
+      data-bulk-tab="excel"
+      aria-selected="true"
+      aria-controls="bulk-panel-excel"
+    >
+      Excel Bulk Register
+    </button>
+    <button
+      type="button"
+      class="bulk-ops-tab"
+      data-bulk-tab="bim"
+      aria-selected="false"
+      aria-controls="bulk-panel-bim"
+    >
+      BIM/Revit Inbox
+    </button>
   </div>
+
+  <section id="bulk-panel-excel" class="bulk-ops-panel active" data-bulk-panel="excel" aria-hidden="false">
+    <div class="bulk-frame-body">
+      <iframe
+        id="bulkRegisterFrame"
+        src="/api/v1/mdr/bulk-register-page?v=20260215a"
+        style="width:100%; min-height:460px; height:460px; border:none; display:block;"
+        scrolling="auto"
+        title="Bulk Register Form"></iframe>
+    </div>
+  </section>
+
+  <section id="bulk-panel-bim" class="bulk-ops-panel" data-bulk-panel="bim" aria-hidden="true">
+    <div class="storage-openproject-shell">
+      <div class="storage-openproject-head">
+        <div class="storage-openproject-title-wrap">
+          <h4 class="storage-openproject-title">BIM/Revit Inbox (Quarantine + Approval)</h4>
+          <div class="form-help">
+            ارسال‌های پلاگین Revit ابتدا در قرنطینه ثبت می‌شوند و فقط بعد از تایید مدیر به آرشیو نهایی منتقل می‌شوند.
+          </div>
+        </div>
+      </div>
+
+      <div class="general-form-grid storage-integrations-grid bulk-bim-filters">
+        <div>
+          <label class="form-label-sm">Project Code</label>
+          <input id="bimInboxProjectFilterInput" class="form-input" placeholder="مثال: PRJ-001">
+        </div>
+        <div>
+          <label class="form-label-sm">Status</label>
+          <select id="bimInboxStatusFilterSelect" class="form-input">
+            <option value="">All</option>
+            <option value="staged">staged</option>
+            <option value="staged_with_errors">staged_with_errors</option>
+            <option value="approved">approved</option>
+            <option value="rejected">rejected</option>
+            <option value="expired">expired</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label-sm">Created From (UTC)</label>
+          <input id="bimInboxCreatedFromInput" class="form-input" type="datetime-local">
+        </div>
+        <div>
+          <label class="form-label-sm">Created To (UTC)</label>
+          <input id="bimInboxCreatedToInput" class="form-input" type="datetime-local">
+        </div>
+      </div>
+
+      <div class="general-form-actions bulk-bim-actions">
+        <button class="btn btn-secondary" type="button" data-bulk-action="refresh-bim-inbox">
+          <span class="material-icons-round">refresh</span>
+          Refresh
+        </button>
+      </div>
+
+      <div id="bimInboxResult" class="general-settings-note" style="display:none; margin-bottom:10px;"></div>
+
+      <div class="bulk-bim-layout">
+        <div class="bulk-bim-runs">
+          <h5 class="bulk-bim-section-title">Inbox Runs</h5>
+          <div class="bulk-bim-table-wrap">
+            <table class="archive-table">
+              <thead>
+                <tr>
+                  <th>Run</th>
+                  <th>Project</th>
+                  <th>Sender</th>
+                  <th>Items</th>
+                  <th>Valid / Invalid</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="bimInboxRunsBody">
+                <tr>
+                  <td colspan="8" class="text-center muted">برای مشاهده، دکمه Refresh را بزنید.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="bulk-bim-details">
+          <h5 class="bulk-bim-section-title">Run Details</h5>
+          <div id="bimInboxRunMeta" class="bulk-bim-meta muted">
+            یک Run را انتخاب کنید تا جزئیات و آیتم‌ها نمایش داده شود.
+          </div>
+
+          <div class="bulk-bim-table-wrap">
+            <table class="archive-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Sheet</th>
+                  <th>State</th>
+                  <th>Error</th>
+                  <th>Staging File</th>
+                </tr>
+              </thead>
+              <tbody id="bimInboxItemsBody">
+                <tr>
+                  <td colspan="5" class="text-center muted">موردی برای نمایش نیست.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bulk-bim-approval">
+            <label class="form-label-sm" for="bimInboxRejectReasonInput">Reject Reason</label>
+            <textarea
+              id="bimInboxRejectReasonInput"
+              class="form-input"
+              rows="2"
+              placeholder="دلیل رد را وارد کنید (الزامی برای Reject)"
+            ></textarea>
+            <div class="general-form-actions">
+              <button class="btn btn-primary" type="button" data-bulk-action="approve-bim-run" disabled>
+                Approve & Archive
+              </button>
+              <button class="btn btn-danger" type="button" data-bulk-action="reject-bim-run" disabled>
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </div>

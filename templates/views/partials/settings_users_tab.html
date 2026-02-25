@@ -104,21 +104,21 @@
   </div>
 </div>
 
-<div id="userModal" class="modal" style="display: none;">
+<div id="userModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="userModalTitle" aria-hidden="true">
   <div class="modal-content">
     <div class="modal-header">
       <h3 id="userModalTitle">ایجاد کاربر جدید</h3>
-      <button class="modal-close" data-users-action="close-user-modal">
+      <button type="button" class="modal-close" data-users-action="close-user-modal" aria-label="بستن فرم کاربر">
         <span class="material-icons-round">close</span>
       </button>
     </div>
 
-    <form id="userForm" class="modal-body">
+    <form id="userForm" class="modal-body" novalidate>
       <input type="hidden" id="userId">
 
       <div class="form-group">
         <label for="userEmail" class="form-label-sm">ایمیل *</label>
-        <input type="email" id="userEmail" class="form-input" required>
+        <input type="email" id="userEmail" class="form-input" required autocomplete="email">
       </div>
 
       <div class="form-group">
@@ -128,7 +128,7 @@
 
       <div class="form-group">
         <label for="userPassword" class="form-label-sm" id="passwordLabel">رمز عبور *</label>
-        <input type="password" id="userPassword" class="form-input">
+        <input type="password" id="userPassword" class="form-input" autocomplete="new-password">
         <small class="form-help" id="passwordHelp">برای کاربر جدید رمز عبور الزامی است</small>
       </div>
 
@@ -175,11 +175,11 @@
   </div>
 </div>
 
-<div id="deleteModal" class="modal" style="display: none;">
+<div id="deleteModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-hidden="true">
   <div class="modal-content modal-sm">
     <div class="modal-header">
       <h3>تأیید حذف</h3>
-      <button class="modal-close" data-users-action="close-delete-modal">
+      <button type="button" class="modal-close" data-users-action="close-delete-modal" aria-label="بستن پنجره حذف">
         <span class="material-icons-round">close</span>
       </button>
     </div>
@@ -196,11 +196,11 @@
   </div>
 </div>
 
-<div id="userAccessModal" class="modal" style="display: none;">
+<div id="userAccessModal" class="modal" style="display: none;" role="dialog" aria-modal="true" aria-hidden="true">
   <div class="modal-content modal-lg">
     <div class="modal-header">
       <h3>مدیریت دسترسی</h3>
-      <button class="modal-close" data-users-action="close-user-access-modal">
+      <button type="button" class="modal-close" data-users-action="close-user-access-modal" aria-label="بستن پنجره دسترسی">
         <span class="material-icons-round">close</span>
       </button>
     </div>

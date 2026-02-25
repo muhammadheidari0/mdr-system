@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import re
+from urllib.parse import urlparse
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import traceback  # ✅ برای لاگ خطاهای دقیق
@@ -41,13 +42,17 @@ from app.db.models import (
 # ✅ استفاده از سرویس Seed
 from app.services import seed_service
 from app.services.storage_policy import (
+    DEFAULT_BIM_REVIT_INTEGRATION,
     DEFAULT_STORAGE_INTEGRATIONS,
     DEFAULT_STORAGE_POLICY,
+    get_bim_revit_integration,
     get_storage_integrations,
     get_storage_policy,
+    set_bim_revit_integration,
     set_storage_integrations,
     set_storage_policy,
 )
+from app.services.bim_revit_security import encrypt_plugin_secret, generate_plugin_secret
 from app.services.storage_sync import resolve_nextcloud_runtime, resolve_openproject_runtime
 from app.services.storage import StorageManager
 
@@ -139,6 +144,18 @@ class StorageIntegrationsIn(BaseModel):
     openproject: Optional[Dict[str, Any]] = None
     nextcloud: Optional[Dict[str, Any]] = None
     local_cache: Optional[Dict[str, Any]] = None
+
+
+class BimRevitSettingsIn(BaseModel):
+    enabled: Optional[bool] = None
+    api_endpoint_url: Optional[str] = Field(default=None, max_length=1024)
+    require_plugin_signature: Optional[bool] = None
+    plugin_key_id: Optional[str] = Field(default=None, max_length=128)
+    plugin_secret: Optional[str] = Field(default=None, max_length=512)
+    default_category_id: Optional[int] = Field(default=None, ge=1)
+    default_folder_id: Optional[int] = Field(default=None, ge=1)
+    allowed_mime: Optional[List[str]] = None
+    max_batch_size: Optional[int] = Field(default=None, ge=1, le=5000)
 
 class BlockIn(BaseModel):
     project_code: str = Field(..., min_length=1, max_length=50)
@@ -444,6 +461,37 @@ def _masked_storage_integrations_payload(integrations: Dict[str, Any]) -> Dict[s
     masked["nextcloud"] = nextcloud
 
     return redact_secrets(masked)
+
+
+def _is_valid_http_url(value: str) -> bool:
+    raw = _norm(value)
+    if not raw:
+        return False
+    if raw.startswith("/"):
+        return True
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return False
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    return bool(parsed.netloc)
+
+
+def _runtime_secret_key_or_500() -> str:
+    value = _norm(settings.SECRET_KEY)
+    if not value:
+        raise HTTPException(status_code=500, detail="SECRET_KEY is not configured.")
+    return value
+
+
+def _masked_bim_revit_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    raw = dict(payload or {})
+    secret = _norm(raw.get("plugin_secret_encrypted"))
+    raw.pop("plugin_secret_encrypted", None)
+    masked = redact_secrets(raw)
+    masked["has_secret"] = bool(secret)
+    return masked
 
 
 def _as_dict(obj: Any, fields: List[str]) -> Dict[str, Any] | None:
@@ -2219,6 +2267,125 @@ def clear_storage_openproject_token(
     )
     db.commit()
     return {"ok": True, "integrations": masked}
+
+
+@router.get("/bim-revit")
+def get_bim_revit_settings(
+    db: Session = Depends(get_db),
+    _: DbUser = Depends(allow_admin),
+):
+    current = get_bim_revit_integration(db)
+    return {
+        "ok": True,
+        "settings": _masked_bim_revit_payload(current),
+        "defaults": _masked_bim_revit_payload(DEFAULT_BIM_REVIT_INTEGRATION),
+    }
+
+
+@router.post("/bim-revit")
+def save_bim_revit_settings(
+    payload: BimRevitSettingsIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    before = get_bim_revit_integration(db)
+    incoming = payload.model_dump(exclude_unset=True)
+    merged = dict(before)
+
+    endpoint = incoming.get("api_endpoint_url")
+    if endpoint is not None:
+        endpoint_text = _norm(endpoint)
+        if endpoint_text and not _is_valid_http_url(endpoint_text):
+            raise HTTPException(status_code=400, detail="api_endpoint_url must be absolute http/https URL or root-relative path.")
+        merged["api_endpoint_url"] = endpoint_text
+
+    if "enabled" in incoming:
+        merged["enabled"] = bool(incoming.get("enabled"))
+    if "require_plugin_signature" in incoming:
+        merged["require_plugin_signature"] = bool(incoming.get("require_plugin_signature"))
+
+    key_id = incoming.get("plugin_key_id")
+    if key_id is not None:
+        merged["plugin_key_id"] = _norm(key_id)
+
+    if "default_category_id" in incoming:
+        merged["default_category_id"] = incoming.get("default_category_id")
+    if "default_folder_id" in incoming:
+        merged["default_folder_id"] = incoming.get("default_folder_id")
+    if "allowed_mime" in incoming:
+        merged["allowed_mime"] = [str(item or "").strip().lower() for item in (incoming.get("allowed_mime") or [])]
+    if "max_batch_size" in incoming and incoming.get("max_batch_size") is not None:
+        merged["max_batch_size"] = int(incoming.get("max_batch_size"))
+
+    plugin_secret = incoming.get("plugin_secret")
+    if plugin_secret is not None:
+        raw_secret = _norm(plugin_secret)
+        if raw_secret:
+            merged["plugin_secret_encrypted"] = encrypt_plugin_secret(
+                raw_secret,
+                secret_key=_runtime_secret_key_or_500(),
+            )
+        else:
+            merged["plugin_secret_encrypted"] = str(before.get("plugin_secret_encrypted") or "")
+
+    if bool(merged.get("require_plugin_signature")):
+        if not _norm(merged.get("plugin_key_id")):
+            raise HTTPException(status_code=400, detail="plugin_key_id is required when signature is enabled.")
+        if not _norm(merged.get("plugin_secret_encrypted")):
+            raise HTTPException(status_code=400, detail="plugin secret is required when signature is enabled.")
+
+    saved = set_bim_revit_integration(db, merged)
+    masked = _masked_bim_revit_payload(saved)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="bim_revit_settings.update",
+        target_type="bim_revit_settings",
+        target_key="bim_revit.v1",
+        before=_masked_bim_revit_payload(before),
+        after=masked,
+    )
+    db.commit()
+    return {"ok": True, "settings": masked}
+
+
+@router.post("/bim-revit/rotate-secret")
+def rotate_bim_revit_secret(
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(allow_admin),
+):
+    before = get_bim_revit_integration(db)
+    merged = dict(before)
+
+    key_id = _norm(merged.get("plugin_key_id"))
+    if not key_id:
+        key_id = f"BIM-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+
+    plain_secret = generate_plugin_secret(64)
+    merged["plugin_key_id"] = key_id
+    merged["plugin_secret_encrypted"] = encrypt_plugin_secret(
+        plain_secret,
+        secret_key=_runtime_secret_key_or_500(),
+    )
+
+    saved = set_bim_revit_integration(db, merged)
+    masked = _masked_bim_revit_payload(saved)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="bim_revit_settings.rotate_secret",
+        target_type="bim_revit_settings",
+        target_key="bim_revit.v1",
+        before=_masked_bim_revit_payload(before),
+        after=masked,
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "plugin_key_id": key_id,
+        "plugin_secret": plain_secret,
+        "settings": masked,
+    }
 
 
 @router.get("/permissions/matrix")

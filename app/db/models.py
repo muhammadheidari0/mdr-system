@@ -1237,6 +1237,323 @@ class SiteLogAttachment(Base):
     uploaded_by: Mapped["User | None"] = relationship("User", foreign_keys=[uploaded_by_id])
 
 
+class BimPublishRun(Base):
+    __tablename__ = "bim_publish_runs"
+    __table_args__ = (
+        UniqueConstraint("run_uid", name="uq_bim_publish_runs_run_uid"),
+        Index("ix_bim_publish_runs_project_status", "project_code", "status"),
+        Index("ix_bim_publish_runs_ingestion_mode", "ingestion_mode"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_uid: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    run_client_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False
+    )
+    model_guid: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    model_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    revit_version: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    plugin_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    ingestion_mode: Mapped[str] = mapped_column(String(32), nullable=False, default="legacy_direct", index=True)
+    staging_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    requested_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    success_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
+    approved_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejected_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    plugin_key_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+    items: Mapped[List["BimPublishItem"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class BimPublishItem(Base):
+    __tablename__ = "bim_publish_items"
+    __table_args__ = (
+        UniqueConstraint("idempotency_hash", name="uq_bim_publish_items_idempotency_hash"),
+        UniqueConstraint("run_id", "item_index", name="uq_bim_publish_items_run_item_index"),
+        Index("ix_bim_publish_items_run_state", "run_id", "state"),
+        Index(
+            "ix_bim_publish_items_project_sheet_revision",
+            "project_code",
+            "sheet_unique_id",
+            "requested_revision",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bim_publish_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    item_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    project_code: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    sheet_unique_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    sheet_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sheet_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    doc_number: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    requested_revision: Mapped[str] = mapped_column(String(32), nullable=False)
+    status_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    include_native: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    idempotency_hash: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    file_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    staging_file_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    staging_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    validation_state: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    validation_errors_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    state: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
+    document_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="SET NULL"), nullable=True
+    )
+    applied_revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pdf_file_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("archive_files.id", ondelete="SET NULL"), nullable=True
+    )
+    native_file_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("archive_files.id", ondelete="SET NULL"), nullable=True
+    )
+    archive_document_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="SET NULL"), nullable=True
+    )
+    archive_file_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("archive_files.id", ondelete="SET NULL"), nullable=True
+    )
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    run: Mapped["BimPublishRun"] = relationship(back_populates="items")
+
+
+class BimScheduleRun(Base):
+    __tablename__ = "bim_schedule_runs"
+    __table_args__ = (
+        UniqueConstraint("run_uid", name="uq_bim_schedule_runs_run_uid"),
+        Index("ix_bim_schedule_runs_project_profile_status", "project_code", "profile_code", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_uid: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False, index=True
+    )
+    profile_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    model_guid: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    view_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="staging", index=True)
+    total_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    valid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    invalid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejected_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejected_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    rows: Mapped[List["BimScheduleRow"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class BimScheduleRow(Base):
+    __tablename__ = "bim_schedule_rows"
+    __table_args__ = (
+        UniqueConstraint("run_id", "row_no", name="uq_bim_schedule_rows_run_row_no"),
+        Index("ix_bim_schedule_rows_run_state", "run_id", "row_state"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bim_schedule_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    row_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    row_state: Mapped[str] = mapped_column(String(16), nullable=False, default="VALID")
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    element_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    equipment_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    values_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    run: Mapped["BimScheduleRun"] = relationship(back_populates="rows")
+
+
+class BimMtoItem(Base):
+    __tablename__ = "bim_mto_items"
+    __table_args__ = (
+        Index(
+            "ix_bim_mto_items_project_model_element",
+            "project_code",
+            "model_guid",
+            "element_key",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False
+    )
+    model_guid: Mapped[str] = mapped_column(String(64), nullable=False)
+    element_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    values_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_run_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("bim_schedule_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+
+class BimEquipmentItem(Base):
+    __tablename__ = "bim_equipment_items"
+    __table_args__ = (
+        Index(
+            "ix_bim_equipment_items_project_model_equipment",
+            "project_code",
+            "model_guid",
+            "equipment_key",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False
+    )
+    model_guid: Mapped[str] = mapped_column(String(64), nullable=False)
+    equipment_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    values_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_run_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("bim_schedule_runs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+
+class BimRevitSyncRun(Base):
+    __tablename__ = "bim_revit_sync_runs"
+    __table_args__ = (
+        UniqueConstraint("run_uid", name="uq_bim_revit_sync_runs_run_uid"),
+        Index("ix_bim_revit_sync_runs_project_model_status", "project_code", "client_model_guid", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_uid: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_model_guid: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running", index=True)
+    requested_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    requested_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    applied_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    errors_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    items: Mapped[List["BimRevitSyncItem"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+
+class BimRevitSyncItem(Base):
+    __tablename__ = "bim_revit_sync_items"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sync_key", name="uq_bim_revit_sync_items_run_sync_key"),
+        Index("ix_bim_revit_sync_items_run_state", "run_id", "state"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("bim_revit_sync_runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    sync_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_log_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    section_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    row_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation: Mapped[str] = mapped_column(String(16), nullable=False, default="upsert")
+    row_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    state: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    run: Mapped["BimRevitSyncRun"] = relationship(back_populates="items")
+
+
+class BimRevitClientState(Base):
+    __tablename__ = "bim_revit_client_state"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_code",
+            "client_model_guid",
+            "user_id",
+            name="uq_bim_revit_client_state_project_model_user",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False, index=True
+    )
+    client_model_guid: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    last_cursor: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_manifest_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_pull_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+
 class WorkboardItem(Base):
     __tablename__ = "workboard_items"
     __table_args__ = (

@@ -79,6 +79,12 @@ class Settings(BaseSettings):
 
     # Feature flags
     FEATURE_COMM_ITEMS_V1: bool = True
+    FEATURE_BIM_GATEWAY: bool = True
+    FEATURE_BIM_SCHEDULE_APPROVAL: bool = True
+    FEATURE_BIM_REVIT_WRITEBACK_SITELOGS: bool = True
+    FEATURE_BIM_INBOX_GATEWAY: bool = True
+    FEATURE_BIM_INBOX_APPROVAL: bool = True
+    FEATURE_BIM_PLUGIN_HMAC: bool = True
 
     def is_production_like(self) -> bool:
         env = str(self.APP_ENV or "").strip().lower()

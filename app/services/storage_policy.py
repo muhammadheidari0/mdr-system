@@ -11,6 +11,7 @@ from app.db.models import SettingsKV
 
 STORAGE_POLICY_KEY = "storage_policy.v1"
 STORAGE_INTEGRATIONS_KEY = "storage_integrations.v1"
+BIM_REVIT_INTEGRATION_KEY = "bim_revit.v1"
 
 DEFAULT_STORAGE_POLICY: dict[str, Any] = {
     "enforcement_mode": "warning",  # warning | enforce
@@ -126,6 +127,24 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
 }
 
 
+DEFAULT_BIM_REVIT_INTEGRATION: dict[str, Any] = {
+    "enabled": False,
+    "api_endpoint_url": "/api/v1/bim/edms/inbox/publish-batch",
+    "require_plugin_signature": True,
+    "plugin_key_id": "",
+    "plugin_secret_encrypted": "",
+    "default_category_id": None,
+    "default_folder_id": None,
+    "allowed_mime": [
+        "application/pdf",
+        "application/x-dwg",
+        "application/acad",
+        "application/octet-stream",
+    ],
+    "max_batch_size": 100,
+}
+
+
 def _safe_json_load(value: str | None) -> dict[str, Any]:
     raw = str(value or "").strip()
     if not raw:
@@ -182,6 +201,17 @@ def _to_optional_bool(value: Any) -> bool | None:
     if raw in {"0", "false", "no", "off"}:
         return False
     return None
+
+
+def _to_bool(value: Any, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    raw = str(value or "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return bool(fallback)
 
 
 def _normalize_policy(raw: dict[str, Any]) -> dict[str, Any]:
@@ -285,6 +315,32 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def _normalize_bim_revit(raw: dict[str, Any]) -> dict[str, Any]:
+    merged = deepcopy(DEFAULT_BIM_REVIT_INTEGRATION)
+    merged.update({k: v for k, v in raw.items() if k in merged})
+
+    merged["enabled"] = _to_bool(merged.get("enabled"), False)
+    merged["api_endpoint_url"] = str(merged.get("api_endpoint_url") or "").strip() or "/api/v1/bim/edms/inbox/publish-batch"
+    merged["require_plugin_signature"] = _to_bool(merged.get("require_plugin_signature"), True)
+    merged["plugin_key_id"] = str(merged.get("plugin_key_id") or "").strip()
+    merged["plugin_secret_encrypted"] = str(merged.get("plugin_secret_encrypted") or "").strip()
+
+    category = merged.get("default_category_id")
+    folder = merged.get("default_folder_id")
+    try:
+        merged["default_category_id"] = int(category) if category is not None and str(category).strip() else None
+    except Exception:
+        merged["default_category_id"] = None
+    try:
+        merged["default_folder_id"] = int(folder) if folder is not None and str(folder).strip() else None
+    except Exception:
+        merged["default_folder_id"] = None
+
+    merged["allowed_mime"] = _to_mime_list(merged.get("allowed_mime"))
+    merged["max_batch_size"] = max(1, _to_non_negative_int(merged.get("max_batch_size"), 100))
+    return merged
+
+
 def _get_kv_value(db: Session, key: str) -> str:
     row = db.query(SettingsKV).filter(SettingsKV.key == key).first()
     return str(row.value) if row and row.value is not None else ""
@@ -319,6 +375,17 @@ def get_storage_integrations(db: Session) -> dict[str, Any]:
 def set_storage_integrations(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
     normalized = _normalize_integrations(payload)
     _set_kv_value(db, STORAGE_INTEGRATIONS_KEY, normalized)
+    return normalized
+
+
+def get_bim_revit_integration(db: Session) -> dict[str, Any]:
+    raw = _safe_json_load(_get_kv_value(db, BIM_REVIT_INTEGRATION_KEY))
+    return _normalize_bim_revit(raw)
+
+
+def set_bim_revit_integration(db: Session, payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_bim_revit(payload)
+    _set_kv_value(db, BIM_REVIT_INTEGRATION_KEY, normalized)
     return normalized
 
 

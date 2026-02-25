@@ -179,9 +179,11 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'data-integrations-provider-tab="openproject"' in html
     assert 'data-integrations-provider-tab="google"' in html
     assert 'data-integrations-provider-tab="nextcloud"' in html
+    assert 'data-integrations-provider-tab="bim"' in html
     assert 'data-integrations-provider-panel="openproject"' in html
     assert 'data-integrations-provider-panel="google"' in html
     assert 'data-integrations-provider-panel="nextcloud"' in html
+    assert 'data-integrations-provider-panel="bim"' in html
     assert 'id="storageMirrorProviderSelect"' in html
     assert 'data-op-tab="connection"' in html
     assert 'data-op-tab="project-import"' in html
@@ -210,6 +212,14 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'id="storageNextcloudRootPathInput"' in html
     assert 'id="storageNextcloudSkipSslVerifyInput"' in html
     assert 'id="storageNextcloudCredentialSourceBadge"' in html
+    assert 'id="storageBimRevitEnabledInput"' in html
+    assert 'id="storageBimRevitRequireSignatureInput"' in html
+    assert 'id="storageBimRevitApiEndpointInput"' in html
+    assert 'id="storageBimRevitPluginKeyIdInput"' in html
+    assert 'id="storageBimRevitPluginSecretInput"' in html
+    assert 'id="storageBimRevitSecretStateBadge"' in html
+    assert 'id="storageBimRevitAllowedMimeInput"' in html
+    assert 'id="storageBimRevitMaxBatchSizeInput"' in html
     assert 'data-integrations-action="ping-google-drive"' in html
     assert 'data-integrations-action="ping-google-gmail"' in html
     assert 'data-integrations-action="ping-google-calendar"' in html
@@ -225,6 +235,21 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert "storageOpenProjectBaseUrlInput" not in storage_partial
     assert "storageOpenProjectApiTokenInput" not in storage_partial
     assert "storageGoogleDriveDriveIdInput" not in storage_partial
+
+
+def test_ui_smoke_bulk_tab_contains_excel_and_bim_inbox_panels() -> None:
+    partial = client.get("/ui/partial/settings")
+    assert partial.status_code == 200, partial.text
+    html = partial.text
+    assert 'id="settingsBulkRoot"' in html
+    assert 'data-bulk-tab="excel"' in html
+    assert 'data-bulk-tab="bim"' in html
+    assert 'id="bulkRegisterFrame"' in html
+    assert 'id="bimInboxRunsBody"' in html
+    assert 'id="bimInboxItemsBody"' in html
+    assert 'data-bulk-action="refresh-bim-inbox"' in html
+    assert 'data-bulk-action="approve-bim-run"' in html
+    assert 'data-bulk-action="reject-bim-run"' in html
 
 def test_ui_smoke_workboard_crud_flow() -> None:
     headers = _admin_headers()

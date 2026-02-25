@@ -9,6 +9,7 @@
         storagePathsLoaded: false,
         storagePolicyLoaded: false,
         storageIntegrationsLoaded: false,
+        storageBimRevitLoaded: false,
         siteCacheLoaded: false,
         actionsBound: false,
         activePage: 'db_sync',
@@ -651,7 +652,7 @@
     }
 
     function setIntegrationsProviderTab(nextTab = 'openproject') {
-        const activeTab = ['openproject', 'google', 'nextcloud'].includes(String(nextTab || '').toLowerCase())
+        const activeTab = ['openproject', 'google', 'nextcloud', 'bim'].includes(String(nextTab || '').toLowerCase())
             ? String(nextTab || '').toLowerCase()
             : 'openproject';
         STORE.integrationsProviderTab = activeTab;
@@ -750,6 +751,16 @@
         const nextcloudSslHint = document.getElementById('storageNextcloudSslManagedHint');
         const nextcloudSslWarning = document.getElementById('storageNextcloudSkipSslWarning');
         const nextcloudSyncBtn = document.getElementById('storageNextcloudSyncRunBtn');
+        const bimEnabled = document.getElementById('storageBimRevitEnabledInput');
+        const bimRequireSignature = document.getElementById('storageBimRevitRequireSignatureInput');
+        const bimEndpoint = document.getElementById('storageBimRevitApiEndpointInput');
+        const bimKeyId = document.getElementById('storageBimRevitPluginKeyIdInput');
+        const bimSecret = document.getElementById('storageBimRevitPluginSecretInput');
+        const bimDefaultCategory = document.getElementById('storageBimRevitDefaultCategoryIdInput');
+        const bimDefaultFolder = document.getElementById('storageBimRevitDefaultFolderIdInput');
+        const bimAllowedMime = document.getElementById('storageBimRevitAllowedMimeInput');
+        const bimMaxBatch = document.getElementById('storageBimRevitMaxBatchSizeInput');
+        const bimSecretBadge = document.getElementById('storageBimRevitSecretStateBadge');
         const executeBtn = document.getElementById('storageOpenProjectImportExecuteBtn');
         const tokenSource = norm(tokenBadge?.dataset?.tokenSource || 'none').toLowerCase();
         const sslSource = norm(openprojectSkipSsl?.dataset?.sslSource || 'env_default').toLowerCase();
@@ -768,6 +779,8 @@
         const googleCalendarOn = googleOn && Boolean(googleCalendarEnabled?.checked);
         const openprojectOn = Boolean(openprojectEnabled?.checked);
         const nextcloudOn = Boolean(nextcloudEnabled?.checked);
+        const bimOn = Boolean(bimEnabled?.checked);
+        const bimSignatureOn = bimOn && Boolean(bimRequireSignature?.checked);
         const readyForExecute = openprojectOn && Number(STORE.openprojectImport?.lastValidatedRunId || 0) > 0;
 
         if (mirrorProvider) mirrorProvider.disabled = false;
@@ -827,6 +840,18 @@
         if (gdriveSyncBtn) gdriveSyncBtn.disabled = !googleOn;
         if (openprojectSyncBtn) openprojectSyncBtn.disabled = !openprojectOn;
         if (nextcloudSyncBtn) nextcloudSyncBtn.disabled = !nextcloudOn;
+        if (bimRequireSignature) bimRequireSignature.disabled = !bimOn;
+        if (bimEndpoint) bimEndpoint.disabled = !bimOn;
+        if (bimDefaultCategory) bimDefaultCategory.disabled = !bimOn;
+        if (bimDefaultFolder) bimDefaultFolder.disabled = !bimOn;
+        if (bimAllowedMime) bimAllowedMime.disabled = !bimOn;
+        if (bimMaxBatch) bimMaxBatch.disabled = !bimOn;
+        if (bimKeyId) bimKeyId.disabled = !bimSignatureOn;
+        if (bimSecret) bimSecret.disabled = !bimSignatureOn;
+        if (bimSecretBadge) {
+            const hasSecret = String(bimSecretBadge.dataset.hasSecret || '').toLowerCase() === 'true';
+            bimSecretBadge.textContent = hasSecret ? 'saved' : 'none';
+        }
         if (executeBtn) executeBtn.disabled = !readyForExecute;
         if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
         updateOpenProjectTokenSavedState(tokenSource, norm(openprojectToken?.value));
@@ -1116,6 +1141,136 @@
         updateStorageIntegrationsFieldState();
     }
 
+    function setBimRevitRotateResult(message = '', level = 'info') {
+        const box = document.getElementById('storageBimRevitRotateResult');
+        if (!box) return;
+        if (!message) {
+            box.style.display = 'none';
+            box.textContent = '';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.style.display = 'block';
+        box.textContent = message;
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function applyBimRevitSettingsToForm(payload = {}) {
+        const settingsPayload = payload?.settings || payload || {};
+        const enabled = document.getElementById('storageBimRevitEnabledInput');
+        const requireSig = document.getElementById('storageBimRevitRequireSignatureInput');
+        const endpoint = document.getElementById('storageBimRevitApiEndpointInput');
+        const keyId = document.getElementById('storageBimRevitPluginKeyIdInput');
+        const secret = document.getElementById('storageBimRevitPluginSecretInput');
+        const defCategory = document.getElementById('storageBimRevitDefaultCategoryIdInput');
+        const defFolder = document.getElementById('storageBimRevitDefaultFolderIdInput');
+        const allowedMime = document.getElementById('storageBimRevitAllowedMimeInput');
+        const maxBatch = document.getElementById('storageBimRevitMaxBatchSizeInput');
+        const badge = document.getElementById('storageBimRevitSecretStateBadge');
+
+        if (enabled) enabled.checked = Boolean(settingsPayload.enabled);
+        if (requireSig) requireSig.checked = Boolean(settingsPayload.require_plugin_signature);
+        if (endpoint) endpoint.value = String(settingsPayload.api_endpoint_url || '');
+        if (keyId) keyId.value = String(settingsPayload.plugin_key_id || '');
+        if (secret) secret.value = '';
+        if (defCategory) defCategory.value = settingsPayload.default_category_id ? String(settingsPayload.default_category_id) : '';
+        if (defFolder) defFolder.value = settingsPayload.default_folder_id ? String(settingsPayload.default_folder_id) : '';
+        if (allowedMime) allowedMime.value = Array.isArray(settingsPayload.allowed_mime) ? settingsPayload.allowed_mime.join(',') : '';
+        if (maxBatch) maxBatch.value = String(settingsPayload.max_batch_size || 100);
+        if (badge) {
+            const hasSecret = Boolean(settingsPayload.has_secret);
+            badge.dataset.hasSecret = hasSecret ? 'true' : 'false';
+            badge.textContent = hasSecret ? 'saved' : 'none';
+        }
+        updateStorageIntegrationsFieldState();
+    }
+
+    async function loadBimRevitSettings(force = false) {
+        const endpoint = document.getElementById('storageBimRevitApiEndpointInput');
+        if (!endpoint) return;
+        if (STORE.storageBimRevitLoaded && !force) return;
+        const payload = await request(`${API_BASE}/bim-revit`);
+        applyBimRevitSettingsToForm(payload);
+        STORE.storageBimRevitLoaded = true;
+    }
+
+    function buildBimRevitPayloadFromForm() {
+        const enabled = document.getElementById('storageBimRevitEnabledInput');
+        const requireSig = document.getElementById('storageBimRevitRequireSignatureInput');
+        const endpoint = document.getElementById('storageBimRevitApiEndpointInput');
+        const keyId = document.getElementById('storageBimRevitPluginKeyIdInput');
+        const secret = document.getElementById('storageBimRevitPluginSecretInput');
+        const defCategory = document.getElementById('storageBimRevitDefaultCategoryIdInput');
+        const defFolder = document.getElementById('storageBimRevitDefaultFolderIdInput');
+        const allowedMime = document.getElementById('storageBimRevitAllowedMimeInput');
+        const maxBatch = document.getElementById('storageBimRevitMaxBatchSizeInput');
+        if (!enabled || !requireSig || !endpoint || !keyId || !secret || !defCategory || !defFolder || !allowedMime || !maxBatch) {
+            return null;
+        }
+
+        const payload = {
+            enabled: Boolean(enabled.checked),
+            require_plugin_signature: Boolean(requireSig.checked),
+            api_endpoint_url: norm(endpoint.value),
+            plugin_key_id: norm(keyId.value),
+            plugin_secret: norm(secret.value),
+            default_category_id: norm(defCategory.value) ? Number(defCategory.value) : null,
+            default_folder_id: norm(defFolder.value) ? Number(defFolder.value) : null,
+            allowed_mime: parseCommaSeparatedList(allowedMime.value).map((x) => String(x || '').trim().toLowerCase()),
+            max_batch_size: Number(maxBatch.value || 100),
+        };
+        return payload;
+    }
+
+    async function saveBimRevitSettings(options = {}) {
+        const payload = buildBimRevitPayloadFromForm();
+        if (!payload) return;
+
+        const silent = Boolean(options?.silent);
+        if (payload.enabled) {
+            if (!payload.api_endpoint_url) {
+                throw new Error('BIM API Endpoint URL is required when BIM integration is enabled.');
+            }
+            if (payload.require_plugin_signature && !payload.plugin_key_id) {
+                throw new Error('Plugin Key ID is required when signature is enabled.');
+            }
+        }
+        if (!Number.isFinite(payload.max_batch_size) || payload.max_batch_size <= 0) {
+            throw new Error('Max batch size must be a positive number.');
+        }
+
+        const response = await request(`${API_BASE}/bim-revit`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        applyBimRevitSettingsToForm(response);
+        STORE.storageBimRevitLoaded = true;
+        if (!silent) {
+            setBimRevitRotateResult('');
+            tSuccess('BIM/Revit settings saved.');
+        }
+    }
+
+    async function rotateBimRevitSecret() {
+        const response = await request(`${API_BASE}/bim-revit/rotate-secret`, {
+            method: 'POST',
+        });
+        applyBimRevitSettingsToForm(response);
+        const keyId = norm(response?.plugin_key_id);
+        const secret = norm(response?.plugin_secret);
+        if (secret) {
+            setBimRevitRotateResult(`NEW SECRET (copy now): ${secret}`, 'success');
+        } else {
+            setBimRevitRotateResult('Secret rotated, but server did not return a one-time secret.', 'error');
+        }
+        if (keyId) {
+            tSuccess(`BIM/Revit secret rotated. Key ID: ${keyId}`);
+        }
+    }
+
     async function loadStorageIntegrations(force = false) {
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         if (!gdriveEnabled) return;
@@ -1123,6 +1278,7 @@
         const payload = await request(`${API_BASE}/storage-integrations`);
         applyStorageIntegrationsToForm(payload?.integrations || {});
         STORE.storageIntegrationsLoaded = true;
+        await loadBimRevitSettings(force);
     }
 
     async function saveStorageIntegrations() {
@@ -1215,9 +1371,10 @@
             }),
         });
         applyStorageIntegrationsToForm(payload?.integrations || {});
+        await saveBimRevitSettings({ silent: true });
         STORE.storageIntegrationsLoaded = true;
         setStorageSyncResult('');
-        tSuccess('تنظیمات یکپارچه‌سازی ذخیره شد.');
+        tSuccess('تنظیمات یکپارچه‌سازی و BIM/Revit ذخیره شد.');
     }
 
     function runSummaryText(run) {
@@ -1780,6 +1937,10 @@
             try {
                 if (action === 'save-integrations') {
                     await saveStorageIntegrations();
+                    return;
+                }
+                if (action === 'rotate-bim-revit-secret') {
+                    await rotateBimRevitSecret();
                     return;
                 }
                 if (action === 'run-google-sync') {

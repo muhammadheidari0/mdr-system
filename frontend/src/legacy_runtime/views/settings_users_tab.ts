@@ -70,6 +70,106 @@ const usersState = {
   searchTimer: null,
   menuBound: false,
 };
+const USERS_MODAL_IDS = ['userModal', 'deleteModal', 'userAccessModal'];
+let usersModalEventsBound = false;
+let usersModalLastActiveEl = null;
+
+function getUsersModal(modalId) {
+  return document.getElementById(modalId);
+}
+
+function isUsersModalVisible(modalEl) {
+  if (!modalEl) return false;
+  if (modalEl.style.display && modalEl.style.display !== 'none') return true;
+  return window.getComputedStyle(modalEl).display !== 'none';
+}
+
+function hasOpenUsersModal() {
+  return USERS_MODAL_IDS.some((modalId) => isUsersModalVisible(getUsersModal(modalId)));
+}
+
+function syncUsersModalScrollLock() {
+  if (!document || !document.body) return;
+  document.body.classList.toggle('users-modal-open', hasOpenUsersModal());
+}
+
+function openUsersModal(modalId, focusSelector = '') {
+  const modal = getUsersModal(modalId);
+  if (!modal) return;
+  const active = document.activeElement;
+  if (active && typeof active.focus === 'function') {
+    usersModalLastActiveEl = active;
+  }
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  syncUsersModalScrollLock();
+  if (!focusSelector) return;
+  window.requestAnimationFrame(() => {
+    const focusEl = modal.querySelector(focusSelector);
+    if (focusEl && typeof focusEl.focus === 'function') {
+      focusEl.focus();
+      if (focusEl.select && typeof focusEl.select === 'function') focusEl.select();
+    }
+  });
+}
+
+function closeUsersModal(modalId, restoreFocus = true) {
+  const modal = getUsersModal(modalId);
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+  syncUsersModalScrollLock();
+  if (!restoreFocus) return;
+  if (usersModalLastActiveEl && document.contains(usersModalLastActiveEl)) {
+    usersModalLastActiveEl.focus();
+  }
+  usersModalLastActiveEl = null;
+}
+
+function closeTopUsersModal() {
+  if (isUsersModalVisible(getUsersModal('userAccessModal'))) {
+    closeUserAccessModal();
+    return true;
+  }
+  if (isUsersModalVisible(getUsersModal('deleteModal'))) {
+    closeDeleteModal();
+    return true;
+  }
+  if (isUsersModalVisible(getUsersModal('userModal'))) {
+    closeUserModal();
+    return true;
+  }
+  return false;
+}
+
+function bindUsersModalEvents() {
+  if (usersModalEventsBound) return;
+
+  document.addEventListener('keydown', (event) => {
+    if (!event || event.key !== 'Escape') return;
+    const closed = closeTopUsersModal();
+    if (!closed) return;
+    event.preventDefault();
+  });
+
+  USERS_MODAL_IDS.forEach((modalId) => {
+    const modal = getUsersModal(modalId);
+    if (!modal || modal.dataset.usersOverlayBound === 'true') return;
+    modal.addEventListener('click', (event) => {
+      if (event.target !== modal) return;
+      if (modalId === 'userModal') {
+        closeUserModal();
+      } else if (modalId === 'deleteModal') {
+        closeDeleteModal();
+      } else if (modalId === 'userAccessModal') {
+        closeUserAccessModal();
+      }
+    });
+    modal.dataset.usersOverlayBound = 'true';
+  });
+
+  usersModalEventsBound = true;
+}
 
 async function fetchUsersWithTimeout(url, options = {}, timeoutMs = USERS_PAGE_REQUEST_TIMEOUT_MS) {
   const canAbort = typeof window.AbortController === 'function';
@@ -454,13 +554,17 @@ function bindUsersToolbar() {
   }
   if (orgFilter) orgFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
   if (pageSizeEl) pageSizeEl.addEventListener('change', () => loadUsers({ resetPage: true }));
+  bindUsersModalEvents();
 
-  if (root && !usersState.actionsBound) {
-    root.addEventListener('click', (event) => {
+  if (!usersState.actionsBound) {
+    document.addEventListener('click', (event) => {
       const actionEl = event && event.target && event.target.closest
         ? event.target.closest('[data-users-action]')
         : null;
-      if (!actionEl || !root.contains(actionEl)) return;
+      if (!actionEl) return;
+      const isInUsersRoot = !!(root && root.contains(actionEl));
+      const isInUsersModal = !!(actionEl.closest && actionEl.closest('#userModal, #deleteModal, #userAccessModal'));
+      if (!isInUsersRoot && !isInUsersModal) return;
 
       const action = String(actionEl.dataset.usersAction || '').trim();
       if (!action) return;
@@ -531,7 +635,7 @@ function bindUsersToolbar() {
       closeAllUserActionMenus();
     });
     document.addEventListener('keydown', (event) => {
-      if (event && event.key === 'Escape') closeAllUserActionMenus();
+      if (event && event.key === 'Escape' && !hasOpenUsersModal()) closeAllUserActionMenus();
     });
     usersState.menuBound = true;
   }
@@ -759,7 +863,7 @@ async function openCreateUserModal() {
   renderUserOrganizationOptions('');
   document.getElementById('userOrganizationRole').value = 'viewer';
   document.getElementById('userActive').checked = true;
-  document.getElementById('userModal').style.display = 'flex';
+  openUsersModal('userModal', '#userEmail');
 }
 
 async function editUser(userId) {
@@ -790,11 +894,17 @@ async function editUser(userId) {
   document.getElementById('userPassword').required = false;
   document.getElementById('passwordLabel').textContent = 'Ø±Ù…Ø² Ø¹Ø¨ÙˆØ±';
   document.getElementById('passwordHelp').textContent = 'ØªØºÛŒÛŒØ± Ø±Ù…Ø² Ø§Ø² Ù…Ù†ÙˆÛŒ Ú©Ø§Ø±Ø¨Ø± Ø§Ù†Ø¬Ø§Ù… Ù…ÛŒâ€ŒØ´ÙˆØ¯';
-  document.getElementById('userModal').style.display = 'flex';
+  openUsersModal('userModal', '#userFullName');
 }
 
 function closeUserModal() {
-  document.getElementById('userModal').style.display = 'none';
+  const form = document.getElementById('userForm');
+  if (form && typeof form.reset === 'function') form.reset();
+  const errorInputs = form && form.querySelectorAll ? form.querySelectorAll('.form-input-error') : [];
+  if (errorInputs && typeof errorInputs.forEach === 'function') {
+    errorInputs.forEach((input) => input.classList.remove('form-input-error'));
+  }
+  closeUsersModal('userModal');
 }
 
 async function saveUser() {
@@ -854,11 +964,11 @@ function deleteUser(userId) {
   const user = usersCache.get(String(userId));
   currentDeleteUserId = userId;
   document.getElementById('deleteUserName').textContent = (user && user.email) || `#${userId}`;
-  document.getElementById('deleteModal').style.display = 'flex';
+  openUsersModal('deleteModal');
 }
 
 function closeDeleteModal() {
-  document.getElementById('deleteModal').style.display = 'none';
+  closeUsersModal('deleteModal');
   currentDeleteUserId = null;
 }
 
@@ -1317,7 +1427,7 @@ async function openUserAccessModal(userId) {
   setAccessSourceStatus('Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù…Ù†Ø§Ø¨Ø¹...', 'info');
 
   const modal = document.getElementById('userAccessModal');
-  if (modal) modal.style.display = 'flex';
+  if (modal) openUsersModal('userAccessModal', '#accessProjectsInput');
 
   const adminNote = document.getElementById('accessAdminNote');
   const isAdmin = String(user.role || '').toLowerCase() === 'admin';
@@ -1359,7 +1469,7 @@ async function openUserAccessModal(userId) {
 
 function closeUserAccessModal() {
   const modal = document.getElementById('userAccessModal');
-  if (modal) modal.style.display = 'none';
+  if (modal) closeUsersModal('userAccessModal');
   const sug1 = document.getElementById('accessProjectsSuggestions');
   const sug2 = document.getElementById('accessDisciplinesSuggestions');
   if (sug1) sug1.classList.remove('show');
