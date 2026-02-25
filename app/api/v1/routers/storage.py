@@ -1042,12 +1042,8 @@ def ping_google(
 @router.get("/openproject/import/template")
 def download_openproject_import_template(
 ):
-    candidates = [
-        Path(settings.BASE_DIR) / "data_sources" / "templates" / "openproject template.xlsx",
-        Path(settings.BASE_DIR) / "data_sources" / "openproject template.xlsx",  # legacy fallback
-    ]
-    template_path = next((path for path in candidates if path.exists()), None)
-    if not template_path:
+    template_path = Path(settings.BASE_DIR) / "data_sources" / "templates" / "openproject template.xlsx"
+    if not template_path.exists():
         raise HTTPException(status_code=404, detail="OpenProject template file not found")
     return FileResponse(
         path=str(template_path),

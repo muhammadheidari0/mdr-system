@@ -63,6 +63,8 @@ OpenProject sub-tabs:
 - Input file: `openproject template.xlsx`
 - Uses only sheet `Task_Table1`
 - Template source in repository: `data_sources/templates/openproject template.xlsx`
+- Canonical `Task_Table1` header order:
+  - `WBS, Subject, Duration, Start_Date, Finish_Date, Predecessors, %complete, Resource_Names, Priority, Type`
 - Flow:
   1. `Validate (Dry-run)` with parser + row persistence
   2. `Start Processing`:
@@ -73,7 +75,7 @@ OpenProject sub-tabs:
 
 Excel parser compatibility:
 - Legacy template columns: `Name, Duration, Start_Date, Finish_Date, Predecessors, Resource_Names`
-- New template aliases: `Subject, Type, Priority, %complete, WBS, Start Date, Finish Date`
+- New template aliases: `WBS, Subject, Duration, Start_Date, Finish_Date, Predecessors, %complete, Resource_Names, Priority, Type`
 - If `WBS` column is missing (legacy), sequential WBS is auto-generated.
 - `Predecessors` supports only `FS` with optional lag (`12`, `12FS+2`, `12FS-1`).
 
