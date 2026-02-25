@@ -453,12 +453,12 @@ auto_stash_local_changes() {
   log_info "auto-stashing local changes (stash kept for audit)..."
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] git stash push -u -m '$message' -- . ':(exclude).env'"
+    log_info "[dry-run] git stash push -u -m '$message'"
     session_set stash_message "$message"
     return 0
   fi
 
-  if ! git stash push -u -m "$message" -- . ':(exclude).env' >/dev/null 2>&1; then
+  if ! git stash push -u -m "$message" >/dev/null 2>&1; then
     die 1 "auto-stash failed. resolve repository state manually."
   fi
   session_set stash_message "$message"
