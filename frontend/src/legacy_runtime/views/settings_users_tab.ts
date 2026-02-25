@@ -47,6 +47,9 @@ const USERS_DEFAULT_PAGE_SIZE = 10;
 const USERS_TABLE_COLSPAN = 10;
 const USERS_PAGE_REQUEST_TIMEOUT_MS = 20000;
 const USERS_ORGS_REQUEST_TIMEOUT_MS = 8000;
+const USERS_BULK_ACTION_ACTIVATE = 'users-bulk-activate';
+const USERS_BULK_ACTION_DEACTIVATE = 'users-bulk-deactivate';
+const USERS_BULK_ACTION_DELETE = 'users-bulk-delete';
 const organizationsState = {
   loaded: false,
   loadingPromise: null,
@@ -55,6 +58,7 @@ const organizationsState = {
 const usersState = {
   initialized: false,
   actionsBound: false,
+  bulkRegistered: false,
   loading: false,
   requestId: 0,
   page: 1,
@@ -73,6 +77,162 @@ const usersState = {
 const USERS_MODAL_IDS = ['userModal', 'deleteModal', 'userAccessModal'];
 let usersModalEventsBound = false;
 let usersModalLastActiveEl = null;
+
+function usersNotify(type, message) {
+  if (window.UI && typeof window.UI[type] === 'function') {
+    window.UI[type](message);
+    return;
+  }
+  if (typeof showToast === 'function') {
+    const tone = type === 'error'
+      ? 'error'
+      : type === 'warning'
+        ? 'warning'
+        : type === 'info'
+          ? 'info'
+          : 'success';
+    showToast(message, tone);
+    return;
+  }
+  alert(message);
+}
+
+function usersBulkBridge() {
+  if (!window.TableBulk || typeof window.TableBulk !== 'object') return null;
+  if (typeof window.TableBulk.register !== 'function') return null;
+  return window.TableBulk;
+}
+
+function parseBulkUserIds(selectedKeys = []) {
+  return (selectedKeys || [])
+    .map((key) => Number(key))
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .map((id) => Math.trunc(id));
+}
+
+function summarizeBulkErrors(items, fallback = 'Operation failed') {
+  if (!items || !items.length) return '';
+  const joined = items.slice(0, 3).join(' | ');
+  if (items.length > 3) {
+    return `${joined} | +${items.length - 3} more`;
+  }
+  return joined || fallback;
+}
+
+async function updateUserActiveStateBulk(userId, isActive) {
+  const user = usersCache.get(String(userId));
+  if (!user) {
+    throw new Error(`User #${userId} is not available in current page cache`);
+  }
+  const payload = {
+    full_name: user.full_name || null,
+    role: String(user.role || 'user').toLowerCase(),
+    organization_id: user.organization_id ? Number(user.organization_id) : null,
+    organization_role: String(user.organization_role || 'viewer').toLowerCase(),
+    is_active: !!isActive,
+  };
+  const response = await window.fetchWithAuth(`/api/v1/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+  if (!response || !response.ok) {
+    const body = response && typeof response.json === 'function'
+      ? await response.json().catch(() => ({}))
+      : {};
+    throw new Error(body.detail || `Update failed (${response ? response.status : 'network'})`);
+  }
+}
+
+async function deleteUserBulk(userId) {
+  const response = await window.fetchWithAuth(`/api/v1/users/${userId}`, { method: 'DELETE' });
+  if (!response || !response.ok) {
+    const body = response && typeof response.json === 'function'
+      ? await response.json().catch(() => ({}))
+      : {};
+    throw new Error(body.detail || `Delete failed (${response ? response.status : 'network'})`);
+  }
+}
+
+async function runUsersBulkAction(actionId, selectedKeys) {
+  const ids = parseBulkUserIds(selectedKeys);
+  if (!ids.length) {
+    usersNotify('warning', 'No user selected.');
+    return;
+  }
+
+  let operationName = '';
+  let confirmMessage = '';
+  let task = null;
+
+  if (actionId === USERS_BULK_ACTION_ACTIVATE) {
+    operationName = 'activate';
+    confirmMessage = `Activate ${ids.length} selected user(s)?`;
+    task = (id) => updateUserActiveStateBulk(id, true);
+  } else if (actionId === USERS_BULK_ACTION_DEACTIVATE) {
+    operationName = 'deactivate';
+    confirmMessage = `Deactivate ${ids.length} selected user(s)?`;
+    task = (id) => updateUserActiveStateBulk(id, false);
+  } else if (actionId === USERS_BULK_ACTION_DELETE) {
+    operationName = 'delete';
+    confirmMessage = `Delete ${ids.length} selected user(s)? This cannot be undone.`;
+    task = (id) => deleteUserBulk(id);
+  }
+
+  if (!task) {
+    usersNotify('warning', 'Unknown bulk action.');
+    return;
+  }
+  if (!window.confirm(confirmMessage)) return;
+
+  const failures = [];
+  let success = 0;
+
+  for (const id of ids) {
+    try {
+      await task(id);
+      success += 1;
+    } catch (error) {
+      const message = error && error.message ? error.message : 'Request failed';
+      failures.push(`#${id}: ${message}`);
+    }
+  }
+
+  if (success > 0) {
+    usersNotify('success', `${success} user(s) ${operationName}d.`);
+  }
+  if (failures.length > 0) {
+    usersNotify('warning', `${failures.length} operation(s) failed. ${summarizeBulkErrors(failures)}`);
+  }
+
+  const bulk = usersBulkBridge();
+  if (bulk && typeof bulk.clearSelection === 'function') {
+    bulk.clearSelection('usersTable');
+  }
+  await loadUsers({ resetPage: false, reloadScope: true });
+}
+
+function registerUsersBulkActions() {
+  if (usersState.bulkRegistered) return;
+  const bulk = usersBulkBridge();
+  if (!bulk) return;
+
+  bulk.register({
+    tableId: 'usersTable',
+    actions: [
+      { id: USERS_BULK_ACTION_ACTIVATE, label: 'Activate selected users' },
+      { id: USERS_BULK_ACTION_DEACTIVATE, label: 'Deactivate selected users' },
+      { id: USERS_BULK_ACTION_DELETE, label: 'Delete selected users' },
+    ],
+    getRowKey(row) {
+      return row && row.dataset ? row.dataset.bulkKey : '';
+    },
+    onAction({ actionId, selectedKeys }) {
+      return runUsersBulkAction(actionId, selectedKeys);
+    },
+  });
+
+  usersState.bulkRegistered = true;
+}
 
 function getUsersModal(modalId) {
   return document.getElementById(modalId);
@@ -528,6 +688,7 @@ function bindUsersToolbar() {
   const orgTypeFilter = document.getElementById('usersOrgTypeFilter');
   const orgFilter = document.getElementById('usersOrganizationFilter');
   const pageSizeEl = document.getElementById('usersPageSize');
+  registerUsersBulkActions();
 
   if (searchInput) {
     searchInput.addEventListener('keydown', (event) => {
@@ -778,7 +939,7 @@ async function loadUsers(options = {}) {
       const scopeStatus = getUserScopeStatus(user, userScope);
       const actionMenuId = `usersActionMenu-${user.id}`;
       return `
-        <tr>
+        <tr data-bulk-key="${user.id}" data-user-id="${user.id}">
           <td>${user.id}</td>
           <td>${escapeHtml(user.email)}</td>
           <td>${escapeHtml(user.full_name || '-')}</td>

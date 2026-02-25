@@ -4,6 +4,7 @@
     const FRAME_MIN_HEIGHT = 460;
     const STATE = {
         initialized: false,
+        bulkRegistered: false,
         activeTab: 'excel',
         loadingRuns: false,
         loadingItems: false,
@@ -13,6 +14,9 @@
         runItems: [],
         frameResizeBound: false,
     };
+
+    const BIM_BULK_ACTION_APPROVE = 'bim-runs-bulk-approve';
+    const BIM_BULK_ACTION_REJECT = 'bim-runs-bulk-reject';
 
     function norm(value) {
         return String(value ?? '').trim();
@@ -71,6 +75,135 @@
         } catch (_) {
             return {};
         }
+    }
+
+    function bulkBridge() {
+        if (!window.TableBulk || typeof window.TableBulk !== 'object') return null;
+        if (typeof window.TableBulk.register !== 'function') return null;
+        return window.TableBulk;
+    }
+
+    function parseBulkRunIds(selectedKeys = []) {
+        return (selectedKeys || [])
+            .map((key) => norm(key))
+            .filter(Boolean);
+    }
+
+    function summarizeBulkFailures(items = []) {
+        if (!Array.isArray(items) || !items.length) return '';
+        const head = items.slice(0, 3).join(' | ');
+        return items.length > 3 ? `${head} | +${items.length - 3} more` : head;
+    }
+
+    function selectedRunsByIds(ids = []) {
+        if (!ids.length) return [];
+        const idSet = new Set(ids);
+        return (STATE.runs || []).filter((item) => idSet.has(norm(item?.run_id)));
+    }
+
+    function isRunActionLocked(run) {
+        const status = norm(run?.status).toLowerCase();
+        return status === 'approved' || status === 'rejected' || status === 'expired';
+    }
+
+    async function runBimRunsBulkAction(actionId, selectedKeys) {
+        const ids = parseBulkRunIds(selectedKeys);
+        if (!ids.length) {
+            setInboxResult('No run selected.', 'error');
+            return;
+        }
+
+        const selectedRuns = selectedRunsByIds(ids);
+        if (!selectedRuns.length) {
+            setInboxResult('Selected runs are no longer available.', 'error');
+            return;
+        }
+
+        let targetRuns = selectedRuns;
+        let confirmMessage = '';
+        let operation = '';
+        let task = null;
+
+        if (actionId === BIM_BULK_ACTION_APPROVE) {
+            targetRuns = selectedRuns.filter((run) => !isRunActionLocked(run) && Boolean(run?.approvable));
+            confirmMessage = `Approve ${targetRuns.length} selected run(s)?`;
+            operation = 'approved';
+            task = (run) => request(`${INBOX_API_BASE}/runs/${encodeURIComponent(norm(run?.run_id))}/approve`, { method: 'POST' });
+        } else if (actionId === BIM_BULK_ACTION_REJECT) {
+            const reason = norm(document.getElementById('bimInboxRejectReasonInput')?.value);
+            if (!reason) {
+                setInboxResult('Reject reason is required for bulk reject.', 'error');
+                return;
+            }
+            targetRuns = selectedRuns.filter((run) => !isRunActionLocked(run));
+            confirmMessage = `Reject ${targetRuns.length} selected run(s)?`;
+            operation = 'rejected';
+            task = (run) => request(`${INBOX_API_BASE}/runs/${encodeURIComponent(norm(run?.run_id))}/reject`, {
+                method: 'POST',
+                body: JSON.stringify({ reason }),
+            });
+        }
+
+        if (!task) {
+            setInboxResult('Unknown bulk action.', 'error');
+            return;
+        }
+        if (!targetRuns.length) {
+            setInboxResult('No eligible run found for this operation.', 'error');
+            return;
+        }
+        if (!confirm(confirmMessage)) return;
+
+        setInboxResult(`Running bulk operation on ${targetRuns.length} run(s) ...`, 'info');
+        const failures = [];
+        let success = 0;
+        for (const run of targetRuns) {
+            const runId = norm(run?.run_id);
+            try {
+                await task(run);
+                success += 1;
+            } catch (err) {
+                failures.push(`${runId || '-'}: ${err?.message || 'Request failed'}`);
+            }
+        }
+
+        const bulk = bulkBridge();
+        if (bulk && typeof bulk.clearSelection === 'function') {
+            bulk.clearSelection('bimInboxRunsTable');
+        }
+        await loadInboxRuns({ silent: true });
+        if (STATE.selectedRunId) {
+            await loadRunDetails(STATE.selectedRunId);
+        }
+
+        if (success > 0) {
+            setInboxResult(`${success} run(s) ${operation}.`, 'success');
+        }
+        if (failures.length > 0) {
+            setInboxResult(`${failures.length} run(s) failed. ${summarizeBulkFailures(failures)}`, 'error');
+        }
+    }
+
+    function registerBimRunsBulkActions() {
+        if (STATE.bulkRegistered) return;
+        const bulk = bulkBridge();
+        if (!bulk) return;
+
+        bulk.register({
+            tableId: 'bimInboxRunsTable',
+            actions: [
+                { id: BIM_BULK_ACTION_APPROVE, label: 'Approve selected runs' },
+                { id: BIM_BULK_ACTION_REJECT, label: 'Reject selected runs' },
+            ],
+            getRowKey(row) {
+                return row && row.dataset ? row.dataset.bulkKey : '';
+            },
+            onAction({ actionId, selectedKeys }) {
+                return runBimRunsBulkAction(actionId, selectedKeys);
+            },
+        });
+
+        STATE.bulkRegistered = true;
     }
 
     function toIsoUtcFromInput(id) {
@@ -164,7 +297,7 @@
             const validInvalid = `${summary.valid} / ${summary.invalid}`;
             const sender = norm(run?.sender_name) || norm(run?.sender_email) || '-';
             return `
-                <tr class="${selected ? 'bulk-bim-row-selected' : ''}">
+                <tr class="${selected ? 'bulk-bim-row-selected' : ''}" data-bulk-key="${esc(runId)}" data-run-id="${esc(runId)}" data-run-status="${esc(norm(run?.status).toLowerCase())}" data-run-approvable="${run?.approvable ? '1' : '0'}">
                   <td><code>${esc(runId || '-')}</code></td>
                   <td>${esc(run?.project_code || '-')}</td>
                   <td>${esc(sender)}</td>
@@ -506,6 +639,7 @@
         if (!root) return;
         bindBulkIframeResize();
         bindActions();
+        registerBimRunsBulkActions();
         if (!STATE.initialized) {
             switchBulkTab('excel');
             STATE.initialized = true;

@@ -6,6 +6,7 @@
     const STORE = {
         initialized: false,
         loadingPromise: null,
+        bulkRegistered: false,
         storagePathsLoaded: false,
         storagePolicyLoaded: false,
         storageIntegrationsLoaded: false,
@@ -67,6 +68,22 @@
         corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
     };
 
+    const ENTITY_TABLE_IDS = {
+        projects: 'settingsProjectsTable',
+        mdr: 'settingsMdrTable',
+        phases: 'settingsPhasesTable',
+        disciplines: 'settingsDisciplinesTable',
+        packages: 'settingsPackagesTable',
+        blocks: 'settingsBlocksTable',
+        levels: 'settingsLevelsTable',
+        statuses: 'settingsStatusesTable',
+        corr_issuing: 'settingsCorrIssuingTable',
+        corr_categories: 'settingsCorrCategoriesTable',
+    };
+
+    const SITE_CACHE_BULK_ACTION_ACTIVATE = 'site-cache-profiles-bulk-activate';
+    const SITE_CACHE_BULK_ACTION_DEACTIVATE = 'site-cache-profiles-bulk-deactivate';
+
     const STORAGE_WIZARD_STEPS = ['paths', 'policy', 'site_cache'];
     const STORAGE_POLICY_DEFAULT_ALLOWED_MIMES = [
         'application/pdf',
@@ -112,6 +129,13 @@
 
     function tSuccess(msg) { if (window.UI?.success) window.UI.success(msg); else alert(msg); }
     function tError(msg) { if (window.UI?.error) window.UI.error(msg); else alert(msg); }
+    function tWarning(msg) {
+        if (window.UI?.warning) {
+            window.UI.warning(msg);
+            return;
+        }
+        tError(msg);
+    }
     function norm(v) { return String(v ?? '').trim(); }
     function esc(v) {
         return String(v ?? '')
@@ -203,6 +227,30 @@
         return `<div class="general-row-actions">${inner}</div>`;
     }
 
+    function entityTableId(entity) {
+        return ENTITY_TABLE_IDS[entity] || '';
+    }
+
+    function entityBulkKey(entity, row) {
+        if (!row || typeof row !== 'object') return '';
+        if (entity === 'phases') return norm(row.ph_code).toUpperCase();
+        if (entity === 'packages') {
+            return `${norm(row.discipline_code).toUpperCase()}::${norm(row.package_code).toUpperCase()}`;
+        }
+        if (entity === 'blocks') {
+            return `${norm(row.project_code).toUpperCase()}::${norm(row.code).toUpperCase()}`;
+        }
+        return norm(row.code).toUpperCase();
+    }
+
+    function entityBulkLabel(entity, row) {
+        if (!row || typeof row !== 'object') return '-';
+        if (entity === 'phases') return norm(row.ph_code) || '-';
+        if (entity === 'packages') return `${norm(row.discipline_code)}/${norm(row.package_code)}`;
+        if (entity === 'blocks') return `${norm(row.project_code)}/${norm(row.code)}`;
+        return norm(row.code) || '-';
+    }
+
     function renderEntity(entity) {
         const meta = LIST_META[entity];
         const tbody = document.getElementById(meta.tbodyId);
@@ -218,7 +266,7 @@
         let html = '';
         if (entity === 'projects') {
             html = info.rows.map((p) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('projects', p))}">
                     <td>${esc(p.code)}</td>
                     <td>${esc(p.project_name || p.name_e || '-')}</td>
                     <td>${boolBadge(Boolean(p.is_active))}</td>
@@ -230,7 +278,7 @@
             `).join('');
         } else if (entity === 'mdr') {
             html = info.rows.map((m) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('mdr', m))}">
                     <td>${esc(m.code)}</td>
                     <td>${esc(m.name_e || m.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(m.is_active))}</td>
@@ -242,7 +290,7 @@
             `).join('');
         } else if (entity === 'phases') {
             html = info.rows.map((p) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('phases', p))}">
                     <td>${esc(p.ph_code)}</td>
                     <td>${esc(p.name_e || '-')}</td>
                     <td>${esc(p.name_p || '-')}</td>
@@ -254,7 +302,7 @@
             `).join('');
         } else if (entity === 'disciplines') {
             html = info.rows.map((d) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('disciplines', d))}">
                     <td>${esc(d.code)}</td>
                     <td>${esc(d.name_e || '-')}</td>
                     <td>${esc(d.name_p || '-')}</td>
@@ -266,7 +314,7 @@
             `).join('');
         } else if (entity === 'packages') {
             html = info.rows.map((p) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('packages', p))}">
                     <td>${esc(p.discipline_code)}</td>
                     <td>${esc(p.package_code)}</td>
                     <td>${esc(p.name_e || '-')}</td>
@@ -279,7 +327,7 @@
             `).join('');
         } else if (entity === 'blocks') {
             html = info.rows.map((b) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('blocks', b))}">
                     <td>${esc(b.project_code)}</td>
                     <td>${esc(b.code)}</td>
                     <td>${esc(b.name_e || b.name_p || '-')}</td>
@@ -292,7 +340,7 @@
             `).join('');
         } else if (entity === 'levels') {
             html = info.rows.map((l) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('levels', l))}">
                     <td>${esc(l.code)}</td>
                     <td>${esc(l.name_e || '-')}</td>
                     <td>${esc(l.name_p || '-')}</td>
@@ -305,7 +353,7 @@
             `).join('');
         } else if (entity === 'statuses') {
             html = info.rows.map((s) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('statuses', s))}">
                     <td>${esc(s.code)}</td>
                     <td>${esc(s.name || '-')}</td>
                     <td>${esc(s.description || '-')}</td>
@@ -318,7 +366,7 @@
             `).join('');
         } else if (entity === 'corr_issuing') {
             html = info.rows.map((s) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('corr_issuing', s))}">
                     <td>${esc(s.code)}</td>
                     <td>${esc(s.name_e || s.name_p || '-')}</td>
                     <td>${esc(s.project_code || '-')}</td>
@@ -331,7 +379,7 @@
             `).join('');
         } else if (entity === 'corr_categories') {
             html = info.rows.map((s) => `
-                <tr>
+                <tr data-bulk-key="${esc(entityBulkKey('corr_categories', s))}">
                     <td>${esc(s.code)}</td>
                     <td>${esc(s.name_e || s.name_p || '-')}</td>
                     <td>${boolBadge(Boolean(s.is_active))}</td>
@@ -379,6 +427,337 @@
             throw err;
         }
         return res.json();
+    }
+
+    function generalBulkBridge() {
+        if (!window.TableBulk || typeof window.TableBulk !== 'object') return null;
+        if (typeof window.TableBulk.register !== 'function') return null;
+        return window.TableBulk;
+    }
+
+    function summarizeFailures(items = []) {
+        if (!Array.isArray(items) || !items.length) return '';
+        const head = items.slice(0, 3).join(' | ');
+        return items.length > 3 ? `${head} | +${items.length - 3} more` : head;
+    }
+
+    function rowsBySelectedBulkKeys(entity, selectedKeys = []) {
+        const keySet = new Set((selectedKeys || []).map((value) => norm(value).toUpperCase()).filter(Boolean));
+        if (!keySet.size) return [];
+        return (STORE.data[entity] || []).filter((row) => keySet.has(entityBulkKey(entity, row).toUpperCase()));
+    }
+
+    function bulkActionMetaForEntity(entity) {
+        switch (entity) {
+            case 'projects':
+                return {
+                    id: 'general-bulk-projects-deactivate',
+                    label: 'Deactivate selected projects',
+                    confirm: (count) => `Deactivate ${count} selected project(s)?`,
+                    endpoint: '/projects/delete',
+                    reloadEntities: ['projects'],
+                    successText: 'project(s) deactivated.',
+                };
+            case 'mdr':
+                return {
+                    id: 'general-bulk-mdr-deactivate',
+                    label: 'Deactivate selected MDR categories',
+                    confirm: (count) => `Deactivate ${count} selected MDR category(ies)?`,
+                    endpoint: '/mdr-categories/delete',
+                    reloadEntities: ['mdr'],
+                    successText: 'MDR category(ies) deactivated.',
+                };
+            case 'phases':
+                return {
+                    id: 'general-bulk-phases-delete',
+                    label: 'Delete selected phases',
+                    confirm: (count) => `Delete ${count} selected phase(s)?`,
+                    endpoint: '/phases/delete',
+                    reloadEntities: ['phases'],
+                    successText: 'phase(s) deleted.',
+                };
+            case 'disciplines':
+                return {
+                    id: 'general-bulk-disciplines-delete',
+                    label: 'Delete selected disciplines',
+                    confirm: (count) => `Delete ${count} selected discipline(s)?`,
+                    endpoint: '/disciplines/delete',
+                    reloadEntities: ['disciplines', 'packages'],
+                    successText: 'discipline(s) deleted.',
+                };
+            case 'packages':
+                return {
+                    id: 'general-bulk-packages-delete',
+                    label: 'Delete selected packages',
+                    confirm: (count) => `Delete ${count} selected package(s)?`,
+                    endpoint: '/packages/delete',
+                    reloadEntities: ['packages'],
+                    successText: 'package(s) deleted.',
+                };
+            case 'blocks':
+                return {
+                    id: 'general-bulk-blocks-deactivate',
+                    label: 'Deactivate selected blocks',
+                    confirm: (count) => `Deactivate ${count} selected block(s)?`,
+                    endpoint: '/blocks/delete',
+                    reloadEntities: ['blocks'],
+                    successText: 'block(s) deactivated.',
+                };
+            case 'levels':
+                return {
+                    id: 'general-bulk-levels-delete',
+                    label: 'Delete selected levels',
+                    confirm: (count) => `Delete ${count} selected level(s)?`,
+                    endpoint: '/levels/delete',
+                    reloadEntities: ['levels'],
+                    successText: 'level(s) deleted.',
+                };
+            case 'statuses':
+                return {
+                    id: 'general-bulk-statuses-delete',
+                    label: 'Delete selected statuses',
+                    confirm: (count) => `Delete ${count} selected status(es)?`,
+                    endpoint: '/statuses/delete',
+                    reloadEntities: ['statuses'],
+                    successText: 'status(es) deleted.',
+                };
+            case 'corr_issuing':
+                return {
+                    id: 'general-bulk-corr-issuing-deactivate',
+                    label: 'Deactivate selected issuing entities',
+                    confirm: (count) => `Deactivate ${count} selected issuing entit(ies)?`,
+                    endpoint: '/correspondence-issuing/delete',
+                    reloadEntities: ['corr_issuing'],
+                    successText: 'issuing entit(ies) deactivated.',
+                };
+            case 'corr_categories':
+                return {
+                    id: 'general-bulk-corr-categories-deactivate',
+                    label: 'Deactivate selected correspondence categories',
+                    confirm: (count) => `Deactivate ${count} selected correspondence category(ies)?`,
+                    endpoint: '/correspondence-categories/delete',
+                    reloadEntities: ['corr_categories'],
+                    successText: 'correspondence category(ies) deactivated.',
+                };
+            default:
+                return null;
+        }
+    }
+
+    function entityBulkPayloadForMutation(entity, row) {
+        switch (entity) {
+            case 'projects':
+                return { code: norm(row?.code).toUpperCase(), hard_delete: false };
+            case 'mdr':
+                return { code: norm(row?.code).toUpperCase(), hard_delete: false };
+            case 'phases':
+                return { ph_code: norm(row?.ph_code).toUpperCase() };
+            case 'disciplines':
+                return { code: norm(row?.code).toUpperCase() };
+            case 'packages':
+                return {
+                    discipline_code: norm(row?.discipline_code).toUpperCase(),
+                    package_code: norm(row?.package_code).toUpperCase(),
+                };
+            case 'blocks':
+                return {
+                    project_code: norm(row?.project_code).toUpperCase(),
+                    code: norm(row?.code).toUpperCase(),
+                    hard_delete: false,
+                };
+            case 'levels':
+                return { code: norm(row?.code).toUpperCase() };
+            case 'statuses':
+                return { code: norm(row?.code).toUpperCase() };
+            case 'corr_issuing':
+                return { code: norm(row?.code).toUpperCase(), hard_delete: false };
+            case 'corr_categories':
+                return { code: norm(row?.code).toUpperCase(), hard_delete: false };
+            default:
+                return null;
+        }
+    }
+
+    async function reloadEntitiesAfterMutation(reloadEntities = []) {
+        for (const entity of reloadEntities) {
+            await loadEntity(entity, true);
+        }
+        if (reloadEntities.includes('projects')) refreshProjectCards();
+        if (reloadEntities.includes('projects') || reloadEntities.includes('disciplines')) await ensureSelects();
+        if (reloadEntities.some((entity) => ['projects', 'mdr', 'phases', 'disciplines', 'statuses'].includes(entity))) {
+            refreshTransmittalConfigSummary();
+        }
+        if (STORE.siteCacheLoaded && reloadEntities.some((entity) => ['projects', 'disciplines', 'packages'].includes(entity))) {
+            fillSiteCacheRuleFilterOptions();
+        }
+        await loadOverview();
+    }
+
+    async function runEntityBulkAction(entity, selectedKeys) {
+        const meta = bulkActionMetaForEntity(entity);
+        if (!meta) return;
+
+        const rows = rowsBySelectedBulkKeys(entity, selectedKeys);
+        if (!rows.length) {
+            tWarning('No eligible rows selected.');
+            return;
+        }
+        if (!confirm(meta.confirm(rows.length))) return;
+
+        const failures = [];
+        let success = 0;
+        for (const row of rows) {
+            const payload = entityBulkPayloadForMutation(entity, row);
+            if (!payload) {
+                failures.push(`${entityBulkLabel(entity, row)}: invalid payload`);
+                continue;
+            }
+            try {
+                await request(`${API_BASE}${meta.endpoint}`, {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                });
+                success += 1;
+            } catch (err) {
+                failures.push(`${entityBulkLabel(entity, row)}: ${err?.message || 'Request failed'}`);
+            }
+        }
+
+        if (success > 0) {
+            const bulk = generalBulkBridge();
+            const tableId = entityTableId(entity);
+            if (bulk && tableId && typeof bulk.clearSelection === 'function') {
+                bulk.clearSelection(tableId);
+            }
+            await reloadEntitiesAfterMutation(meta.reloadEntities || []);
+            tSuccess(`${success} ${meta.successText}`);
+        }
+        if (failures.length > 0) {
+            tWarning(`${failures.length} operation(s) failed. ${summarizeFailures(failures)}`);
+        }
+    }
+
+    async function runSiteCacheProfilesBulk(actionId, selectedKeys) {
+        const ids = (selectedKeys || [])
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value > 0)
+            .map((value) => Math.trunc(value));
+        if (!ids.length) {
+            tWarning('No Site Cache profile selected.');
+            return;
+        }
+
+        const idSet = new Set(ids.map((value) => String(value)));
+        const selectedProfiles = (STORE.siteCache.profiles || [])
+            .filter((item) => idSet.has(String(Number(item?.id || 0))));
+        if (!selectedProfiles.length) {
+            tWarning('Selected Site Cache profiles are no longer available.');
+            return;
+        }
+
+        let targetRows = selectedProfiles;
+        let confirmMessage = '';
+        let requestTask = null;
+        let successText = '';
+
+        if (actionId === SITE_CACHE_BULK_ACTION_DEACTIVATE) {
+            targetRows = selectedProfiles.filter((item) => Boolean(item?.is_active));
+            confirmMessage = `Deactivate ${targetRows.length} selected Site Cache profile(s)?`;
+            successText = 'profile(s) deactivated.';
+            requestTask = (item) => request(`${API_BASE}/site-cache/profiles/delete`, {
+                method: 'POST',
+                body: JSON.stringify({ id: Number(item?.id || 0), hard_delete: false }),
+            });
+        } else if (actionId === SITE_CACHE_BULK_ACTION_ACTIVATE) {
+            targetRows = selectedProfiles.filter((item) => !Boolean(item?.is_active));
+            confirmMessage = `Activate ${targetRows.length} selected Site Cache profile(s)?`;
+            successText = 'profile(s) activated.';
+            requestTask = (item) => request(`${API_BASE}/site-cache/profiles/upsert`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: Number(item?.id || 0),
+                    code: norm(item?.code).toUpperCase(),
+                    name: norm(item?.name),
+                    project_code: norm(item?.project_code).toUpperCase() || null,
+                    local_root_path: norm(item?.local_root_path) || null,
+                    fallback_mode: norm(item?.fallback_mode).toLowerCase() || 'local_first',
+                    is_active: true,
+                }),
+            });
+        }
+
+        if (!requestTask) {
+            tWarning('Unknown Site Cache bulk action.');
+            return;
+        }
+        if (!targetRows.length) {
+            tWarning('No eligible Site Cache profile found for this action.');
+            return;
+        }
+        if (!confirm(confirmMessage)) return;
+
+        const failures = [];
+        let success = 0;
+        for (const item of targetRows) {
+            try {
+                await requestTask(item);
+                success += 1;
+            } catch (err) {
+                const code = norm(item?.code) || String(item?.id || '-');
+                failures.push(`${code}: ${err?.message || 'Request failed'}`);
+            }
+        }
+
+        if (success > 0) {
+            const bulk = generalBulkBridge();
+            if (bulk && typeof bulk.clearSelection === 'function') {
+                bulk.clearSelection('settingsSiteCacheProfilesTable');
+            }
+            await loadSiteCache(true);
+            tSuccess(`${success} ${successText}`);
+        }
+        if (failures.length > 0) {
+            tWarning(`${failures.length} operation(s) failed. ${summarizeFailures(failures)}`);
+        }
+    }
+
+    function registerGeneralBulkActions() {
+        if (STORE.bulkRegistered) return;
+        const bulk = generalBulkBridge();
+        if (!bulk) return;
+
+        for (const entity of ENTITIES) {
+            const meta = bulkActionMetaForEntity(entity);
+            const tableId = entityTableId(entity);
+            if (!meta || !tableId) continue;
+            bulk.register({
+                tableId,
+                actions: [{ id: meta.id, label: meta.label }],
+                getRowKey(row) {
+                    return row && row.dataset ? row.dataset.bulkKey : '';
+                },
+                onAction({ actionId, selectedKeys }) {
+                    if (actionId !== meta.id) return Promise.resolve();
+                    return runEntityBulkAction(entity, selectedKeys);
+                },
+            });
+        }
+
+        bulk.register({
+            tableId: 'settingsSiteCacheProfilesTable',
+            actions: [
+                { id: SITE_CACHE_BULK_ACTION_ACTIVATE, label: 'Activate selected site cache profiles' },
+                { id: SITE_CACHE_BULK_ACTION_DEACTIVATE, label: 'Deactivate selected site cache profiles' },
+            ],
+            getRowKey(row) {
+                return row && row.dataset ? row.dataset.bulkKey : '';
+            },
+            onAction({ actionId, selectedKeys }) {
+                return runSiteCacheProfilesBulk(actionId, selectedKeys);
+            },
+        });
+
+        STORE.bulkRegistered = true;
     }
 
     function responseItems(payload) {
@@ -2716,7 +3095,7 @@
         tbody.innerHTML = profiles.map((item) => {
             const pid = Number(item?.id || 0);
             return `
-                <tr>
+                <tr data-bulk-key="${pid}" data-profile-id="${pid}">
                     <td>${esc(item?.code || '-')}</td>
                     <td>${esc(item?.name || '-')}</td>
                     <td>${esc(item?.project_code || '-')}</td>
@@ -3535,6 +3914,7 @@
     async function initGeneralSettings(force = false) {
         bindGeneralActions();
         bindStoragePathValidation();
+        registerGeneralBulkActions();
         if (STORE.loadingPromise) return STORE.loadingPromise;
 
         const job = (async () => {
@@ -3624,10 +4004,7 @@
             body: JSON.stringify(payload),
         });
         tSuccess(successMessage);
-        for (const entity of reloadEntities) await loadEntity(entity, true);
-        if (reloadEntities.includes('projects')) refreshProjectCards();
-        if (reloadEntities.includes('projects') || reloadEntities.includes('disciplines')) await ensureSelects();
-        await loadOverview();
+        await reloadEntitiesAfterMutation(reloadEntities);
     }
 
     window.saveSiteCacheProfileSetting = async function saveSiteCacheProfileSetting() {

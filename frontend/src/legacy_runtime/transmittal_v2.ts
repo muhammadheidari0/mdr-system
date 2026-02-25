@@ -18,9 +18,14 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         formData: null,
         selectedDocs: [],
         searchDocs: [],
+        listItems: [],
+        bulkRegistered: false,
         createReady: false,
         editingId: null,
     };
+
+    const TR2_BULK_ACTION_ISSUE = 'tr2-bulk-issue';
+    const TR2_BULK_ACTION_VOID = 'tr2-bulk-void';
 
     function notify(type, message) {
         if (window.UI && typeof window.UI[type] === "function") {
@@ -32,6 +37,142 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             return;
         }
         alert(message);
+    }
+
+    function transmittalBulkBridge() {
+        if (!window.TableBulk || typeof window.TableBulk !== "object") return null;
+        if (typeof window.TableBulk.register !== "function") return null;
+        return window.TableBulk;
+    }
+
+    function summarizeBulkErrors(items = []) {
+        if (!Array.isArray(items) || !items.length) return "";
+        const head = items.slice(0, 3).join(" | ");
+        return items.length > 3 ? `${head} | +${items.length - 3} more` : head;
+    }
+
+    function parseBulkTransmittalIds(selectedKeys = []) {
+        return (selectedKeys || [])
+            .map((key) => String(key || "").trim())
+            .filter(Boolean);
+    }
+
+    function selectedTransmittalRows(ids = []) {
+        if (!ids.length) return [];
+        const idSet = new Set(ids);
+        return (state.listItems || []).filter((item) => idSet.has(String(item?.id || "").trim()));
+    }
+
+    function isDraftTransmittal(item) {
+        return String(item?.status || "").trim().toLowerCase() === "draft";
+    }
+
+    function canVoidTransmittal(item) {
+        const status = String(item?.status || "").trim().toLowerCase();
+        return status === "draft" || status === "issued";
+    }
+
+    async function runTransmittalBulkAction(actionId, selectedKeys) {
+        const ids = parseBulkTransmittalIds(selectedKeys);
+        if (!ids.length) {
+            notify("warning", "No transmittal selected.");
+            return;
+        }
+
+        const selectedRows = selectedTransmittalRows(ids);
+        if (!selectedRows.length) {
+            notify("warning", "Selected transmittals are no longer available.");
+            return;
+        }
+
+        let targetRows = selectedRows;
+        let operation = "";
+        let confirmMessage = "";
+        let task = null;
+
+        if (actionId === TR2_BULK_ACTION_ISSUE) {
+            operation = "issued";
+            targetRows = selectedRows.filter((item) => isDraftTransmittal(item));
+            confirmMessage = `Issue ${targetRows.length} selected draft transmittal(s)?`;
+            task = async (row) => {
+                const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
+                await mutationBridge.issue(String(row.id), { fetch: getTransmittalFetchFn() });
+            };
+        } else if (actionId === TR2_BULK_ACTION_VOID) {
+            operation = "voided";
+            targetRows = selectedRows.filter((item) => canVoidTransmittal(item));
+            const reasonInput = prompt("Enter a single void reason for all selected transmittals:");
+            if (reasonInput === null) return;
+            const reason = reasonInput.trim();
+            if (!reason) {
+                notify("error", "Void reason is required.");
+                return;
+            }
+            confirmMessage = `Void ${targetRows.length} selected transmittal(s)?`;
+            task = async (row) => {
+                const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
+                await mutationBridge.voidItem(String(row.id), reason, { fetch: getTransmittalFetchFn() });
+            };
+        }
+
+        if (!task) {
+            notify("warning", "Unknown bulk action.");
+            return;
+        }
+        if (!targetRows.length) {
+            notify("warning", "No eligible transmittal for this operation.");
+            return;
+        }
+        if (!window.confirm(confirmMessage)) return;
+
+        const failures = [];
+        let success = 0;
+        for (const row of targetRows) {
+            try {
+                await task(row);
+                success += 1;
+            } catch (error) {
+                const label = String(row?.transmittal_no || row?.id || "-");
+                failures.push(`${label}: ${error?.message || "Request failed"}`);
+            }
+        }
+
+        if (success > 0) {
+            notify("success", `${success} transmittal(s) ${operation}.`);
+        }
+        if (failures.length > 0) {
+            notify("warning", `${failures.length} operation(s) failed. ${summarizeBulkErrors(failures)}`);
+        }
+
+        const bulk = transmittalBulkBridge();
+        if (bulk && typeof bulk.clearSelection === "function") {
+            bulk.clearSelection("tr2ListTable");
+        }
+        if (typeof window.loadTransmittals === "function") {
+            await window.loadTransmittals();
+        }
+    }
+
+    function registerTransmittalBulkActions() {
+        if (state.bulkRegistered) return;
+        const bulk = transmittalBulkBridge();
+        if (!bulk) return;
+
+        bulk.register({
+            tableId: "tr2ListTable",
+            actions: [
+                { id: TR2_BULK_ACTION_ISSUE, label: "Issue selected drafts" },
+                { id: TR2_BULK_ACTION_VOID, label: "Void selected transmittals" },
+            ],
+            getRowKey(row) {
+                return row && row.dataset ? row.dataset.bulkKey : "";
+            },
+            onAction({ actionId, selectedKeys }) {
+                return runTransmittalBulkAction(actionId, selectedKeys);
+            },
+        });
+
+        state.bulkRegistered = true;
     }
 
     function getTransmittalFetchFn() {
@@ -239,13 +380,15 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 dataBridge.loadList({ fetch: getTransmittalFetchFn() }),
                 loadTransmittalStats(),
             ]);
+            state.listItems = Array.isArray(items) ? items : [];
             if (!tbody) return;
             if (!Array.isArray(items) || !items.length) {
+                state.listItems = [];
                 tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯</td></tr>';
                 return;
             }
             tbody.innerHTML = items.map((t) => `
-                <tr>
+                <tr data-bulk-key="${escapeHtml(String(t.id || '').trim())}" data-transmittal-id="${escapeHtml(String(t.id || '').trim())}" data-transmittal-status="${escapeHtml(String(t.status || '').trim().toLowerCase())}">
                     <td style="font-family: monospace; font-weight: 700;">${escapeHtml(t.transmittal_no || t.id)}</td>
                     <td>${escapeHtml(t.subject || "-")}</td>
                     <td>${escapeHtml(t.doc_count)}</td>
@@ -260,6 +403,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 </tr>
             `).join("");
         } catch (error) {
+            state.listItems = [];
             if (tbody) {
                 tbody.innerHTML = '<tr><td colspan="6" class="center-text text-danger">Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ</td></tr>';
             }
@@ -564,6 +708,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     function initTransmittalUiBindings() {
         bindTransmittalTemplateActions();
         bindTransmittalFieldEvents();
+        registerTransmittalBulkActions();
     }
 
     window.initTransmittalView = async function initTransmittalView() {

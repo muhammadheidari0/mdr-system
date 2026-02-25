@@ -4,6 +4,7 @@ import "../core/events";
 import "../views/doc_search";
 import "../views/header";
 import "../views/base_interactions";
+import "../views/table_bulk_actions";
 import "../views/dashboard";
 import "../views/edms";
 import "../views/reports_logic";

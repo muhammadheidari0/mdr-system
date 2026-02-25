@@ -9,6 +9,7 @@
         initialized: false,
         loading: false,
         bound: false,
+        bulkRegistered: false,
         items: [],
         filtered: [],
         page: 1,
@@ -64,6 +65,145 @@
             return;
         }
         alert(message);
+    }
+
+    function bulkBridge() {
+        if (!window.TableBulk || typeof window.TableBulk !== 'object') return null;
+        if (typeof window.TableBulk.register !== 'function') return null;
+        return window.TableBulk;
+    }
+
+    function parseSelectedOrgIds(selectedKeys = []) {
+        return (selectedKeys || [])
+            .map((key) => Number(key))
+            .filter((id) => Number.isFinite(id) && id > 0)
+            .map((id) => Math.trunc(id));
+    }
+
+    function summarizeErrors(items) {
+        if (!items || !items.length) return '';
+        const head = items.slice(0, 3).join(' | ');
+        return items.length > 3 ? `${head} | +${items.length - 3} more` : head;
+    }
+
+    async function runOrganizationsBulk(actionId, selectedKeys) {
+        const ids = parseSelectedOrgIds(selectedKeys);
+        if (!ids.length) {
+            notify('warning', 'No organization selected.');
+            return;
+        }
+
+        const rows = ids
+            .map((id) => getOrganizationById(id))
+            .filter(Boolean);
+        if (!rows.length) {
+            notify('warning', 'Selected organizations are no longer available.');
+            return;
+        }
+
+        const protectedRows = rows.filter((item) => isProtectedOrganization(item));
+        const allowedRows = rows.filter((item) => !isProtectedOrganization(item));
+        if (!allowedRows.length) {
+            notify('warning', 'SYSTEM_ROOT cannot be modified.');
+            return;
+        }
+
+        let task = null;
+        let confirmMessage = '';
+        let operation = '';
+        let targetRows = allowedRows;
+
+        if (actionId === 'org-bulk-deactivate') {
+            operation = 'deactivated';
+            targetRows = allowedRows.filter((item) => Boolean(item.is_active));
+            confirmMessage = `Deactivate ${targetRows.length} selected organization(s)?`;
+            task = (row) => request(`${API_BASE}/delete`, {
+                method: 'POST',
+                body: JSON.stringify({ id: Number(row.id), hard_delete: false }),
+            });
+        } else if (actionId === 'org-bulk-restore') {
+            operation = 'restored';
+            targetRows = allowedRows.filter((item) => !Boolean(item.is_active));
+            confirmMessage = `Restore ${targetRows.length} selected organization(s)?`;
+            task = (row) => request(`${API_BASE}/upsert`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    id: Number(row.id),
+                    code: normUpper(row.code),
+                    name: row.name,
+                    org_type: norm(row.org_type).toLowerCase(),
+                    parent_id: row.parent_id == null ? null : Number(row.parent_id),
+                    is_active: true,
+                }),
+            });
+        } else if (actionId === 'org-bulk-hard-delete') {
+            operation = 'deleted';
+            targetRows = allowedRows;
+            confirmMessage = `Hard-delete ${targetRows.length} selected organization(s)? This cannot be undone.`;
+            task = (row) => request(`${API_BASE}/delete`, {
+                method: 'POST',
+                body: JSON.stringify({ id: Number(row.id), hard_delete: true }),
+            });
+        }
+
+        if (!task) {
+            notify('warning', 'Unknown bulk action.');
+            return;
+        }
+        if (!targetRows.length) {
+            notify('warning', 'No eligible rows for this operation.');
+            return;
+        }
+        if (!window.confirm(confirmMessage)) return;
+
+        const failures = [];
+        let success = 0;
+        for (const row of targetRows) {
+            try {
+                await task(row);
+                success += 1;
+            } catch (error) {
+                failures.push(`${row.code || row.id}: ${error && error.message ? error.message : 'Request failed'}`);
+            }
+        }
+
+        if (success > 0) {
+            notify('success', `${success} organization(s) ${operation}.`);
+        }
+        if (protectedRows.length > 0) {
+            notify('warning', `${protectedRows.length} protected organization(s) skipped.`);
+        }
+        if (failures.length > 0) {
+            notify('warning', `${failures.length} operation(s) failed. ${summarizeErrors(failures)}`);
+        }
+
+        const bulk = bulkBridge();
+        if (bulk && typeof bulk.clearSelection === 'function') {
+            bulk.clearSelection('organizationsTable');
+        }
+        await loadOrganizations(true);
+    }
+
+    function registerOrganizationsBulkActions() {
+        if (state.bulkRegistered) return;
+        const bulk = bulkBridge();
+        if (!bulk) return;
+
+        bulk.register({
+            tableId: 'organizationsTable',
+            actions: [
+                { id: 'org-bulk-deactivate', label: 'Deactivate selected organizations' },
+                { id: 'org-bulk-restore', label: 'Restore selected organizations' },
+                { id: 'org-bulk-hard-delete', label: 'Hard-delete selected organizations' },
+            ],
+            getRowKey(row) {
+                return row && row.dataset ? row.dataset.bulkKey : '';
+            },
+            onAction({ actionId, selectedKeys }) {
+                return runOrganizationsBulk(actionId, selectedKeys);
+            },
+        });
+        state.bulkRegistered = true;
     }
 
     async function request(url, options = {}) {
@@ -225,7 +365,7 @@
                 const deleteDisabled = protectedOrg ? 'disabled' : '';
 
                 return `
-                    <tr>
+                    <tr data-bulk-key="${id}" data-org-id="${id}">
                         <td>${id}</td>
                         <td><code>${esc(item.code || '-')}</code></td>
                         <td>
@@ -453,6 +593,7 @@
     function bindEvents() {
         if (state.bound) return;
         state.bound = true;
+        registerOrganizationsBulkActions();
 
         const root = document.getElementById('settingsOrganizationsTabRoot');
         const searchInput = document.getElementById('organizationsSearchInput');

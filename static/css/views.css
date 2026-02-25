@@ -1802,6 +1802,51 @@ body.ci-drawer-open {
 .archive-table th { background: #f3f4f6; color: #4b5563; font-weight: 600; padding: 10px 12px; text-align: right; border-bottom: 1px solid #e5e7eb; }
 .archive-table td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; color: #374151; vertical-align: middle; }
 .archive-table tr:hover { background-color: #f9fafb; }
+.table-bulk-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    padding: 8px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+.table-bulk-master-wrap,
+.table-bulk-checkbox-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+.table-bulk-checkbox {
+    inline-size: 16px;
+    block-size: 16px;
+}
+.table-bulk-cell {
+    width: 42px;
+    min-width: 42px;
+    text-align: center !important;
+}
+.table-bulk-cell.table-bulk-header-cell {
+    vertical-align: middle;
+}
+.table-bulk-count {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+.table-bulk-select {
+    min-width: 210px;
+}
+.table-bulk-apply:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+.archive-table tr.bulk-row-selected {
+    background: #e0f2fe !important;
+}
 .archive-col-pin-head {
     text-align: center;
 }
