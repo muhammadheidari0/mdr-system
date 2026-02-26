@@ -62,9 +62,12 @@ OpenProject sub-tabs:
 ### Excel Import (MVP)
 - Input file: `openproject template.xlsx`
 - Uses only sheet `Task_Table1`
+- Optional runtime input: `Root Parent Work Package ID`
+  - If provided in Excel Import form, it overrides default parent for that run.
+  - If empty, runtime falls back to `Default Parent Work Package ID` from Connection Settings.
 - Template source in repository: `data_sources/templates/openproject template.xlsx`
 - Canonical `Task_Table1` header order:
-  - `WBS, Subject, Duration, Start_Date, Finish_Date, Predecessors, %complete, Resource_Names, Priority, Type`
+  - `WBS, Subject, Duration, Start_Date, Finish_Date, Predecessors, %complete, Type`
 - Flow:
   1. `Validate (Dry-run)` with parser + row persistence
   2. `Start Processing`:
@@ -75,11 +78,17 @@ OpenProject sub-tabs:
 
 Excel parser compatibility:
 - Legacy template columns: `Name, Duration, Start_Date, Finish_Date, Predecessors, Resource_Names`
-- New template aliases: `WBS, Subject, Duration, Start_Date, Finish_Date, Predecessors, %complete, Resource_Names, Priority, Type`
+- New template aliases: `WBS, Subject, Duration, Start_Date, Finish_Date, Predecessors, %complete, Type`
+- Optional extra columns (supported): `Resource_Names`, `Priority`
 - If `WBS` column is missing (legacy), sequential WBS is auto-generated.
+- `WBS` remains optional in template; hierarchy is still enforced when valid WBS values exist.
 - `Predecessors` supports only `FS` with optional lag (`12`, `12FS+2`, `12FS-1`).
 
 Execution details:
+- Parent resolution precedence for `execute`:
+  1. Request payload: `target_parent_work_package_id`
+  2. Settings runtime: `default_work_package_id`
+- If a row's `parent_wbs` cannot be resolved from already-created rows, that row falls back to root parent instead of failing.
 - Type/Priority are resolved via OpenProject catalogs (`types`, `priorities`).
 - Type fallback on mismatch: parent type.
 - Priority fallback on mismatch: omitted with warning.

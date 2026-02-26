@@ -1099,6 +1099,7 @@
         const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
         const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const openprojectImportTargetParentWp = document.getElementById('storageOpenProjectImportTargetParentWpInput');
         const openprojectSkipSsl = document.getElementById('storageOpenProjectSkipSslVerifyInput');
         const openprojectProjectRef = document.getElementById('storageOpenProjectProjectRefInput');
         const openprojectProjectMaxItems = document.getElementById('storageOpenProjectProjectImportMaxItemsInput');
@@ -1182,6 +1183,7 @@
         if (openprojectBaseUrl) openprojectBaseUrl.disabled = !openprojectOn;
         if (openprojectToken) openprojectToken.disabled = !openprojectOn || envManagedToken;
         if (openprojectWp) openprojectWp.disabled = !openprojectOn;
+        if (openprojectImportTargetParentWp) openprojectImportTargetParentWp.disabled = !openprojectOn;
         if (openprojectSkipSsl) openprojectSkipSsl.disabled = !openprojectOn || envManagedSsl;
         if (openprojectProjectRef) openprojectProjectRef.disabled = !openprojectOn;
         if (openprojectProjectMaxItems) openprojectProjectMaxItems.disabled = !openprojectOn;
@@ -1426,6 +1428,7 @@
         const openprojectBaseUrl = document.getElementById('storageOpenProjectBaseUrlInput');
         const openprojectToken = document.getElementById('storageOpenProjectApiTokenInput');
         const openprojectWp = document.getElementById('storageOpenProjectDefaultWpInput');
+        const openprojectImportTargetParentWp = document.getElementById('storageOpenProjectImportTargetParentWpInput');
         const openprojectSkipSsl = document.getElementById('storageOpenProjectSkipSslVerifyInput');
         const gdriveDriveId = document.getElementById('storageGoogleDriveDriveIdInput');
         const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
@@ -1475,6 +1478,11 @@
         if (openprojectBaseUrl) openprojectBaseUrl.value = String(openproject.base_url || '');
         if (openprojectToken) openprojectToken.value = '';
         if (openprojectWp) openprojectWp.value = String(openproject.default_work_package_id || openproject.default_project_id || '');
+        if (openprojectImportTargetParentWp) {
+            openprojectImportTargetParentWp.value = String(
+                openproject.default_work_package_id || openproject.default_project_id || ''
+            );
+        }
         if (openprojectSkipSsl) {
             openprojectSkipSsl.checked = skipSslVerify;
             openprojectSkipSsl.dataset.sslSource = sslSource || 'env_default';
@@ -1763,12 +1771,14 @@
         const created = Number(run?.created_rows || 0);
         const failed = Number(run?.failed_rows || 0);
         const summary = run?.summary || {};
+        const targetParentId = Number(run?.target_parent_work_package_id || summary?.target_parent_work_package_id || 0);
+        const targetParentText = targetParentId > 0 ? ` | RootParent=${targetParentId}` : '';
         const pass1Created = Number(summary?.pass1_created_rows || 0);
         const pass1Failed = Number(summary?.pass1_failed_rows || 0);
         const pass2Created = Number(summary?.pass2_relation_created || 0);
         const pass2Failed = Number(summary?.pass2_relation_failed || 0);
         const status = String(run?.status_code || '-');
-        return `Run=${status} | Total=${total} | Valid=${valid} | Invalid=${invalid} | Created=${created} | Failed=${failed} | Pass1=${pass1Created}/${pass1Failed} | Pass2=${pass2Created}/${pass2Failed}`;
+        return `Run=${status}${targetParentText} | Total=${total} | Valid=${valid} | Invalid=${invalid} | Created=${created} | Failed=${failed} | Pass1=${pass1Created}/${pass1Failed} | Pass2=${pass2Created}/${pass2Failed}`;
     }
 
     function rowExecutionStatusClass(value) {
@@ -2075,10 +2085,21 @@
             throw new Error('ابتدا Validate (Dry-run) انجام دهید.');
         }
 
+        const targetParentWpInput = document.getElementById('storageOpenProjectImportTargetParentWpInput');
+        const targetParentWpRaw = norm(targetParentWpInput?.value);
+        const executeBody = {};
+        if (targetParentWpRaw) {
+            const targetParentWp = Number(targetParentWpRaw);
+            if (!Number.isInteger(targetParentWp) || targetParentWp <= 0) {
+                throw new Error('Root Parent Work Package ID must be a positive integer.');
+            }
+            executeBody.target_parent_work_package_id = targetParentWp;
+        }
+
         setOpenProjectImportSummary('پردازش ردیف های معتبر شروع شد ...', 'info');
         const payload = await request(`/api/v1/storage/openproject/import/runs/${selectedRunId}/execute`, {
             method: 'POST',
-            body: JSON.stringify({}),
+            body: JSON.stringify(executeBody),
         });
         const run = payload?.run || {};
         const total = Number(run?.valid_rows || run?.total_rows || 0);

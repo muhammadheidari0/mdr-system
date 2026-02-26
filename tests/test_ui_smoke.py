@@ -192,6 +192,7 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'id="storageOpenProjectProjectRefInput"' in html
     assert 'id="storageOpenProjectProjectPreviewBody"' in html
     assert 'id="storageOpenProjectImportFileInput"' in html
+    assert 'id="storageOpenProjectImportTargetParentWpInput"' in html
     assert 'id="storageOpenProjectImportRunsBody"' in html
     assert 'id="storageOpenProjectActivityBody"' in html
     assert 'id="storageOpenProjectImportRowDetails"' in html

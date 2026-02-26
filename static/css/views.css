@@ -4077,7 +4077,11 @@ body.ci-drawer-open {
 }
 
 .storage-openproject-import-grid {
-    grid-template-columns: 1.2fr 1fr;
+    grid-template-columns: 1.2fr 1fr 1fr;
+}
+
+.storage-openproject-import-parent {
+    min-width: 0;
 }
 
 .storage-openproject-project-import-grid {

@@ -1148,7 +1148,13 @@ def execute_openproject_import_run(
         else int(runtime_wp or 0)
     )
     if target_parent_id <= 0:
-        raise HTTPException(status_code=400, detail="default_work_package_id is required before execute")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "target_parent_work_package_id (request) or "
+                "default_work_package_id (settings) is required before execute"
+            ),
+        )
 
     base_url = str(runtime.get("base_url") or "").strip()
     token = str(runtime.get("api_token") or "").strip()
@@ -1289,23 +1295,18 @@ def execute_openproject_import_run(
         wbs_code = _norm_text(item.get("wbs_code"))
         parent_wbs = _norm_text(item.get("parent_wbs"))
         row_index = _safe_int(item.get("row_index"), default=_safe_int(row.row_no, default=0))
+        parent_fallback_reason: str | None = None
 
         if parent_wbs:
             parent_work_package_id = _safe_int(created_by_wbs.get(parent_wbs), default=0)
             parent_type_href = _norm_text(created_type_by_wbs.get(parent_wbs) or type_href)
             if parent_work_package_id <= 0:
-                row.execution_status = "FAILED"
-                row.error_message = f"Parent WBS `{parent_wbs}` was not created."
-                row.updated_at = datetime.utcnow()
-                pass1_failed_rows += 1
-                execution_meta["pass1"] = {
-                    "status": "FAILED",
-                    "parent_wbs": parent_wbs,
-                    "error": row.error_message,
-                }
-                _set_row_payload(row, payload_obj)
-                db.commit()
-                continue
+                parent_work_package_id = int(target_parent_id)
+                parent_type_href = str(type_href)
+                parent_fallback_reason = f"Parent WBS `{parent_wbs}` was not created; fallback to root parent."
+                mapping_warnings.append(
+                    f"Row {int(row.row_no or 0)}: parent WBS `{parent_wbs}` not found; fallback to root parent `{int(target_parent_id)}`."
+                )
         else:
             parent_work_package_id = int(target_parent_id)
             parent_type_href = str(type_href)
@@ -1454,6 +1455,7 @@ def execute_openproject_import_run(
             "status": "CREATED",
             "parent_work_package_id": int(parent_work_package_id),
             "parent_wbs": parent_wbs or None,
+            "parent_fallback_reason": parent_fallback_reason,
             "type_href": created_type_href,
             "priority_href": priority_href,
             "done_ratio_field": done_ratio_field,

@@ -47,6 +47,30 @@ def _build_upload_bytes_with_invalid_row() -> bytes:
     return stream.getvalue()
 
 
+def _build_upload_bytes_with_wbs_tree() -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Task_Table1"
+    ws.append(["Subject", "WBS", "Type", "Priority", "Start_Date", "Finish_Date"])
+    ws.append(["Root Task", "1", "Task", "Normal", "2026-02-14", "2026-02-19"])
+    ws.append(["Child Task", "1.1", "Task", "Normal", "2026-02-20", "2026-02-22"])
+    stream = BytesIO()
+    wb.save(stream)
+    return stream.getvalue()
+
+
+def _build_upload_bytes_with_missing_parent_wbs() -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Task_Table1"
+    ws.append(["Subject", "WBS", "Type", "Priority", "Start_Date", "Finish_Date"])
+    ws.append(["Detached Parent", "1.1.1", "Task", "Normal", "2026-02-14", "2026-02-19"])
+    ws.append(["Detached Child", "1.1.1.1", "Task", "Normal", "2026-02-20", "2026-02-22"])
+    stream = BytesIO()
+    wb.save(stream)
+    return stream.getvalue()
+
+
 def _delete_import_run(run_id: int) -> None:
     with SessionLocal() as db:
         db.query(OpenProjectImportRun).filter(OpenProjectImportRun.id == int(run_id)).delete()
@@ -158,10 +182,18 @@ def test_openproject_import_execute_success_and_idempotency(monkeypatch) -> None
         assert execute_res.status_code == 200, execute_res.text
         run = execute_res.json().get("run") or {}
         assert run.get("status_code") == "COMPLETED"
+        assert int(run.get("target_parent_work_package_id") or 0) == 321
         assert int(run.get("created_rows") or 0) == 2
         assert int(run.get("failed_rows") or 0) == 1
         assert len(create_calls) == 3
         assert len(relation_calls) == 1
+        parent_by_subject = {
+            str(item.get("subject") or ""): str(item.get("_links", {}).get("parent", {}).get("href") or "")
+            for item in create_calls
+        }
+        assert parent_by_subject.get("Task A") == "/api/v3/work_packages/321"
+        assert parent_by_subject.get("Task B") == "/api/v3/work_packages/321"
+        assert parent_by_subject.get("Task A.1") == "/api/v3/work_packages/8001"
 
         rows_res = client.get(
             f"/api/v1/storage/openproject/import/runs/{run_id}/rows?skip=0&limit=20",
@@ -197,6 +229,182 @@ def test_openproject_import_execute_success_and_idempotency(monkeypatch) -> None
             json={},
         )
         assert second_execute.status_code == 409, second_execute.text
+    finally:
+        _write_integrations(before_integrations)
+        if run_id > 0:
+            _delete_import_run(run_id)
+
+
+def test_openproject_import_execute_uses_request_parent_override(monkeypatch) -> None:
+    headers = _admin_headers()
+    before_integrations = _read_integrations()
+    run_id = 0
+    create_calls: list[dict[str, Any]] = []
+
+    def _fake_get_work_package(self, work_package_id: int) -> dict[str, Any]:
+        return {
+            "id": int(work_package_id),
+            "_links": {
+                "project": {"href": "/api/v3/projects/5"},
+                "type": {"href": "/api/v3/types/1"},
+            },
+        }
+
+    def _fake_create_work_package(self, payload: dict[str, Any]) -> dict[str, Any]:
+        create_calls.append(dict(payload))
+        created_id = 8000 + len(create_calls)
+        return {
+            "id": created_id,
+            "_links": {
+                "self": {"href": f"/api/v3/work_packages/{created_id}"},
+                "type": {"href": str(payload.get("_links", {}).get("type", {}).get("href") or "/api/v3/types/1")},
+            },
+        }
+
+    def _fake_list_types(self) -> list[dict[str, Any]]:
+        return [
+            {"id": 1, "name": "Task", "_links": {"self": {"href": "/api/v3/types/1"}}},
+        ]
+
+    def _fake_list_priorities(self) -> list[dict[str, Any]]:
+        return [
+            {"id": 7, "name": "Normal", "_links": {"self": {"href": "/api/v3/priorities/7"}}},
+        ]
+
+    monkeypatch.setattr(OpenProjectAdapter, "get_work_package", _fake_get_work_package)
+    monkeypatch.setattr(OpenProjectAdapter, "create_work_package", _fake_create_work_package)
+    monkeypatch.setattr(OpenProjectAdapter, "list_types", _fake_list_types)
+    monkeypatch.setattr(OpenProjectAdapter, "list_priorities", _fake_list_priorities)
+
+    try:
+        validate_res = client.post(
+            "/api/v1/storage/openproject/import/validate",
+            headers=headers,
+            files={
+                "file": (
+                    "openproject_import.xlsx",
+                    _build_upload_bytes_with_wbs_tree(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        assert validate_res.status_code == 200, validate_res.text
+        run_id = int(validate_res.json().get("run", {}).get("id") or 0)
+        assert run_id > 0
+
+        updated_integrations = dict(before_integrations)
+        op_cfg = dict(updated_integrations.get("openproject") or {})
+        op_cfg["enabled"] = True
+        op_cfg["base_url"] = "https://open-project.example.com"
+        op_cfg["api_token"] = "settings-token"
+        op_cfg["default_work_package_id"] = ""
+        updated_integrations["openproject"] = op_cfg
+        _write_integrations(updated_integrations)
+
+        execute_res = client.post(
+            f"/api/v1/storage/openproject/import/runs/{run_id}/execute",
+            headers=headers,
+            json={"target_parent_work_package_id": 777},
+        )
+        assert execute_res.status_code == 200, execute_res.text
+        run = execute_res.json().get("run") or {}
+        assert int(run.get("target_parent_work_package_id") or 0) == 777
+        assert len(create_calls) == 2
+        assert str(create_calls[0].get("_links", {}).get("parent", {}).get("href") or "") == "/api/v3/work_packages/777"
+        assert str(create_calls[1].get("_links", {}).get("parent", {}).get("href") or "") == "/api/v3/work_packages/8001"
+    finally:
+        _write_integrations(before_integrations)
+        if run_id > 0:
+            _delete_import_run(run_id)
+
+
+def test_openproject_import_execute_fallbacks_to_root_when_parent_wbs_missing(monkeypatch) -> None:
+    headers = _admin_headers()
+    before_integrations = _read_integrations()
+    run_id = 0
+    create_calls: list[dict[str, Any]] = []
+
+    def _fake_get_work_package(self, work_package_id: int) -> dict[str, Any]:
+        return {
+            "id": int(work_package_id),
+            "_links": {
+                "project": {"href": "/api/v3/projects/5"},
+                "type": {"href": "/api/v3/types/1"},
+            },
+        }
+
+    def _fake_create_work_package(self, payload: dict[str, Any]) -> dict[str, Any]:
+        create_calls.append(dict(payload))
+        created_id = 8000 + len(create_calls)
+        return {
+            "id": created_id,
+            "_links": {
+                "self": {"href": f"/api/v3/work_packages/{created_id}"},
+                "type": {"href": str(payload.get("_links", {}).get("type", {}).get("href") or "/api/v3/types/1")},
+            },
+        }
+
+    def _fake_list_types(self) -> list[dict[str, Any]]:
+        return [
+            {"id": 1, "name": "Task", "_links": {"self": {"href": "/api/v3/types/1"}}},
+        ]
+
+    def _fake_list_priorities(self) -> list[dict[str, Any]]:
+        return [
+            {"id": 7, "name": "Normal", "_links": {"self": {"href": "/api/v3/priorities/7"}}},
+        ]
+
+    monkeypatch.setattr(OpenProjectAdapter, "get_work_package", _fake_get_work_package)
+    monkeypatch.setattr(OpenProjectAdapter, "create_work_package", _fake_create_work_package)
+    monkeypatch.setattr(OpenProjectAdapter, "list_types", _fake_list_types)
+    monkeypatch.setattr(OpenProjectAdapter, "list_priorities", _fake_list_priorities)
+
+    try:
+        validate_res = client.post(
+            "/api/v1/storage/openproject/import/validate",
+            headers=headers,
+            files={
+                "file": (
+                    "openproject_import.xlsx",
+                    _build_upload_bytes_with_missing_parent_wbs(),
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            },
+        )
+        assert validate_res.status_code == 200, validate_res.text
+        run_id = int(validate_res.json().get("run", {}).get("id") or 0)
+        assert run_id > 0
+
+        updated_integrations = dict(before_integrations)
+        op_cfg = dict(updated_integrations.get("openproject") or {})
+        op_cfg["enabled"] = True
+        op_cfg["base_url"] = "https://open-project.example.com"
+        op_cfg["api_token"] = "settings-token"
+        op_cfg["default_work_package_id"] = "321"
+        updated_integrations["openproject"] = op_cfg
+        _write_integrations(updated_integrations)
+
+        execute_res = client.post(
+            f"/api/v1/storage/openproject/import/runs/{run_id}/execute",
+            headers=headers,
+            json={},
+        )
+        assert execute_res.status_code == 200, execute_res.text
+        run = execute_res.json().get("run") or {}
+        assert int(run.get("created_rows") or 0) == 2
+        assert int(run.get("failed_rows") or 0) == 0
+        assert len(create_calls) == 2
+        assert str(create_calls[0].get("_links", {}).get("parent", {}).get("href") or "") == "/api/v3/work_packages/321"
+        assert str(create_calls[1].get("_links", {}).get("parent", {}).get("href") or "") == "/api/v3/work_packages/8001"
+
+        run_detail = client.get(
+            f"/api/v1/storage/openproject/import/runs/{run_id}",
+            headers=headers,
+        )
+        assert run_detail.status_code == 200, run_detail.text
+        summary = run_detail.json().get("run", {}).get("summary", {})
+        warnings = summary.get("mapping_warnings") or []
+        assert any("parent WBS" in str(item) and "fallback to root parent" in str(item) for item in warnings)
     finally:
         _write_integrations(before_integrations)
         if run_id > 0:

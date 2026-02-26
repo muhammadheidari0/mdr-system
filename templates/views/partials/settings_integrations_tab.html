@@ -238,6 +238,17 @@
                 <input id="storageOpenProjectImportFileInput" class="form-input" type="file" accept=".xlsx">
                 <div class="form-help">MVP currently processes only Task_Table1 sheet.</div>
               </div>
+              <div class="storage-openproject-import-parent">
+                <label class="form-label-sm">Root Parent Work Package ID</label>
+                <input
+                  id="storageOpenProjectImportTargetParentWpInput"
+                  class="form-input"
+                  type="number"
+                  min="1"
+                  placeholder="e.g. 321"
+                >
+                <div class="form-help">اگر خالی باشد از Default Parent Work Package ID استفاده می‌شود.</div>
+              </div>
               <div class="storage-openproject-import-actions">
                 <div class="general-form-actions settings-inline-actions">
                   <button class="btn btn-secondary" type="button" data-integrations-action="validate-openproject-import">Validate (Dry-run)</button>

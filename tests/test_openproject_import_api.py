@@ -137,7 +137,9 @@ def test_openproject_import_execute_without_default_wp_returns_400() -> None:
             json={},
         )
         assert execute_res.status_code == 400, execute_res.text
-        assert "default_work_package_id" in str(execute_res.json().get("detail") or "")
+        detail = str(execute_res.json().get("detail") or "")
+        assert "default_work_package_id" in detail
+        assert "target_parent_work_package_id" in detail
     finally:
         _restore_integrations(before_integrations)
         if run_id > 0:
