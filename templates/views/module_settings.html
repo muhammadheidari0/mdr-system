@@ -1,0 +1,62 @@
+﻿<div id="view-edms-settings" class="view-section" style="display: none;">
+    <div class="settings-shell module-settings-shell">
+        <div class="settings-shell-header">
+            <div class="settings-shell-title-wrap">
+                <span class="material-icons-round settings-shell-icon">tune</span>
+                <div>
+                    <h2 class="settings-shell-title">ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ø®Ù„ÛŒ Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ</h2>
+                    <p class="settings-shell-subtitle">Ø§Ù†ØªÙ‚Ø§Ù„ Ú©Ø§Ù…Ù„ Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ Ùˆ ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ MDR Ø§Ø² ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³ÛŒØ³ØªÙ…</p>
+                </div>
+            </div>
+            <div class="settings-shell-badges">
+                <button class="btn-secondary" type="button" data-nav-target="view-edms">
+                    <span class="material-icons-round">arrow_back</span>
+                    Ø¨Ø§Ø²Ú¯Ø´Øª
+                </button>
+            </div>
+        </div>
+
+        <div class="settings-shell-nav module-settings-nav" role="tablist" aria-label="EDMS Module Settings Navigation">
+            <button
+                type="button"
+                class="settings-nav-card active"
+                data-module-settings-tab="general"
+                role="tab"
+                aria-selected="true"
+                aria-controls="tab-general"
+            >
+                <span class="material-icons-round settings-nav-card-icon">tune</span>
+                <span class="settings-nav-card-copy">
+                    <span class="settings-nav-card-title">ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ</span>
+                    <span class="settings-nav-card-subtitle">MDR Catalog + Database Sync</span>
+                </span>
+            </button>
+            <button
+                type="button"
+                class="settings-nav-card"
+                data-module-settings-tab="bulk"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-bulk"
+            >
+                <span class="material-icons-round settings-nav-card-icon">upload_file</span>
+                <span class="settings-nav-card-copy">
+                    <span class="settings-nav-card-title">Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ</span>
+                    <span class="settings-nav-card-subtitle">Excel Bulk Register + BIM Inbox</span>
+                </span>
+            </button>
+        </div>
+
+        <div class="settings-shell-panels">
+            <section id="tab-general" class="module-settings-tab-content active" role="tabpanel" aria-hidden="false">
+                {% include 'views/partials/settings_general_tab.html' %}
+            </section>
+
+            <section id="tab-bulk" class="module-settings-tab-content" role="tabpanel" aria-hidden="true">
+                {% include 'views/partials/settings_bulk_tab.html' %}
+            </section>
+        </div>
+    </div>
+</div>
+
+

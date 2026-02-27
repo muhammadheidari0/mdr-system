@@ -1,0 +1,321 @@
+﻿<div class="general-settings-card general-storage-only storage-workflow-shell" id="storageWorkflowRoot">
+    <h3 class="general-settings-title">
+      <span class="material-icons-round">folder_open</span> Ù…Ø¯ÛŒØ±ÛŒØª Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ
+    </h3>
+    <div class="general-settings-note general-settings-note-info">
+      <span class="material-icons-round">info</span>
+      <div>
+        Ø§ÛŒÙ† Ø¨Ø®Ø´ Ø¨Ù‡â€ŒØµÙˆØ±Øª Ù…Ø±Ø­Ù„Ù‡â€ŒØ§ÛŒ Ø·Ø±Ø§Ø­ÛŒ Ø´Ø¯Ù‡ Ø§Ø³Øª. Ø§Ø¨ØªØ¯Ø§ Ù…Ø³ÛŒØ±Ù‡Ø§ Ø±Ø§ ØªÙ†Ø¸ÛŒÙ… Ú©Ù†ÛŒØ¯ØŒ Ø³Ù¾Ø³ Ø³ÛŒØ§Ø³Øª Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ ÙØ§ÛŒÙ„ Ùˆ Ø¯Ø± Ù†Ù‡Ø§ÛŒØª ÛŒÚ©Ù¾Ø§Ø±Ú†Ù‡â€ŒØ³Ø§Ø²ÛŒâ€ŒÙ‡Ø§ Ø±Ø§ Ø°Ø®ÛŒØ±Ù‡ Ú©Ù†ÛŒØ¯.
+      </div>
+    </div>
+
+    <div class="storage-stepper" role="tablist" aria-label="Ù…Ø±Ø§Ø­Ù„ Ù…Ø¯ÛŒØ±ÛŒØª Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ">
+      <button type="button" class="storage-step-btn active" data-general-action="storage-switch-step" data-storage-step="paths" aria-controls="storage-step-paths" aria-selected="true">
+        <span class="storage-step-index">1</span>
+        <span class="storage-step-copy">Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ Ø°Ø®ÛŒØ±Ù‡â€ŒØ³Ø§Ø²ÛŒ</span>
+      </button>
+      <button type="button" class="storage-step-btn" data-general-action="storage-switch-step" data-storage-step="policy" aria-controls="storage-step-policy" aria-selected="false">
+        <span class="storage-step-index">2</span>
+        <span class="storage-step-copy">Ø³ÛŒØ§Ø³Øª Ø§Ø¹ØªØ¨Ø§Ø±Ø³Ù†Ø¬ÛŒ ÙØ§ÛŒÙ„</span>
+      </button>
+      <button type="button" class="storage-step-btn" data-general-action="storage-switch-step" data-storage-step="site_cache" aria-controls="storage-step-site-cache" aria-selected="false">
+        <span class="storage-step-index">3</span>
+        <span class="storage-step-copy">Site Cache</span>
+      </button>
+    </div>
+
+    <section id="storage-step-paths" class="storage-step-panel active" data-storage-step-panel="paths">
+      <div class="general-settings-note general-settings-note-info">
+        <span class="material-icons-round">folder</span>
+        <div>مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور قرار بگیرند و توسط Service Account قابل‌نوشتن باشند. در ویندوز می‌توانید مسیر UNC مثل <code>\\192.168.5.5\share\technical</code> هم وارد کنید.</div>
+      </div>
+      <div id="storageNextcloudPickerInlineHint" class="form-help storage-nextcloud-picker-hint"></div>
+      <div class="general-form-grid">
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ (MDR / Archive)</div>
+          <div class="storage-path-input-row">
+            <input id="mdrStoragePathInput" class="form-input" placeholder="/app/archive_storage/technical">
+            <button
+              id="storageMdrPathNextcloudPickerBtn"
+              class="btn-archive-icon storage-path-picker-btn"
+              type="button"
+              data-general-action="open-nextcloud-folder-picker"
+              data-target-input="mdrStoragePathInput"
+              aria-label="Select MDR path from Nextcloud"
+              title="Select folder from Nextcloud"
+            >
+              <span class="material-icons-round">cloud</span>
+            </button>
+          </div>
+          <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/technical</code></div>
+          <div class="storage-path-preview">Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ normalize Ø´Ø¯Ù‡: <code id="storagePathMdrPreview">-</code></div>
+          <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ø¢Ø±Ø´ÛŒÙˆ Ù…Ø¯Ø§Ø±Ú©ØŒ Ù†Ø³Ø®Ù‡â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ MDR</span>
+        </div>
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ú©Ø§ØªØ¨Ø§Øª (Correspondence)</div>
+          <div class="storage-path-input-row">
+            <input id="correspondenceStoragePathInput" class="form-input" placeholder="/app/archive_storage/correspondence">
+            <button
+              id="storageCorrPathNextcloudPickerBtn"
+              class="btn-archive-icon storage-path-picker-btn"
+              type="button"
+              data-general-action="open-nextcloud-folder-picker"
+              data-target-input="correspondenceStoragePathInput"
+              aria-label="Select correspondence path from Nextcloud"
+              title="Select folder from Nextcloud"
+            >
+              <span class="material-icons-round">cloud</span>
+            </button>
+          </div>
+          <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/correspondence</code></div>
+          <div class="storage-path-preview">Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ normalize Ø´Ø¯Ù‡: <code id="storagePathCorrespondencePreview">-</code></div>
+          <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ Ù†Ø§Ù…Ù‡â€ŒÙ‡Ø§ØŒ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ Ù…Ú©Ø§ØªØ¨Ø§Øª</span>
+        </div>
+      </div>
+      <div id="storagePathsConflictError" class="storage-path-inline-error" style="display:none;"></div>
+      <div class="general-settings-note storage-path-warning">
+        <span class="material-icons-round">warning_amber</span>
+        <div>Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ Ù…ÛŒâ€ŒØ´ÙˆØ¯ Ø§ÛŒÙ† Ø¯Ùˆ Ù…Ø³ÛŒØ± ÛŒÚ©Ø³Ø§Ù† Ù†Ø¨Ø§Ø´Ù†Ø¯ ØªØ§ Ø§Ø®ØªÙ„Ø§Ø· ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ Ø±Ø® Ù†Ø¯Ù‡Ø¯.</div>
+      </div>
+      <div class="general-form-grid">
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">Ù†Ø§Ù… Ú©Ø§Ø±Ø¨Ø±ÛŒ Ø´Ø¨Ú©Ù‡ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)</div>
+          <input id="storageNetworkUsernameInput" class="form-input" placeholder="DOMAIN\\username ÛŒØ§ username">
+          <span class="form-help storage-path-help">ÙÙ‚Ø· Ø¨Ø±Ø§ÛŒ Ù…Ø³ÛŒØ±Ù‡Ø§ÛŒ UNC Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.</span>
+        </div>
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">Ø±Ù…Ø² Ø¹Ø¨ÙˆØ± Ø´Ø¨Ú©Ù‡ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)</div>
+          <input id="storageNetworkPasswordInput" class="form-input" type="password" autocomplete="new-password" placeholder="Ø±Ù…Ø² Ø¹Ø¨ÙˆØ± Ø¯Ø³ØªØ±Ø³ÛŒ Ø¨Ù‡ share">
+          <span class="form-help storage-path-help">Ø¨Ø¹Ø¯ Ø§Ø² Ø°Ø®ÛŒØ±Ù‡ Ù…Ø³ÛŒØ±Ù‡Ø§ Ø¯Ø± ÙØ±Ù… Ù†Ú¯Ù‡â€ŒØ¯Ø§Ø±ÛŒ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.</span>
+        </div>
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-storage-paths">Ø°Ø®ÛŒØ±Ù‡ Ù…Ø³ÛŒØ±Ù‡Ø§</button>
+      </div>
+      <div id="storagePathsSavedNote" class="general-settings-note storage-sync-result-success" style="margin-top:10px; display:none;"></div>
+      <div class="storage-step-last-saved">Ø¢Ø®Ø±ÛŒÙ† Ø°Ø®ÛŒØ±Ù‡: <span id="storagePathsLastSavedAt">-</span></div>
+
+      <div
+        id="storageNextcloudFolderPickerModal"
+        class="modal"
+        style="display:none;"
+        role="dialog"
+        aria-modal="true"
+        aria-hidden="true"
+        aria-labelledby="storageNextcloudFolderPickerTitle"
+      >
+        <div class="modal-content modal-lg storage-nextcloud-picker-modal">
+          <div class="modal-header">
+            <h3 id="storageNextcloudFolderPickerTitle">انتخاب فولدر از Nextcloud</h3>
+            <button type="button" class="modal-close" data-general-action="close-nextcloud-folder-picker" aria-label="بستن">
+              <span class="material-icons-round">close</span>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div id="storageNextcloudFolderPickerStatus" class="general-settings-note general-settings-note-info storage-nextcloud-picker-status"></div>
+            <div class="storage-nextcloud-picker-toolbar">
+              <button type="button" class="btn btn-secondary" data-general-action="nextcloud-folder-picker-up">
+                <span class="material-icons-round">arrow_upward</span>
+                Parent
+              </button>
+              <button type="button" class="btn btn-secondary" data-general-action="nextcloud-folder-picker-refresh">
+                <span class="material-icons-round">refresh</span>
+                Refresh
+              </button>
+              <button type="button" class="btn btn-primary" data-general-action="nextcloud-folder-picker-select-current">
+                <span class="material-icons-round">check</span>
+                Select Current
+              </button>
+            </div>
+            <div class="storage-nextcloud-picker-current">
+              <span class="material-icons-round">folder_open</span>
+              <code id="storageNextcloudFolderPickerCurrentPath">/</code>
+            </div>
+            <div id="storageNextcloudFolderPickerList" class="storage-nextcloud-picker-list"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-general-action="close-nextcloud-folder-picker">انصراف</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="storage-step-policy" class="storage-step-panel" data-storage-step-panel="policy">
+      <div class="storage-policy-presets" role="group" aria-label="Ù¾ÛŒØ´â€ŒØªÙ†Ø¸ÛŒÙ… Ø³ÛŒØ§Ø³Øª">
+        <button class="btn-archive-icon storage-preset-btn" type="button" data-general-action="storage-policy-preset" data-storage-preset="warning">Ù‡Ø´Ø¯Ø§Ø±</button>
+        <button class="btn-archive-icon storage-preset-btn" type="button" data-general-action="storage-policy-preset" data-storage-preset="standard">Ø§Ø³ØªØ§Ù†Ø¯Ø§Ø±Ø¯</button>
+        <button class="btn-archive-icon storage-preset-btn" type="button" data-general-action="storage-policy-preset" data-storage-preset="strict">Ø³Ø®ØªÚ¯ÛŒØ±Ø§Ù†Ù‡</button>
+      </div>
+      <div class="general-form-grid storage-policy-grid">
+        <div>
+          <label class="form-label-sm">Ø­Ø§Ù„Øª Ø§Ø¹Ù…Ø§Ù„</label>
+          <select id="storagePolicyModeInput" class="form-input">
+            <option value="warning">warning</option>
+            <option value="enforce">enforce</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label-sm">Ù¾Ø³ÙˆÙ†Ø¯Ù‡Ø§ÛŒ Ù…Ø³Ø¯ÙˆØ¯ (Ø¨Ø§ Ú©Ø§Ù…Ø§ Ø¬Ø¯Ø§ Ú©Ù†ÛŒØ¯)</label>
+          <input id="storageBlockedExtensionsInput" class="form-input" placeholder="exe,bat,cmd,ps1,js,vbs,sh">
+        </div>
+        <div>
+          <label class="form-label-sm">MIMEÙ‡Ø§ÛŒ Ù…Ø¬Ø§Ø² (Ø¨Ø§ Ú©Ø§Ù…Ø§ Ø¬Ø¯Ø§ Ú©Ù†ÛŒØ¯)</label>
+          <textarea id="storageAllowedMimesInput" class="form-input" rows="3" placeholder="application/pdf,image/png,image/jpeg"></textarea>
+        </div>
+        <div class="storage-max-size-group">
+          <label class="form-label-sm">Ø­Ø¯Ø§Ú©Ø«Ø± Ø­Ø¬Ù… (MB)</label>
+          <div class="storage-max-size-grid">
+            <label class="storage-size-field">PDF
+              <input id="storageMaxSizePdfInput" class="form-input" type="number" min="1" step="1" placeholder="100">
+            </label>
+            <label class="storage-size-field">Native
+              <input id="storageMaxSizeNativeInput" class="form-input" type="number" min="1" step="1" placeholder="250">
+            </label>
+            <label class="storage-size-field">Attachment
+              <input id="storageMaxSizeAttachmentInput" class="form-input" type="number" min="1" step="1" placeholder="100">
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-storage-policy">Ø°Ø®ÛŒØ±Ù‡ Ø³ÛŒØ§Ø³Øªâ€ŒÙ‡Ø§</button>
+      </div>
+    </section>
+
+    <section id="storage-step-site-cache" class="storage-step-panel" data-storage-step-panel="site_cache">
+      <div class="general-settings-note general-settings-note-info">
+        <span class="material-icons-round">hub</span>
+        <div>تنظیمات اتصال سرویس‌ها به تب «یکپارچه‌سازی‌ها» منتقل شده است. این مرحله فقط برای Site Cache استفاده می‌شود.</div>
+      </div>
+
+      <div class="general-settings-note general-settings-note-info storage-advanced-note">
+        <span class="material-icons-round">dns</span>
+        <div><strong>Site Cache - Ù†Ø³Ø®Ù‡ Û²:</strong> Ù…Ø¯ÛŒØ±ÛŒØª Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØªØŒ CIDRØŒ Ù‚ÙˆØ§Ù†ÛŒÙ† Pin Ùˆ ØªÙˆÚ©Ù† Agent.</div>
+      </div>
+
+      <div class="storage-site-cache-v2">
+        <div class="storage-site-cache-grid">
+          <div class="general-settings-card">
+            <h4 class="general-settings-title">
+              <span class="storage-block-badge">Ø¨Ù„ÙˆÚ© 1</span>
+              <span class="material-icons-round">apartment</span>
+              Ø§Ù†ØªØ®Ø§Ø¨ Ù¾Ø±ÙˆÙØ§ÛŒÙ„ Ø³Ø§ÛŒØª
+            </h4>
+            <div class="general-form-actions site-cache-profile-toolbar">
+              <select id="siteCacheProfileSelect" class="form-input"></select>
+              <button class="btn btn-secondary" type="button" data-general-action="refresh-site-cache">Ø¨Ø§Ø²Ø®ÙˆØ§Ù†ÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„â€ŒÙ‡Ø§</button>
+            </div>
+            <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+              <input id="siteCacheProfileCodeInput" class="form-input" maxlength="64" pattern="[A-Za-z0-9_-]{2,64}" placeholder="Ú©Ø¯ Ø³Ø§ÛŒØª (Ù…Ø«Ø§Ù„: SITE_A)">
+              <input id="siteCacheProfileNameInput" class="form-input" maxlength="255" placeholder="Ù†Ø§Ù… Ù¾Ø±ÙˆÙØ§ÛŒÙ„">
+              <input id="siteCacheProfileProjectInput" class="form-input" maxlength="50" pattern="[A-Za-z0-9_-]{1,50}" placeholder="Ú©Ø¯ Ù¾Ø±ÙˆÚ˜Ù‡ (Ø§Ø®ØªÛŒØ§Ø±ÛŒ)">
+              <input id="siteCacheProfileRootInput" class="form-input" maxlength="1024" placeholder="Ù…Ø³ÛŒØ± Ù…Ø­Ù„ÛŒ Ø±ÛŒØ´Ù‡ (UNC / Local)">
+              <select id="siteCacheProfileFallbackInput" class="form-input">
+                <option value="local_first">Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø§ Ù…Ø³ÛŒØ± Ù…Ø­Ù„ÛŒ (Local First)</option>
+                <option value="hq_first">Ø§ÙˆÙ„ÙˆÛŒØª Ø¨Ø§ Ø³Ø±ÙˆØ± Ù…Ø±Ú©Ø²ÛŒ (HQ First)</option>
+              </select>
+              <label class="checkbox-label">
+                <input id="siteCacheProfileActiveInput" type="checkbox" checked>
+                <span class="checkmark"></span>
+                ÙØ¹Ø§Ù„
+              </label>
+            </div>
+            <div class="general-form-actions">
+              <button class="btn btn-primary" type="button" data-general-action="save-site-cache-profile">Ø°Ø®ÛŒØ±Ù‡ Ù¾Ø±ÙˆÙØ§ÛŒÙ„</button>
+              <button class="btn btn-secondary" type="button" data-general-action="reset-site-cache-profile">Ø¬Ø¯ÛŒØ¯</button>
+            </div>
+            <div class="table-responsive">
+              <table class="archive-table" id="settingsSiteCacheProfilesTable">
+                <thead>
+                  <tr><th>Ú©Ø¯</th><th>Ù†Ø§Ù…</th><th>Ù¾Ø±ÙˆÚ˜Ù‡</th><th>ÙØ¹Ø§Ù„</th><th>Ø¹Ù…Ù„ÛŒØ§Øª</th></tr>
+                </thead>
+                <tbody id="settingsSiteCacheProfilesRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="general-settings-card">
+            <h4 class="general-settings-title">
+              <span class="storage-block-badge">Ø¨Ù„ÙˆÚ© 2</span>
+              <span class="material-icons-round">rule</span>
+              Ø³Ø§Ø®Øª Ù‚Ø§Ù†ÙˆÙ† Pin
+            </h4>
+            <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+              <input id="siteCacheRuleNameInput" class="form-input" maxlength="255" placeholder="Ù†Ø§Ù… Ù‚Ø§Ù†ÙˆÙ† Pin">
+              <input id="siteCacheRuleStatusInput" class="form-input" maxlength="255" pattern="[A-Za-z0-9_\\-,\\s]{1,255}" placeholder="Ú©Ø¯ ÙˆØ¶Ø¹ÛŒØªâ€ŒÙ‡Ø§ (Ù…Ø«Ø§Ù„: IFA,IFC)">
+              <div class="token-multi-field">
+                <label class="form-label-sm">Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§</label>
+                <select id="siteCacheRuleProjectInput" class="form-input form-multi-select" multiple size="6"></select>
+              </div>
+              <div class="token-multi-field">
+                <label class="form-label-sm">Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§</label>
+                <select id="siteCacheRuleDisciplineInput" class="form-input form-multi-select" multiple size="6"></select>
+              </div>
+              <div class="token-multi-field token-multi-field-full">
+                <label class="form-label-sm">Ù¾Ú©ÛŒØ¬â€ŒÙ‡Ø§</label>
+                <select id="siteCacheRulePackageInput" class="form-input form-multi-select" multiple size="6"></select>
+              </div>
+              <div class="general-settings-note general-settings-note-info site-cache-guide-note" style="grid-column: 1 / -1; margin: 0;">
+                <div>Ctrl/Shift Ø¨Ø±Ø§ÛŒ Ú†Ù†Ø¯ Ø§Ù†ØªØ®Ø§Ø¨</div>
+                <div>Ú¯Ø²ÛŒÙ†Ù‡ Â«Ù‡Ù…Ù‡Â» Ø¨Ø§ Ú¯Ø²ÛŒÙ†Ù‡â€ŒÙ‡Ø§ÛŒ Ø¯ÛŒÚ¯Ø± Ù‡Ù…Ø²Ù…Ø§Ù† Ø§Ø¹Ù…Ø§Ù„ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯</div>
+              </div>
+              <div id="siteCacheRuleLiveSummary" class="general-settings-note general-settings-note-info site-cache-rule-summary" style="grid-column: 1 / -1; margin: 0;"></div>
+              <label class="checkbox-label"><input id="siteCacheRulePrimaryOnlyInput" type="checkbox" checked><span class="checkmark"></span>ÙÙ‚Ø· ÙØ§ÛŒÙ„ Ø§ØµÙ„ÛŒ</label>
+              <label class="checkbox-label"><input id="siteCacheRuleLatestOnlyInput" type="checkbox" checked disabled><span class="checkmark"></span>ÙÙ‚Ø· Ø¢Ø®Ø±ÛŒÙ† Ø±ÙˆÛŒÚ˜Ù† (Ø§Ø¬Ø¨Ø§Ø±ÛŒ)</label>
+              <label class="checkbox-label"><input id="siteCacheRuleIncludeNativeInput" type="checkbox"><span class="checkmark"></span>Ø´Ø§Ù…Ù„ ÙØ§ÛŒÙ„ Native</label>
+              <input id="siteCacheRulePriorityInput" class="form-input" type="number" min="0" max="10000" step="1" value="100" placeholder="Ø§ÙˆÙ„ÙˆÛŒØª">
+            </div>
+            <div class="general-form-actions site-cache-rule-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-primary" type="button" data-general-action="save-site-cache-rule">Ø§ÙØ²ÙˆØ¯Ù† Ù‚Ø§Ù†ÙˆÙ† Pin</button>
+            </div>
+
+            <h4 class="general-settings-title site-cache-apply-title">
+              <span class="storage-block-badge">Ø¨Ù„ÙˆÚ© 3</span>
+              <span class="material-icons-round">sync</span>
+              Ø§Ø¹Ù…Ø§Ù„ Ùˆ Ø¨Ø§Ø²Ø³Ø§Ø²ÛŒ
+            </h4>
+            <div class="general-form-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+              <input id="siteCacheCidrInput" class="form-input" maxlength="64" placeholder="CIDR (Ù…Ø«Ø§Ù„: 10.88.0.0/16)">
+              <button class="btn btn-secondary" type="button" data-general-action="save-site-cache-cidr">Ø§ÙØ²ÙˆØ¯Ù† CIDR</button>
+            </div>
+            <div class="general-form-actions site-cache-apply-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button class="btn btn-secondary" type="button" data-general-action="rebuild-site-cache-pins">Ø¨Ø§Ø²Ø³Ø§Ø²ÛŒ PinÙ‡Ø§</button>
+              <button class="btn btn-tertiary" type="button" data-general-action="mint-site-cache-token">Ø§ÛŒØ¬Ø§Ø¯ ØªÙˆÚ©Ù† Agent</button>
+            </div>
+            <div id="siteCacheTokenPlain" class="general-settings-note" style="display:none; margin-bottom:10px;"></div>
+
+            <div class="site-cache-list-tabs" role="tablist" aria-label="Site Cache Lists">
+              <button type="button" class="site-cache-list-tab active" data-general-action="switch-site-cache-list-tab" data-site-cache-list-tab="cidr" role="tab" aria-selected="true">CIDRÙ‡Ø§</button>
+              <button type="button" class="site-cache-list-tab" data-general-action="switch-site-cache-list-tab" data-site-cache-list-tab="rules" role="tab" aria-selected="false">Ù‚ÙˆØ§Ù†ÛŒÙ† Pin</button>
+              <button type="button" class="site-cache-list-tab" data-general-action="switch-site-cache-list-tab" data-site-cache-list-tab="tokens" role="tab" aria-selected="false">ØªÙˆÚ©Ù†â€ŒÙ‡Ø§</button>
+            </div>
+            <div class="site-cache-list-panel-wrap">
+              <div id="siteCacheListPanelCidr" class="site-cache-list-panel active" data-site-cache-list-panel="cidr" role="tabpanel">
+                <div id="settingsSiteCacheCidrsRows" class="general-inline-list"></div>
+              </div>
+              <div id="siteCacheListPanelRules" class="site-cache-list-panel" data-site-cache-list-panel="rules" role="tabpanel" hidden>
+                <div id="settingsSiteCacheRulesRows" class="general-inline-list"></div>
+              </div>
+              <div id="siteCacheListPanelTokens" class="site-cache-list-panel" data-site-cache-list-panel="tokens" role="tabpanel" hidden>
+                <div id="settingsSiteCacheTokensRows" class="general-inline-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="storage-action-bar" id="storageActionBar">
+      <div class="storage-action-bar-left">
+        <button class="btn btn-secondary" type="button" data-general-action="storage-step-prev" aria-label="Ù…Ø±Ø­Ù„Ù‡ Ù‚Ø¨Ù„">
+          <span class="material-icons-round">navigate_next</span> Ù…Ø±Ø­Ù„Ù‡ Ù‚Ø¨Ù„
+        </button>
+        <button class="btn btn-secondary" type="button" data-general-action="storage-step-next" aria-label="Ù…Ø±Ø­Ù„Ù‡ Ø¨Ø¹Ø¯">
+          Ù…Ø±Ø­Ù„Ù‡ Ø¨Ø¹Ø¯ <span class="material-icons-round">navigate_before</span>
+        </button>
+      </div>
+      <div class="storage-action-bar-right">
+        <button class="btn btn-primary" type="button" data-general-action="storage-save-current">Ø°Ø®ÛŒØ±Ù‡ Ù…Ø±Ø­Ù„Ù‡ Ø¬Ø§Ø±ÛŒ</button>
+      </div>
+    </div>
+  </div>

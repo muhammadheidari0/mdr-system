@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import requests
 import urllib3
@@ -113,6 +114,99 @@ class NextcloudAdapter:
             "status_code": int(response.status_code or 0),
             "ok": int(response.status_code or 0) < 400,
         }
+
+    @staticmethod
+    def normalize_browse_path(path: str) -> str:
+        raw = str(path or "").strip().replace("\\", "/")
+        if not raw:
+            return "/"
+        tokens = [token for token in raw.split("/") if token]
+        if any(token in {".", ".."} for token in tokens):
+            raise ValueError("Path traversal is not allowed.")
+        return "/" + "/".join(tokens) if tokens else "/"
+
+    def _url_for_relative_path(self, relative_path: str) -> str:
+        normalized = self.normalize_browse_path(relative_path)
+        root_url = self.build_webdav_root_url().rstrip("/")
+        if normalized == "/":
+            return root_url
+        encoded_segments = "/".join(quote(token, safe="") for token in normalized.strip("/").split("/"))
+        return f"{root_url}/{encoded_segments}"
+
+    @staticmethod
+    def _extract_href_path(raw_href: str) -> str:
+        href = str(raw_href or "").strip()
+        if not href:
+            return ""
+        parsed = urlsplit(href)
+        if parsed.scheme or parsed.netloc:
+            value = parsed.path
+        else:
+            value = href
+        return unquote(str(value or "")).strip()
+
+    def list_directories(self, path: str = "/") -> dict[str, Any]:
+        current_path = self.normalize_browse_path(path)
+        target_url = self._url_for_relative_path(current_path).rstrip("/")
+        response = self._request(
+            "PROPFIND",
+            target_url,
+            headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+            data=(
+                '<?xml version="1.0" encoding="utf-8"?>'
+                '<d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/>'
+                "<d:displayname/></d:prop></d:propfind>"
+            ),
+        )
+        status_code = int(response.status_code or 0)
+        if status_code >= 400:
+            detail = self._response_error_detail(response)
+            message = f"Nextcloud list directories failed: HTTP {status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
+
+        try:
+            root = ET.fromstring(str(response.text or ""))
+        except ET.ParseError as exc:
+            raise RuntimeError("Nextcloud returned invalid XML response.") from exc
+
+        current_dav_path = unquote(str(urlsplit(target_url).path or "")).rstrip("/")
+        prefix = f"{current_dav_path}/" if current_dav_path else "/"
+        folder_names: set[str] = set()
+        for response_el in root.findall(".//{DAV:}response"):
+            has_collection = bool(
+                response_el.findall(".//{DAV:}resourcetype/{DAV:}collection")
+            )
+            if not has_collection:
+                continue
+            href_el = response_el.find("{DAV:}href")
+            href_path = self._extract_href_path(href_el.text if href_el is not None else "")
+            if not href_path:
+                continue
+            href_path = href_path.rstrip("/")
+            if not href_path:
+                continue
+            if href_path == current_dav_path:
+                continue
+            if not href_path.startswith(prefix):
+                continue
+            tail = href_path[len(prefix) :].strip("/")
+            if not tail:
+                continue
+            first_segment = tail.split("/", 1)[0].strip()
+            if first_segment:
+                folder_names.add(first_segment)
+
+        folders: list[dict[str, str]] = []
+        for name in sorted(folder_names, key=lambda item: item.casefold()):
+            folder_path = (
+                f"{current_path.rstrip('/')}/{name}"
+                if current_path != "/"
+                else f"/{name}"
+            )
+            folders.append({"name": name, "path": folder_path})
+        return {"current_path": current_path, "folders": folders}
 
     def ensure_path(self, remote_dir: str) -> str:
         parts = [

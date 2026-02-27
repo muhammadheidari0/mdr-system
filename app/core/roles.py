@@ -31,6 +31,7 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "correspondence:delete",
         # By default, final issue/void remains with DCC.
         "dashboard:read",
+        "module_settings:read",
     ],
     Role.DCC: [
         "documents:read",
@@ -48,6 +49,7 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "correspondence:update",
         "correspondence:delete",
         "dashboard:read",
+        "module_settings:read",
     ],
     Role.USER: [
         "documents:read",
@@ -62,6 +64,7 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "correspondence:update",
         "correspondence:delete",
         "dashboard:read",
+        "module_settings:read",
     ],
     Role.VIEWER: [
         "documents:read",
@@ -69,6 +72,7 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "transmittal:read",
         "correspondence:read",
         "dashboard:read",
+        "module_settings:read",
     ],
 }
 

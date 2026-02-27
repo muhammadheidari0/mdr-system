@@ -24,6 +24,7 @@ export interface AppRouterDeps {
   initReportsView: () => void;
   initContractorView: () => void;
   initConsultantView: () => void;
+  initModuleSettingsView: () => void;
   openSettingsTab: (tabName: string) => void;
   initUserSettingsView: () => void;
   emitViewActivated: (viewId: string) => void;
@@ -78,8 +79,15 @@ async function runViewInitializerForRoute(routedViewId: string, deps: AppRouterD
     case "view-consultant":
       deps.initConsultantView();
       return true;
+    case "view-edms-settings":
+      deps.initModuleSettingsView();
+      return true;
+    case "view-contractor-settings":
+      return true;
+    case "view-consultant-settings":
+      return true;
     case "view-settings": {
-      const targetTab = normalizeViewId(deps.getPendingSettingsTab()) || "general";
+      const targetTab = normalizeViewId(deps.getPendingSettingsTab()) || "users";
       deps.clearPendingSettingsTab();
       deps.openSettingsTab(targetTab);
       return true;

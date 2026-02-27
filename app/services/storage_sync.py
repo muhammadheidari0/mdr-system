@@ -98,11 +98,19 @@ def resolve_nextcloud_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
     env_username = str(settings.NEXTCLOUD_USERNAME or "").strip()
     env_password = str(settings.NEXTCLOUD_APP_PASSWORD or "").strip()
     env_root_path = str(settings.NEXTCLOUD_ROOT_PATH or "").strip()
+    env_local_mount_root = str(settings.NEXTCLOUD_LOCAL_MOUNT_ROOT or "").strip()
 
     base_url = env_base_url or str(nextcloud_cfg.get("base_url") or "").strip()
     username = env_username or str(nextcloud_cfg.get("username") or "").strip()
     app_password = env_password or str(nextcloud_cfg.get("app_password") or "").strip()
     root_path = env_root_path or str(nextcloud_cfg.get("root_path") or "").strip() or "/"
+    settings_local_mount_root = str(nextcloud_cfg.get("local_mount_root") or "").strip()
+    local_mount_root_effective = env_local_mount_root or settings_local_mount_root
+    local_mount_root_source = (
+        "env"
+        if env_local_mount_root
+        else ("settings" if settings_local_mount_root else "none")
+    )
 
     force_tls_verify = _to_optional_bool(getattr(settings, "NEXTCLOUD_TLS_VERIFY_FORCE", ""))
     settings_skip_ssl_verify = _to_optional_bool(nextcloud_cfg.get("skip_ssl_verify"))
@@ -128,6 +136,9 @@ def resolve_nextcloud_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
         "username": username,
         "app_password": app_password,
         "root_path": root_path,
+        "local_mount_root_effective": local_mount_root_effective,
+        "local_mount_root_source": local_mount_root_source,
+        "local_mount_root_configured": bool(local_mount_root_effective),
         "credential_source": credential_source,
         "connect_timeout": int(settings.NEXTCLOUD_CONNECT_TIMEOUT_SECONDS or 5),
         "read_timeout": int(settings.NEXTCLOUD_READ_TIMEOUT_SECONDS or 10),

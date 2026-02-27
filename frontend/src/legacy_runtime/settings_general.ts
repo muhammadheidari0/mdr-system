@@ -43,9 +43,20 @@
         },
         openprojectImport: {
             activeTab: 'connection',
+            enabled: false,
             selectedRunId: 0,
             lastValidatedRunId: 0,
             pollingTimer: null,
+        },
+        nextcloudPicker: {
+            open: false,
+            targetInputId: '',
+            currentPath: '/',
+            currentLocalPath: '',
+            localMountRoot: '',
+            localMountRootSource: 'none',
+            ready: false,
+            loading: false,
         },
         integrationsProviderTab: 'openproject',
         paging: {},
@@ -1012,21 +1023,34 @@
     }
 
     function setOpenProjectSubTab(nextTab = 'connection') {
-        const activeTab = ['connection', 'project-import', 'import', 'logs'].includes(String(nextTab || '').toLowerCase())
+        const requestedTab = ['connection', 'project-import', 'import', 'logs'].includes(String(nextTab || '').toLowerCase())
             ? String(nextTab || '').toLowerCase()
             : 'connection';
-        STORE.openprojectImport.activeTab = activeTab;
-        document.querySelectorAll('.storage-openproject-subtab[data-op-tab]').forEach((btn) => {
-            const key = String(btn?.dataset?.opTab || '').toLowerCase();
-            const isActive = key === activeTab;
-            btn.classList.toggle('active', isActive);
-            btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-        document.querySelectorAll('[data-op-tab-content]').forEach((panel) => {
-            const key = String(panel?.dataset?.opTabContent || '').toLowerCase();
-            const isActive = key === activeTab;
-            panel.classList.toggle('active', isActive);
-            panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+        STORE.openprojectImport.activeTab = requestedTab;
+
+        document.querySelectorAll('.storage-openproject-shell').forEach((shell) => {
+            const buttons = Array.from(shell.querySelectorAll('.storage-openproject-subtab[data-op-tab]'));
+            const panels = Array.from(shell.querySelectorAll('[data-op-tab-content]'));
+            if (!buttons.length || !panels.length) return;
+
+            const availableTabs = buttons.map((btn) => String(btn?.dataset?.opTab || '').toLowerCase()).filter(Boolean);
+            const activeTab = availableTabs.includes(requestedTab)
+                ? requestedTab
+                : String(buttons[0]?.dataset?.opTab || '').toLowerCase();
+
+            buttons.forEach((btn) => {
+                const key = String(btn?.dataset?.opTab || '').toLowerCase();
+                const isActive = key === activeTab;
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            });
+
+            panels.forEach((panel) => {
+                const key = String(panel?.dataset?.opTabContent || '').toLowerCase();
+                const isActive = key === activeTab;
+                panel.classList.toggle('active', isActive);
+                panel.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+            });
         });
     }
 
@@ -1120,16 +1144,19 @@
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
         const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
         const nextcloudBaseUrlWrap = document.getElementById('storageNextcloudBaseUrlWrap');
         const nextcloudUsernameWrap = document.getElementById('storageNextcloudUsernameWrap');
         const nextcloudRootPathWrap = document.getElementById('storageNextcloudRootPathWrap');
+        const nextcloudLocalMountRootWrap = document.getElementById('storageNextcloudLocalMountRootWrap');
         const nextcloudTokenWrap = document.getElementById('storageNextcloudTokenWrap');
         const nextcloudSslWrap = document.getElementById('storageNextcloudSslWrap');
         const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
         const nextcloudCredentialHint = document.getElementById('storageNextcloudCredentialManagedHint');
         const nextcloudSslHint = document.getElementById('storageNextcloudSslManagedHint');
         const nextcloudSslWarning = document.getElementById('storageNextcloudSkipSslWarning');
+        const nextcloudLocalMountRootHint = document.getElementById('storageNextcloudLocalMountRootHint');
         const nextcloudSyncBtn = document.getElementById('storageNextcloudSyncRunBtn');
         const bimEnabled = document.getElementById('storageBimRevitEnabledInput');
         const bimRequireSignature = document.getElementById('storageBimRevitRequireSignatureInput');
@@ -1150,14 +1177,18 @@
         const nextcloudCredentialSource = norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase();
         const nextcloudSslSource = norm(nextcloudSkipSsl?.dataset?.sslSource || 'env_default').toLowerCase();
         const nextcloudSslForceActive = String(nextcloudSkipSsl?.dataset?.sslForceActive || '').toLowerCase() === 'true';
+        const nextcloudLocalMountRootSource = norm(nextcloudLocalMountRoot?.dataset?.mountRootSource || 'none').toLowerCase();
         const nextcloudEnvManagedCred = nextcloudCredentialSource === 'env';
         const nextcloudEnvManagedSsl = nextcloudSslForceActive || nextcloudSslSource === 'env_force';
+        const nextcloudEnvManagedMount = nextcloudLocalMountRootSource === 'env';
 
         const googleOn = Boolean(googleEnabled?.checked);
         const googleDriveOn = googleOn && Boolean(googleDriveEnabled?.checked);
         const googleGmailOn = googleOn && Boolean(googleGmailEnabled?.checked);
         const googleCalendarOn = googleOn && Boolean(googleCalendarEnabled?.checked);
-        const openprojectOn = Boolean(openprojectEnabled?.checked);
+        const openprojectOn = openprojectEnabled
+            ? Boolean(openprojectEnabled.checked)
+            : Boolean(STORE.openprojectImport?.enabled);
         const nextcloudOn = Boolean(nextcloudEnabled?.checked);
         const bimOn = Boolean(bimEnabled?.checked);
         const bimSignatureOn = bimOn && Boolean(bimRequireSignature?.checked);
@@ -1192,6 +1223,7 @@
         if (nextcloudUsername) nextcloudUsername.disabled = !nextcloudOn;
         if (nextcloudAppPassword) nextcloudAppPassword.disabled = !nextcloudOn || nextcloudEnvManagedCred;
         if (nextcloudRootPath) nextcloudRootPath.disabled = !nextcloudOn;
+        if (nextcloudLocalMountRoot) nextcloudLocalMountRoot.disabled = !nextcloudOn || nextcloudEnvManagedMount;
         if (nextcloudSkipSsl) nextcloudSkipSsl.disabled = !nextcloudOn || nextcloudEnvManagedSsl;
 
         if (openprojectBaseUrlWrap) openprojectBaseUrlWrap.classList.toggle('is-disabled', !openprojectOn);
@@ -1207,12 +1239,22 @@
         if (nextcloudUsernameWrap) nextcloudUsernameWrap.classList.toggle('is-disabled', !nextcloudOn);
         if (nextcloudTokenWrap) nextcloudTokenWrap.classList.toggle('is-disabled', !nextcloudOn);
         if (nextcloudRootPathWrap) nextcloudRootPathWrap.classList.toggle('is-disabled', !nextcloudOn);
+        if (nextcloudLocalMountRootWrap) {
+            nextcloudLocalMountRootWrap.classList.toggle('is-disabled', !nextcloudOn || nextcloudEnvManagedMount);
+        }
         if (nextcloudSslWrap) nextcloudSslWrap.classList.toggle('is-disabled', !nextcloudOn || nextcloudEnvManagedSsl);
         if (nextcloudCredentialHint) {
             nextcloudCredentialHint.textContent = nextcloudEnvManagedCred ? 'Credentials are managed by environment' : '';
         }
         if (nextcloudSslHint) {
             nextcloudSslHint.textContent = nextcloudEnvManagedSsl ? 'SSL policy is managed by environment' : '';
+        }
+        if (nextcloudLocalMountRootHint) {
+            const baseText = norm(nextcloudLocalMountRootHint.dataset.baseText)
+                || 'Used by folder picker to map Nextcloud folders to local/UNC paths.';
+            nextcloudLocalMountRootHint.textContent = nextcloudEnvManagedMount
+                ? 'Local mount root is managed by environment (NEXTCLOUD_LOCAL_MOUNT_ROOT).'
+                : baseText;
         }
         if (nextcloudSslWarning) {
             const showWarning = nextcloudOn && Boolean(nextcloudSkipSsl?.checked);
@@ -1236,6 +1278,7 @@
         if (executeBtn) executeBtn.disabled = !readyForExecute;
         if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
         updateOpenProjectTokenSavedState(tokenSource, norm(openprojectToken?.value));
+        updateStorageNextcloudPickerAvailability();
     }
 
     function bindStorageWorkflowInputs() {
@@ -1299,6 +1342,7 @@
         }
         updateStoragePathPreview();
         validateStoragePathConflict(false);
+        updateStorageNextcloudPickerAvailability();
         if (!mdrLocked && !corrLocked) {
             clearStorageStepDirty('paths');
         }
@@ -1440,11 +1484,13 @@
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
         const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
         const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
         const nextcloudCredentialHint = document.getElementById('storageNextcloudCredentialManagedHint');
         const nextcloudSslHint = document.getElementById('storageNextcloudSslManagedHint');
         const nextcloudSslWarning = document.getElementById('storageNextcloudSkipSslWarning');
+        const nextcloudLocalMountRootHint = document.getElementById('storageNextcloudLocalMountRootHint');
 
         const mirror = integrations?.mirror || {};
         const gdrive = integrations?.google_drive || {};
@@ -1453,6 +1499,7 @@
         const mirrorProviderValue = ['none', 'google_drive', 'nextcloud'].includes(norm(mirror.provider).toLowerCase())
             ? norm(mirror.provider).toLowerCase()
             : 'none';
+        STORE.openprojectImport.enabled = Boolean(openproject.enabled);
         const tokenSource = norm(openproject.token_source || 'none').toLowerCase();
         const sslSource = norm(openproject.ssl_source || 'env_default').toLowerCase();
         const sslForceActive = Boolean(openproject.ssl_force_active);
@@ -1461,6 +1508,8 @@
         const nextcloudSslSource = norm(nextcloud.ssl_source || 'env_default').toLowerCase();
         const nextcloudSslForceActive = Boolean(nextcloud.ssl_force_active);
         const nextcloudSkipSslVerify = Boolean(nextcloud.skip_ssl_verify);
+        const nextcloudLocalMountRootSource = norm(nextcloud.local_mount_root_source || 'none').toLowerCase();
+        const nextcloudLocalMountRootConfigured = Boolean(nextcloud.local_mount_root_configured);
 
         if (mirrorProvider) mirrorProvider.value = mirrorProviderValue;
 
@@ -1505,6 +1554,11 @@
         if (nextcloudUsername) nextcloudUsername.value = String(nextcloud.username || '');
         if (nextcloudAppPassword) nextcloudAppPassword.value = '';
         if (nextcloudRootPath) nextcloudRootPath.value = String(nextcloud.root_path || '');
+        if (nextcloudLocalMountRoot) {
+            nextcloudLocalMountRoot.value = String(nextcloud.local_mount_root || '');
+            nextcloudLocalMountRoot.dataset.mountRootSource = nextcloudLocalMountRootSource || 'none';
+            nextcloudLocalMountRoot.dataset.mountRootConfigured = nextcloudLocalMountRootConfigured ? 'true' : 'false';
+        }
         if (nextcloudSkipSsl) {
             nextcloudSkipSsl.checked = nextcloudSkipSslVerify;
             nextcloudSkipSsl.dataset.sslSource = nextcloudSslSource || 'env_default';
@@ -1521,6 +1575,13 @@
         }
         if (nextcloudSslHint) {
             nextcloudSslHint.textContent = nextcloudSslForceActive ? 'SSL policy is managed by environment' : '';
+        }
+        if (nextcloudLocalMountRootHint) {
+            const baseText = norm(nextcloudLocalMountRootHint.dataset.baseText)
+                || 'Used by folder picker to map Nextcloud folders to local/UNC paths.';
+            nextcloudLocalMountRootHint.textContent = nextcloudLocalMountRootSource === 'env'
+                ? 'Local mount root is managed by environment (NEXTCLOUD_LOCAL_MOUNT_ROOT).'
+                : baseText;
         }
         if (nextcloudSslWarning) {
             nextcloudSslWarning.style.display = nextcloudSkipSslVerify ? 'flex' : 'none';
@@ -1691,6 +1752,7 @@
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
         const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
         if (
             !mirrorProvider
@@ -1706,6 +1768,7 @@
             || !nextcloudUsername
             || !nextcloudAppPassword
             || !nextcloudRootPath
+            || !nextcloudLocalMountRoot
             || !nextcloudSkipSsl
         ) return;
 
@@ -1726,6 +1789,7 @@
             username: norm(nextcloudUsername.value),
             app_password: norm(nextcloudAppPassword.value),
             root_path: norm(nextcloudRootPath.value),
+            local_mount_root: norm(nextcloudLocalMountRoot.value),
         } as Record<string, unknown>;
         if (!nextcloudSslForceActive) {
             nextcloudPayload.skip_ssl_verify = Boolean(nextcloudSkipSsl.checked);
@@ -2299,8 +2363,11 @@
     }
 
     function bindIntegrationsActions() {
-        const root = document.getElementById('settingsIntegrationsRoot');
-        if (!root || root.dataset.integrationsActionsBound === '1') return;
+        const roots = [
+            document.getElementById('settingsIntegrationsRoot'),
+            document.getElementById('consultantOpenProjectOpsRoot'),
+        ].filter(Boolean);
+        if (!roots.length) return;
         const findEventTargetEl = (event, selector) => {
             if (!event || !selector) return null;
             const directTarget = event.target;
@@ -2317,116 +2384,120 @@
             }
             return null;
         };
-        root.addEventListener('click', async (event) => {
-            const providerTabEl = findEventTargetEl(event, '[data-integrations-provider-tab]');
-            if (providerTabEl && root.contains(providerTabEl)) {
+
+        roots.forEach((root) => {
+            if (!root || root.dataset.integrationsActionsBound === '1') return;
+            root.addEventListener('click', async (event) => {
+                const providerTabEl = findEventTargetEl(event, '[data-integrations-provider-tab]');
+                if (providerTabEl && root.contains(providerTabEl)) {
+                    event.preventDefault();
+                    setIntegrationsProviderTab(providerTabEl.dataset.integrationsProviderTab || 'openproject');
+                    return;
+                }
+                const tabEl = findEventTargetEl(event, '[data-op-tab]');
+                if (tabEl && root.contains(tabEl)) {
+                    event.preventDefault();
+                    setOpenProjectSubTab(tabEl.dataset.opTab || 'connection');
+                    return;
+                }
+                const actionEl = findEventTargetEl(event, '[data-integrations-action]');
+                if (!actionEl || !root.contains(actionEl)) return;
                 event.preventDefault();
-                setIntegrationsProviderTab(providerTabEl.dataset.integrationsProviderTab || 'openproject');
-                return;
-            }
-            const tabEl = findEventTargetEl(event, '[data-op-tab]');
-            if (tabEl && root.contains(tabEl)) {
-                event.preventDefault();
-                setOpenProjectSubTab(tabEl.dataset.opTab || 'connection');
-                return;
-            }
-            const actionEl = findEventTargetEl(event, '[data-integrations-action]');
-            if (!actionEl || !root.contains(actionEl)) return;
-            event.preventDefault();
-            const action = norm(actionEl.dataset.integrationsAction || '').toLowerCase();
-            try {
-                if (action === 'save-integrations') {
-                    await saveStorageIntegrations();
-                    return;
-                }
-                if (action === 'rotate-bim-revit-secret') {
-                    await rotateBimRevitSecret();
-                    return;
-                }
-                if (action === 'run-google-sync') {
-                    await runStorageSyncJob('google_drive');
-                    return;
-                }
-                if (action === 'run-nextcloud-sync') {
-                    await runStorageSyncJob('nextcloud');
-                    return;
-                }
-                if (action === 'run-openproject-sync') {
-                    await runStorageSyncJob('openproject');
-                    return;
-                }
-                if (action === 'ping-openproject') {
-                    await pingOpenProject();
-                    return;
-                }
-                if (action === 'ping-google-drive') {
-                    await pingGoogle('drive');
-                    return;
-                }
-                if (action === 'ping-google-gmail') {
-                    await pingGoogle('gmail');
-                    return;
-                }
-                if (action === 'ping-google-calendar') {
-                    await pingGoogle('calendar');
-                    return;
-                }
-                if (action === 'ping-nextcloud') {
-                    await pingNextcloud();
-                    return;
-                }
-                if (action === 'clear-openproject-token') {
-                    await clearOpenProjectStoredToken();
-                    return;
-                }
-                if (action === 'preview-openproject-project-work-packages') {
-                    await previewOpenProjectProjectWorkPackages();
-                    return;
-                }
-                if (action === 'import-openproject-project-work-packages') {
-                    await importOpenProjectProjectWorkPackages();
-                    return;
-                }
-                if (action === 'download-openproject-template') {
-                    await downloadOpenProjectTemplate();
-                    return;
-                }
-                if (action === 'validate-openproject-import') {
-                    const run = await validateOpenProjectImportFile();
-                    await pollOpenProjectRun(run?.id);
-                    return;
-                }
-                if (action === 'execute-openproject-import') {
-                    const run = await executeOpenProjectImportRun();
-                    await pollOpenProjectRun(run?.id);
-                    return;
-                }
-                if (action === 'refresh-openproject-import-data') {
-                    await refreshOpenProjectImportData();
-                    return;
-                }
-                if (action === 'select-openproject-import-run') {
-                    const runId = Number(actionEl.dataset.runId || 0);
-                    if (runId > 0) {
-                        await loadOpenProjectImportRows(runId);
+                const action = norm(actionEl.dataset.integrationsAction || '').toLowerCase();
+                try {
+                    if (action === 'save-integrations') {
+                        await saveStorageIntegrations();
+                        return;
                     }
-                    return;
+                    if (action === 'rotate-bim-revit-secret') {
+                        await rotateBimRevitSecret();
+                        return;
+                    }
+                    if (action === 'run-google-sync') {
+                        await runStorageSyncJob('google_drive');
+                        return;
+                    }
+                    if (action === 'run-nextcloud-sync') {
+                        await runStorageSyncJob('nextcloud');
+                        return;
+                    }
+                    if (action === 'run-openproject-sync') {
+                        await runStorageSyncJob('openproject');
+                        return;
+                    }
+                    if (action === 'ping-openproject') {
+                        await pingOpenProject();
+                        return;
+                    }
+                    if (action === 'ping-google-drive') {
+                        await pingGoogle('drive');
+                        return;
+                    }
+                    if (action === 'ping-google-gmail') {
+                        await pingGoogle('gmail');
+                        return;
+                    }
+                    if (action === 'ping-google-calendar') {
+                        await pingGoogle('calendar');
+                        return;
+                    }
+                    if (action === 'ping-nextcloud') {
+                        await pingNextcloud();
+                        return;
+                    }
+                    if (action === 'clear-openproject-token') {
+                        await clearOpenProjectStoredToken();
+                        return;
+                    }
+                    if (action === 'preview-openproject-project-work-packages') {
+                        await previewOpenProjectProjectWorkPackages();
+                        return;
+                    }
+                    if (action === 'import-openproject-project-work-packages') {
+                        await importOpenProjectProjectWorkPackages();
+                        return;
+                    }
+                    if (action === 'download-openproject-template') {
+                        await downloadOpenProjectTemplate();
+                        return;
+                    }
+                    if (action === 'validate-openproject-import') {
+                        const run = await validateOpenProjectImportFile();
+                        await pollOpenProjectRun(run?.id);
+                        return;
+                    }
+                    if (action === 'execute-openproject-import') {
+                        const run = await executeOpenProjectImportRun();
+                        await pollOpenProjectRun(run?.id);
+                        return;
+                    }
+                    if (action === 'refresh-openproject-import-data') {
+                        await refreshOpenProjectImportData();
+                        return;
+                    }
+                    if (action === 'select-openproject-import-run') {
+                        const runId = Number(actionEl.dataset.runId || 0);
+                        if (runId > 0) {
+                            await loadOpenProjectImportRows(runId);
+                        }
+                        return;
+                    }
+                } catch (err) {
+                    tError(err.message);
                 }
-            } catch (err) {
-                tError(err.message);
-            }
-        });
-        root.addEventListener('change', () => {
-            updateStorageIntegrationsFieldState();
-        });
-        root.addEventListener('input', (event) => {
-            const target = event?.target;
-            if (!target) return;
-            if (target.id === 'storageOpenProjectApiTokenInput') {
+            });
+            root.addEventListener('change', () => {
                 updateStorageIntegrationsFieldState();
-            }
+            });
+            root.addEventListener('input', (event) => {
+                const target = event?.target;
+                if (!target) return;
+                if (target.id === 'storageOpenProjectApiTokenInput') {
+                    updateStorageIntegrationsFieldState();
+                }
+            });
+            root.dataset.integrationsActionsBound = '1';
         });
-        root.dataset.integrationsActionsBound = '1';
     }
 
     async function initSettingsIntegrations(force = false) {
@@ -3512,6 +3583,246 @@
         return true;
     }
 
+    function normalizeRemotePath(value) {
+        const tokens = String(value || '')
+            .trim()
+            .replace(/\\/g, '/')
+            .split('/')
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+        if (tokens.some((item) => item === '.' || item === '..')) return '';
+        return tokens.length ? `/${tokens.join('/')}` : '/';
+    }
+
+    function toComparablePath(value) {
+        return String(value || '')
+            .trim()
+            .replace(/\\/g, '/')
+            .replace(/\/+/g, '/')
+            .replace(/\/+$/g, '')
+            .toLowerCase();
+    }
+
+    function inferRemotePathFromLocalInput(localValue, localMountRoot) {
+        const local = norm(localValue);
+        const mountRoot = norm(localMountRoot);
+        if (!local || !mountRoot) return '/';
+        const localNorm = toComparablePath(local);
+        const mountNorm = toComparablePath(mountRoot);
+        if (!localNorm || !mountNorm) return '/';
+        if (localNorm === mountNorm) return '/';
+        if (!localNorm.startsWith(`${mountNorm}/`)) return '/';
+        const rest = localNorm.slice(mountNorm.length);
+        return normalizeRemotePath(rest) || '/';
+    }
+
+    function setStorageNextcloudPickerStatus(message = '', level = 'info') {
+        const box = document.getElementById('storageNextcloudFolderPickerStatus');
+        if (!box) return;
+        if (!message) {
+            box.textContent = '';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            return;
+        }
+        box.textContent = message;
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function setStorageNextcloudPickerInlineHint(message = '', level = 'info') {
+        const hint = document.getElementById('storageNextcloudPickerInlineHint');
+        if (!hint) return;
+        hint.textContent = message;
+        hint.classList.remove('is-error', 'is-success');
+        if (!message) return;
+        if (level === 'error') hint.classList.add('is-error');
+        if (level === 'success') hint.classList.add('is-success');
+    }
+
+    function updateStorageNextcloudPickerAvailability() {
+        const buttons = Array.from(
+            document.querySelectorAll(
+                '#storageMdrPathNextcloudPickerBtn, #storageCorrPathNextcloudPickerBtn'
+            )
+        );
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
+
+        const enabled = Boolean(nextcloudEnabled?.checked);
+        const baseReady = Boolean(norm(nextcloudBaseUrl?.value));
+        const userReady = Boolean(norm(nextcloudUsername?.value));
+        const credentialSource = norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase();
+        const credentialReady = credentialSource === 'env' || credentialSource === 'settings';
+        const localMountRoot = norm(nextcloudLocalMountRoot?.value);
+        const localMountRootReady = Boolean(localMountRoot);
+        const localMountRootSource = norm(nextcloudLocalMountRoot?.dataset?.mountRootSource || 'none').toLowerCase() || 'none';
+
+        let reason = '';
+        if (!enabled) reason = 'Nextcloud integration must be enabled first.';
+        else if (!baseReady) reason = 'Nextcloud base URL is required.';
+        else if (!userReady) reason = 'Nextcloud username is required.';
+        else if (!credentialReady) reason = 'Nextcloud credentials are not configured yet.';
+        else if (!localMountRootReady) reason = 'Local mount root is required for folder picker.';
+
+        const ready = !reason;
+        STORE.nextcloudPicker.ready = ready;
+        STORE.nextcloudPicker.localMountRoot = localMountRoot;
+        STORE.nextcloudPicker.localMountRootSource = localMountRootSource;
+
+        buttons.forEach((btn) => {
+            btn.disabled = !ready;
+            const defaultTitle = String(btn.getAttribute('title') || 'Select folder from Nextcloud');
+            btn.setAttribute('title', ready ? defaultTitle : reason);
+            btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
+        });
+
+        if (ready) {
+            setStorageNextcloudPickerInlineHint('Nextcloud folder picker is ready.', 'success');
+        } else {
+            setStorageNextcloudPickerInlineHint(reason, 'error');
+            if (STORE.nextcloudPicker.open) {
+                setStorageNextcloudPickerStatus(reason, 'error');
+            }
+        }
+        return { ready, reason };
+    }
+
+    function setStorageNextcloudPickerCurrentPath(pathValue) {
+        const current = normalizeRemotePath(pathValue) || '/';
+        STORE.nextcloudPicker.currentPath = current;
+        const currentEl = document.getElementById('storageNextcloudFolderPickerCurrentPath');
+        if (currentEl) currentEl.textContent = current;
+    }
+
+    function renderStorageNextcloudPickerList(items = []) {
+        const list = document.getElementById('storageNextcloudFolderPickerList');
+        if (!list) return;
+        const rows = Array.isArray(items) ? items : [];
+        if (!rows.length) {
+            list.innerHTML = '<div class="storage-nextcloud-picker-empty">No folders found in this path.</div>';
+            return;
+        }
+        list.innerHTML = rows.map((row) => {
+            const name = esc(row?.name || '-');
+            const path = esc(row?.path || '/');
+            const localPath = esc(row?.local_path || '-');
+            return `
+                <button
+                  type="button"
+                  class="storage-nextcloud-picker-item"
+                  data-general-action="nextcloud-folder-picker-enter"
+                  data-picker-path="${path}"
+                  data-picker-local-path="${localPath}"
+                  title="${localPath}"
+                >
+                  <span><span class="material-icons-round">folder</span> ${name}</span>
+                  <code>${localPath}</code>
+                </button>
+            `;
+        }).join('');
+    }
+
+    function openStorageNextcloudPickerModal() {
+        const modal = document.getElementById('storageNextcloudFolderPickerModal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+        STORE.nextcloudPicker.open = true;
+    }
+
+    function closeStorageNextcloudPickerModal() {
+        const modal = document.getElementById('storageNextcloudFolderPickerModal');
+        if (!modal) return;
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+        STORE.nextcloudPicker.open = false;
+        STORE.nextcloudPicker.loading = false;
+    }
+
+    async function loadStorageNextcloudPickerPath(pathValue = '/') {
+        if (!STORE.nextcloudPicker.open) return;
+        const path = normalizeRemotePath(pathValue) || '/';
+        STORE.nextcloudPicker.loading = true;
+        setStorageNextcloudPickerStatus(`Loading folders for ${path} ...`, 'info');
+        try {
+            const payload = await request('/api/v1/storage/nextcloud/folders', {
+                method: 'POST',
+                body: JSON.stringify({ path }),
+            });
+            STORE.nextcloudPicker.loading = false;
+            const currentPath = normalizeRemotePath(payload?.current_path) || path;
+            setStorageNextcloudPickerCurrentPath(currentPath);
+            STORE.nextcloudPicker.currentLocalPath = norm(payload?.current_local_path || '');
+            STORE.nextcloudPicker.localMountRoot = norm(payload?.local_mount_root_effective || STORE.nextcloudPicker.localMountRoot);
+            STORE.nextcloudPicker.localMountRootSource = norm(payload?.local_mount_root_source || STORE.nextcloudPicker.localMountRootSource || 'none');
+            renderStorageNextcloudPickerList(payload?.folders || []);
+            setStorageNextcloudPickerStatus(
+                `Current path: ${currentPath} | mount: ${STORE.nextcloudPicker.localMountRoot || '-'}`,
+                'success'
+            );
+        } catch (err) {
+            STORE.nextcloudPicker.loading = false;
+            renderStorageNextcloudPickerList([]);
+            setStorageNextcloudPickerStatus(String(err?.message || 'Nextcloud browse failed.'), 'error');
+            tError(String(err?.message || 'Nextcloud browse failed.'));
+        }
+    }
+
+    function pickerParentPath(pathValue) {
+        const path = normalizeRemotePath(pathValue) || '/';
+        if (path === '/') return '/';
+        const parts = path.split('/').filter(Boolean);
+        parts.pop();
+        return parts.length ? `/${parts.join('/')}` : '/';
+    }
+
+    async function openStorageNextcloudFolderPicker(targetInputId = '') {
+        const targetId = norm(targetInputId);
+        if (!targetId) return;
+        const availability = updateStorageNextcloudPickerAvailability();
+        if (!availability.ready) {
+            tError(availability.reason || 'Nextcloud folder picker is not ready.');
+            return;
+        }
+        STORE.nextcloudPicker.targetInputId = targetId;
+        setStorageNextcloudPickerStatus('', 'info');
+        openStorageNextcloudPickerModal();
+
+        const targetInput = document.getElementById(targetId);
+        const inferredPath = inferRemotePathFromLocalInput(
+            targetInput?.value,
+            STORE.nextcloudPicker.localMountRoot
+        );
+        await loadStorageNextcloudPickerPath(inferredPath || '/');
+    }
+
+    function applyStorageNextcloudPickerCurrentPath() {
+        const targetId = norm(STORE.nextcloudPicker.targetInputId);
+        const targetInput = document.getElementById(targetId);
+        if (!targetId || !targetInput) {
+            closeStorageNextcloudPickerModal();
+            return;
+        }
+        const localPath = norm(STORE.nextcloudPicker.currentLocalPath || '');
+        if (!localPath) {
+            setStorageNextcloudPickerStatus('No local path resolved for current folder.', 'error');
+            return;
+        }
+        targetInput.value = localPath;
+        targetInput.dataset.storagePathDirty = '1';
+        hideStorageStepSaved('paths');
+        markStorageStepDirty('paths');
+        updateStoragePathPreview();
+        validateStoragePathConflict(true);
+        closeStorageNextcloudPickerModal();
+        tSuccess('Storage path updated from Nextcloud folder picker.');
+    }
+
     function bindStoragePathValidation() {
         const mdrInput = document.getElementById('mdrStoragePathInput');
         const corrInput = document.getElementById('correspondenceStoragePathInput');
@@ -3532,6 +3843,7 @@
         corrInput.addEventListener('input', onInput);
         mdrInput.dataset.storagePathBound = '1';
         corrInput.dataset.storagePathBound = '1';
+        updateStorageNextcloudPickerAvailability();
     }
 
     async function ensureSelects() {
@@ -3706,6 +4018,24 @@
                     break;
                 case 'run-storage-nextcloud-sync':
                     window.runStorageNextcloudSync();
+                    break;
+                case 'open-nextcloud-folder-picker':
+                    openStorageNextcloudFolderPicker(actionEl.dataset.targetInput || '');
+                    break;
+                case 'close-nextcloud-folder-picker':
+                    closeStorageNextcloudPickerModal();
+                    break;
+                case 'nextcloud-folder-picker-refresh':
+                    loadStorageNextcloudPickerPath(STORE.nextcloudPicker.currentPath || '/');
+                    break;
+                case 'nextcloud-folder-picker-up':
+                    loadStorageNextcloudPickerPath(pickerParentPath(STORE.nextcloudPicker.currentPath || '/'));
+                    break;
+                case 'nextcloud-folder-picker-enter':
+                    loadStorageNextcloudPickerPath(actionEl.dataset.pickerPath || '/');
+                    break;
+                case 'nextcloud-folder-picker-select-current':
+                    applyStorageNextcloudPickerCurrentPath();
                     break;
                 case 'storage-switch-step':
                     setStorageWizardStep(actionEl.dataset.storageStep || 'paths');
@@ -3957,6 +4287,23 @@
             STORE.loadingPromise = null;
         });
         return STORE.loadingPromise;
+    }
+
+    async function initStorageSettingsPanel(force = false) {
+        bindGeneralActions();
+        bindStoragePathValidation();
+        registerGeneralBulkActions();
+        bindStorageWorkflowInputs();
+        setStorageWizardStep('paths', { force: true });
+        await loadStoragePaths(force);
+        await loadStoragePolicy(force);
+        try {
+            await loadSiteCache(force);
+        } catch (err) {
+            setSiteCacheTokenMessage(`خطا در بارگذاری Site Cache: ${err.message}`, 'error');
+        }
+        updateStoragePathPreview();
+        updateStorageActionBarState();
     }
 
     function requireVal(value, label) {
@@ -4662,6 +5009,7 @@
     };
 
     window.initGeneralSettings = initGeneralSettings;
+    window.initStorageSettingsPanel = initStorageSettingsPanel;
     window.initSettingsIntegrations = initSettingsIntegrations;
 })();
 

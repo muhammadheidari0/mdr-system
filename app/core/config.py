@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     NEXTCLOUD_USERNAME: str = ""
     NEXTCLOUD_APP_PASSWORD: str = ""
     NEXTCLOUD_ROOT_PATH: str = ""
+    NEXTCLOUD_LOCAL_MOUNT_ROOT: str = ""
     NEXTCLOUD_CONNECT_TIMEOUT_SECONDS: int = 5
     NEXTCLOUD_READ_TIMEOUT_SECONDS: int = 10
     NEXTCLOUD_TLS_VERIFY: bool = True

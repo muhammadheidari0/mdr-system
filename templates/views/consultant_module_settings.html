@@ -1,0 +1,263 @@
+<div id="view-consultant-settings" class="view-section" style="display: none;">
+    <div class="settings-shell module-settings-shell">
+        <div class="settings-shell-header">
+            <div class="settings-shell-title-wrap">
+                <span class="material-icons-round settings-shell-icon">fact_check</span>
+                <div>
+                    <h2 class="settings-shell-title">تنظیمات داخلی نظارت و کنترل پروژه (مشاور)</h2>
+                    <p class="settings-shell-subtitle">ماژول اول: OpenProject Operations. تنظیمات اتصال همچنان در System Settings > Integration Settings باقی می‌ماند.</p>
+                </div>
+            </div>
+            <div class="settings-shell-badges">
+                <button class="btn-secondary" type="button" data-nav-target="view-consultant">
+                    <span class="material-icons-round">arrow_back</span>
+                    بازگشت
+                </button>
+            </div>
+        </div>
+
+        <div class="settings-shell-nav module-settings-nav" role="tablist" aria-label="Consultant Module Settings Navigation">
+            <button
+                type="button"
+                class="settings-nav-card active"
+                role="tab"
+                aria-selected="true"
+                aria-controls="consultant-settings-tab-openproject"
+            >
+                <span class="material-icons-round settings-nav-card-icon">hub</span>
+                <span class="settings-nav-card-copy">
+                    <span class="settings-nav-card-title">OpenProject</span>
+                    <span class="settings-nav-card-subtitle">Project Import + Excel Import + Data & Logs</span>
+                </span>
+            </button>
+        </div>
+
+        <div class="settings-shell-panels">
+            <section id="consultant-settings-tab-openproject" class="module-settings-tab-content active" role="tabpanel" aria-hidden="false">
+                <div id="consultantOpenProjectOpsRoot" class="settings-integrations-page">
+                    <div class="general-settings-card">
+                        <h3 class="general-settings-title">
+                            <span class="material-icons-round">hub</span> OpenProject Operations
+                        </h3>
+                        <div class="general-settings-note general-settings-note-info">
+                            <span class="material-icons-round">info</span>
+                            <div>این بخش شامل ابزارهای اجرایی OpenProject است. Connection Settings در Integration Settings باقی مانده است.</div>
+                        </div>
+
+                        <div class="storage-openproject-shell">
+                            <div class="storage-openproject-head">
+                                <div class="storage-openproject-title-wrap">
+                                    <h4 class="storage-openproject-title">OpenProject</h4>
+                                    <div class="form-help">Execution tools for project snapshot, excel import and logs.</div>
+                                </div>
+                                <div class="storage-openproject-subtabs" role="tablist" aria-label="OpenProject Operations Tabs">
+                                    <button
+                                        class="storage-openproject-subtab active"
+                                        type="button"
+                                        data-op-tab="project-import"
+                                        aria-selected="true"
+                                        aria-controls="openproject-tab-project-import"
+                                    >
+                                        Project Import
+                                    </button>
+                                    <button
+                                        class="storage-openproject-subtab"
+                                        type="button"
+                                        data-op-tab="import"
+                                        aria-selected="false"
+                                        aria-controls="openproject-tab-import"
+                                    >
+                                        Excel Import
+                                    </button>
+                                    <button
+                                        class="storage-openproject-subtab"
+                                        type="button"
+                                        data-op-tab="logs"
+                                        aria-selected="false"
+                                        aria-controls="openproject-tab-logs"
+                                    >
+                                        Data & Logs
+                                    </button>
+                                </div>
+                            </div>
+
+                            <section
+                                id="openproject-tab-project-import"
+                                class="storage-openproject-panel active"
+                                data-op-tab-content="project-import"
+                                aria-hidden="false"
+                            >
+                                <div class="general-form-grid storage-openproject-project-import-grid">
+                                    <div>
+                                        <label class="form-label-sm">Project ID / Identifier</label>
+                                        <input id="storageOpenProjectProjectRefInput" class="form-input" placeholder="e.g. 5 or t202">
+                                    </div>
+                                    <div>
+                                        <label class="form-label-sm">Max Items</label>
+                                        <input id="storageOpenProjectProjectImportMaxItemsInput" class="form-input" type="number" min="1" max="50000" value="5000">
+                                    </div>
+                                    <div>
+                                        <label class="form-label-sm">Page Size</label>
+                                        <input id="storageOpenProjectProjectImportPageSizeInput" class="form-input" type="number" min="1" max="1000" value="200">
+                                    </div>
+                                </div>
+                                <div class="general-form-actions settings-inline-actions">
+                                    <button class="btn btn-secondary" type="button" data-integrations-action="preview-openproject-project-work-packages">Preview Work Packages</button>
+                                    <button class="btn btn-primary" type="button" data-integrations-action="import-openproject-project-work-packages">Import Snapshot</button>
+                                </div>
+                                <div id="storageOpenProjectProjectImportSummary" class="general-settings-note" style="display:none; margin-top:8px;"></div>
+                                <div class="table-wrap" style="margin-top:8px;">
+                                    <table class="archive-table">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>WP</th>
+                                                <th>Subject</th>
+                                                <th>Status</th>
+                                                <th>Type</th>
+                                                <th>Assignee</th>
+                                                <th>Start</th>
+                                                <th>Due</th>
+                                                <th>%</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="storageOpenProjectProjectPreviewBody">
+                                            <tr><td colspan="9" class="text-center muted">No data.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+
+                            <section
+                                id="openproject-tab-import"
+                                class="storage-openproject-panel"
+                                data-op-tab-content="import"
+                                aria-hidden="true"
+                            >
+                                <div class="general-form-grid storage-openproject-import-grid">
+                                    <div class="storage-openproject-import-file">
+                                        <label class="form-label-sm">Excel Template</label>
+                                        <div class="general-form-actions settings-inline-actions">
+                                            <button class="btn btn-secondary" type="button" data-integrations-action="download-openproject-template">Download Template</button>
+                                        </div>
+                                        <input id="storageOpenProjectImportFileInput" class="form-input" type="file" accept=".xlsx">
+                                        <div class="form-help">MVP currently processes only Task_Table1 sheet.</div>
+                                    </div>
+                                    <div class="storage-openproject-import-parent">
+                                        <label class="form-label-sm">Root Parent Work Package ID</label>
+                                        <input
+                                            id="storageOpenProjectImportTargetParentWpInput"
+                                            class="form-input"
+                                            type="number"
+                                            min="1"
+                                            placeholder="e.g. 321"
+                                        >
+                                        <div class="form-help">اگر خالی باشد از Default Parent Work Package ID استفاده می‌شود.</div>
+                                    </div>
+                                    <div class="storage-openproject-import-actions">
+                                        <div class="general-form-actions settings-inline-actions">
+                                            <button class="btn btn-secondary" type="button" data-integrations-action="validate-openproject-import">Validate (Dry-run)</button>
+                                            <button
+                                                id="storageOpenProjectImportExecuteBtn"
+                                                class="btn btn-primary"
+                                                type="button"
+                                                data-integrations-action="execute-openproject-import"
+                                                disabled
+                                            >
+                                                Start Processing
+                                            </button>
+                                        </div>
+                                        <input id="storageOpenProjectImportRunIdInput" type="hidden" value="">
+                                        <div id="storageOpenProjectImportSummary" class="general-settings-note" style="display:none;"></div>
+                                    </div>
+                                </div>
+                                <div id="storageOpenProjectImportProgressWrap" class="storage-openproject-progress" style="display:none;">
+                                    <div class="storage-openproject-progress-bar">
+                                        <span id="storageOpenProjectImportProgressBar" style="width:0%;"></span>
+                                    </div>
+                                    <div id="storageOpenProjectImportProgressText" class="form-help"></div>
+                                </div>
+                            </section>
+
+                            <section
+                                id="openproject-tab-logs"
+                                class="storage-openproject-panel"
+                                data-op-tab-content="logs"
+                                aria-hidden="true"
+                            >
+                                <div class="general-form-actions settings-inline-actions">
+                                    <button class="btn btn-secondary" type="button" data-integrations-action="refresh-openproject-import-data">Refresh Logs</button>
+                                </div>
+
+                                <div class="storage-openproject-logs-grid">
+                                    <div class="storage-openproject-logs-card">
+                                        <div class="storage-openproject-logs-head">Import Runs</div>
+                                        <div class="table-wrap">
+                                            <table class="archive-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Run No</th>
+                                                        <th>Status</th>
+                                                        <th>Rows</th>
+                                                        <th>Created/Failed</th>
+                                                        <th>Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="storageOpenProjectImportRunsBody">
+                                                    <tr><td colspan="5" class="text-center muted">No data.</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div class="storage-openproject-logs-card">
+                                        <div class="storage-openproject-logs-head">Row Logs</div>
+                                        <div class="table-wrap">
+                                            <table class="archive-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Row</th>
+                                                        <th>Name</th>
+                                                        <th>Validation</th>
+                                                        <th>Execution</th>
+                                                        <th>WP</th>
+                                                        <th>Error</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="storageOpenProjectImportRowsBody">
+                                                    <tr><td colspan="6" class="text-center muted">Select a run.</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div id="storageOpenProjectImportRowDetails" class="storage-openproject-row-details">
+                                            Select a row to view mapping and relation details.
+                                        </div>
+                                    </div>
+
+                                    <div class="storage-openproject-logs-card">
+                                        <div class="storage-openproject-logs-head">Recent OpenProject Activities</div>
+                                        <div class="table-wrap">
+                                            <table class="archive-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Time</th>
+                                                        <th>Source</th>
+                                                        <th>Kind</th>
+                                                        <th>Details</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="storageOpenProjectActivityBody">
+                                                    <tr><td colspan="4" class="text-center muted">No activity.</td></tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>

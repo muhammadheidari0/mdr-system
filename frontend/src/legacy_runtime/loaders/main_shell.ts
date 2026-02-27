@@ -11,6 +11,8 @@ import "../views/reports_logic";
 import "../views/reports";
 import "../views/contractor";
 import "../views/consultant";
+import "../views/module_settings";
+import "../views/consultant_module_settings";
 import "../views/profile_settings";
 import "../views/profile";
 import "../settings_general";

@@ -222,6 +222,7 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
     nextcloud_password = "nextcloud-app-password-xyz"
     monkeypatch.setattr(settings, "NEXTCLOUD_USERNAME", "")
     monkeypatch.setattr(settings, "NEXTCLOUD_APP_PASSWORD", "")
+    monkeypatch.setattr(settings, "NEXTCLOUD_LOCAL_MOUNT_ROOT", "")
     monkeypatch.setattr(settings, "NEXTCLOUD_TLS_VERIFY", True)
     monkeypatch.setattr(settings, "NEXTCLOUD_TLS_VERIFY_FORCE", "")
     try:
@@ -235,6 +236,7 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
                     "username": "nc-user",
                     "app_password": nextcloud_password,
                     "root_path": "/mdr",
+                    "local_mount_root": "/mnt/nextcloud",
                     "skip_ssl_verify": True,
                 },
             },
@@ -254,6 +256,9 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
         assert nextcloud.get("skip_ssl_verify") is True
         assert nextcloud.get("ssl_source") == "settings"
         assert nextcloud.get("ssl_force_active") is False
+        assert nextcloud.get("local_mount_root") == "/mnt/nextcloud"
+        assert nextcloud.get("local_mount_root_source") == "settings"
+        assert nextcloud.get("local_mount_root_configured") is True
         assert "app_password" not in nextcloud
 
         read_res = client.get("/api/v1/settings/storage-integrations", headers=headers)
@@ -261,6 +266,9 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
         read_nextcloud = read_res.json().get("integrations", {}).get("nextcloud", {})
         assert read_nextcloud.get("credential_source") == "settings"
         assert read_nextcloud.get("credentials_configured") is True
+        assert read_nextcloud.get("local_mount_root") == "/mnt/nextcloud"
+        assert read_nextcloud.get("local_mount_root_source") == "settings"
+        assert read_nextcloud.get("local_mount_root_configured") is True
         assert "app_password" not in read_nextcloud
 
         preserve_res = client.post(
@@ -298,5 +306,37 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
             for item in items
         )
         assert nextcloud_password not in combined
+    finally:
+        _restore_integrations_raw(before)
+
+
+def test_storage_integrations_nextcloud_local_mount_root_env_precedence(monkeypatch) -> None:
+    headers = _admin_headers()
+    before = _read_integrations_raw()
+    monkeypatch.setattr(settings, "NEXTCLOUD_USERNAME", "")
+    monkeypatch.setattr(settings, "NEXTCLOUD_APP_PASSWORD", "")
+    monkeypatch.setattr(settings, "NEXTCLOUD_LOCAL_MOUNT_ROOT", r"\\192.168.5.5\\nextcloud")
+    monkeypatch.setattr(settings, "NEXTCLOUD_TLS_VERIFY", True)
+    monkeypatch.setattr(settings, "NEXTCLOUD_TLS_VERIFY_FORCE", "")
+    try:
+        save_res = client.post(
+            "/api/v1/settings/storage-integrations",
+            json={
+                "nextcloud": {
+                    "enabled": True,
+                    "base_url": "https://nextcloud.example.com",
+                    "username": "nc-user",
+                    "app_password": "nc-pass",
+                    "root_path": "/mdr",
+                    "local_mount_root": "/mnt/nextcloud-ui",
+                }
+            },
+            headers=headers,
+        )
+        assert save_res.status_code == 200, save_res.text
+        nextcloud = save_res.json().get("integrations", {}).get("nextcloud", {})
+        assert nextcloud.get("local_mount_root") == r"\\192.168.5.5\\nextcloud"
+        assert nextcloud.get("local_mount_root_source") == "env"
+        assert nextcloud.get("local_mount_root_configured") is True
     finally:
         _restore_integrations_raw(before)

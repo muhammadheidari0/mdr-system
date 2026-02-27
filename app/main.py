@@ -166,6 +166,9 @@ def create_app() -> FastAPI:
             "reports": "views/reports.html",
             "contractor": "views/contractor_hub.html",
             "consultant": "views/consultant_hub.html",
+            "edms-settings": "views/module_settings.html",
+            "contractor-settings": "views/contractor_module_settings.html",
+            "consultant-settings": "views/consultant_module_settings.html",
             "profile": "views/profile_settings.html",
             "settings": "views/settings.html",
         }

@@ -457,6 +457,13 @@ def _masked_storage_integrations_payload(integrations: Dict[str, Any]) -> Dict[s
     nextcloud["skip_ssl_verify"] = bool(nextcloud_runtime.get("skip_ssl_verify_effective"))
     nextcloud["ssl_source"] = str(nextcloud_runtime.get("ssl_source") or "env_default")
     nextcloud["ssl_force_active"] = bool(nextcloud_runtime.get("ssl_force_active"))
+    nextcloud["local_mount_root"] = str(nextcloud_runtime.get("local_mount_root_effective") or "")
+    nextcloud["local_mount_root_source"] = str(
+        nextcloud_runtime.get("local_mount_root_source") or "none"
+    )
+    nextcloud["local_mount_root_configured"] = bool(
+        nextcloud_runtime.get("local_mount_root_configured")
+    )
     nextcloud.pop("app_password", None)
     masked["nextcloud"] = nextcloud
 

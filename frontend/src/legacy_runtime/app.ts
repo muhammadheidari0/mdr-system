@@ -59,6 +59,11 @@ let EDMS_TAB_VISIBILITY = {
 };
 let EDMS_STATS_LOADING = false;
 let EDMS_STATS_LAST_LOADED_AT = 0;
+let MODULE_SETTINGS_VISIBILITY = {
+    edms: true,
+    contractor: true,
+    consultant: true,
+};
 
 const EDMS_TAB_TO_VIEW = {
     archive: 'view-archive',
@@ -130,6 +135,9 @@ const VIEW_IDS = [
     'view-reports',
     'view-contractor',
     'view-consultant',
+    'view-edms-settings',
+    'view-contractor-settings',
+    'view-consultant-settings',
     'view-profile',
     'view-settings'
 ];
@@ -146,6 +154,9 @@ const VIEW_PARTIALS = {
     'view-reports': 'reports',
     'view-contractor': 'contractor',
     'view-consultant': 'consultant',
+    'view-edms-settings': 'edms-settings',
+    'view-contractor-settings': 'contractor-settings',
+    'view-consultant-settings': 'consultant-settings',
     'view-profile': 'profile',
     'view-settings': 'settings',
 };
@@ -616,6 +627,17 @@ function applyEdmsTabVisibility() {
     }
 }
 
+function applyModuleInternalSettingsVisibility() {
+    document.querySelectorAll('.module-internal-settings-btn').forEach((buttonEl) => {
+        const button = buttonEl;
+        const scope = String(button?.dataset?.moduleSettingsScope || '').trim().toLowerCase();
+        const visible = MODULE_SETTINGS_VISIBILITY[scope] !== false;
+        button.style.display = visible ? '' : 'none';
+        const strip = button.closest('.module-internal-settings-strip');
+        if (strip) strip.style.display = visible ? '' : 'none';
+    });
+}
+
 function setEdmsHeaderStats(data = {}) {
     const mapping = {
         'edms-stat-total': data.total,
@@ -762,6 +784,7 @@ async function loadEdmsHeaderStats(force = false) {
 window.loadEdmsHeaderStats = loadEdmsHeaderStats;
 
 async function loadEdmsNavigation() {
+    let moduleSettingsVisibility = { ...MODULE_SETTINGS_VISIBILITY };
     if (TS_EDMS_STATE?.loadNavigationAndApply) {
         try {
             const handled = await TS_EDMS_STATE.loadNavigationAndApply({
@@ -771,12 +794,20 @@ async function loadEdmsNavigation() {
                         ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`)
                         : await fetch(`${API_BASE}/auth/navigation`);
                     if (res && res.ok) {
-                        return await res.json();
+                        const payload = await res.json();
+                        moduleSettingsVisibility = {
+                            edms: payload?.edms !== false,
+                            contractor: payload?.contractor !== false,
+                            consultant: payload?.consultant !== false,
+                        };
+                        return payload;
                     }
                     return null;
                 },
                 applyVisibility: () => applyEdmsTabVisibility(),
             });
+            MODULE_SETTINGS_VISIBILITY = moduleSettingsVisibility;
+            applyModuleInternalSettingsVisibility();
             if (handled) return;
         } catch (error) {
             throw error;
@@ -793,15 +824,24 @@ async function loadEdmsNavigation() {
                 ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`)
                 : await fetch(`${API_BASE}/auth/navigation`);
             if (res && res.ok) {
-                return await res.json();
+                const payload = await res.json();
+                moduleSettingsVisibility = {
+                    edms: payload?.edms !== false,
+                    contractor: payload?.contractor !== false,
+                    consultant: payload?.consultant !== false,
+                };
+                return payload;
             }
             return null;
         },
     });
+    MODULE_SETTINGS_VISIBILITY = moduleSettingsVisibility;
     applyEdmsTabVisibility();
+    applyModuleInternalSettingsVisibility();
 }
 
 function openEdmsTab(tabName, btnEl = null) {
+    applyModuleInternalSettingsVisibility();
     if (TS_EDMS_STATE?.openTab) {
         try {
             const handled = TS_EDMS_STATE.openTab({
@@ -1028,6 +1068,7 @@ function openContractorTab(tabName, btnEl = null) {
 }
 
 function initContractorView() {
+    applyModuleInternalSettingsVisibility();
     if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('contractor')) {
         Promise.resolve(
             TS_COMM_ITEMS_UI.initModule('contractor', buildCommItemsUiDeps())
@@ -1080,6 +1121,7 @@ function openConsultantTab(tabName, btnEl = null) {
 }
 
 function initConsultantView() {
+    applyModuleInternalSettingsVisibility();
     if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('consultant')) {
         Promise.resolve(
             TS_COMM_ITEMS_UI.initModule('consultant', buildCommItemsUiDeps())
@@ -1993,6 +2035,15 @@ function buildRouterDeps() {
         initConsultantView: () => {
             if (typeof initConsultantView === 'function') initConsultantView();
         },
+        initModuleSettingsView: () => {
+            if (typeof window.initEdmsModuleSettingsView === 'function') {
+                window.initEdmsModuleSettingsView();
+                return;
+            }
+            if (typeof window.initModuleSettingsView === 'function') {
+                window.initModuleSettingsView();
+            }
+        },
         openSettingsTab: (tabName) => {
             if (typeof openSettingsTab === 'function') openSettingsTab(tabName);
         },
@@ -2037,6 +2088,12 @@ function updateSidebarState(activeViewId) {
         navTargetView = 'view-settings';
     } else if (activeViewId === 'view-archive' || activeViewId === 'view-transmittal' || activeViewId === 'view-correspondence') {
         navTargetView = 'view-edms';
+    } else if (activeViewId === 'view-edms-settings') {
+        navTargetView = 'view-edms';
+    } else if (activeViewId === 'view-contractor-settings') {
+        navTargetView = 'view-contractor';
+    } else if (activeViewId === 'view-consultant-settings') {
+        navTargetView = 'view-consultant';
     }
 
     // Ø§Ø¶Ø§ÙÙ‡ Ú©Ø±Ø¯Ù† Ú©Ù„Ø§Ø³ active Ø¨Ù‡ Ø¢ÛŒØªÙ… Ù…ÙˆØ±Ø¯ Ù†Ø¸Ø±

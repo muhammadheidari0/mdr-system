@@ -25,25 +25,9 @@
         type="button"
         class="settings-nav-card active"
         data-settings-tab="true"
-        data-tab="general"
-        role="tab"
-        aria-selected="true"
-        aria-controls="tab-general"
-      >
-        <span class="material-icons-round settings-nav-card-icon">tune</span>
-        <span class="settings-nav-card-copy">
-          <span class="settings-nav-card-title">تنظیمات عمومی</span>
-          <span class="settings-nav-card-subtitle">پروژه ها و کاتالوگ ها</span>
-        </span>
-      </button>
-
-      <button
-        type="button"
-        class="settings-nav-card"
-        data-settings-tab="true"
         data-tab="users"
         role="tab"
-        aria-selected="false"
+        aria-selected="true"
         aria-controls="tab-users"
       >
         <span class="material-icons-round settings-nav-card-icon">people</span>
@@ -89,15 +73,15 @@
         type="button"
         class="settings-nav-card"
         data-settings-tab="true"
-        data-tab="bulk"
+        data-tab="integrations"
         role="tab"
         aria-selected="false"
-        aria-controls="tab-bulk"
+        aria-controls="tab-integrations"
       >
-        <span class="material-icons-round settings-nav-card-icon">upload_file</span>
+        <span class="material-icons-round settings-nav-card-icon">hub</span>
         <span class="settings-nav-card-copy">
-          <span class="settings-nav-card-title">ثبت گروهی</span>
-          <span class="settings-nav-card-subtitle">Bulk Operations</span>
+          <span class="settings-nav-card-title">یکپارچه‌سازی‌ها</span>
+          <span class="settings-nav-card-subtitle">OpenProject، Google، Nextcloud</span>
         </span>
       </button>
 
@@ -108,28 +92,12 @@
         data-tab="storage"
         role="tab"
         aria-selected="false"
-        aria-controls="tab-general"
+        aria-controls="tab-storage"
       >
         <span class="material-icons-round settings-nav-card-icon">folder_open</span>
         <span class="settings-nav-card-copy">
           <span class="settings-nav-card-title">مدیریت ذخیره‌سازی</span>
-          <span class="settings-nav-card-subtitle">Paths، Policy و Site Cache</span>
-        </span>
-      </button>
-
-      <button
-        type="button"
-        class="settings-nav-card"
-        data-settings-tab="true"
-        data-tab="integrations"
-        role="tab"
-        aria-selected="false"
-        aria-controls="tab-integrations"
-      >
-        <span class="material-icons-round settings-nav-card-icon">hub</span>
-        <span class="settings-nav-card-copy">
-          <span class="settings-nav-card-title">یکپارچه‌سازی‌ها</span>
-          <span class="settings-nav-card-subtitle">OpenProject، Google، Nextcloud</span>
+          <span class="settings-nav-card-subtitle">Site + Paths + Policy Cache</span>
         </span>
       </button>
 
@@ -151,11 +119,7 @@
     </div>
 
     <div class="settings-shell-panels">
-      <section id="tab-general" class="settings-tab-content active" role="tabpanel" aria-hidden="false">
-        {% include 'views/partials/settings_general_tab.html' %}
-      </section>
-
-      <section id="tab-users" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+      <section id="tab-users" class="settings-tab-content active" role="tabpanel" aria-hidden="false">
         {% include 'views/partials/settings_users_tab.html' %}
       </section>
 
@@ -167,12 +131,12 @@
         {% include 'views/partials/settings_permissions_tab.html' %}
       </section>
 
-      <section id="tab-bulk" class="settings-tab-content" role="tabpanel" aria-hidden="true">
-        {% include 'views/partials/settings_bulk_tab.html' %}
-      </section>
-
       <section id="tab-integrations" class="settings-tab-content" role="tabpanel" aria-hidden="true">
         {% include 'views/partials/settings_integrations_tab.html' %}
+      </section>
+
+      <section id="tab-storage" class="settings-tab-content" role="tabpanel" aria-hidden="true">
+        {% include 'views/partials/settings_storage_tab.html' %}
       </section>
 
       <section id="tab-reports" class="settings-tab-content" role="tabpanel" aria-hidden="true">
@@ -180,5 +144,4 @@
       </section>
     </div>
   </div>
-
 </div>

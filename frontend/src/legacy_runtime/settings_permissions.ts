@@ -55,6 +55,7 @@
                 { key: 'organizations', label: 'Ù…Ø¯ÛŒØ±ÛŒØª Ø³Ø§Ø²Ù…Ø§Ù†â€ŒÙ‡Ø§', groupKeys: ['organizations'] },
                 { key: 'permissions', label: 'Ø³Ø·Ø­ Ø¯Ø³ØªØ±Ø³ÛŒ', groupKeys: ['permissions'] },
                 { key: 'bulk', label: 'Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ', groupKeys: ['bulk'] },
+                { key: 'module_settings', label: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ø®Ù„ÛŒ', groupKeys: ['module_settings'] },
             ],
         },
     ];
@@ -222,6 +223,7 @@
             organizations: 'Ù…Ø¯ÛŒØ±ÛŒØª Ø³Ø§Ø²Ù…Ø§Ù†â€ŒÙ‡Ø§',
             permissions: 'Ø³Ø·Ø­ Ø¯Ø³ØªØ±Ø³ÛŒ',
             bulk: 'Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ',
+            module_settings: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ø®Ù„ÛŒ',
             reports: 'Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§',
             workboard_contractor: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
             workboard_consultant: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù…Ø´Ø§ÙˆØ±',
@@ -326,7 +328,7 @@
         if (pageKey) return catalogIndex.pageToSection.get(pageKey) || 'engineering_docs';
         if (key === 'dashboard' || key.includes('report')) return 'reports';
         if (key.startsWith('workboard')) return key.includes('consult') ? 'consultant_hub' : 'contractor_hub';
-        if (['settings', 'users', 'permissions', 'bulk', 'organizations'].includes(key)) return 'system_settings';
+        if (['settings', 'users', 'permissions', 'bulk', 'organizations', 'module_settings'].includes(key)) return 'system_settings';
         if (['archive', 'documents', 'transmittal', 'correspondence'].includes(key)) return 'engineering_docs';
         return 'engineering_docs';
     }

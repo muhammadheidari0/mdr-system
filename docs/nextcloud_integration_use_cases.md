@@ -16,6 +16,7 @@
   - `username`
   - `app_password` (write-only)
   - `root_path`
+  - `local_mount_root` (for Storage Paths picker mapping)
   - `skip_ssl_verify` (optional)
 2. Runtime resolves credentials and TLS policy:
   - precedence: `env force > UI setting > env default`
@@ -23,6 +24,16 @@
   - provider `none` => `mirror_status=disabled`
   - provider `nextcloud` + valid config => `mirror_status=pending` + enqueue job
 4. Worker processes `nextcloud_mirror` jobs and uploads via WebDAV.
+
+## Storage Paths Picker (Local/UNC model)
+- `Storage Paths` remains local filesystem / UNC only.
+- Folder selection from Nextcloud is available via internal picker buttons next to MDR/Correspondence path inputs.
+- Picker reads folders from Nextcloud WebDAV and maps selected remote path to local path using:
+  - `NEXTCLOUD_LOCAL_MOUNT_ROOT` (env, highest precedence), else
+  - `nextcloud.local_mount_root` (UI settings).
+- Mapping rule:
+  - `local_path = local_mount_root + remote_relative_path`
+- If mount root is missing, picker is disabled and shows a clear hint.
 
 ## Structured Remote Path
 - Archive:

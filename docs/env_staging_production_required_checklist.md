@@ -41,6 +41,7 @@ Use this checklist before running `docker compose up -d --build` on staging or p
 - [ ] `NEXTCLOUD_USERNAME` (if mirror provider is `nextcloud`)
 - [ ] `NEXTCLOUD_APP_PASSWORD` (if mirror provider is `nextcloud`)
 - [ ] `NEXTCLOUD_ROOT_PATH` (if mirror provider is `nextcloud`)
+- [ ] `NEXTCLOUD_LOCAL_MOUNT_ROOT` (required for Storage Paths Nextcloud folder picker)
 - [ ] `NEXTCLOUD_TLS_VERIFY=true` (secure default)
 - [ ] (optional override) `NEXTCLOUD_TLS_VERIFY_FORCE=<true|false>`
 

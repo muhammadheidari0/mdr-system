@@ -60,6 +60,7 @@ Google:
 
 Nextcloud:
 - `POST /api/v1/storage/nextcloud/ping`
+- `POST /api/v1/storage/nextcloud/folders`
 
 Local cache:
 - `POST /api/v1/storage/local-cache/pin`
@@ -110,6 +111,7 @@ Integrity:
 - `NEXTCLOUD_USERNAME`
 - `NEXTCLOUD_APP_PASSWORD`
 - `NEXTCLOUD_ROOT_PATH`
+- `NEXTCLOUD_LOCAL_MOUNT_ROOT`
 - `NEXTCLOUD_TLS_VERIFY` (secure default: `true`)
 - `NEXTCLOUD_TLS_VERIFY_FORCE` (optional override: `true|false|1|0|yes|no|on|off`)
 - `STORAGE_ALLOWED_ROOTS` (CSV absolute roots, e.g. `/app/archive_storage,/app/data_store`)
@@ -132,6 +134,7 @@ Nextcloud TLS precedence:
 - Ensure ownership aligns with `APP_UID:APP_GID`.
 - Save storage paths only under `STORAGE_ALLOWED_ROOTS`.
 - Save is rejected (`422`) if path is relative, outside allowed roots, or not writable.
+- `Storage Paths` remains Local/UNC only; Nextcloud folder picker maps remote folders to Local/UNC by `local_mount_root`.
 
 ## Optional legacy backfill
 Dry-run:

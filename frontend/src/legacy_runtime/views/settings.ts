@@ -5,7 +5,7 @@
         const pending = typeof window.consumePendingSettingsTab === 'function'
             ? window.consumePendingSettingsTab()
             : null;
-        window.openSettingsTab(pending || 'general');
+        window.openSettingsTab(pending || 'users');
     }
 
     if (window.AppEvents?.on) {

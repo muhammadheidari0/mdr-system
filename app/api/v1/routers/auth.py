@@ -76,6 +76,7 @@ def get_navigation(
         "ok": True,
         "edms_tabs": tabs,
         "default_edms_tab": default_tab,
+        "module_settings": dependencies.has_permission_for_user(db, current_user, "module_settings:read"),
     }
 
 

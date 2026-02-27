@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import ntpath
 import os
 import re
 from datetime import datetime
@@ -292,6 +293,10 @@ class NextcloudPingIn(BaseModel):
     skip_ssl_verify: Optional[bool] = Field(default=None)
 
 
+class NextcloudFoldersIn(BaseModel):
+    path: Optional[str] = Field(default="/", max_length=1024)
+
+
 def _safe_json_dumps(value: dict[str, Any]) -> str:
     return json.dumps(value, ensure_ascii=False)
 
@@ -305,6 +310,30 @@ def _parse_json_object(value: str | None) -> dict[str, Any]:
     except Exception:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _normalize_nextcloud_relative_path(value: Any) -> str:
+    raw = str(value or "").strip()
+    try:
+        return NextcloudAdapter.normalize_browse_path(raw or "/")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _join_nextcloud_local_mount_path(local_mount_root: str, relative_path: str) -> str:
+    root = str(local_mount_root or "").strip()
+    rel = _normalize_nextcloud_relative_path(relative_path)
+    parts = [part for part in rel.strip("/").split("/") if part]
+    if root.startswith("\\\\"):
+        prefix = root.rstrip("\\/")
+        target = prefix if not parts else ntpath.join(prefix, *parts)
+        return ntpath.normpath(target)
+    base = Path(root).expanduser()
+    target = base.joinpath(*parts) if parts else base
+    try:
+        return str(target.resolve(strict=False))
+    except Exception:
+        return str(target)
 
 
 def _serialize_openproject_import_run(run: OpenProjectImportRun) -> dict[str, Any]:
@@ -776,6 +805,113 @@ def ping_nextcloud(
             "tls_verify_effective": tls_verify_effective,
             "message": str(exc),
         }
+
+
+@router.post("/nextcloud/folders")
+def list_nextcloud_folders(
+    payload: Optional[NextcloudFoldersIn] = Body(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(allow_admin),
+):
+    del user
+    integrations = get_storage_integrations(db)
+    runtime = resolve_nextcloud_runtime(integrations)
+    if not bool(runtime.get("enabled")):
+        raise HTTPException(status_code=400, detail="Nextcloud integration is disabled.")
+
+    base_url = NextcloudAdapter.normalize_base_url(str(runtime.get("base_url") or ""))
+    username = str(runtime.get("username") or "").strip()
+    app_password = str(runtime.get("app_password") or "").strip()
+    if not base_url:
+        raise HTTPException(status_code=400, detail="Nextcloud base URL is not configured.")
+    if not username or not app_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Nextcloud username/app password is not configured.",
+        )
+
+    local_mount_root = str(runtime.get("local_mount_root_effective") or "").strip()
+    if not local_mount_root:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "nextcloud.local_mount_root (settings) or "
+                "NEXTCLOUD_LOCAL_MOUNT_ROOT (env) is required."
+            ),
+        )
+
+    requested_path = _normalize_nextcloud_relative_path(
+        payload.path if payload else "/"
+    )
+    adapter = NextcloudAdapter(
+        base_url=base_url,
+        username=username,
+        app_password=app_password,
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+
+    try:
+        listed = adapter.list_directories(requested_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except requests.Timeout as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Nextcloud folders request timed out.",
+        ) from exc
+    except requests.RequestException as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Nextcloud folders request failed (network/TLS error).",
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    current_path = _normalize_nextcloud_relative_path(
+        listed.get("current_path") if isinstance(listed, dict) else requested_path
+    )
+    folders_raw = listed.get("folders") if isinstance(listed, dict) else []
+    folders: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for item in folders_raw if isinstance(folders_raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        folder_path = _normalize_nextcloud_relative_path(item.get("path") or "")
+        if folder_path in seen_paths:
+            continue
+        seen_paths.add(folder_path)
+        folder_name = str(item.get("name") or "").strip()
+        if not folder_name:
+            folder_name = folder_path.strip("/").split("/")[-1] if folder_path != "/" else "/"
+        folders.append(
+            {
+                "name": folder_name,
+                "path": folder_path,
+                "local_path": _join_nextcloud_local_mount_path(
+                    local_mount_root, folder_path
+                ),
+            }
+        )
+    folders.sort(key=lambda row: str(row.get("name") or "").casefold())
+
+    return {
+        "ok": True,
+        "current_path": current_path,
+        "current_local_path": _join_nextcloud_local_mount_path(
+            local_mount_root, current_path
+        ),
+        "folders": folders,
+        "root_path_effective": NextcloudAdapter.normalize_root_path(
+            str(runtime.get("root_path") or "")
+        ),
+        "local_mount_root_effective": local_mount_root,
+        "local_mount_root_source": str(
+            runtime.get("local_mount_root_source") or "none"
+        ),
+    }
 
 
 @router.get("/openproject/projects/{project_ref}/work-packages/preview")

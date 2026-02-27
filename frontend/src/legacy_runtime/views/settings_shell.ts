@@ -1,15 +1,51 @@
 // @ts-nocheck
+function shouldRedirectToModuleSettings(tabName) {
+    const key = String(tabName || '').trim().toLowerCase();
+    return key === 'general' || key === 'bulk';
+}
+
+function redirectToModuleSettings(tabName) {
+    if (typeof window.openEdmsModuleSettingsTab === 'function') {
+        window.openEdmsModuleSettingsTab(tabName || 'general');
+    } else if (typeof window.openModuleSettingsTab === 'function') {
+        window.openModuleSettingsTab(tabName || 'general');
+    }
+    if (typeof window.navigateTo === 'function') {
+        window.navigateTo('view-edms-settings');
+    }
+}
+
 function openSettingsTab(tabName) {
     bindSettingsTabClicks();
-    const btn = document.querySelector(`#view-settings [data-settings-tab][data-tab="${tabName}"]`);
-    switchSettingsTab(tabName, btn);
+    const requestedTab = String(tabName || '').trim().toLowerCase();
+    const btn = document.querySelector(`#view-settings [data-settings-tab][data-tab="${requestedTab}"]`);
+    if (!btn && shouldRedirectToModuleSettings(requestedTab)) {
+        redirectToModuleSettings(requestedTab);
+        return;
+    }
+    switchSettingsTab(requestedTab, btn);
 }
 
 function switchSettingsTab(tabName, btnEl) {
-    const requestedTab = String(tabName || '').trim().toLowerCase();
-    const panelTab = requestedTab === 'storage' ? 'general' : requestedTab;
-    const tabButtons = document.querySelectorAll('#view-settings [data-settings-tab]');
-    const tabPanels = document.querySelectorAll('#view-settings .settings-tab-content');
+    const root = document.getElementById('view-settings');
+    if (!root) return;
+
+    let requestedTab = String(tabName || '').trim().toLowerCase();
+    const tabButtons = root.querySelectorAll('[data-settings-tab]');
+    const tabPanels = root.querySelectorAll('.settings-tab-content');
+    let button = btnEl || root.querySelector(`[data-settings-tab][data-tab="${requestedTab}"]`);
+
+    if (!button && shouldRedirectToModuleSettings(requestedTab)) {
+        redirectToModuleSettings(requestedTab);
+        return;
+    }
+
+    if (!button) {
+        button = tabButtons[0];
+        requestedTab = String(button?.getAttribute?.('data-tab') || '').trim().toLowerCase();
+    }
+
+    const panelTab = requestedTab;
 
     tabButtons.forEach((button) => {
         button.classList.remove('active');
@@ -21,13 +57,12 @@ function switchSettingsTab(tabName, btnEl) {
         panel.setAttribute('aria-hidden', 'true');
     });
 
-    const button = btnEl || document.querySelector(`#view-settings [data-settings-tab][data-tab="${requestedTab}"]`);
     if (button) {
         button.classList.add('active');
         button.setAttribute('aria-selected', 'true');
     }
 
-    const target = document.getElementById(`tab-${panelTab}`);
+    const target = root.querySelector(`#tab-${panelTab}`);
     if (target) {
         target.classList.add('active');
         target.setAttribute('aria-hidden', 'false');
@@ -35,9 +70,7 @@ function switchSettingsTab(tabName, btnEl) {
 
     if (panelTab === 'general' && typeof window.initGeneralSettings === 'function') {
         const applyGeneralTargetPage = () => {
-            if (requestedTab === 'storage' && typeof window.switchGeneralSettingsPage === 'function') {
-                window.switchGeneralSettingsPage('storage');
-            } else if (requestedTab === 'general' && typeof window.switchGeneralSettingsPage === 'function') {
+            if (requestedTab === 'general' && typeof window.switchGeneralSettingsPage === 'function') {
                 window.switchGeneralSettingsPage('db_sync');
             }
         };
@@ -69,6 +102,11 @@ function switchSettingsTab(tabName, btnEl) {
         }
     } else if (panelTab === 'bulk' && typeof window.initSettingsBulk === 'function') {
         const initResult = window.initSettingsBulk();
+        if (initResult && typeof initResult.then === 'function') {
+            initResult.catch(() => {});
+        }
+    } else if (panelTab === 'storage' && typeof window.initStorageSettingsPanel === 'function') {
+        const initResult = window.initStorageSettingsPanel();
         if (initResult && typeof initResult.then === 'function') {
             initResult.catch(() => {});
         }

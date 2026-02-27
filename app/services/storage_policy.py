@@ -118,6 +118,7 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
         "username": "",
         "app_password": "",
         "root_path": "",
+        "local_mount_root": "",
         "skip_ssl_verify": None,
     },
     "local_cache": {
@@ -308,6 +309,9 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
     merged["nextcloud"]["username"] = str(merged["nextcloud"].get("username") or "").strip()
     merged["nextcloud"]["app_password"] = str(merged["nextcloud"].get("app_password") or "").strip()
     merged["nextcloud"]["root_path"] = str(merged["nextcloud"].get("root_path") or "").strip()
+    merged["nextcloud"]["local_mount_root"] = str(
+        merged["nextcloud"].get("local_mount_root") or ""
+    ).strip()
     merged["nextcloud"]["skip_ssl_verify"] = _to_optional_bool(merged["nextcloud"].get("skip_ssl_verify"))
     merged["local_cache"]["default_scope"] = str(
         merged["local_cache"].get("default_scope") or "user"

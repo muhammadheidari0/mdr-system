@@ -614,13 +614,9 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await expect(page.locator("[data-integrations-provider-tab='google']")).toBeVisible();
     await expect(page.locator("[data-integrations-provider-tab='nextcloud']")).toBeVisible();
     await expect(page.locator("[data-op-tab='connection']")).toBeVisible();
-    await expect(page.locator("[data-op-tab='project-import']")).toBeVisible();
-    await expect(page.locator("[data-op-tab='import']")).toBeVisible();
-    await expect(page.locator("[data-op-tab='logs']")).toBeVisible();
-    await page.locator("[data-op-tab='logs']").click();
-    await expect(page.locator("#storageOpenProjectImportRunsBody")).toBeVisible();
-    await expect(page.locator("#storageOpenProjectImportRowDetails")).toBeVisible();
-    await page.locator("[data-op-tab='connection']").click();
+    await expect(page.locator("[data-op-tab='project-import']")).toHaveCount(0);
+    await expect(page.locator("[data-op-tab='import']")).toHaveCount(0);
+    await expect(page.locator("[data-op-tab='logs']")).toHaveCount(0);
 
     const openProjectEnabledInput = page.locator("#storageOpenProjectEnabledInput");
     const openProjectSkipSslInput = page.locator("#storageOpenProjectSkipSslVerifyInput");
