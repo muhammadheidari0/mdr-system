@@ -298,7 +298,10 @@ def test_ui_smoke_consultant_module_settings_contains_openproject_operations() -
     assert partial.status_code == 200, partial.text
     html = partial.text
     assert 'id="view-consultant-settings"' in html
+    assert 'data-consultant-settings-tab="openproject"' in html
+    assert 'data-consultant-settings-tab="permit-qc-template"' in html
     assert 'id="consultantOpenProjectOpsRoot"' in html
+    assert 'id="consultantPermitQcTemplateRoot"' in html
     assert 'data-op-tab="project-import"' in html
     assert 'data-op-tab="import"' in html
     assert 'data-op-tab="logs"' in html
@@ -309,6 +312,22 @@ def test_ui_smoke_consultant_module_settings_contains_openproject_operations() -
     assert 'id="storageOpenProjectImportRunsBody"' in html
     assert 'id="storageOpenProjectActivityBody"' in html
     assert 'id="storageOpenProjectImportRowDetails"' in html
+
+
+def test_ui_smoke_permit_qc_tabs_present_in_contractor_and_consultant() -> None:
+    contractor = client.get("/ui/partial/contractor")
+    assert contractor.status_code == 200, contractor.text
+    contractor_html = contractor.text
+    assert 'data-contractor-tab="permit-qc"' in contractor_html
+    assert 'id="contractor-panel-permit-qc"' in contractor_html
+    assert 'permit-qc-root" data-module="contractor" data-tab="permit-qc"' in contractor_html
+
+    consultant = client.get("/ui/partial/consultant")
+    assert consultant.status_code == 200, consultant.text
+    consultant_html = consultant.text
+    assert 'data-consultant-tab="permit-qc"' in consultant_html
+    assert 'id="consultant-panel-permit-qc"' in consultant_html
+    assert 'permit-qc-root" data-module="consultant" data-tab="permit-qc"' in consultant_html
 
 def test_ui_smoke_workboard_crud_flow() -> None:
     headers = _admin_headers()

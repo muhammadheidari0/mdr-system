@@ -1786,6 +1786,33 @@ body.ci-drawer-open {
     background: #f0f9ff;
 }
 
+.module-crud-status.is-under-review {
+    color: #0369a1;
+    border-color: #bae6fd;
+    background: #f0f9ff;
+}
+
+.module-crud-status.is-approved,
+.module-crud-status.is-active {
+    color: #166534;
+    border-color: #bbf7d0;
+    background: #ecfdf5;
+}
+
+.module-crud-status.is-rejected,
+.module-crud-status.is-cancelled,
+.module-crud-status.is-inactive {
+    color: #991b1b;
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+.module-crud-status.is-pending {
+    color: #6b7280;
+    border-color: #d1d5db;
+    background: #f9fafb;
+}
+
 .module-crud-status.is-answered,
 .module-crud-status.is-verified,
 .module-crud-status.is-closed,
@@ -1836,6 +1863,247 @@ body.ci-drawer-open {
     text-align: center;
     color: #64748b;
     font-size: 0.9rem;
+}
+
+.permit-qc-loading {
+    color: #1e3a8a;
+    font-weight: 700;
+    font-size: 0.83rem;
+}
+
+.permit-qc-drawer {
+    margin-top: 14px;
+    border: 1px solid #d7deef;
+    border-radius: 12px;
+    background: #f8fbff;
+    padding: 12px;
+}
+
+.permit-qc-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.permit-qc-drawer-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.permit-qc-form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.permit-qc-form-grid textarea {
+    grid-column: 1 / -1;
+    min-height: 86px;
+}
+
+.permit-qc-detail-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.permit-qc-stations,
+.permit-qc-attachments,
+.permit-qc-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.permit-qc-station-card {
+    border: 1px solid #dbe2f1;
+    border-radius: 10px;
+    background: #fff;
+    padding: 10px;
+}
+
+.permit-qc-station-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.permit-qc-station-meta {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    color: #475569;
+    font-size: 0.83rem;
+    margin: 6px 0 10px;
+}
+
+.permit-qc-station-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.permit-qc-attachment-upload {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.permit-qc-attachment-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    padding: 7px 8px;
+}
+
+.permit-qc-attachment-row a {
+    color: #1d4ed8;
+    text-decoration: none;
+}
+
+.permit-qc-event {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    padding: 8px;
+}
+
+.permit-qc-event-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.85rem;
+}
+
+.permit-qc-event-meta {
+    color: #64748b;
+    font-size: 0.78rem;
+    margin-top: 3px;
+}
+
+.permit-qc-event-note {
+    margin-top: 5px;
+    font-size: 0.84rem;
+    color: #334155;
+}
+
+.permit-qc-empty {
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 10px;
+    color: #64748b;
+    font-size: 0.85rem;
+}
+
+.permit-qc-template-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.permit-qc-inline-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #475569;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.permit-qc-template-editor-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.permit-qc-template-editor-card {
+    border: 1px solid #dbe2f1;
+    border-radius: 10px;
+    background: #fff;
+    padding: 10px;
+}
+
+.permit-qc-template-editor-card h4 {
+    margin: 0 0 8px;
+    color: #1e293b;
+    font-size: 0.9rem;
+}
+
+.permit-qc-template-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.permit-qc-template-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+}
+
+.permit-qc-template-card {
+    border: 1px solid #dbe2f1;
+    border-radius: 10px;
+    background: #fff;
+    padding: 10px;
+}
+
+.permit-qc-template-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.permit-qc-template-head-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.permit-qc-template-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    color: #475569;
+    font-size: 0.82rem;
+    margin-top: 8px;
+}
+
+.permit-qc-template-stations {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.permit-qc-template-station-item {
+    border: 1px dashed #dbe2f1;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 6px;
+}
+
+.permit-qc-template-station-checks {
+    color: #64748b;
+    font-size: 0.78rem;
+    margin-top: 4px;
 }
 
 /* --- Workboard --- */
@@ -3554,6 +3822,15 @@ body.ci-drawer-open {
 }
 
 #view-edms-settings .module-settings-tab-content.active {
+    display: block;
+}
+
+#view-consultant-settings .module-settings-tab-content {
+    display: none;
+    animation: settingsPanelIn 0.24s ease;
+}
+
+#view-consultant-settings .module-settings-tab-content.active {
     display: block;
 }
 
@@ -5411,6 +5688,22 @@ body.ci-drawer-open {
 
     .module-crud-form-field.span-2 {
         grid-column: span 1;
+    }
+
+    .permit-qc-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .permit-qc-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .permit-qc-template-editor-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .permit-qc-template-form-grid {
+        grid-template-columns: 1fr;
     }
 
     .settings-shell-header {

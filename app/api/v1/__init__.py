@@ -10,6 +10,7 @@ from app.api.v1.routers.correspondence import router as correspondence_router
 from app.api.v1.routers.dashboard import router as dashboard_router
 from app.api.v1.routers.lookup import router as lookup_router
 from app.api.v1.routers.mdr import router as mdr_router
+from app.api.v1.routers.permit_qc import router as permit_qc_router
 from app.api.v1.routers.site_logs import router as site_logs_router
 from app.api.v1.routers.site_cache import router as site_cache_router
 from app.api.v1.routers.settings import router as settings_router
@@ -33,5 +34,6 @@ api_router.include_router(users_router)
 api_router.include_router(correspondence_router)
 api_router.include_router(workboard_router)
 api_router.include_router(communication_items_router)
+api_router.include_router(permit_qc_router)
 api_router.include_router(site_logs_router)
 api_router.include_router(bim_router)

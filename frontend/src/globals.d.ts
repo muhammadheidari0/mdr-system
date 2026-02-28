@@ -24,6 +24,7 @@ import type { SiteLogsDataBridge } from "./lib/site_logs_data";
 import type { SiteLogsFormBridge } from "./lib/site_logs_form";
 import type { SiteLogsStateBridge } from "./lib/site_logs_state";
 import type { SiteLogsUiBridge } from "./lib/site_logs_ui";
+import type { PermitQcUiBridge } from "./lib/permit_qc_ui";
 
 export {};
 
@@ -55,6 +56,7 @@ declare global {
     siteLogsForm: SiteLogsFormBridge;
     siteLogsState: SiteLogsStateBridge;
     siteLogsUi: SiteLogsUiBridge;
+    permitQcUi: PermitQcUiBridge;
   }
 
   interface Window {

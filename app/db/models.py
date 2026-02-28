@@ -2029,3 +2029,302 @@ class UserDisciplineScope(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="discipline_scopes")
+
+
+class PermitQcTemplate(Base):
+    __tablename__ = "permit_qc_templates"
+    __table_args__ = (
+        Index("ix_permit_qc_templates_active", "is_active"),
+        Index("ix_permit_qc_templates_project_discipline", "project_code", "discipline_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    project_code: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="SET NULL"), nullable=True, index=True
+    )
+    discipline_code: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project | None"] = relationship("Project")
+    discipline: Mapped["Discipline | None"] = relationship("Discipline")
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+    updated_by: Mapped["User | None"] = relationship("User", foreign_keys=[updated_by_id])
+    stations: Mapped[List["PermitQcTemplateStation"]] = relationship(
+        back_populates="template", cascade="all, delete-orphan"
+    )
+    permits: Mapped[List["PermitQcPermit"]] = relationship(back_populates="template")
+
+
+class PermitQcTemplateStation(Base):
+    __tablename__ = "permit_qc_template_stations"
+    __table_args__ = (
+        UniqueConstraint("template_id", "station_key", name="uq_permit_qc_template_station_key"),
+        Index("ix_permit_qc_template_stations_template_sort", "template_id", "sort_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    template_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("permit_qc_templates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    station_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    station_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    template: Mapped["PermitQcTemplate"] = relationship(back_populates="stations")
+    organization: Mapped["Organization | None"] = relationship("Organization")
+    checks: Mapped[List["PermitQcTemplateCheck"]] = relationship(
+        back_populates="station", cascade="all, delete-orphan"
+    )
+
+
+class PermitQcTemplateCheck(Base):
+    __tablename__ = "permit_qc_template_checks"
+    __table_args__ = (
+        UniqueConstraint("station_id", "check_code", name="uq_permit_qc_template_check_code"),
+        Index("ix_permit_qc_template_checks_station_sort", "station_id", "sort_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    station_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("permit_qc_template_stations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    check_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    check_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    check_type: Mapped[str] = mapped_column(String(32), nullable=False, default="BOOLEAN")
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    station: Mapped["PermitQcTemplateStation"] = relationship(back_populates="checks")
+
+
+class PermitQcPermit(Base):
+    __tablename__ = "permit_qc_permits"
+    __table_args__ = (
+        UniqueConstraint("project_code", "permit_no", name="uq_permit_qc_permit_project_no"),
+        Index("ix_permit_qc_permits_status", "status_code"),
+        Index("ix_permit_qc_permits_permit_date", "permit_date"),
+        Index("ix_permit_qc_permits_project_disc", "project_code", "discipline_code"),
+        Index("ix_permit_qc_permits_org_status", "organization_id", "status_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    permit_no: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    permit_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    wall_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    floor_label: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    elevation_start: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    elevation_end: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status_code: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT")
+
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    discipline_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    template_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("permit_qc_templates.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    contractor_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    consultant_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    updated_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    project: Mapped["Project"] = relationship("Project")
+    discipline: Mapped["Discipline"] = relationship("Discipline")
+    template: Mapped["PermitQcTemplate | None"] = relationship(back_populates="permits")
+    organization: Mapped["Organization | None"] = relationship("Organization", foreign_keys=[organization_id])
+    contractor_org: Mapped["Organization | None"] = relationship(
+        "Organization", foreign_keys=[contractor_org_id]
+    )
+    consultant_org: Mapped["Organization | None"] = relationship(
+        "Organization", foreign_keys=[consultant_org_id]
+    )
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+    updated_by: Mapped["User | None"] = relationship("User", foreign_keys=[updated_by_id])
+    stations: Mapped[List["PermitQcPermitStation"]] = relationship(
+        back_populates="permit", cascade="all, delete-orphan"
+    )
+    attachments: Mapped[List["PermitQcPermitAttachment"]] = relationship(
+        back_populates="permit", cascade="all, delete-orphan"
+    )
+    events: Mapped[List["PermitQcPermitEvent"]] = relationship(
+        back_populates="permit", cascade="all, delete-orphan"
+    )
+
+
+class PermitQcPermitStation(Base):
+    __tablename__ = "permit_qc_permit_stations"
+    __table_args__ = (
+        Index("ix_permit_qc_permit_stations_permit_sort", "permit_id", "sort_order"),
+        Index("ix_permit_qc_permit_stations_status", "status_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    permit_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("permit_qc_permits.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    template_station_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("permit_qc_template_stations.id", ondelete="SET NULL"), nullable=True
+    )
+    station_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    station_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status_code: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
+    reviewed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    permit: Mapped["PermitQcPermit"] = relationship(back_populates="stations")
+    template_station: Mapped["PermitQcTemplateStation | None"] = relationship("PermitQcTemplateStation")
+    organization: Mapped["Organization | None"] = relationship("Organization")
+    reviewed_by: Mapped["User | None"] = relationship("User", foreign_keys=[reviewed_by_id])
+    checks: Mapped[List["PermitQcPermitCheck"]] = relationship(
+        back_populates="permit_station", cascade="all, delete-orphan"
+    )
+
+
+class PermitQcPermitCheck(Base):
+    __tablename__ = "permit_qc_permit_checks"
+    __table_args__ = (
+        Index("ix_permit_qc_permit_checks_station_sort", "permit_station_id", "sort_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    permit_station_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("permit_qc_permit_stations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    template_check_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("permit_qc_template_checks.id", ondelete="SET NULL"), nullable=True
+    )
+    check_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    check_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    check_type: Mapped[str] = mapped_column(String(32), nullable=False, default="BOOLEAN")
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value_bool: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    value_number: Mapped[float | None] = mapped_column(Float, nullable=True)
+    value_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    permit_station: Mapped["PermitQcPermitStation"] = relationship(back_populates="checks")
+    template_check: Mapped["PermitQcTemplateCheck | None"] = relationship("PermitQcTemplateCheck")
+
+
+class PermitQcPermitAttachment(Base):
+    __tablename__ = "permit_qc_permit_attachments"
+    __table_args__ = (
+        Index("ix_permit_qc_permit_attachments_permit", "permit_id"),
+        Index("ix_permit_qc_permit_attachments_uploaded_at", "uploaded_at"),
+        Index("ix_permit_qc_permit_attachments_sha256", "sha256"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    permit_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("permit_qc_permits.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="attachment")
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    detected_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    uploaded_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    permit: Mapped["PermitQcPermit"] = relationship(back_populates="attachments")
+    uploaded_by: Mapped["User | None"] = relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class PermitQcPermitEvent(Base):
+    __tablename__ = "permit_qc_permit_events"
+    __table_args__ = (
+        Index("ix_permit_qc_permit_events_permit_created", "permit_id", "created_at"),
+        Index("ix_permit_qc_permit_events_type", "event_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    permit_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("permit_qc_permits.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    station_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("permit_qc_permit_stations.id", ondelete="SET NULL"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    from_status_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_status_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    permit: Mapped["PermitQcPermit"] = relationship(back_populates="events")
+    station: Mapped["PermitQcPermitStation | None"] = relationship("PermitQcPermitStation")
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])

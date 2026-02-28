@@ -24,6 +24,7 @@ import { createSiteLogsDataBridge } from "../lib/site_logs_data";
 import { createSiteLogsFormBridge } from "../lib/site_logs_form";
 import { createSiteLogsStateBridge } from "../lib/site_logs_state";
 import { createSiteLogsUiBridge } from "../lib/site_logs_ui";
+import { createPermitQcUiBridge } from "../lib/permit_qc_ui";
 import { installMojibakeRuntimeFix } from "../lib/mojibake_fix";
 
 window.AppRuntime = {
@@ -53,6 +54,7 @@ window.AppRuntime = {
   siteLogsForm: createSiteLogsFormBridge(),
   siteLogsState: createSiteLogsStateBridge(),
   siteLogsUi: createSiteLogsUiBridge(),
+  permitQcUi: createPermitQcUiBridge(),
 };
 
 installMojibakeRuntimeFix();

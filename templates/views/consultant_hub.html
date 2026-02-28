@@ -80,6 +80,14 @@
                 <span class="material-icons-round">monitoring</span>
                 <span>کنترل پروژه</span>
             </button>
+            <button
+                type="button"
+                class="edms-tab-btn consultant-tab-btn"
+                data-consultant-tab="permit-qc"
+            >
+                <span class="material-icons-round">verified</span>
+                <span>Permit + QC</span>
+            </button>
         </div>
 
         <div class="module-workspace-panels">
@@ -110,6 +118,9 @@
                 {% else %}
                 <div class="module-crud-root" data-module="consultant" data-tab="control" data-title="کنترل پروژه"></div>
                 {% endif %}
+            </section>
+            <section id="consultant-panel-permit-qc" class="module-workspace-panel">
+                <div class="permit-qc-root" data-module="consultant" data-tab="permit-qc"></div>
             </section>
         </div>
     </div>

@@ -43,6 +43,7 @@ const TS_VIEW_LOADER = requireBridge(APP_RUNTIME?.viewLoader, 'View loader');
 const TS_APP_DATA = requireBridge(APP_RUNTIME?.appData, 'App data');
 const TS_COMM_ITEMS_UI = requireBridge(APP_RUNTIME?.commItemsUi, 'Comm items UI');
 const TS_SITE_LOGS_UI = requireBridge(APP_RUNTIME?.siteLogsUi, 'Site logs UI');
+const TS_PERMIT_QC_UI = requireBridge(APP_RUNTIME?.permitQcUi, 'Permit QC UI');
 
 const API_BASE = '/api/v1'; 
 window.CACHE = {}; // Ú©Ø´ Ø¨Ø±Ø§ÛŒ Ù†Ú¯Ù‡Ø¯Ø§Ø±ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø§ÛŒÙ‡ (Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§ Ùˆ...)
@@ -80,6 +81,7 @@ const EDMS_VIEW_TO_TAB = {
 const CONTRACTOR_TAB_TO_PANEL = {
     execution: 'contractor-panel-execution',
     requests: 'contractor-panel-requests',
+    'permit-qc': 'contractor-panel-permit-qc',
 };
 
 const CONSULTANT_TAB_TO_PANEL = {
@@ -87,6 +89,7 @@ const CONSULTANT_TAB_TO_PANEL = {
     defects: 'consultant-panel-defects',
     instructions: 'consultant-panel-instructions',
     control: 'consultant-panel-control',
+    'permit-qc': 'consultant-panel-permit-qc',
 };
 
 const WORKBOARD_STATUS_LABELS = {
@@ -1043,11 +1046,48 @@ function initSiteLogsModule(moduleKey) {
     });
 }
 
+function hasPermitQcRoots(moduleKey, tabKey = null) {
+    const normalized = String(moduleKey || '').trim().toLowerCase();
+    if (!normalized) return false;
+    const tab = String(tabKey || '').trim().toLowerCase();
+    try {
+        const selector = tab
+            ? `.permit-qc-root[data-module="${normalized}"][data-tab="${tab}"]`
+            : `.permit-qc-root[data-module="${normalized}"][data-tab]`;
+        return !!document.querySelector(selector);
+    } catch (error) {
+        return false;
+    }
+}
+
+function onPermitQcTabOpened(moduleKey, tabKey) {
+    if (!(TS_PERMIT_QC_UI?.onTabOpened) || !hasPermitQcRoots(moduleKey)) return false;
+    Promise.resolve(
+        TS_PERMIT_QC_UI.onTabOpened(moduleKey, tabKey, buildCommItemsUiDeps())
+    ).catch((error) => {
+        console.warn('permitQcUi tab open failed:', error);
+    });
+    return true;
+}
+
+function initPermitQcModule(moduleKey) {
+    if (!(TS_PERMIT_QC_UI?.initModule) || !hasPermitQcRoots(moduleKey)) return;
+    Promise.resolve(
+        TS_PERMIT_QC_UI.initModule(moduleKey, buildCommItemsUiDeps())
+    ).catch((error) => {
+        console.warn('permitQcUi init failed:', error);
+    });
+}
+
 function openContractorTab(tabName, btnEl = null) {
     const requested = String(tabName || '').trim().toLowerCase();
     const normalizedTab = requested === 'quality' ? 'requests' : requested;
     const normalized = switchModuleTab(normalizedTab, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
     if (!normalized) return;
+    if (normalized === 'permit-qc') {
+        onPermitQcTabOpened('contractor', normalized);
+        return;
+    }
     let handledByCommBridge = false;
     if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('contractor', normalized)) {
         handledByCommBridge = true;
@@ -1069,6 +1109,7 @@ function openContractorTab(tabName, btnEl = null) {
 
 function initContractorView() {
     applyModuleInternalSettingsVisibility();
+    initPermitQcModule('contractor');
     if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('contractor')) {
         Promise.resolve(
             TS_COMM_ITEMS_UI.initModule('contractor', buildCommItemsUiDeps())
@@ -1101,6 +1142,10 @@ function initContractorView() {
 function openConsultantTab(tabName, btnEl = null) {
     const normalized = switchModuleTab(tabName, CONSULTANT_TAB_TO_PANEL, '.consultant-tab-btn', 'data-consultant-tab', btnEl);
     if (!normalized) return;
+    if (normalized === 'permit-qc') {
+        onPermitQcTabOpened('consultant', normalized);
+        return;
+    }
     let handledByCommBridge = false;
     if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('consultant', normalized)) {
         handledByCommBridge = true;
@@ -1122,6 +1167,7 @@ function openConsultantTab(tabName, btnEl = null) {
 
 function initConsultantView() {
     applyModuleInternalSettingsVisibility();
+    initPermitQcModule('consultant');
     if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('consultant')) {
         Promise.resolve(
             TS_COMM_ITEMS_UI.initModule('consultant', buildCommItemsUiDeps())

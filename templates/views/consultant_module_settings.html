@@ -20,6 +20,7 @@
             <button
                 type="button"
                 class="settings-nav-card active"
+                data-consultant-settings-tab="openproject"
                 role="tab"
                 aria-selected="true"
                 aria-controls="consultant-settings-tab-openproject"
@@ -30,10 +31,30 @@
                     <span class="settings-nav-card-subtitle">Project Import + Excel Import + Data & Logs</span>
                 </span>
             </button>
+            <button
+                type="button"
+                class="settings-nav-card"
+                data-consultant-settings-tab="permit-qc-template"
+                role="tab"
+                aria-selected="false"
+                aria-controls="consultant-settings-tab-permit-qc-template"
+            >
+                <span class="material-icons-round settings-nav-card-icon">verified</span>
+                <span class="settings-nav-card-copy">
+                    <span class="settings-nav-card-title">Permit + QC</span>
+                    <span class="settings-nav-card-subtitle">Template Management</span>
+                </span>
+            </button>
         </div>
 
         <div class="settings-shell-panels">
-            <section id="consultant-settings-tab-openproject" class="module-settings-tab-content active" role="tabpanel" aria-hidden="false">
+            <section
+                id="consultant-settings-tab-openproject"
+                class="module-settings-tab-content active"
+                data-consultant-settings-tab-content="openproject"
+                role="tabpanel"
+                aria-hidden="false"
+            >
                 <div id="consultantOpenProjectOpsRoot" class="settings-integrations-page">
                     <div class="general-settings-card">
                         <h3 class="general-settings-title">
@@ -256,6 +277,24 @@
                             </section>
                         </div>
                     </div>
+                </div>
+            </section>
+            <section
+                id="consultant-settings-tab-permit-qc-template"
+                class="module-settings-tab-content"
+                data-consultant-settings-tab-content="permit-qc-template"
+                role="tabpanel"
+                aria-hidden="true"
+            >
+                <div class="general-settings-card">
+                    <h3 class="general-settings-title">
+                        <span class="material-icons-round">verified</span> Permit + QC Templates
+                    </h3>
+                    <div class="general-settings-note general-settings-note-info">
+                        <span class="material-icons-round">info</span>
+                        <div>Templates are managed here and used to build immutable station/check snapshots on first submit.</div>
+                    </div>
+                    <div id="consultantPermitQcTemplateRoot" class="permit-qc-template-root"></div>
                 </div>
             </section>
         </div>

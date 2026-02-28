@@ -454,6 +454,162 @@ test("critical e2e: comm items RFI export and print actions", async ({ page, req
   ).toBeVisible({ timeout: 15000 });
 });
 
+test("critical e2e: permit qc create submit return resubmit approve", async ({ request, baseURL }) => {
+  const resolvedBaseUrl = resolveBaseUrl(baseURL);
+  const token = await apiLoginToken(request, resolvedBaseUrl);
+  const headers = bearerHeaders(token);
+
+  const context = await ensureCommItemsContext(request, resolvedBaseUrl, headers);
+  const projectCode = String(context.projectCode || "").trim().toUpperCase();
+  const disciplineCode = String(context.disciplineCode || "").trim().toUpperCase();
+  expect(projectCode).not.toEqual("");
+  expect(disciplineCode).not.toEqual("");
+
+  const consultantCode = `PCONS${Date.now()}`.slice(0, 14).toUpperCase();
+  const consultantOrgRes = await request.post(
+    `${resolvedBaseUrl}/api/v1/settings/organizations/upsert`,
+    {
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      data: {
+        code: consultantCode,
+        name: `Permit Consultant ${consultantCode}`,
+        org_type: "consultant",
+        is_active: true,
+      },
+    }
+  );
+  const consultantOrgBody = await expectOkJson(consultantOrgRes, "permit consultant org upsert");
+  const consultantOrgId = Number(consultantOrgBody?.id || consultantOrgBody?.data?.id || 0);
+  expect(consultantOrgId).toBeGreaterThan(0);
+
+  const templateCode = `PERMITTPL${Date.now()}`.slice(0, 18).toUpperCase();
+  const templateRes = await request.post(`${resolvedBaseUrl}/api/v1/permit-qc/templates/upsert`, {
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    data: {
+      code: templateCode,
+      name: `Template ${templateCode}`,
+      project_code: projectCode,
+      discipline_code: disciplineCode,
+      is_active: true,
+      is_default: true,
+    },
+  });
+  const templateBody = await expectOkJson(templateRes, "permit template upsert");
+  const templateId = Number(templateBody?.data?.id || 0);
+  expect(templateId).toBeGreaterThan(0);
+
+  const stationRes = await request.post(
+    `${resolvedBaseUrl}/api/v1/permit-qc/templates/${templateId}/stations/upsert`,
+    {
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      data: {
+        station_key: "E2E_STAGE",
+        station_label: "E2E Stage",
+        organization_id: consultantOrgId,
+        is_required: true,
+        is_active: true,
+        sort_order: 1,
+      },
+    }
+  );
+  const stationBody = await expectOkJson(stationRes, "permit station upsert");
+  const stationId = Number(stationBody?.data?.stations?.[0]?.id || 0);
+  expect(stationId).toBeGreaterThan(0);
+
+  const checkRes = await request.post(
+    `${resolvedBaseUrl}/api/v1/permit-qc/templates/${templateId}/checks/upsert`,
+    {
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      data: {
+        station_id: stationId,
+        check_code: "E2E_BOOL",
+        check_label: "E2E Boolean",
+        check_type: "BOOLEAN",
+        is_required: true,
+        is_active: true,
+        sort_order: 1,
+      },
+    }
+  );
+  const checkBody = await expectOkJson(checkRes, "permit check upsert");
+  const checkId = Number(checkBody?.data?.stations?.[0]?.checks?.[0]?.id || 0);
+  expect(checkId).toBeGreaterThan(0);
+
+  const permitNo = `PQC-E2E-${Date.now()}`.toUpperCase();
+  const createPermitRes = await request.post(`${resolvedBaseUrl}/api/v1/permit-qc/create`, {
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    data: {
+      module_key: "contractor",
+      permit_no: permitNo,
+      permit_date: "2026-02-28T00:00:00",
+      title: "E2E Permit",
+      project_code: projectCode,
+      discipline_code: disciplineCode,
+      template_id: templateId,
+      consultant_org_id: consultantOrgId,
+    },
+  });
+  const createPermitBody = await expectOkJson(createPermitRes, "permit create");
+  const permitId = Number(createPermitBody?.data?.id || 0);
+  expect(permitId).toBeGreaterThan(0);
+
+  const submitRes = await request.post(`${resolvedBaseUrl}/api/v1/permit-qc/${permitId}/submit`, {
+    headers,
+  });
+  const submitBody = await expectOkJson(submitRes, "permit submit");
+  expect(String(submitBody?.data?.status_code || "")).toBe("SUBMITTED");
+
+  const returnRes = await request.post(`${resolvedBaseUrl}/api/v1/permit-qc/${permitId}/review`, {
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    data: {
+      station_id: stationId,
+      action: "RETURN",
+      note: "needs fix",
+      checks: [{ check_id: checkId, value_bool: false, note: "not ok" }],
+    },
+  });
+  const returnBody = await expectOkJson(returnRes, "permit review return");
+  expect(String(returnBody?.data?.status_code || "")).toBe("RETURNED");
+
+  const resubmitRes = await request.post(`${resolvedBaseUrl}/api/v1/permit-qc/${permitId}/resubmit`, {
+    headers,
+  });
+  const resubmitBody = await expectOkJson(resubmitRes, "permit resubmit");
+  expect(String(resubmitBody?.data?.status_code || "")).toBe("SUBMITTED");
+
+  const approveRes = await request.post(`${resolvedBaseUrl}/api/v1/permit-qc/${permitId}/review`, {
+    headers: {
+      ...headers,
+      "Content-Type": "application/json",
+    },
+    data: {
+      station_id: stationId,
+      action: "APPROVE",
+      checks: [{ check_id: checkId, value_bool: true, note: "ok" }],
+    },
+  });
+  const approveBody = await expectOkJson(approveRes, "permit review approve");
+  expect(String(approveBody?.data?.status_code || "")).toBe("APPROVED");
+});
+
 test("critical e2e: contractor requests unified RFI/NCR form toggle", async ({ page, request, baseURL }) => {
   const resolvedBaseUrl = resolveBaseUrl(baseURL);
   const token = await apiLoginToken(request, resolvedBaseUrl);

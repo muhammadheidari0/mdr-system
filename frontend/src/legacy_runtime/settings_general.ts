@@ -1022,13 +1022,17 @@
         text.textContent = `پیشرفت: ${safeDone} از ${safeTotal} (${pct}%)${statusCode ? ` | ${statusCode}` : ''}`;
     }
 
-    function setOpenProjectSubTab(nextTab = 'connection') {
+    function setOpenProjectSubTab(nextTab = 'connection', scopeRoot = null) {
         const requestedTab = ['connection', 'project-import', 'import', 'logs'].includes(String(nextTab || '').toLowerCase())
             ? String(nextTab || '').toLowerCase()
             : 'connection';
         STORE.openprojectImport.activeTab = requestedTab;
 
-        document.querySelectorAll('.storage-openproject-shell').forEach((shell) => {
+        const shells = scopeRoot
+            ? Array.from(scopeRoot.querySelectorAll('.storage-openproject-shell'))
+            : Array.from(document.querySelectorAll('.storage-openproject-shell'));
+
+        shells.forEach((shell) => {
             const buttons = Array.from(shell.querySelectorAll('.storage-openproject-subtab[data-op-tab]'));
             const panels = Array.from(shell.querySelectorAll('[data-op-tab-content]'));
             if (!buttons.length || !panels.length) return;
@@ -2397,7 +2401,7 @@
                 const tabEl = findEventTargetEl(event, '[data-op-tab]');
                 if (tabEl && root.contains(tabEl)) {
                     event.preventDefault();
-                    setOpenProjectSubTab(tabEl.dataset.opTab || 'connection');
+                    setOpenProjectSubTab(tabEl.dataset.opTab || 'connection', root);
                     return;
                 }
                 const actionEl = findEventTargetEl(event, '[data-integrations-action]');

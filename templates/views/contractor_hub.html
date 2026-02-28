@@ -62,6 +62,14 @@
                 <span class="material-icons-round">outgoing_mail</span>
                 <span>درخواست‌ها (RFI/NCR)</span>
             </button>
+            <button
+                type="button"
+                class="edms-tab-btn contractor-tab-btn"
+                data-contractor-tab="permit-qc"
+            >
+                <span class="material-icons-round">verified</span>
+                <span>Permit + QC</span>
+            </button>
         </div>
 
         <div class="module-workspace-panels">
@@ -78,6 +86,9 @@
                 {% else %}
                 <div class="module-crud-root" data-module="contractor" data-tab="requests" data-title="درخواست‌ها (RFI/NCR)"></div>
                 {% endif %}
+            </section>
+            <section id="contractor-panel-permit-qc" class="module-workspace-panel">
+                <div class="permit-qc-root" data-module="contractor" data-tab="permit-qc"></div>
             </section>
         </div>
     </div>
