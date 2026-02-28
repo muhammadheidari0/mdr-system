@@ -13,13 +13,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import (
     User,
-    allow_editor,
-    allow_viewer,
     apply_organization_query_filters,
     apply_scope_query_filters,
     enforce_organization_access,
     enforce_scope_access,
     get_db,
+    require_permission,
 )
 from app.core.organizations import OrganizationType, resolve_user_permission_category
 from app.core.roles import Role, normalize_role
@@ -603,7 +602,7 @@ def _verify_update_rows(row: SiteLog, manpower: list[dict[str, Any]], equipment:
                 target.note = p.get("note")
 
 @router.get("/catalog")
-def catalog(db: Session = Depends(get_db), user: User = Depends(allow_viewer)):
+def catalog(db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:read"))):
     projects = apply_scope_query_filters(db.query(Project), db, user, project_column=Project.code, discipline_column=None).order_by(Project.code.asc()).all()
     disciplines = apply_scope_query_filters(db.query(Discipline), db, user, project_column=None, discipline_column=Discipline.code).order_by(Discipline.code.asc()).all()
     orgs = apply_organization_query_filters(db.query(Organization).filter(Organization.is_active == True), db, user, organization_column=Organization.id).order_by(Organization.name.asc()).all()
@@ -633,7 +632,7 @@ def list_logs(
     log_date_from: Optional[datetime] = Query(default=None),
     log_date_to: Optional[datetime] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("site_logs:read")),
 ):
     q = db.query(SiteLog).options(joinedload(SiteLog.organization))
     q = apply_scope_query_filters(q, db, user, project_column=SiteLog.project_code, discipline_column=SiteLog.discipline_code)
@@ -663,7 +662,7 @@ def list_logs(
 
 
 @router.post("/create")
-def create_log(payload: SiteLogCreateIn, db: Session = Depends(get_db), user: User = Depends(allow_editor)):
+def create_log(payload: SiteLogCreateIn, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:create"))):
     _require_contractor_flow(user)
     pcode = _upper(payload.project_code)
     dcode = _upper(payload.discipline_code)
@@ -713,7 +712,7 @@ def report_volume(
     log_date_from: Optional[datetime] = Query(default=None),
     log_date_to: Optional[datetime] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("site_logs:report_read")),
 ):
     q = db.query(SiteLog)
     q = apply_scope_query_filters(q, db, user, project_column=SiteLog.project_code, discipline_column=SiteLog.discipline_code)
@@ -748,7 +747,7 @@ def report_variance(
     log_date_to: Optional[datetime] = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("site_logs:report_read")),
 ):
     q = db.query(SiteLog).options(joinedload(SiteLog.manpower_rows), joinedload(SiteLog.equipment_rows), joinedload(SiteLog.activity_rows))
     q = apply_scope_query_filters(q, db, user, project_column=SiteLog.project_code, discipline_column=SiteLog.discipline_code)
@@ -807,7 +806,7 @@ def report_progress(
     log_date_to: Optional[datetime] = Query(default=None),
     limit: int = Query(default=1000, ge=1, le=5000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("site_logs:report_read")),
 ):
     q = db.query(SiteLog).options(joinedload(SiteLog.activity_rows))
     q = apply_scope_query_filters(q, db, user, project_column=SiteLog.project_code, discipline_column=SiteLog.discipline_code)
@@ -850,14 +849,14 @@ def report_progress(
     return {"ok": True, "count": len(data), "summary": {"claimed_avg_progress_pct": claimed, "verified_avg_progress_pct": verified, "variance_pct": variance}, "data": data}
 
 @router.get("/{log_id}")
-def get_log(log_id: int, db: Session = Depends(get_db), user: User = Depends(allow_viewer)):
+def get_log(log_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:read"))):
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
     return {"ok": True, "data": _serialize(row, include_rows=True)}
 
 
 @router.put("/{log_id}")
-def update_log(log_id: int, payload: SiteLogUpdateIn, db: Session = Depends(get_db), user: User = Depends(allow_editor)):
+def update_log(log_id: int, payload: SiteLogUpdateIn, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:update"))):
     _require_contractor_flow(user)
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
@@ -899,7 +898,7 @@ def update_log(log_id: int, payload: SiteLogUpdateIn, db: Session = Depends(get_
 
 
 @router.post("/{log_id}/submit")
-def submit_log(log_id: int, payload: SubmitIn, db: Session = Depends(get_db), user: User = Depends(allow_editor)):
+def submit_log(log_id: int, payload: SubmitIn, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:submit"))):
     _require_contractor_flow(user)
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
@@ -919,7 +918,7 @@ def submit_log(log_id: int, payload: SubmitIn, db: Session = Depends(get_db), us
 
 
 @router.post("/{log_id}/verify")
-def verify_log(log_id: int, payload: VerifyIn, db: Session = Depends(get_db), user: User = Depends(allow_editor)):
+def verify_log(log_id: int, payload: VerifyIn, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:verify"))):
     _require_consultant_flow(user)
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
@@ -944,7 +943,7 @@ def verify_log(log_id: int, payload: VerifyIn, db: Session = Depends(get_db), us
 
 
 @router.get("/{log_id}/timeline")
-def timeline(log_id: int, db: Session = Depends(get_db), user: User = Depends(allow_viewer)):
+def timeline(log_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:read"))):
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
     logs = db.query(SiteLogStatusLog).options(joinedload(SiteLogStatusLog.changed_by)).filter(SiteLogStatusLog.site_log_id == log_id).order_by(SiteLogStatusLog.changed_at.desc(), SiteLogStatusLog.id.desc()).all()
@@ -952,7 +951,7 @@ def timeline(log_id: int, db: Session = Depends(get_db), user: User = Depends(al
 
 
 @router.get("/{log_id}/comments")
-def list_comments(log_id: int, db: Session = Depends(get_db), user: User = Depends(allow_viewer)):
+def list_comments(log_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:read"))):
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
     rows = db.query(SiteLogComment).options(joinedload(SiteLogComment.created_by)).filter(SiteLogComment.site_log_id == log_id).order_by(SiteLogComment.created_at.desc(), SiteLogComment.id.desc()).all()
@@ -960,7 +959,7 @@ def list_comments(log_id: int, db: Session = Depends(get_db), user: User = Depen
 
 
 @router.post("/{log_id}/comments")
-def create_comment(log_id: int, payload: CommentIn, db: Session = Depends(get_db), user: User = Depends(allow_editor)):
+def create_comment(log_id: int, payload: CommentIn, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:comment_create"))):
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
     _enforce_not_verified_for_write(row, user)
@@ -975,7 +974,7 @@ def list_attachments(
     log_id: int,
     section_code: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("site_logs:read")),
 ):
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
@@ -999,7 +998,7 @@ def upload_attachment(
     row_id: Optional[int] = Form(None),
     note: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("site_logs:attachment_upload")),
 ):
     row = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, row)
@@ -1036,7 +1035,7 @@ def upload_attachment(
 
 
 @router.get("/attachments/{attachment_id}/download")
-def download_attachment(attachment_id: int, db: Session = Depends(get_db), user: User = Depends(allow_viewer)):
+def download_attachment(attachment_id: int, db: Session = Depends(get_db), user: User = Depends(require_permission("site_logs:read"))):
     row = _load_attachment_or_404(db, attachment_id)
     log = _load_log_or_404(db, row.site_log_id)
     _enforce_log_scope(db, user, log)
@@ -1051,7 +1050,7 @@ def delete_attachment(
     log_id: int,
     attachment_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("site_logs:attachment_delete")),
 ):
     log = _load_log_or_404(db, log_id)
     _enforce_log_scope(db, user, log)

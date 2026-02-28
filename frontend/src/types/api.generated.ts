@@ -907,6 +907,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/bim-revit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Bim Revit Settings */
+        get: operations["get_bim_revit_settings_api_v1_settings_bim_revit_get"];
+        put?: never;
+        /** Save Bim Revit Settings */
+        post: operations["save_bim_revit_settings_api_v1_settings_bim_revit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/bim-revit/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Bim Revit Secret */
+        post: operations["rotate_bim_revit_secret_api_v1_settings_bim_revit_rotate_secret_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/permissions/matrix": {
         parameters: {
             query?: never;
@@ -1389,6 +1424,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storage/sync/nextcloud/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Nextcloud Jobs */
+        post: operations["run_nextcloud_jobs_api_v1_storage_sync_nextcloud_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storage/openproject/ping": {
         parameters: {
             query?: never;
@@ -1400,6 +1452,91 @@ export interface paths {
         put?: never;
         /** Ping Openproject */
         post: operations["ping_openproject_api_v1_storage_openproject_ping_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/nextcloud/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ping Nextcloud */
+        post: operations["ping_nextcloud_api_v1_storage_nextcloud_ping_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/nextcloud/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** List Nextcloud Folders */
+        post: operations["list_nextcloud_folders_api_v1_storage_nextcloud_folders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/openproject/projects/{project_ref}/work-packages/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Openproject Project Work Packages */
+        get: operations["preview_openproject_project_work_packages_api_v1_storage_openproject_projects__project_ref__work_packages_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/openproject/projects/{project_ref}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Openproject Project Work Packages */
+        post: operations["import_openproject_project_work_packages_api_v1_storage_openproject_projects__project_ref__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storage/google/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ping Google */
+        post: operations["ping_google_api_v1_storage_google_ping_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2895,6 +3032,281 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/permit-qc/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permit Qc Catalog */
+        get: operations["permit_qc_catalog_api_v1_permit_qc_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permit Qc List */
+        get: operations["permit_qc_list_api_v1_permit_qc_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Create */
+        post: operations["permit_qc_create_api_v1_permit_qc_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/{permit_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permit Qc Get */
+        get: operations["permit_qc_get_api_v1_permit_qc__permit_id__get"];
+        /** Permit Qc Update */
+        put: operations["permit_qc_update_api_v1_permit_qc__permit_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/{permit_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Submit */
+        post: operations["permit_qc_submit_api_v1_permit_qc__permit_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/{permit_id}/resubmit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Resubmit */
+        post: operations["permit_qc_resubmit_api_v1_permit_qc__permit_id__resubmit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/{permit_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Cancel */
+        post: operations["permit_qc_cancel_api_v1_permit_qc__permit_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/{permit_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Review */
+        post: operations["permit_qc_review_api_v1_permit_qc__permit_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/{permit_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permit Qc List Attachments */
+        get: operations["permit_qc_list_attachments_api_v1_permit_qc__permit_id__attachments_get"];
+        put?: never;
+        /** Permit Qc Upload Attachment */
+        post: operations["permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post"];
+        /** Permit Qc Delete Attachment */
+        delete: operations["permit_qc_delete_attachment_api_v1_permit_qc__permit_id__attachments_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/attachments/{attachment_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permit Qc Download Attachment */
+        get: operations["permit_qc_download_attachment_api_v1_permit_qc_attachments__attachment_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/{permit_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permit Qc Timeline */
+        get: operations["permit_qc_timeline_api_v1_permit_qc__permit_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Permit Qc Templates List */
+        get: operations["permit_qc_templates_list_api_v1_permit_qc_templates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/templates/upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Templates Upsert */
+        post: operations["permit_qc_templates_upsert_api_v1_permit_qc_templates_upsert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/templates/{template_id}/stations/upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Templates Station Upsert */
+        post: operations["permit_qc_templates_station_upsert_api_v1_permit_qc_templates__template_id__stations_upsert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/templates/{template_id}/checks/upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Templates Check Upsert */
+        post: operations["permit_qc_templates_check_upsert_api_v1_permit_qc_templates__template_id__checks_upsert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/permit-qc/templates/{template_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Permit Qc Templates Activate */
+        post: operations["permit_qc_templates_activate_api_v1_permit_qc_templates__template_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/site-logs/catalog": {
         parameters: {
             query?: never;
@@ -3120,6 +3532,295 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bim/edms/inbox/publish-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Batch Inbox */
+        post: operations["publish_batch_inbox_api_v1_bim_edms_inbox_publish_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/publish-batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Batch */
+        post: operations["publish_batch_api_v1_bim_edms_publish_batch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Publish Run */
+        get: operations["get_publish_run_api_v1_bim_edms_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/runs/{run_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Publish Run Items */
+        get: operations["get_publish_run_items_api_v1_bim_edms_runs__run_id__items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/inbox/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Inbox Runs */
+        get: operations["list_inbox_runs_api_v1_bim_edms_inbox_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/inbox/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Inbox Run */
+        get: operations["get_inbox_run_api_v1_bim_edms_inbox_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/inbox/runs/{run_id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Inbox Run Items */
+        get: operations["get_inbox_run_items_api_v1_bim_edms_inbox_runs__run_id__items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/inbox/runs/{run_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Inbox Run */
+        post: operations["approve_inbox_run_api_v1_bim_edms_inbox_runs__run_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/edms/inbox/runs/{run_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Inbox Run */
+        post: operations["reject_inbox_run_api_v1_bim_edms_inbox_runs__run_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/schedules/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ingest Schedule */
+        post: operations["ingest_schedule_api_v1_bim_schedules_ingest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/schedules/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Schedule Run */
+        get: operations["get_schedule_run_api_v1_bim_schedules_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/schedules/runs/{run_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Schedule Run */
+        post: operations["approve_schedule_run_api_v1_bim_schedules_runs__run_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/schedules/runs/{run_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Schedule Run */
+        post: operations["reject_schedule_run_api_v1_bim_schedules_runs__run_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Bim Config */
+        get: operations["get_bim_config_api_v1_bim_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/site-logs/revit/manifest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Site Log Manifest */
+        get: operations["get_site_log_manifest_api_v1_bim_site_logs_revit_manifest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/site-logs/revit/pull": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pull Site Log Rows */
+        post: operations["pull_site_log_rows_api_v1_bim_site_logs_revit_pull_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bim/site-logs/revit/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ack Site Log Sync */
+        post: operations["ack_site_log_sync_api_v1_bim_site_logs_revit_ack_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3148,6 +3849,27 @@ export interface components {
              * @default 0
              */
             sort_order: number | null;
+        };
+        /** BimRevitSettingsIn */
+        BimRevitSettingsIn: {
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Api Endpoint Url */
+            api_endpoint_url?: string | null;
+            /** Require Plugin Signature */
+            require_plugin_signature?: boolean | null;
+            /** Plugin Key Id */
+            plugin_key_id?: string | null;
+            /** Plugin Secret */
+            plugin_secret?: string | null;
+            /** Default Category Id */
+            default_category_id?: number | null;
+            /** Default Folder Id */
+            default_folder_id?: number | null;
+            /** Allowed Mime */
+            allowed_mime?: string[] | null;
+            /** Max Batch Size */
+            max_batch_size?: number | null;
         };
         /** BlockDeleteIn */
         BlockDeleteIn: {
@@ -3240,6 +3962,26 @@ export interface components {
             file?: string;
             /** Url */
             url?: string;
+        };
+        /** Body_permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post */
+        Body_permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post: {
+            /**
+             * Module Key
+             * @default contractor
+             */
+            module_key: string;
+            /**
+             * File
+             * Format: binary
+             */
+            file: string;
+            /**
+             * File Kind
+             * @default attachment
+             */
+            file_kind: string;
+            /** Note */
+            note?: string | null;
         };
         /** Body_register_and_upload_api_v1_archive_register_and_upload_post */
         Body_register_and_upload_api_v1_archive_register_and_upload_post: {
@@ -3929,6 +4671,21 @@ export interface components {
              */
             sort_order: number | null;
         };
+        /** GooglePingIn */
+        GooglePingIn: {
+            /** Service */
+            service: string;
+            /** Oauth Client Id */
+            oauth_client_id?: string | null;
+            /** Oauth Client Secret */
+            oauth_client_secret?: string | null;
+            /** Oauth Refresh Token */
+            oauth_refresh_token?: string | null;
+            /** Sender Email */
+            sender_email?: string | null;
+            /** Calendar Id */
+            calendar_id?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -4064,10 +4821,53 @@ export interface components {
             /** Verified At */
             verified_at?: string | null;
         };
+        /** NextcloudFoldersIn */
+        NextcloudFoldersIn: {
+            /**
+             * Path
+             * @default /
+             */
+            path: string | null;
+        };
+        /** NextcloudPingIn */
+        NextcloudPingIn: {
+            /** Base Url */
+            base_url?: string | null;
+            /** Username */
+            username?: string | null;
+            /** App Password */
+            app_password?: string | null;
+            /** Root Path */
+            root_path?: string | null;
+            /** Skip Ssl Verify */
+            skip_ssl_verify?: boolean | null;
+        };
         /** OpenProjectImportExecuteIn */
         OpenProjectImportExecuteIn: {
             /** Target Parent Work Package Id */
             target_parent_work_package_id?: number | null;
+        };
+        /** OpenProjectPingIn */
+        OpenProjectPingIn: {
+            /** Base Url */
+            base_url?: string | null;
+            /** Api Token */
+            api_token?: string | null;
+            /** Skip Ssl Verify */
+            skip_ssl_verify?: boolean | null;
+        };
+        /** OpenProjectProjectImportIn */
+        OpenProjectProjectImportIn: {
+            /**
+             * Max Items
+             * @default 5000
+             */
+            max_items: number;
+            /**
+             * Page Size
+             * @default 200
+             */
+            page_size: number;
         };
         /** OpenProjectStatusIn */
         OpenProjectStatusIn: {
@@ -4138,7 +4938,7 @@ export interface components {
          * OrganizationType
          * @enum {string}
          */
-        OrganizationType: "system" | "employer" | "consultant" | "contractor" | "subcontractor";
+        OrganizationType: "system" | "employer" | "consultant" | "contractor" | "dcc";
         /** PackageDeleteIn */
         PackageDeleteIn: {
             /** Discipline Code */
@@ -4199,6 +4999,183 @@ export interface components {
                 };
             };
         };
+        /** PermitQcCreateIn */
+        PermitQcCreateIn: {
+            /**
+             * Module Key
+             * @default contractor
+             */
+            module_key: string;
+            /** Permit No */
+            permit_no: string;
+            /** Permit Date */
+            permit_date?: string | null;
+            /** Title */
+            title: string;
+            /** Description */
+            description?: string | null;
+            /** Wall Name */
+            wall_name?: string | null;
+            /** Floor Label */
+            floor_label?: string | null;
+            /** Elevation Start */
+            elevation_start?: string | null;
+            /** Elevation End */
+            elevation_end?: string | null;
+            /** Project Code */
+            project_code: string;
+            /** Discipline Code */
+            discipline_code: string;
+            /** Template Id */
+            template_id?: number | null;
+            /** Consultant Org Id */
+            consultant_org_id?: number | null;
+        };
+        /** PermitQcReviewCheckIn */
+        PermitQcReviewCheckIn: {
+            /** Check Id */
+            check_id: number;
+            /** Value Text */
+            value_text?: string | null;
+            /** Value Bool */
+            value_bool?: boolean | null;
+            /** Value Number */
+            value_number?: number | null;
+            /** Value Date */
+            value_date?: string | null;
+            /** Note */
+            note?: string | null;
+        };
+        /** PermitQcReviewIn */
+        PermitQcReviewIn: {
+            /** Station Id */
+            station_id: number;
+            /** Action */
+            action: string;
+            /** Note */
+            note?: string | null;
+            /** Checks */
+            checks?: components["schemas"]["PermitQcReviewCheckIn"][];
+        };
+        /** PermitQcTemplateActivateIn */
+        PermitQcTemplateActivateIn: {
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /** Is Default */
+            is_default?: boolean | null;
+        };
+        /** PermitQcTemplateCheckUpsertIn */
+        PermitQcTemplateCheckUpsertIn: {
+            /** Id */
+            id?: number | null;
+            /** Station Id */
+            station_id: number;
+            /** Check Code */
+            check_code: string;
+            /** Check Label */
+            check_label: string;
+            /**
+             * Check Type
+             * @default BOOLEAN
+             */
+            check_type: string;
+            /**
+             * Is Required
+             * @default true
+             */
+            is_required: boolean;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+        };
+        /** PermitQcTemplateStationUpsertIn */
+        PermitQcTemplateStationUpsertIn: {
+            /** Id */
+            id?: number | null;
+            /** Station Key */
+            station_key: string;
+            /** Station Label */
+            station_label: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Is Required
+             * @default true
+             */
+            is_required: boolean;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
+        };
+        /** PermitQcTemplateUpsertIn */
+        PermitQcTemplateUpsertIn: {
+            /** Id */
+            id?: number | null;
+            /** Code */
+            code?: string | null;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /** Project Code */
+            project_code?: string | null;
+            /** Discipline Code */
+            discipline_code?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Is Default
+             * @default false
+             */
+            is_default: boolean;
+        };
+        /** PermitQcUpdateIn */
+        PermitQcUpdateIn: {
+            /** Permit No */
+            permit_no?: string | null;
+            /** Permit Date */
+            permit_date?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Wall Name */
+            wall_name?: string | null;
+            /** Floor Label */
+            floor_label?: string | null;
+            /** Elevation Start */
+            elevation_start?: string | null;
+            /** Elevation End */
+            elevation_end?: string | null;
+            /** Project Code */
+            project_code?: string | null;
+            /** Discipline Code */
+            discipline_code?: string | null;
+            /** Template Id */
+            template_id?: number | null;
+            /** Consultant Org Id */
+            consultant_org_id?: number | null;
+        };
         /** PhaseDeleteIn */
         PhaseDeleteIn: {
             /** Ph Code */
@@ -4240,6 +5217,11 @@ export interface components {
             /** Docnum Template */
             docnum_template?: string | null;
         };
+        /** PublishRejectIn */
+        PublishRejectIn: {
+            /** Reason */
+            reason: string;
+        };
         /** ReviewResultIn */
         ReviewResultIn: {
             /** Code */
@@ -4277,6 +5259,39 @@ export interface components {
          * @enum {string}
          */
         Role: "admin" | "manager" | "user" | "dcc" | "viewer";
+        /** ScheduleIngestIn */
+        ScheduleIngestIn: {
+            /** Project Code */
+            project_code: string;
+            /** Profile Code */
+            profile_code: string;
+            /** Model Guid */
+            model_guid: string;
+            /** View Name */
+            view_name?: string | null;
+            /** Schema Version */
+            schema_version: string;
+            /** Rows */
+            rows?: components["schemas"]["ScheduleRowIn"][];
+        };
+        /** ScheduleRejectIn */
+        ScheduleRejectIn: {
+            /** Reason */
+            reason: string;
+        };
+        /** ScheduleRowIn */
+        ScheduleRowIn: {
+            /** Row No */
+            row_no?: number | null;
+            /** Element Key */
+            element_key?: string | null;
+            /** Equipment Key */
+            equipment_key?: string | null;
+            /** Values */
+            values?: {
+                [key: string]: unknown;
+            };
+        };
         /** SiteAgentHeartbeatIn */
         SiteAgentHeartbeatIn: {
             /** Site Code */
@@ -4418,6 +5433,24 @@ export interface components {
             /** Token Id */
             token_id: number;
         };
+        /** SiteLogAckErrorIn */
+        SiteLogAckErrorIn: {
+            /** Sync Key */
+            sync_key: string;
+            /** Message */
+            message: string;
+        };
+        /** SiteLogAckIn */
+        SiteLogAckIn: {
+            /** Run Id */
+            run_id: string;
+            /** Applied Count */
+            applied_count: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Errors */
+            errors?: components["schemas"]["SiteLogAckErrorIn"][];
+        };
         /** SiteLogCreateIn */
         SiteLogCreateIn: {
             /** Log Type */
@@ -4446,6 +5479,15 @@ export interface components {
             /** Activity Rows */
             activity_rows?: components["schemas"]["ActivityIn"][];
         };
+        /** SiteLogPullIn */
+        SiteLogPullIn: {
+            /** Project Code */
+            project_code?: string | null;
+            /** Client Model Guid */
+            client_model_guid: string;
+            /** Log Ids */
+            log_ids?: number[];
+        };
         /** SiteLogUpdateIn */
         SiteLogUpdateIn: {
             /** Log Type */
@@ -4471,12 +5513,20 @@ export interface components {
         };
         /** StorageIntegrationsIn */
         StorageIntegrationsIn: {
+            /** Mirror */
+            mirror?: {
+                [key: string]: unknown;
+            } | null;
             /** Google Drive */
             google_drive?: {
                 [key: string]: unknown;
             } | null;
             /** Openproject */
             openproject?: {
+                [key: string]: unknown;
+            } | null;
+            /** Nextcloud */
+            nextcloud?: {
                 [key: string]: unknown;
             } | null;
             /** Local Cache */
@@ -6561,6 +7611,79 @@ export interface operations {
             };
         };
     };
+    get_bim_revit_settings_api_v1_settings_bim_revit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    save_bim_revit_settings_api_v1_settings_bim_revit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BimRevitSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_bim_revit_secret_api_v1_settings_bim_revit_rotate_secret_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     get_permissions_matrix_api_v1_settings_permissions_matrix_get: {
         parameters: {
             query?: {
@@ -7617,9 +8740,11 @@ export interface operations {
             };
         };
     };
-    ping_openproject_api_v1_storage_openproject_ping_post: {
+    run_nextcloud_jobs_api_v1_storage_sync_nextcloud_run_post: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7633,6 +8758,216 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ping_openproject_api_v1_storage_openproject_ping_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OpenProjectPingIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ping_nextcloud_api_v1_storage_nextcloud_ping_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NextcloudPingIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_nextcloud_folders_api_v1_storage_nextcloud_folders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NextcloudFoldersIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_openproject_project_work_packages_api_v1_storage_openproject_projects__project_ref__work_packages_preview_get: {
+        parameters: {
+            query?: {
+                skip?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                project_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_openproject_project_work_packages_api_v1_storage_openproject_projects__project_ref__import_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["OpenProjectProjectImportIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ping_google_api_v1_storage_google_ping_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GooglePingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10738,6 +12073,648 @@ export interface operations {
             };
         };
     };
+    permit_qc_catalog_api_v1_permit_qc_catalog_get: {
+        parameters: {
+            query: {
+                module_key: string;
+                project_code?: string | null;
+                discipline_code?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_list_api_v1_permit_qc_list_get: {
+        parameters: {
+            query: {
+                module_key: string;
+                status_code?: string | null;
+                project_code?: string | null;
+                discipline_code?: string | null;
+                permit_no?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                skip?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_create_api_v1_permit_qc_create_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermitQcCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_get_api_v1_permit_qc__permit_id__get: {
+        parameters: {
+            query?: {
+                module_key?: string | null;
+            };
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_update_api_v1_permit_qc__permit_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermitQcUpdateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_submit_api_v1_permit_qc__permit_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_resubmit_api_v1_permit_qc__permit_id__resubmit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_cancel_api_v1_permit_qc__permit_id__cancel_post: {
+        parameters: {
+            query?: {
+                note?: string | null;
+            };
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_review_api_v1_permit_qc__permit_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermitQcReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_list_attachments_api_v1_permit_qc__permit_id__attachments_get: {
+        parameters: {
+            query?: {
+                module_key?: string | null;
+            };
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_delete_attachment_api_v1_permit_qc__permit_id__attachments_delete: {
+        parameters: {
+            query: {
+                attachment_id: number;
+                module_key?: string | null;
+            };
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_download_attachment_api_v1_permit_qc_attachments__attachment_id__download_get: {
+        parameters: {
+            query?: {
+                module_key?: string | null;
+            };
+            header?: never;
+            path: {
+                attachment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_timeline_api_v1_permit_qc__permit_id__timeline_get: {
+        parameters: {
+            query?: {
+                module_key?: string | null;
+            };
+            header?: never;
+            path: {
+                permit_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_templates_list_api_v1_permit_qc_templates_get: {
+        parameters: {
+            query?: {
+                project_code?: string | null;
+                discipline_code?: string | null;
+                include_inactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_templates_upsert_api_v1_permit_qc_templates_upsert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermitQcTemplateUpsertIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_templates_station_upsert_api_v1_permit_qc_templates__template_id__stations_upsert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermitQcTemplateStationUpsertIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_templates_check_upsert_api_v1_permit_qc_templates__template_id__checks_upsert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermitQcTemplateCheckUpsertIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    permit_qc_templates_activate_api_v1_permit_qc_templates__template_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermitQcTemplateActivateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     catalog_api_v1_site_logs_catalog_get: {
         parameters: {
             query?: never;
@@ -11283,6 +13260,533 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_batch_inbox_api_v1_bim_edms_inbox_publish_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    publish_batch_api_v1_bim_edms_publish_batch_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_publish_run_api_v1_bim_edms_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_publish_run_items_api_v1_bim_edms_runs__run_id__items_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_inbox_runs_api_v1_bim_edms_inbox_runs_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                project_code?: string | null;
+                created_from?: string | null;
+                created_to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_inbox_run_api_v1_bim_edms_inbox_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_inbox_run_items_api_v1_bim_edms_inbox_runs__run_id__items_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_inbox_run_api_v1_bim_edms_inbox_runs__run_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_inbox_run_api_v1_bim_edms_inbox_runs__run_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRejectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_schedule_api_v1_bim_schedules_ingest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleIngestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_schedule_run_api_v1_bim_schedules_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_schedule_run_api_v1_bim_schedules_runs__run_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_schedule_run_api_v1_bim_schedules_runs__run_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScheduleRejectIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_bim_config_api_v1_bim_config_get: {
+        parameters: {
+            query?: {
+                project_code?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_site_log_manifest_api_v1_bim_site_logs_revit_manifest_get: {
+        parameters: {
+            query: {
+                project_code: string;
+                client_model_guid: string;
+                updated_after?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pull_site_log_rows_api_v1_bim_site_logs_revit_pull_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteLogPullIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ack_site_log_sync_api_v1_bim_site_logs_revit_ack_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteLogAckIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

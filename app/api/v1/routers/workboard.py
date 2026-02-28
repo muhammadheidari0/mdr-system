@@ -10,13 +10,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import (
     User,
-    allow_editor,
-    allow_viewer,
     apply_organization_query_filters,
     apply_scope_query_filters,
     enforce_organization_access,
     enforce_scope_access,
     get_db,
+    require_permission,
 )
 from app.db.models import Discipline, Project, WorkboardItem
 
@@ -172,7 +171,7 @@ class WorkboardUpdateIn(BaseModel):
 @router.get("/catalog")
 def get_workboard_catalog(
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("workboard:read")),
 ):
     del user
     return {
@@ -190,7 +189,7 @@ def get_workboard_catalog(
 def get_workboard_summary(
     module_key: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("workboard:read")),
 ):
     query = db.query(WorkboardItem)
     query = apply_scope_query_filters(
@@ -257,7 +256,7 @@ def list_workboard_items(
     project_code: Optional[str] = Query(default=None),
     discipline_code: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("workboard:read")),
 ):
     module_value, tab_value = _validate_module_tab(module_key, tab_key)
     query = (
@@ -339,7 +338,7 @@ def list_workboard_items(
 def create_workboard_item(
     payload: WorkboardCreateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("workboard:create")),
 ):
     module_value, tab_value = _validate_module_tab(payload.module_key, payload.tab_key)
     title = _norm(payload.title)
@@ -383,7 +382,7 @@ def update_workboard_item(
     item_id: int,
     payload: WorkboardUpdateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("workboard:update")),
 ):
     row = _load_item_or_404(db, item_id)
     enforce_scope_access(
@@ -440,7 +439,7 @@ def update_workboard_item(
 def delete_workboard_item(
     item_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("workboard:delete")),
 ):
     row = _load_item_or_404(db, item_id)
     enforce_scope_access(

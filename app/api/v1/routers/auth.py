@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.core import security
 from app.core.roles import Role, normalize_role
+from app.core.organizations import OrganizationType, resolve_user_permission_category
 from app.schemas import auth as auth_schemas
 from app.api import dependencies
 
@@ -53,12 +54,68 @@ def get_navigation(
     current_user: models.User = Depends(dependencies.get_current_user),
 ):
     user_role = normalize_role(current_user.role)
+    category = resolve_user_permission_category(current_user)
+
+    module_settings_allowed = dependencies.has_permission_for_user(db, current_user, "module_settings:read")
+
+    modules = {
+        "edms": {
+            "archive": dependencies.has_permission_for_user(db, current_user, "module_archive:read")
+            and dependencies.has_permission_for_user(db, current_user, "archive:read"),
+            "transmittal": dependencies.has_permission_for_user(db, current_user, "module_transmittal:read")
+            and dependencies.has_permission_for_user(db, current_user, "transmittal:read"),
+            "correspondence": dependencies.has_permission_for_user(db, current_user, "module_correspondence:read")
+            and dependencies.has_permission_for_user(db, current_user, "correspondence:read"),
+        },
+        "reports": {
+            "overview": dependencies.has_permission_for_user(db, current_user, "module_reports:read")
+            and dependencies.has_permission_for_user(db, current_user, "reports:read"),
+        },
+        "contractor": {
+            "execution": dependencies.has_permission_for_user(db, current_user, "module_site_logs_contractor:read"),
+            "requests": dependencies.has_permission_for_user(db, current_user, "module_comm_items_contractor:read"),
+            "permit_qc": dependencies.has_permission_for_user(db, current_user, "module_permit_qc_contractor:read"),
+        },
+        "consultant": {
+            "inspection": dependencies.has_permission_for_user(db, current_user, "module_site_logs_consultant:read"),
+            "defects": dependencies.has_permission_for_user(db, current_user, "module_comm_items_consultant:read"),
+            "instructions": dependencies.has_permission_for_user(db, current_user, "module_comm_items_consultant:read"),
+            "control": dependencies.has_permission_for_user(db, current_user, "module_comm_items_consultant:read"),
+            "permit_qc": dependencies.has_permission_for_user(db, current_user, "module_permit_qc_consultant:read"),
+        },
+        "settings": {
+            "module_settings": module_settings_allowed,
+        },
+    }
+
+    hubs = {
+        "dashboard": dependencies.has_permission_for_user(db, current_user, "dashboard:read"),
+        "edms": dependencies.has_permission_for_user(db, current_user, "hub_edms:read")
+        and any(bool(v) for v in modules["edms"].values()),
+        "reports": dependencies.has_permission_for_user(db, current_user, "hub_reports:read")
+        and bool(modules["reports"].get("overview")),
+        "contractor": dependencies.has_permission_for_user(db, current_user, "hub_contractor:read")
+        and any(bool(v) for v in modules["contractor"].values()),
+        "consultant": dependencies.has_permission_for_user(db, current_user, "hub_consultant:read")
+        and any(bool(v) for v in modules["consultant"].values()),
+    }
+
+    category_default_hub = {
+        OrganizationType.DCC.value: "edms",
+        OrganizationType.CONSULTANT.value: "consultant",
+        OrganizationType.EMPLOYER.value: "reports",
+        OrganizationType.CONTRACTOR.value: "contractor",
+        OrganizationType.SYSTEM.value: "dashboard",
+    }
+    default_hub = category_default_hub.get(category, "dashboard")
+    if not hubs.get(default_hub):
+        default_hub = next((key for key in ("dashboard", "edms", "reports", "contractor", "consultant") if hubs.get(key)), "dashboard")
 
     tabs = {
-        "archive": dependencies.has_permission_for_user(db, current_user, "archive:read"),
-        "transmittal": dependencies.has_permission_for_user(db, current_user, "transmittal:read"),
-        "correspondence": dependencies.has_permission_for_user(db, current_user, "correspondence:read"),
-        "reports": dependencies.has_permission_for_user(db, current_user, "reports:read"),
+        "archive": bool(modules["edms"]["archive"]),
+        "transmittal": bool(modules["edms"]["transmittal"]),
+        "correspondence": bool(modules["edms"]["correspondence"]),
+        "reports": bool(modules["reports"]["overview"]),
     }
 
     role_default_map = {
@@ -72,12 +129,21 @@ def get_navigation(
     if not tabs.get(default_tab):
         default_tab = next((key for key in ("archive", "transmittal", "correspondence", "reports") if tabs.get(key)), "archive")
 
-    return {
+    response = {
         "ok": True,
+        "category": category,
+        "hubs": hubs,
+        "default_hub": default_hub,
+        "modules": modules,
         "edms_tabs": tabs,
         "default_edms_tab": default_tab,
-        "module_settings": dependencies.has_permission_for_user(db, current_user, "module_settings:read"),
+        "module_settings": module_settings_allowed,
     }
+    # Backward compatibility for legacy clients expecting per-hub module-settings flags.
+    response["edms"] = module_settings_allowed
+    response["contractor"] = module_settings_allowed
+    response["consultant"] = module_settings_allowed
+    return response
 
 
 @router.post("/change-password")

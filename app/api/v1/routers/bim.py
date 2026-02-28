@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import (
     User,
-    allow_viewer,
     apply_organization_query_filters,
     apply_scope_query_filters,
     enforce_scope_access,
@@ -753,8 +752,7 @@ async def publish_batch_inbox(
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_INBOX_GATEWAY))
-    _require_permission(db, user, "documents:create")
-    _require_permission(db, user, "archive:update")
+    _require_permission(db, user, "bim:publish")
 
     plugin_key_id = await _verify_plugin_signature_for_inbox(request, db=db)
 
@@ -1080,8 +1078,7 @@ async def publish_batch(
     user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
-    _require_permission(db, user, "documents:create")
-    _require_permission(db, user, "archive:update")
+    _require_permission(db, user, "bim:publish")
 
     try:
         payload, uploads, is_multipart = await _parse_publish_payload(request)
@@ -1450,7 +1447,7 @@ def get_publish_run(
     user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
-    _require_permission(db, user, "documents:read")
+    _require_permission(db, user, "bim:read")
 
     run = db.query(BimPublishRun).filter(BimPublishRun.run_uid == _norm(run_id)).first()
     if not run:
@@ -1480,7 +1477,7 @@ def get_publish_run_items(
     user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
-    _require_permission(db, user, "documents:read")
+    _require_permission(db, user, "bim:read")
 
     run = db.query(BimPublishRun).filter(BimPublishRun.run_uid == _norm(run_id)).first()
     if not run:
@@ -1527,7 +1524,7 @@ def list_inbox_runs(
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_INBOX_GATEWAY))
-    _require_permission(db, user, "documents:read")
+    _require_permission(db, user, "bim:read")
 
     _expire_stale_inbox_runs(db)
 
@@ -1580,7 +1577,7 @@ def get_inbox_run(
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_INBOX_GATEWAY))
-    _require_permission(db, user, "documents:read")
+    _require_permission(db, user, "bim:read")
 
     run = (
         db.query(BimPublishRun)
@@ -1605,7 +1602,7 @@ def get_inbox_run_items(
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_INBOX_GATEWAY))
-    _require_permission(db, user, "documents:read")
+    _require_permission(db, user, "bim:read")
 
     run = (
         db.query(BimPublishRun)
@@ -1662,7 +1659,7 @@ def approve_inbox_run(
     _require_feature(bool(settings.FEATURE_BIM_INBOX_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_INBOX_APPROVAL))
     _require_inbox_approver(user)
-    _require_permission(db, user, "archive:update")
+    _require_permission(db, user, "bim:approve")
 
     run = (
         db.query(BimPublishRun)
@@ -1887,6 +1884,7 @@ def reject_inbox_run(
     _require_feature(bool(settings.FEATURE_BIM_INBOX_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_INBOX_APPROVAL))
     _require_inbox_approver(user)
+    _require_permission(db, user, "bim:reject")
 
     run = (
         db.query(BimPublishRun)
@@ -1926,7 +1924,7 @@ def ingest_schedule(
     user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
-    _require_permission(db, user, "documents:create")
+    _require_permission(db, user, "bim:schedule_ingest")
 
     project_code = _upper(payload.project_code)
     if not project_code:
@@ -2034,7 +2032,7 @@ def get_schedule_run(
     user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
-    _require_permission(db, user, "documents:read")
+    _require_permission(db, user, "bim:read")
 
     run = db.query(BimScheduleRun).filter(BimScheduleRun.run_uid == _norm(run_id)).first()
     if not run:
@@ -2063,6 +2061,7 @@ def approve_schedule_run(
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_SCHEDULE_APPROVAL))
+    _require_permission(db, user, "bim:schedule_approve")
     _require_schedule_approver(user)
 
     run = db.query(BimScheduleRun).filter(BimScheduleRun.run_uid == _norm(run_id)).first()
@@ -2171,6 +2170,7 @@ def reject_schedule_run(
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_SCHEDULE_APPROVAL))
+    _require_permission(db, user, "bim:schedule_reject")
     _require_schedule_approver(user)
 
     run = db.query(BimScheduleRun).filter(BimScheduleRun.run_uid == _norm(run_id)).first()
@@ -2201,6 +2201,7 @@ def get_bim_config(
     user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
+    _require_permission(db, user, "bim:read")
 
     project = _upper(project_code)
     if project:
@@ -2227,10 +2228,11 @@ def get_site_log_manifest(
     updated_after: Optional[str] = Query(default=None),
     limit: int = Query(default=500, ge=1, le=5000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_REVIT_WRITEBACK_SITELOGS))
+    _require_permission(db, user, "bim:site_logs_sync")
 
     project = _upper(project_code)
     if not project:
@@ -2360,10 +2362,11 @@ def get_site_log_manifest(
 def pull_site_log_rows(
     payload: SiteLogPullIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_REVIT_WRITEBACK_SITELOGS))
+    _require_permission(db, user, "bim:site_logs_sync")
 
     model_guid = _norm(payload.client_model_guid)
     if not model_guid:
@@ -2623,10 +2626,11 @@ def pull_site_log_rows(
 def ack_site_log_sync(
     payload: SiteLogAckIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(get_current_user),
 ):
     _require_feature(bool(settings.FEATURE_BIM_GATEWAY))
     _require_feature(bool(settings.FEATURE_BIM_REVIT_WRITEBACK_SITELOGS))
+    _require_permission(db, user, "bim:site_logs_sync")
 
     run = db.query(BimRevitSyncRun).filter(BimRevitSyncRun.run_uid == _norm(payload.run_id)).first()
     if not run:

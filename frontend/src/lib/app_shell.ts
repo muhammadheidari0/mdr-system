@@ -25,6 +25,15 @@ function mapSidebarTarget(activeViewId: string): string {
   if (normalized === "view-users" || normalized === "view-bulk") {
     return "view-settings";
   }
+  if (normalized === "view-edms-settings") {
+    return "view-edms";
+  }
+  if (normalized === "view-contractor-settings") {
+    return "view-contractor";
+  }
+  if (normalized === "view-consultant-settings") {
+    return "view-consultant";
+  }
   if (
     normalized === "view-archive" ||
     normalized === "view-transmittal" ||

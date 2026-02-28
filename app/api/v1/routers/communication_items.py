@@ -14,13 +14,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import (
     User,
-    allow_editor,
-    allow_viewer,
     apply_organization_query_filters,
     apply_scope_query_filters,
     enforce_organization_access,
     enforce_scope_access,
     get_db,
+    require_permission,
 )
 from app.db.models import (
     CommItem,
@@ -272,8 +271,6 @@ def _record_status_log(
             note=_norm(note) or None,
         )
     )
-
-
 def _record_field_audit(
     db: Session,
     *,
@@ -1160,7 +1157,7 @@ def _base_items_query(db: Session, user: User):
 @router.get("/catalog")
 def get_comm_items_catalog(
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     del user
     statuses = (
@@ -1280,7 +1277,7 @@ def list_comm_items(
     include_non_claim_control: bool = Query(default=False),
     include_non_impact_control: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     query = _base_items_query(db, user)
     now = datetime.utcnow()
@@ -1378,7 +1375,7 @@ def list_comm_items(
 def create_comm_item(
     payload: CommItemCreateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:create")),
 ):
     item_type = _normalize_item_type(payload.item_type)
     project_code = _upper(payload.project_code)
@@ -1491,7 +1488,7 @@ def create_comm_item(
 def get_comm_item(
     item_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     row = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, row)
@@ -1503,7 +1500,7 @@ def update_comm_item(
     item_id: int,
     payload: CommItemUpdateIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:update")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -1747,7 +1744,7 @@ def transition_comm_item(
     item_id: int,
     payload: CommItemTransitionIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:transition")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -1810,7 +1807,7 @@ def transition_comm_item(
 def get_comm_item_timeline(
     item_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -1852,7 +1849,7 @@ def get_comm_item_timeline(
 def list_comm_item_comments(
     item_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -1871,7 +1868,7 @@ def create_comm_item_comment(
     item_id: int,
     payload: CommItemCommentIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:comment_create")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -1895,7 +1892,7 @@ def list_comm_item_attachments(
     scope_code: Optional[str] = Query(default=None),
     slot_code: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -1934,7 +1931,7 @@ def upload_comm_item_attachment(
     slot_code: Optional[str] = Form(None),
     note: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:attachment_upload")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -2000,7 +1997,7 @@ def upload_comm_item_attachment(
 def download_comm_item_attachment(
     attachment_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     row = _load_attachment_or_404(db, attachment_id)
     item = _load_item_or_404(db, row.item_id)
@@ -2016,7 +2013,7 @@ def delete_comm_item_attachment(
     item_id: int,
     attachment_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:attachment_delete")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -2038,7 +2035,7 @@ def delete_comm_item_attachment(
 def list_comm_item_relations(
     item_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:read")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -2076,7 +2073,7 @@ def create_comm_item_relation(
     item_id: int,
     payload: CommItemRelationIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:relation_manage")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -2129,7 +2126,7 @@ def delete_comm_item_relation(
     item_id: int,
     relation_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("comm_items:relation_manage")),
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
@@ -2159,7 +2156,7 @@ def report_aging(
     only_overdue: bool = Query(default=False),
     limit: int = Query(default=1000, ge=1, le=5000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:report_read")),
 ):
     now = datetime.utcnow()
     query = _base_items_query(db, user)
@@ -2188,7 +2185,7 @@ def report_cycle_time(
     discipline_code: Optional[str] = Query(default=None),
     item_type: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:report_read")),
 ):
     base = _base_items_query(db, user)
     base = _apply_report_filters(base, project_code=project_code, discipline_code=discipline_code, item_type=item_type)
@@ -2308,7 +2305,7 @@ def report_impact_signals(
     include_closed: bool = Query(default=True),
     limit: int = Query(default=1000, ge=1, le=5000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:report_read")),
 ):
     return _report_impact_signals(
         project_code=project_code,
@@ -2320,7 +2317,6 @@ def report_impact_signals(
         user=user,
     )
 
-
 @router.get("/reports/claim-candidates", deprecated=True)
 def report_claim_candidates(
     project_code: Optional[str] = Query(default=None),
@@ -2329,7 +2325,7 @@ def report_claim_candidates(
     include_closed: bool = Query(default=True),
     limit: int = Query(default=1000, ge=1, le=5000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("comm_items:report_read")),
 ):
     return _report_impact_signals(
         project_code=project_code,

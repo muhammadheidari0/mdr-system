@@ -49,7 +49,7 @@
             employer: 'Ú©Ø§Ø±ÙØ±Ù…Ø§',
             consultant: 'Ù…Ø´Ø§ÙˆØ±',
             contractor: 'Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
-            subcontractor: 'Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø± Ø¬Ø²Ø¡',
+            dcc: 'DCC',
         };
         const key = norm(value).toLowerCase();
         return map[key] || value || '-';

@@ -3,7 +3,7 @@
     const MATRIX_ENDPOINT = '/api/v1/settings/permissions/matrix';
     const SEARCH_DEBOUNCE_MS = 180;
     const DEFAULT_CATEGORY = 'consultant';
-    const KNOWN_CATEGORIES = ['consultant', 'contractor', 'employer'];
+    const KNOWN_CATEGORIES = ['consultant', 'contractor', 'employer', 'dcc', 'system'];
 
     const TREE_CATALOG = [
         {
@@ -47,6 +47,44 @@
             ],
         },
         {
+            key: 'visibility',
+            label: 'Hub + Module Visibility',
+            pages: [
+                {
+                    key: 'hub_visibility',
+                    label: 'Hub visibility',
+                    groupKeys: ['hub_edms', 'hub_reports', 'hub_contractor', 'hub_consultant'],
+                },
+                {
+                    key: 'module_visibility',
+                    label: 'Module visibility',
+                    groupKeys: [
+                        'module_archive',
+                        'module_transmittal',
+                        'module_correspondence',
+                        'module_reports',
+                        'module_site_logs_contractor',
+                        'module_comm_items_contractor',
+                        'module_permit_qc_contractor',
+                        'module_site_logs_consultant',
+                        'module_comm_items_consultant',
+                        'module_permit_qc_consultant',
+                    ],
+                },
+            ],
+        },
+        {
+            key: 'operations',
+            label: 'Operational permissions',
+            pages: [
+                { key: 'ops_workboard', label: 'Workboard', groupKeys: ['workboard'] },
+                { key: 'ops_site_logs', label: 'Site logs', groupKeys: ['site_logs'] },
+                { key: 'ops_comm_items', label: 'Communication items', groupKeys: ['comm_items'] },
+                { key: 'ops_permit_qc', label: 'Permit + QC', groupKeys: ['permit_qc'] },
+                { key: 'ops_bim', label: 'BIM', groupKeys: ['bim'] },
+            ],
+        },
+        {
             key: 'system_settings',
             label: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³ÛŒØ³ØªÙ…',
             pages: [
@@ -76,6 +114,7 @@
         renderedSections: {},
         renderedPages: {},
         searchTimer: null,
+        readOnly: false,
     };
 
     const catalogIndex = (() => {
@@ -137,6 +176,8 @@
             consultant: 'Ù…Ø´Ø§ÙˆØ±',
             contractor: 'Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
             employer: 'Ú©Ø§Ø±ÙØ±Ù…Ø§',
+            dcc: 'DCC',
+            system: 'SYSTEM',
         };
         return map[normalizeCategory(value)] || 'Ù…Ø´Ø§ÙˆØ±';
     }
@@ -227,6 +268,25 @@
             reports: 'Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§',
             workboard_contractor: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
             workboard_consultant: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù…Ø´Ø§ÙˆØ±',
+            hub_edms: 'Hub EDMS',
+            hub_reports: 'Hub Reports',
+            hub_contractor: 'Hub Contractor',
+            hub_consultant: 'Hub Consultant',
+            module_archive: 'Module Archive',
+            module_transmittal: 'Module Transmittal',
+            module_correspondence: 'Module Correspondence',
+            module_reports: 'Module Reports',
+            module_site_logs_contractor: 'Module Contractor Site Logs',
+            module_comm_items_contractor: 'Module Contractor Comm Items',
+            module_permit_qc_contractor: 'Module Contractor Permit+QC',
+            module_site_logs_consultant: 'Module Consultant Site Logs',
+            module_comm_items_consultant: 'Module Consultant Comm Items',
+            module_permit_qc_consultant: 'Module Consultant Permit+QC',
+            workboard: 'Workboard',
+            site_logs: 'Site logs',
+            comm_items: 'Communication items',
+            permit_qc: 'Permit + QC',
+            bim: 'BIM',
         };
         if (map[key]) return map[key];
         if (!key || key === 'other') return 'Ø³Ø§ÛŒØ±';
@@ -248,17 +308,33 @@
         return `${MATRIX_ENDPOINT}?${params.toString()}`;
     }
 
+    function applyReadOnlyState() {
+        const root = document.getElementById('settingsPermissionsTabRoot');
+        const saveBtn = root ? root.querySelector('[data-permissions-action="save-permissions-matrix"]') : null;
+        if (saveBtn) {
+            saveBtn.disabled = !!state.readOnly;
+            saveBtn.setAttribute('aria-disabled', state.readOnly ? 'true' : 'false');
+            saveBtn.title = state.readOnly ? 'This category is read-only.' : '';
+            saveBtn.classList.toggle('is-disabled', !!state.readOnly);
+        }
+    }
+
     function renderCategoryTabs(selectedBtn = null) {
         const tabsRoot = document.getElementById('permissionsCategoryTabs');
         if (!tabsRoot) return;
         const active = normalizeCategory(state.activeCategory);
+        const availableCategories = new Set((state.categories || []).map((item) => normalizeCategory(item)));
         const buttons = tabsRoot.querySelectorAll('[data-permissions-category]');
         buttons.forEach((btn) => {
             const key = normalizeCategory(btn.dataset.permissionsCategory || '');
+            const visible = availableCategories.size === 0 || availableCategories.has(key);
+            btn.style.display = visible ? '' : 'none';
+            if (!visible) return;
             const isActive = key === active;
             btn.classList.toggle('active', isActive);
             btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         });
+        applyReadOnlyState();
         if (selectedBtn && typeof selectedBtn.blur === 'function') {
             selectedBtn.blur();
         }
@@ -326,6 +402,8 @@
         const key = String(groupKey || '').toLowerCase();
         const pageKey = catalogIndex.groupToPage.get(key);
         if (pageKey) return catalogIndex.pageToSection.get(pageKey) || 'engineering_docs';
+        if (key.startsWith('hub_') || key.startsWith('module_')) return 'visibility';
+        if (['workboard', 'site_logs', 'comm_items', 'permit_qc', 'bim'].includes(key)) return 'operations';
         if (key === 'dashboard' || key.includes('report')) return 'reports';
         if (key.startsWith('workboard')) return key.includes('consult') ? 'consultant_hub' : 'contractor_hub';
         if (['settings', 'users', 'permissions', 'bulk', 'organizations', 'module_settings'].includes(key)) return 'system_settings';
@@ -425,7 +503,7 @@
         return {
             checked: values.length > 0 && enabledCount === values.length,
             indeterminate: enabledCount > 0 && enabledCount < values.length,
-            disabled: false,
+            disabled: !!state.readOnly,
             empty: false,
         };
     }
@@ -541,14 +619,15 @@
                             ${state.roles.map((role) => {
                                 const roleKey = normalizeRole(role);
                                 const isAdmin = roleKey === 'admin';
+                                const isDisabled = isAdmin || !!state.readOnly;
                                 const checked = Boolean(state.matrix[roleKey] && state.matrix[roleKey][permission]);
                                 return `
                                     <td class="center-text matrix-role-cell">
-                                        <label class="toggle-switch ${isAdmin ? 'is-disabled' : ''}" ${isAdmin ? 'title="Ø§Ø¯Ù…ÛŒÙ† Ù‡Ù…ÛŒØ´Ù‡ Ø¯Ø³ØªØ±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ø¯Ø§Ø±Ø¯"' : ''}>
+                                        <label class="toggle-switch ${isDisabled ? 'is-disabled' : ''}" ${isAdmin ? 'title="Ø§Ø¯Ù…ÛŒÙ† Ù‡Ù…ÛŒØ´Ù‡ Ø¯Ø³ØªØ±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ø¯Ø§Ø±Ø¯"' : ''}>
                                             <input
                                                 type="checkbox"
                                                 ${checked ? 'checked' : ''}
-                                                ${isAdmin ? 'disabled' : ''}
+                                                ${isDisabled ? 'disabled' : ''}
                                                 data-permissions-action="toggle-permission-cell"
                                                 data-role-key="${esc(roleKey)}"
                                                 data-permission="${encodeURIComponent(permission)}"
@@ -726,6 +805,7 @@
         state.roles = Array.isArray(payload.roles) ? payload.roles : [];
         state.permissions = Array.isArray(payload.permissions) ? payload.permissions : [];
         state.matrix = payload.matrix || {};
+        state.readOnly = Boolean(payload && payload.read_only);
         state.collapsedSections = new Set();
         state.collapsedGroups = new Set();
 
@@ -737,6 +817,7 @@
     }
 
     window.togglePermissionCell = function togglePermissionCell(role, permission, checked) {
+        if (state.readOnly) return;
         const roleKey = normalizeRole(role);
         if (roleKey === 'admin') return;
         if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
@@ -745,6 +826,7 @@
     };
 
     window.togglePermissionSectionRole = function togglePermissionSectionRole(encodedSectionKey, role, checked) {
+        if (state.readOnly) return;
         const sectionKey = decodeURIComponent(String(encodedSectionKey || ''));
         const roleKey = normalizeRole(role);
         if (!sectionKey || roleKey === 'admin') return;
@@ -758,6 +840,7 @@
     };
 
     window.togglePermissionGroupRole = function togglePermissionGroupRole(encodedPageKey, role, checked) {
+        if (state.readOnly) return;
         const pageKey = decodeURIComponent(String(encodedPageKey || ''));
         const roleKey = normalizeRole(role);
         if (!pageKey || roleKey === 'admin') return;
@@ -816,6 +899,10 @@
     };
 
     window.savePermissionsMatrix = async function savePermissionsMatrix() {
+        if (state.readOnly) {
+            notify('warning', 'SYSTEM category is read-only.');
+            return;
+        }
         try {
             ensureMatrixDefaults();
             await request(matrixUrl(), {

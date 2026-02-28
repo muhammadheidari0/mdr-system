@@ -2406,6 +2406,7 @@ def get_permissions_matrix(
         "ok": True,
         "category": category_key,
         "categories": list(PERMISSION_CATEGORIES),
+        "read_only": bool(category_key == "system"),
         "roles": list(ALL_ROLES),
         "permissions": _permission_keys(),
         "matrix": matrix,
@@ -2421,7 +2422,11 @@ def save_permissions_matrix(
 ):
     category_key = _normalize_permission_category_or_400(category)
     before = _load_permission_matrix(db, category=category_key)
-    matrix = _normalize_permission_matrix(payload.matrix)
+    if category_key == "system":
+        perms = _permission_keys()
+        matrix = {role: {perm: True for perm in perms} for role in ALL_ROLES}
+    else:
+        matrix = _normalize_permission_matrix(payload.matrix)
     perms = _permission_keys()
     db.query(RoleCategoryPermission).filter(
         RoleCategoryPermission.category == category_key

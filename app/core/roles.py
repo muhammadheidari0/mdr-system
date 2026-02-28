@@ -13,9 +13,81 @@ class Role(str, Enum):
 ALL_ROLES: tuple[str, ...] = tuple(role.value for role in Role)
 
 
-# تعریف دسترسی‌های هر نقش (RBAC ثابت فاز 1)
+COMMON_NAV_PERMISSIONS: List[str] = [
+    "dashboard:read",
+    "reports:read",
+    "module_settings:read",
+    "hub_edms:read",
+    "hub_reports:read",
+    "hub_contractor:read",
+    "hub_consultant:read",
+    "module_archive:read",
+    "module_transmittal:read",
+    "module_correspondence:read",
+    "module_reports:read",
+    "module_site_logs_contractor:read",
+    "module_comm_items_contractor:read",
+    "module_permit_qc_contractor:read",
+    "module_site_logs_consultant:read",
+    "module_comm_items_consultant:read",
+    "module_permit_qc_consultant:read",
+]
+
+WORKBOARD_PERMISSIONS: List[str] = [
+    "workboard:read",
+    "workboard:create",
+    "workboard:update",
+    "workboard:delete",
+]
+
+SITE_LOGS_READ_PERMISSIONS: List[str] = [
+    "site_logs:read",
+    "site_logs:report_read",
+]
+
+SITE_LOGS_WRITE_PERMISSIONS: List[str] = [
+    "site_logs:create",
+    "site_logs:update",
+    "site_logs:submit",
+    "site_logs:verify",
+    "site_logs:comment_create",
+    "site_logs:attachment_upload",
+    "site_logs:attachment_delete",
+]
+
+COMM_ITEMS_READ_PERMISSIONS: List[str] = [
+    "comm_items:read",
+    "comm_items:report_read",
+]
+
+COMM_ITEMS_WRITE_PERMISSIONS: List[str] = [
+    "comm_items:create",
+    "comm_items:update",
+    "comm_items:transition",
+    "comm_items:comment_create",
+    "comm_items:attachment_upload",
+    "comm_items:attachment_delete",
+    "comm_items:relation_manage",
+]
+
+BIM_READ_PERMISSIONS: List[str] = [
+    "bim:read",
+]
+
+BIM_WRITE_PERMISSIONS: List[str] = [
+    "bim:publish",
+    "bim:approve",
+    "bim:reject",
+    "bim:schedule_ingest",
+    "bim:schedule_approve",
+    "bim:schedule_reject",
+    "bim:site_logs_sync",
+]
+
+
+# Default RBAC matrix baseline.
 ROLE_PERMISSIONS: Dict[Role, List[str]] = {
-    Role.ADMIN: ["*"],  # دسترسی کامل
+    Role.ADMIN: ["*"],
     Role.MANAGER: [
         "documents:read",
         "documents:create",
@@ -37,9 +109,14 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "permit_qc:template_manage",
         "permit_qc:attachment_upload",
         "permit_qc:attachment_delete",
-        # By default, final issue/void remains with DCC.
-        "dashboard:read",
-        "module_settings:read",
+        *COMMON_NAV_PERMISSIONS,
+        *WORKBOARD_PERMISSIONS,
+        *SITE_LOGS_READ_PERMISSIONS,
+        *SITE_LOGS_WRITE_PERMISSIONS,
+        *COMM_ITEMS_READ_PERMISSIONS,
+        *COMM_ITEMS_WRITE_PERMISSIONS,
+        *BIM_READ_PERMISSIONS,
+        *BIM_WRITE_PERMISSIONS,
     ],
     Role.DCC: [
         "documents:read",
@@ -64,8 +141,14 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "permit_qc:template_manage",
         "permit_qc:attachment_upload",
         "permit_qc:attachment_delete",
-        "dashboard:read",
-        "module_settings:read",
+        *COMMON_NAV_PERMISSIONS,
+        *WORKBOARD_PERMISSIONS,
+        *SITE_LOGS_READ_PERMISSIONS,
+        *SITE_LOGS_WRITE_PERMISSIONS,
+        *COMM_ITEMS_READ_PERMISSIONS,
+        *COMM_ITEMS_WRITE_PERMISSIONS,
+        *BIM_READ_PERMISSIONS,
+        *BIM_WRITE_PERMISSIONS,
     ],
     Role.USER: [
         "documents:read",
@@ -86,8 +169,16 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "permit_qc:review",
         "permit_qc:attachment_upload",
         "permit_qc:attachment_delete",
-        "dashboard:read",
-        "module_settings:read",
+        *COMMON_NAV_PERMISSIONS,
+        *WORKBOARD_PERMISSIONS,
+        *SITE_LOGS_READ_PERMISSIONS,
+        *SITE_LOGS_WRITE_PERMISSIONS,
+        *COMM_ITEMS_READ_PERMISSIONS,
+        *COMM_ITEMS_WRITE_PERMISSIONS,
+        *BIM_READ_PERMISSIONS,
+        "bim:publish",
+        "bim:schedule_ingest",
+        "bim:site_logs_sync",
     ],
     Role.VIEWER: [
         "documents:read",
@@ -95,8 +186,13 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "transmittal:read",
         "correspondence:read",
         "permit_qc:read",
-        "dashboard:read",
-        "module_settings:read",
+        *COMMON_NAV_PERMISSIONS,
+        "workboard:read",
+        "site_logs:read",
+        "site_logs:report_read",
+        "comm_items:read",
+        "comm_items:report_read",
+        *BIM_READ_PERMISSIONS,
     ],
 }
 
@@ -110,9 +206,9 @@ def is_valid_role(user_role: str | None) -> bool:
 
 
 def verify_role_access(user_role: str, required_roles: List[str]) -> bool:
-    """بررسی می‌کند که آیا نقش کاربر در لیست نقش‌های مجاز هست یا خیر"""
+    """Check whether user role is one of allowed roles."""
     normalized_user_role = normalize_role(user_role)
     normalized_required_roles = [normalize_role(role) for role in required_roles]
     if normalized_user_role == Role.ADMIN.value:
-        return True  # ادمین همیشه دسترسی دارد
+        return True
     return normalized_user_role in normalized_required_roles

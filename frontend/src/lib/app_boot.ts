@@ -4,6 +4,7 @@ export interface AppBootDeps {
   primeLoadedScriptCache: () => void;
   loadDictionary: () => Promise<void>;
   loadEdmsNavigation: () => Promise<void>;
+  resolveInitialView?: () => string;
   navigateTo: (viewId: string) => Promise<void>;
   markPerf: (name: string) => void;
   measurePerf: (metricName: string, startMark: string, endMark: string) => void;
@@ -40,7 +41,8 @@ async function runOnLoad(pathname: string, deps: AppBootDeps): Promise<boolean> 
     deps.primeLoadedScriptCache();
     await deps.loadDictionary();
     await deps.loadEdmsNavigation();
-    await deps.navigateTo("view-dashboard");
+    const initialView = String(deps.resolveInitialView?.() || "").trim() || "view-dashboard";
+    await deps.navigateTo(initialView);
 
     deps.markPerf("first_view_ready");
     deps.measurePerf("app_boot", "app_boot_start", "first_view_ready");

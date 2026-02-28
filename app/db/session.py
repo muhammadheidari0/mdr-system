@@ -482,6 +482,43 @@ def _seed_user_scopes_from_kv(db: Session) -> None:
                 db.add(UserDisciplineScope(user_id=uid, discipline_code=code))
 
 
+def _migrate_legacy_organization_types(db: Session) -> None:
+    from app.db.models import (
+        Organization,
+        RoleCategoryDisciplineScope,
+        RoleCategoryPermission,
+        RoleCategoryProjectScope,
+    )
+
+    # Legacy org type is consolidated under contractor.
+    rows = (
+        db.query(Organization)
+        .filter(Organization.org_type == "subcontractor")
+        .all()
+    )
+    for row in rows:
+        row.org_type = OrganizationType.CONTRACTOR.value
+
+    db.query(RoleCategoryPermission).filter(
+        RoleCategoryPermission.category == "subcontractor"
+    ).update(
+        {"category": OrganizationType.CONTRACTOR.value},
+        synchronize_session=False,
+    )
+    db.query(RoleCategoryProjectScope).filter(
+        RoleCategoryProjectScope.category == "subcontractor"
+    ).update(
+        {"category": OrganizationType.CONTRACTOR.value},
+        synchronize_session=False,
+    )
+    db.query(RoleCategoryDisciplineScope).filter(
+        RoleCategoryDisciplineScope.category == "subcontractor"
+    ).update(
+        {"category": OrganizationType.CONTRACTOR.value},
+        synchronize_session=False,
+    )
+
+
 def _seed_organization_defaults(db: Session) -> None:
     from app.db.models import Organization
 
@@ -496,6 +533,7 @@ def _seed_organization_defaults(db: Session) -> None:
         ("EMPLOYER_ROOT", "Employer", OrganizationType.EMPLOYER.value),
         ("CONSULTANT_ROOT", "Consultant", OrganizationType.CONSULTANT.value),
         ("CONTRACTOR_ROOT", "Contractor", OrganizationType.CONTRACTOR.value),
+        ("DCC_ROOT", "DCC", OrganizationType.DCC.value),
     ]
 
     for code, name, org_type in seed_rows:
@@ -514,7 +552,7 @@ def _seed_organization_defaults(db: Session) -> None:
 
     system_root = existing.get("SYSTEM_ROOT")
     if system_root:
-        for code in ("EMPLOYER_ROOT", "CONSULTANT_ROOT", "CONTRACTOR_ROOT"):
+        for code in ("EMPLOYER_ROOT", "CONSULTANT_ROOT", "CONTRACTOR_ROOT", "DCC_ROOT"):
             row = existing.get(code)
             if row and row.parent_id is None:
                 row.parent_id = system_root.id
@@ -537,13 +575,21 @@ def _backfill_user_organization_defaults(db: Session) -> None:
         .filter(Organization.code == "SYSTEM_ROOT")
         .first()
     )
+    dcc_root = (
+        db.query(Organization)
+        .filter(Organization.code == "DCC_ROOT")
+        .first()
+    )
     if not system_root:
         return
 
     users = db.query(User).all()
     for user in users:
         if getattr(user, "organization_id", None) is None:
-            user.organization_id = system_root.id
+            if str(getattr(user, "role", "") or "").strip().lower() == Role.DCC.value and dcc_root is not None:
+                user.organization_id = dcc_root.id
+            else:
+                user.organization_id = system_root.id
 
         role_value = normalize_org_role(getattr(user, "organization_role", None))
         if role_value not in ALL_ORG_ROLES:
@@ -560,20 +606,12 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
         RoleProjectScope,
     )
 
-    has_seed = (
-        db.query(RoleCategoryPermission.id).first()
-        or db.query(RoleCategoryProjectScope.id).first()
-        or db.query(RoleCategoryDisciplineScope.id).first()
-    )
-    if has_seed:
-        return
-
+    perms = _permission_keys()
     role_perm_rows = db.query(RolePermission.role, RolePermission.permission, RolePermission.allowed).all()
     role_project_rows = db.query(RoleProjectScope.role, RoleProjectScope.project_code).all()
     role_discipline_rows = db.query(RoleDisciplineScope.role, RoleDisciplineScope.discipline_code).all()
 
     if not role_perm_rows:
-        perms = _permission_keys()
         for role in ALL_ROLES:
             role_enum = Role(role)
             role_perms = ROLE_PERMISSIONS.get(role_enum, [])
@@ -587,37 +625,150 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
                     )
                 )
 
+    role_permission_map: dict[tuple[str, str], bool] = {}
+    for role, permission, allowed in role_perm_rows:
+        role_key = str(role or "").strip().lower()
+        perm_key = str(permission or "").strip()
+        if role_key in ALL_ROLES and perm_key in perms:
+            role_permission_map[(role_key, perm_key)] = bool(allowed)
+
+    existing_perm_rows = db.query(RoleCategoryPermission).all()
+    existing_perm_map: dict[tuple[str, str, str], RoleCategoryPermission] = {}
+    for row in existing_perm_rows:
+        cat_key = normalize_permission_category(getattr(row, "category", None))
+        role_key = str(getattr(row, "role", "") or "").strip().lower()
+        perm_key = str(getattr(row, "permission", "") or "").strip()
+        if role_key in ALL_ROLES and perm_key in perms:
+            existing_perm_map[(cat_key, role_key, perm_key)] = row
+
+    consultant_permission_map: dict[tuple[str, str], bool] = {}
+    for (cat_key, role_key, perm_key), row in existing_perm_map.items():
+        if cat_key != OrganizationType.CONSULTANT.value:
+            continue
+        consultant_permission_map[(role_key, perm_key)] = bool(getattr(row, "allowed", False))
+
     for category in PERMISSION_CATEGORIES:
         category_key = normalize_permission_category(category)
-        for role, permission, allowed in role_perm_rows:
-            db.add(
-                RoleCategoryPermission(
-                    category=category_key,
-                    role=str(role or "").strip().lower(),
-                    permission=str(permission or "").strip(),
-                    allowed=bool(allowed),
+        for role in ALL_ROLES:
+            for permission in perms:
+                key = (category_key, role, permission)
+                existing_row = existing_perm_map.get(key)
+                if existing_row is not None:
+                    if category_key == OrganizationType.SYSTEM.value and not bool(existing_row.allowed):
+                        existing_row.allowed = True
+                    continue
+
+                if category_key == OrganizationType.SYSTEM.value:
+                    allowed = True
+                elif category_key == OrganizationType.DCC.value:
+                    allowed = consultant_permission_map.get(
+                        (role, permission),
+                        role_permission_map.get((role, permission), role == Role.ADMIN.value),
+                    )
+                else:
+                    allowed = role_permission_map.get((role, permission), role == Role.ADMIN.value)
+
+                db.add(
+                    RoleCategoryPermission(
+                        category=category_key,
+                        role=role,
+                        permission=permission,
+                        allowed=bool(allowed),
+                    )
                 )
-            )
-        for role, project_code in role_project_rows:
-            if not str(project_code or "").strip():
+
+    consultant_project_rows = (
+        db.query(RoleCategoryProjectScope.role, RoleCategoryProjectScope.project_code)
+        .filter(RoleCategoryProjectScope.category == OrganizationType.CONSULTANT.value)
+        .all()
+    )
+    consultant_discipline_rows = (
+        db.query(RoleCategoryDisciplineScope.role, RoleCategoryDisciplineScope.discipline_code)
+        .filter(RoleCategoryDisciplineScope.category == OrganizationType.CONSULTANT.value)
+        .all()
+    )
+
+    existing_project_keys = {
+        (
+            normalize_permission_category(category),
+            str(role or "").strip().lower(),
+            str(project_code or "").strip().upper(),
+        )
+        for category, role, project_code in db.query(
+            RoleCategoryProjectScope.category,
+            RoleCategoryProjectScope.role,
+            RoleCategoryProjectScope.project_code,
+        ).all()
+        if str(project_code or "").strip()
+    }
+    existing_discipline_keys = {
+        (
+            normalize_permission_category(category),
+            str(role or "").strip().lower(),
+            str(discipline_code or "").strip().upper(),
+        )
+        for category, role, discipline_code in db.query(
+            RoleCategoryDisciplineScope.category,
+            RoleCategoryDisciplineScope.role,
+            RoleCategoryDisciplineScope.discipline_code,
+        ).all()
+        if str(discipline_code or "").strip()
+    }
+
+    for category in PERMISSION_CATEGORIES:
+        category_key = normalize_permission_category(category)
+        if category_key == OrganizationType.SYSTEM.value:
+            db.query(RoleCategoryProjectScope).filter(
+                RoleCategoryProjectScope.category == category_key
+            ).delete(synchronize_session=False)
+            db.query(RoleCategoryDisciplineScope).filter(
+                RoleCategoryDisciplineScope.category == category_key
+            ).delete(synchronize_session=False)
+            continue
+
+        project_source = role_project_rows
+        discipline_source = role_discipline_rows
+        if category_key == OrganizationType.DCC.value:
+            project_source = consultant_project_rows or role_project_rows
+            discipline_source = consultant_discipline_rows or role_discipline_rows
+
+        for role, project_code in project_source:
+            project_key = str(project_code or "").strip().upper()
+            if not project_key:
+                continue
+            role_key = str(role or "").strip().lower()
+            if role_key not in ALL_ROLES:
+                continue
+            key = (category_key, role_key, project_key)
+            if key in existing_project_keys:
                 continue
             db.add(
                 RoleCategoryProjectScope(
                     category=category_key,
-                    role=str(role or "").strip().lower(),
-                    project_code=str(project_code or "").strip().upper(),
+                    role=role_key,
+                    project_code=project_key,
                 )
             )
-        for role, discipline_code in role_discipline_rows:
-            if not str(discipline_code or "").strip():
+            existing_project_keys.add(key)
+
+        for role, discipline_code in discipline_source:
+            discipline_key = str(discipline_code or "").strip().upper()
+            if not discipline_key:
+                continue
+            role_key = str(role or "").strip().lower()
+            if role_key not in ALL_ROLES:
+                continue
+            key = (category_key, role_key, discipline_key)
+            if key in existing_discipline_keys:
                 continue
             db.add(
                 RoleCategoryDisciplineScope(
                     category=category_key,
-                    role=str(role or "").strip().lower(),
-                    discipline_code=str(discipline_code or "").strip().upper(),
+                    role=role_key,
+                    discipline_code=discipline_key,
                 )
             )
+            existing_discipline_keys.add(key)
 
 
 def _backfill_workboard_organization_defaults(db: Session) -> None:
@@ -697,6 +848,7 @@ def _run_smart_migrations() -> None:
         _backfill_permission_matrix(db)
         _seed_role_scopes_from_kv(db)
         _seed_user_scopes_from_kv(db)
+        _migrate_legacy_organization_types(db)
         _seed_organization_defaults(db)
         db.flush()
         _backfill_user_organization_defaults(db)

@@ -66,6 +66,38 @@ let MODULE_SETTINGS_VISIBILITY = {
     consultant: true,
 };
 
+let HUB_VISIBILITY = {
+    dashboard: true,
+    edms: true,
+    reports: true,
+    contractor: true,
+    consultant: true,
+};
+
+let DEFAULT_HUB = 'dashboard';
+
+let CONTRACTOR_TAB_VISIBILITY = {
+    execution: true,
+    requests: true,
+    'permit-qc': true,
+};
+
+let CONSULTANT_TAB_VISIBILITY = {
+    inspection: true,
+    defects: true,
+    instructions: true,
+    control: true,
+    'permit-qc': true,
+};
+
+const HUB_TO_VIEW = {
+    dashboard: 'view-dashboard',
+    edms: 'view-edms',
+    reports: 'view-reports',
+    contractor: 'view-contractor',
+    consultant: 'view-consultant',
+};
+
 const EDMS_TAB_TO_VIEW = {
     archive: 'view-archive',
     transmittal: 'view-transmittal',
@@ -180,6 +212,7 @@ function buildBootDeps() {
         primeLoadedScriptCache: () => primeLoadedScriptCache(),
         loadDictionary: () => loadDictionary(),
         loadEdmsNavigation: () => loadEdmsNavigation(),
+        resolveInitialView: () => resolveInitialView(),
         navigateTo: (viewId) => navigateTo(viewId),
         markPerf: (name) => markPerf(name),
         measurePerf: (metricName, startMark, endMark) => measurePerf(metricName, startMark, endMark),
@@ -228,7 +261,7 @@ async function runAppBoot() {
     await loadEdmsNavigation();
     
     // 2. Ø§Ø¬Ø¨Ø§Ø± Ø¨Ù‡ Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ø¯Ø± Ø´Ø±ÙˆØ¹ Ú©Ø§Ø±
-    await navigateTo('view-dashboard');
+    await navigateTo(resolveInitialView());
     
     toggleLoader(false);
     markPerf('first_view_ready');
@@ -318,22 +351,56 @@ function setupGlobalListeners() {
 }
 
 function mapToRoutedView(viewId) {
+    const requested = String(viewId || '').trim();
+    if (!requested) return resolveInitialView();
+
     if (TS_EDMS_STATE?.mapToRoutedView) {
-        const mapped = TS_EDMS_STATE.mapToRoutedView(viewId);
+        const mapped = TS_EDMS_STATE.mapToRoutedView(requested);
         if (mapped) {
             if (mapped === 'view-edms' && TS_EDMS_STATE?.getPendingEdmsTab) {
                 PENDING_EDMS_TAB = TS_EDMS_STATE.getPendingEdmsTab();
+            }
+            const mappedHub = hubFromView(mapped);
+            if (mappedHub && !isHubVisible(mappedHub)) {
+                return resolveInitialView();
+            }
+            if (mapped === 'view-edms' && !getFirstVisibleEdmsTab()) {
+                return resolveInitialView();
             }
             return mapped;
         }
     }
 
-    const requested = String(viewId || '').trim();
     const mappedTab = EDMS_VIEW_TO_TAB[requested];
     if (mappedTab) {
         PENDING_EDMS_TAB = mappedTab;
+        if (!getFirstVisibleEdmsTab() || !isHubVisible('edms')) {
+            return resolveInitialView();
+        }
         return 'view-edms';
     }
+
+    const requestedHub = hubFromView(requested);
+    if (requestedHub && !isHubVisible(requestedHub)) {
+        return resolveInitialView();
+    }
+
+    if (requested === 'view-contractor' && !getFirstVisibleContractorTab()) {
+        return resolveInitialView();
+    }
+    if (requested === 'view-consultant' && !getFirstVisibleConsultantTab()) {
+        return resolveInitialView();
+    }
+    if (requested === 'view-edms-settings' && MODULE_SETTINGS_VISIBILITY.edms === false) {
+        return isHubVisible('edms') ? 'view-edms' : resolveInitialView();
+    }
+    if (requested === 'view-contractor-settings' && MODULE_SETTINGS_VISIBILITY.contractor === false) {
+        return isHubVisible('contractor') ? 'view-contractor' : resolveInitialView();
+    }
+    if (requested === 'view-consultant-settings' && MODULE_SETTINGS_VISIBILITY.consultant === false) {
+        return isHubVisible('consultant') ? 'view-consultant' : resolveInitialView();
+    }
+
     return requested;
 }
 
@@ -517,6 +584,247 @@ function consumePendingEdmsTab() {
 window.consumePendingSettingsTab = consumePendingSettingsTab;
 window.consumePendingEdmsTab = consumePendingEdmsTab;
 
+function normalizeHubKey(value) {
+    const key = String(value || '').trim().toLowerCase();
+    return HUB_TO_VIEW[key] ? key : '';
+}
+
+function normalizeUserRole(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function fallbackHubByRole(roleValue) {
+    const orgType = String(
+        window.authManager?.user?.organization?.org_type
+        || window.authManager?.user?.org_type
+        || ''
+    ).trim().toLowerCase();
+    if (orgType === 'dcc') return 'edms';
+    if (orgType === 'consultant') return 'consultant';
+    if (orgType === 'employer') return 'reports';
+    if (orgType === 'contractor') return 'contractor';
+    if (orgType === 'system') return 'dashboard';
+
+    const role = normalizeUserRole(roleValue);
+    if (role === 'dcc') return 'edms';
+    if (role === 'admin') return 'dashboard';
+    return 'dashboard';
+}
+
+function getHubOrder() {
+    return ['dashboard', 'edms', 'reports', 'contractor', 'consultant'];
+}
+
+function isHubVisible(hubKey) {
+    const key = normalizeHubKey(hubKey);
+    if (!key) return false;
+    return HUB_VISIBILITY[key] !== false;
+}
+
+function getFirstVisibleHub() {
+    return getHubOrder().find((hub) => isHubVisible(hub)) || '';
+}
+
+function resolveHubView(hubKey) {
+    const normalized = normalizeHubKey(hubKey);
+    if (!normalized) return 'view-dashboard';
+    return HUB_TO_VIEW[normalized] || 'view-dashboard';
+}
+
+function hubFromView(viewId) {
+    const view = String(viewId || '').trim().toLowerCase();
+    if (!view) return '';
+    if (view === 'view-dashboard') return 'dashboard';
+    if (view === 'view-edms' || view === 'view-archive' || view === 'view-transmittal' || view === 'view-correspondence' || view === 'view-edms-settings') return 'edms';
+    if (view === 'view-reports') return 'reports';
+    if (view === 'view-contractor' || view === 'view-contractor-settings') return 'contractor';
+    if (view === 'view-consultant' || view === 'view-consultant-settings') return 'consultant';
+    return '';
+}
+
+function getHubLastStorageKey() {
+    const userId = window.authManager?.user?.id;
+    if (userId !== undefined && userId !== null && String(userId).trim() !== '') {
+        return `last_hub_user_${String(userId).trim()}`;
+    }
+    const role = normalizeUserRole(window.authManager?.user?.role) || 'unknown';
+    return `last_hub_role_${role}`;
+}
+
+function saveLastHub(hubKey) {
+    const normalized = normalizeHubKey(hubKey);
+    if (!normalized || !isHubVisible(normalized)) return;
+    try {
+        localStorage.setItem(getHubLastStorageKey(), normalized);
+    } catch (error) {
+        console.warn('Failed to save last hub.', error);
+    }
+}
+
+function loadLastHub() {
+    try {
+        const value = localStorage.getItem(getHubLastStorageKey());
+        return normalizeHubKey(value);
+    } catch (error) {
+        console.warn('Failed to load last hub.', error);
+        return '';
+    }
+}
+
+function getResolvedDefaultHub() {
+    const preferred = normalizeHubKey(DEFAULT_HUB) || fallbackHubByRole(window.authManager?.user?.role);
+    if (preferred && isHubVisible(preferred)) return preferred;
+    return getFirstVisibleHub() || 'dashboard';
+}
+
+function resolveInitialView() {
+    const lastHub = loadLastHub();
+    if (lastHub && isHubVisible(lastHub)) return resolveHubView(lastHub);
+    return resolveHubView(getResolvedDefaultHub());
+}
+
+function isContractorTabVisible(tabName) {
+    const key = String(tabName || '').trim().toLowerCase();
+    if (!key || !CONTRACTOR_TAB_TO_PANEL[key]) return false;
+    return CONTRACTOR_TAB_VISIBILITY[key] !== false;
+}
+
+function getFirstVisibleContractorTab() {
+    const order = ['execution', 'requests', 'permit-qc'];
+    return order.find((tab) => isContractorTabVisible(tab)) || '';
+}
+
+function isConsultantTabVisible(tabName) {
+    const key = String(tabName || '').trim().toLowerCase();
+    if (!key || !CONSULTANT_TAB_TO_PANEL[key]) return false;
+    return CONSULTANT_TAB_VISIBILITY[key] !== false;
+}
+
+function getFirstVisibleConsultantTab() {
+    const order = ['inspection', 'defects', 'instructions', 'control', 'permit-qc'];
+    return order.find((tab) => isConsultantTabVisible(tab)) || '';
+}
+
+function applySidebarHubVisibility() {
+    document.querySelectorAll('[data-hub-view]').forEach((el) => {
+        const node = el;
+        const hubKey = normalizeHubKey(node?.dataset?.hubView || '');
+        if (!hubKey) return;
+        if (hubKey === 'settings') return;
+        const visible = isHubVisible(hubKey);
+        node.style.display = visible ? '' : 'none';
+    });
+
+    document.querySelectorAll('[data-hub-section]').forEach((el) => {
+        const node = el;
+        const hubKey = normalizeHubKey(node?.dataset?.hubSection || '');
+        if (!hubKey) return;
+        if (hubKey === 'settings') return;
+        const visible = isHubVisible(hubKey);
+        node.style.display = visible ? '' : 'none';
+    });
+}
+
+function applyContractorTabVisibility() {
+    let firstVisible = '';
+    Object.entries(CONTRACTOR_TAB_TO_PANEL).forEach(([tabName, panelId]) => {
+        const visible = isContractorTabVisible(tabName);
+        if (!firstVisible && visible) firstVisible = tabName;
+
+        const tabBtn = document.querySelector(`.contractor-tab-btn[data-contractor-tab="${tabName}"]`);
+        if (tabBtn) tabBtn.style.display = visible ? '' : 'none';
+
+        const panel = document.getElementById(panelId);
+        if (panel && !visible) {
+            panel.style.display = 'none';
+            panel.classList.remove('active');
+        }
+    });
+    const nav = document.getElementById('nav-contractor');
+    if (nav) {
+        nav.style.display = (firstVisible && isHubVisible('contractor')) ? '' : 'none';
+    }
+    return firstVisible;
+}
+
+function applyConsultantTabVisibility() {
+    let firstVisible = '';
+    Object.entries(CONSULTANT_TAB_TO_PANEL).forEach(([tabName, panelId]) => {
+        const visible = isConsultantTabVisible(tabName);
+        if (!firstVisible && visible) firstVisible = tabName;
+
+        const tabBtn = document.querySelector(`.consultant-tab-btn[data-consultant-tab="${tabName}"]`);
+        if (tabBtn) tabBtn.style.display = visible ? '' : 'none';
+
+        const panel = document.getElementById(panelId);
+        if (panel && !visible) {
+            panel.style.display = 'none';
+            panel.classList.remove('active');
+        }
+    });
+    const nav = document.getElementById('nav-consultant');
+    if (nav) {
+        nav.style.display = (firstVisible && isHubVisible('consultant')) ? '' : 'none';
+    }
+    return firstVisible;
+}
+
+function applyNavigationPayload(payload) {
+    const body = payload && typeof payload === 'object' ? payload : {};
+    const hubs = body && typeof body.hubs === 'object' ? body.hubs : {};
+    const modules = body && typeof body.modules === 'object' ? body.modules : {};
+    const moduleSettings = modules && typeof modules.settings === 'object' ? modules.settings : {};
+    const contractorModules = modules && typeof modules.contractor === 'object' ? modules.contractor : {};
+    const consultantModules = modules && typeof modules.consultant === 'object' ? modules.consultant : {};
+
+    HUB_VISIBILITY = {
+        dashboard: hubs.dashboard !== false,
+        edms: hubs.edms !== false,
+        reports: hubs.reports !== false,
+        contractor: hubs.contractor !== false,
+        consultant: hubs.consultant !== false,
+    };
+
+    const payloadDefaultHub = normalizeHubKey(body.default_hub);
+    DEFAULT_HUB = payloadDefaultHub || fallbackHubByRole(window.authManager?.user?.role);
+    if (!isHubVisible(DEFAULT_HUB)) {
+        DEFAULT_HUB = getFirstVisibleHub() || 'dashboard';
+    }
+
+    MODULE_SETTINGS_VISIBILITY = {
+        edms: body.edms !== false,
+        contractor: body.contractor !== false,
+        consultant: body.consultant !== false,
+    };
+    if (Object.prototype.hasOwnProperty.call(moduleSettings, 'module_settings')) {
+        const enabled = moduleSettings.module_settings !== false;
+        MODULE_SETTINGS_VISIBILITY = {
+            edms: enabled,
+            contractor: enabled,
+            consultant: enabled,
+        };
+    }
+
+    CONTRACTOR_TAB_VISIBILITY = {
+        execution: contractorModules.execution !== false,
+        requests: contractorModules.requests !== false,
+        'permit-qc': contractorModules.permit_qc !== false,
+    };
+
+    CONSULTANT_TAB_VISIBILITY = {
+        inspection: consultantModules.inspection !== false,
+        defects: consultantModules.defects !== false,
+        instructions: consultantModules.instructions !== false,
+        control: consultantModules.control !== false,
+        'permit-qc': consultantModules.permit_qc !== false,
+    };
+
+    applySidebarHubVisibility();
+    applyModuleInternalSettingsVisibility();
+    applyContractorTabVisibility();
+    applyConsultantTabVisibility();
+}
+
 function isEdmsTabVisible(tabName) {
     if (TS_EDMS_STATE?.isTabVisible) {
         return TS_EDMS_STATE.isTabVisible(tabName);
@@ -602,7 +910,7 @@ function applyEdmsTabVisibility() {
                     }
                 },
                 setNavVisible: (visible) => {
-                    if (navEdms) navEdms.style.display = visible ? '' : 'none';
+                    if (navEdms) navEdms.style.display = (visible && isHubVisible('edms')) ? '' : 'none';
                 },
             });
             if (handled) return;
@@ -626,7 +934,7 @@ function applyEdmsTabVisibility() {
     });
 
     if (navEdms) {
-        navEdms.style.display = hasVisibleTab ? '' : 'none';
+        navEdms.style.display = (hasVisibleTab && isHubVisible('edms')) ? '' : 'none';
     }
 }
 
@@ -787,7 +1095,10 @@ async function loadEdmsHeaderStats(force = false) {
 window.loadEdmsHeaderStats = loadEdmsHeaderStats;
 
 async function loadEdmsNavigation() {
-    let moduleSettingsVisibility = { ...MODULE_SETTINGS_VISIBILITY };
+    applyNavigationPayload({
+        default_hub: fallbackHubByRole(window.authManager?.user?.role),
+    });
+
     if (TS_EDMS_STATE?.loadNavigationAndApply) {
         try {
             const handled = await TS_EDMS_STATE.loadNavigationAndApply({
@@ -798,19 +1109,17 @@ async function loadEdmsNavigation() {
                         : await fetch(`${API_BASE}/auth/navigation`);
                     if (res && res.ok) {
                         const payload = await res.json();
-                        moduleSettingsVisibility = {
-                            edms: payload?.edms !== false,
-                            contractor: payload?.contractor !== false,
-                            consultant: payload?.consultant !== false,
-                        };
+                        applyNavigationPayload(payload);
                         return payload;
                     }
                     return null;
                 },
                 applyVisibility: () => applyEdmsTabVisibility(),
             });
-            MODULE_SETTINGS_VISIBILITY = moduleSettingsVisibility;
+            applySidebarHubVisibility();
             applyModuleInternalSettingsVisibility();
+            applyContractorTabVisibility();
+            applyConsultantTabVisibility();
             if (handled) return;
         } catch (error) {
             throw error;
@@ -828,19 +1137,17 @@ async function loadEdmsNavigation() {
                 : await fetch(`${API_BASE}/auth/navigation`);
             if (res && res.ok) {
                 const payload = await res.json();
-                moduleSettingsVisibility = {
-                    edms: payload?.edms !== false,
-                    contractor: payload?.contractor !== false,
-                    consultant: payload?.consultant !== false,
-                };
+                applyNavigationPayload(payload);
                 return payload;
             }
             return null;
         },
     });
-    MODULE_SETTINGS_VISIBILITY = moduleSettingsVisibility;
+    applySidebarHubVisibility();
     applyEdmsTabVisibility();
     applyModuleInternalSettingsVisibility();
+    applyContractorTabVisibility();
+    applyConsultantTabVisibility();
 }
 
 function openEdmsTab(tabName, btnEl = null) {
@@ -1082,6 +1389,17 @@ function initPermitQcModule(moduleKey) {
 function openContractorTab(tabName, btnEl = null) {
     const requested = String(tabName || '').trim().toLowerCase();
     const normalizedTab = requested === 'quality' ? 'requests' : requested;
+    if (!isContractorTabVisible(normalizedTab)) {
+        const fallbackTab = getFirstVisibleContractorTab();
+        if (!fallbackTab) {
+            showToast('No accessible tab is available for contractor hub.', 'error');
+            return;
+        }
+        if (fallbackTab !== normalizedTab) {
+            return openContractorTab(fallbackTab, null);
+        }
+        return;
+    }
     const normalized = switchModuleTab(normalizedTab, CONTRACTOR_TAB_TO_PANEL, '.contractor-tab-btn', 'data-contractor-tab', btnEl);
     if (!normalized) return;
     if (normalized === 'permit-qc') {
@@ -1109,6 +1427,11 @@ function openContractorTab(tabName, btnEl = null) {
 
 function initContractorView() {
     applyModuleInternalSettingsVisibility();
+    const firstVisible = applyContractorTabVisibility();
+    if (!firstVisible) {
+        showToast('No accessible tab is available for contractor hub.', 'error');
+        return;
+    }
     initPermitQcModule('contractor');
     if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('contractor')) {
         Promise.resolve(
@@ -1135,11 +1458,23 @@ function initContractorView() {
     }
 
     const currentButton = document.querySelector('.contractor-tab-btn.active');
-    const defaultTab = currentButton?.dataset?.contractorTab || 'execution';
-    openContractorTab(defaultTab, currentButton || null);
+    const activeTab = String(currentButton?.dataset?.contractorTab || '').trim().toLowerCase();
+    const defaultTab = (activeTab && isContractorTabVisible(activeTab)) ? activeTab : firstVisible;
+    openContractorTab(defaultTab || 'execution', currentButton || null);
 }
 
 function openConsultantTab(tabName, btnEl = null) {
+    if (!isConsultantTabVisible(tabName)) {
+        const fallbackTab = getFirstVisibleConsultantTab();
+        if (!fallbackTab) {
+            showToast('No accessible tab is available for consultant hub.', 'error');
+            return;
+        }
+        if (fallbackTab !== String(tabName || '').trim().toLowerCase()) {
+            return openConsultantTab(fallbackTab, null);
+        }
+        return;
+    }
     const normalized = switchModuleTab(tabName, CONSULTANT_TAB_TO_PANEL, '.consultant-tab-btn', 'data-consultant-tab', btnEl);
     if (!normalized) return;
     if (normalized === 'permit-qc') {
@@ -1167,6 +1502,11 @@ function openConsultantTab(tabName, btnEl = null) {
 
 function initConsultantView() {
     applyModuleInternalSettingsVisibility();
+    const firstVisible = applyConsultantTabVisibility();
+    if (!firstVisible) {
+        showToast('No accessible tab is available for consultant hub.', 'error');
+        return;
+    }
     initPermitQcModule('consultant');
     if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('consultant')) {
         Promise.resolve(
@@ -1193,8 +1533,9 @@ function initConsultantView() {
     }
 
     const currentButton = document.querySelector('.consultant-tab-btn.active');
-    const defaultTab = currentButton?.dataset?.consultantTab || 'inspection';
-    openConsultantTab(defaultTab, currentButton || null);
+    const activeTab = String(currentButton?.dataset?.consultantTab || '').trim().toLowerCase();
+    const defaultTab = (activeTab && isConsultantTabVisible(activeTab)) ? activeTab : firstVisible;
+    openConsultantTab(defaultTab || 'inspection', currentButton || null);
 }
 
 window.openContractorTab = openContractorTab;
@@ -2119,6 +2460,11 @@ window.App.navigateTo = navigateTo;
 window.App.events = window.AppEvents || null;
 
 function updateSidebarState(activeViewId) {
+    const activeHub = hubFromView(activeViewId);
+    if (activeHub && isHubVisible(activeHub)) {
+        saveLastHub(activeHub);
+    }
+
     if (TS_APP_SHELL?.updateSidebarState) {
         TS_APP_SHELL.updateSidebarState(activeViewId);
         return;
@@ -2377,6 +2723,3 @@ if (!document.querySelector('#toast-animations')) {
     `;
     document.head.appendChild(style);
 }
-
-
-

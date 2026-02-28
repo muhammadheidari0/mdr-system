@@ -7,7 +7,7 @@ class OrganizationType(str, Enum):
     EMPLOYER = "employer"
     CONSULTANT = "consultant"
     CONTRACTOR = "contractor"
-    SUBCONTRACTOR = "subcontractor"
+    DCC = "dcc"
 
 
 class OrganizationRole(str, Enum):
@@ -23,15 +23,17 @@ PERMISSION_CATEGORIES: tuple[str, ...] = (
     OrganizationType.EMPLOYER.value,
     OrganizationType.CONSULTANT.value,
     OrganizationType.CONTRACTOR.value,
+    OrganizationType.DCC.value,
+    OrganizationType.SYSTEM.value,
 )
 DEFAULT_PERMISSION_CATEGORY = OrganizationType.CONSULTANT.value
 
 ORG_TYPE_TO_PERMISSION_CATEGORY: dict[str, str] = {
-    OrganizationType.SYSTEM.value: DEFAULT_PERMISSION_CATEGORY,
+    OrganizationType.SYSTEM.value: OrganizationType.SYSTEM.value,
     OrganizationType.EMPLOYER.value: OrganizationType.EMPLOYER.value,
     OrganizationType.CONSULTANT.value: OrganizationType.CONSULTANT.value,
     OrganizationType.CONTRACTOR.value: OrganizationType.CONTRACTOR.value,
-    OrganizationType.SUBCONTRACTOR.value: OrganizationType.CONTRACTOR.value,
+    OrganizationType.DCC.value: OrganizationType.DCC.value,
 }
 
 
@@ -55,6 +57,11 @@ def resolve_user_permission_category(user: Any) -> str:
     organization = getattr(user, "organization", None)
     if organization is not None:
         return normalize_permission_category(getattr(organization, "org_type", None))
+    role_key = str(getattr(user, "role", "") or "").strip().lower()
+    if role_key == "admin":
+        return OrganizationType.SYSTEM.value
+    if role_key == "dcc":
+        return OrganizationType.DCC.value
     return DEFAULT_PERMISSION_CATEGORY
 
 

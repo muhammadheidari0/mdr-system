@@ -382,7 +382,7 @@ function organizationTypeLabel(value) {
     employer: 'Ú©Ø§Ø±ÙØ±Ù…Ø§',
     consultant: 'Ù…Ø´Ø§ÙˆØ±',
     contractor: 'Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
-    subcontractor: 'Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø± Ø¬Ø²Ø¡',
+    dcc: 'DCC',
   };
   const key = String(value || '').trim().toLowerCase();
   return map[key] || 'Ù†Ø§Ù…Ø´Ø®Øµ';
@@ -390,7 +390,9 @@ function organizationTypeLabel(value) {
 
 function normalizePermissionCategory(value) {
   const raw = String(value || '').trim().toLowerCase();
-  if (raw === 'contractor' || raw === 'subcontractor') return 'contractor';
+  if (raw === 'contractor') return 'contractor';
+  if (raw === 'dcc') return 'dcc';
+  if (raw === 'system') return 'system';
   if (raw === 'employer') return 'employer';
   return 'consultant';
 }
@@ -1713,4 +1715,3 @@ function initSettingsUsers(forceReload = false) {
 
 window.loadUsers = loadUsers;
 window.initSettingsUsers = initSettingsUsers;
-

@@ -2396,6 +2396,96 @@
         ]
       }
     },
+    "/api/v1/settings/bim-revit": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Get Bim Revit Settings",
+        "operationId": "get_bim_revit_settings_api_v1_settings_bim_revit_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Save Bim Revit Settings",
+        "operationId": "save_bim_revit_settings_api_v1_settings_bim_revit_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BimRevitSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/settings/bim-revit/rotate-secret": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "Rotate Bim Revit Secret",
+        "operationId": "rotate_bim_revit_secret_api_v1_settings_bim_revit_rotate_secret_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/settings/permissions/matrix": {
       "get": {
         "tags": [
@@ -4153,6 +4243,54 @@
         }
       }
     },
+    "/api/v1/storage/sync/nextcloud/run": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Run Nextcloud Jobs",
+        "operationId": "run_nextcloud_jobs_api_v1_storage_sync_nextcloud_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 25,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/storage/openproject/ping": {
       "post": {
         "tags": [
@@ -4160,12 +4298,308 @@
         ],
         "summary": "Ping Openproject",
         "operationId": "ping_openproject_api_v1_storage_openproject_ping_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OpenProjectPingIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/nextcloud/ping": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Ping Nextcloud",
+        "operationId": "ping_nextcloud_api_v1_storage_nextcloud_ping_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NextcloudPingIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/nextcloud/folders": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "List Nextcloud Folders",
+        "operationId": "list_nextcloud_folders_api_v1_storage_nextcloud_folders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NextcloudFoldersIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/storage/openproject/projects/{project_ref}/work-packages/preview": {
+      "get": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Preview Openproject Project Work Packages",
+        "operationId": "preview_openproject_project_work_packages_api_v1_storage_openproject_projects__project_ref__work_packages_preview_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Ref"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/openproject/projects/{project_ref}/import": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Import Openproject Project Work Packages",
+        "operationId": "import_openproject_project_work_packages_api_v1_storage_openproject_projects__project_ref__import_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Ref"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenProjectProjectImportIn",
+                "default": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/storage/google/ping": {
+      "post": {
+        "tags": [
+          "Storage"
+        ],
+        "summary": "Ping Google",
+        "operationId": "ping_google_api_v1_storage_google_ping_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GooglePingIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
               }
             }
           }
@@ -4193,12 +4627,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/api/v1/storage/openproject/import/validate": {
@@ -10226,6 +10655,1207 @@
         }
       }
     },
+    "/api/v1/permit-qc/catalog": {
+      "get": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Catalog",
+        "operationId": "permit_qc_catalog_api_v1_permit_qc_catalog_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Module Key"
+            }
+          },
+          {
+            "name": "project_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Code"
+            }
+          },
+          {
+            "name": "discipline_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discipline Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/list": {
+      "get": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc List",
+        "operationId": "permit_qc_list_api_v1_permit_qc_list_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "module_key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Module Key"
+            }
+          },
+          {
+            "name": "status_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Code"
+            }
+          },
+          {
+            "name": "project_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Code"
+            }
+          },
+          {
+            "name": "discipline_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discipline Code"
+            }
+          },
+          {
+            "name": "permit_no",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Permit No"
+            }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date From"
+            }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date To"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Skip"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/create": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Create",
+        "operationId": "permit_qc_create_api_v1_permit_qc_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitQcCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/permit-qc/{permit_id}": {
+      "get": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Get",
+        "operationId": "permit_qc_get_api_v1_permit_qc__permit_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          },
+          {
+            "name": "module_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Update",
+        "operationId": "permit_qc_update_api_v1_permit_qc__permit_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitQcUpdateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/{permit_id}/submit": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Submit",
+        "operationId": "permit_qc_submit_api_v1_permit_qc__permit_id__submit_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/{permit_id}/resubmit": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Resubmit",
+        "operationId": "permit_qc_resubmit_api_v1_permit_qc__permit_id__resubmit_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/{permit_id}/cancel": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Cancel",
+        "operationId": "permit_qc_cancel_api_v1_permit_qc__permit_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          },
+          {
+            "name": "note",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/{permit_id}/review": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Review",
+        "operationId": "permit_qc_review_api_v1_permit_qc__permit_id__review_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitQcReviewIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/{permit_id}/attachments": {
+      "get": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc List Attachments",
+        "operationId": "permit_qc_list_attachments_api_v1_permit_qc__permit_id__attachments_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          },
+          {
+            "name": "module_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Upload Attachment",
+        "operationId": "permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Delete Attachment",
+        "operationId": "permit_qc_delete_attachment_api_v1_permit_qc__permit_id__attachments_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          },
+          {
+            "name": "attachment_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "module_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/attachments/{attachment_id}/download": {
+      "get": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Download Attachment",
+        "operationId": "permit_qc_download_attachment_api_v1_permit_qc_attachments__attachment_id__download_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Attachment Id"
+            }
+          },
+          {
+            "name": "module_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/{permit_id}/timeline": {
+      "get": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Timeline",
+        "operationId": "permit_qc_timeline_api_v1_permit_qc__permit_id__timeline_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "permit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Permit Id"
+            }
+          },
+          {
+            "name": "module_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Module Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/templates": {
+      "get": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Templates List",
+        "operationId": "permit_qc_templates_list_api_v1_permit_qc_templates_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Code"
+            }
+          },
+          {
+            "name": "discipline_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Discipline Code"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/templates/upsert": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Templates Upsert",
+        "operationId": "permit_qc_templates_upsert_api_v1_permit_qc_templates_upsert_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitQcTemplateUpsertIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/permit-qc/templates/{template_id}/stations/upsert": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Templates Station Upsert",
+        "operationId": "permit_qc_templates_station_upsert_api_v1_permit_qc_templates__template_id__stations_upsert_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitQcTemplateStationUpsertIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/templates/{template_id}/checks/upsert": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Templates Check Upsert",
+        "operationId": "permit_qc_templates_check_upsert_api_v1_permit_qc_templates__template_id__checks_upsert_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitQcTemplateCheckUpsertIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/permit-qc/templates/{template_id}/activate": {
+      "post": {
+        "tags": [
+          "Permit QC"
+        ],
+        "summary": "Permit Qc Templates Activate",
+        "operationId": "permit_qc_templates_activate_api_v1_permit_qc_templates__template_id__activate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Template Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitQcTemplateActivateIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/site-logs/catalog": {
       "get": {
         "tags": [
@@ -11439,6 +13069,868 @@
           }
         }
       }
+    },
+    "/api/v1/bim/edms/inbox/publish-batch": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Publish Batch Inbox",
+        "operationId": "publish_batch_inbox_api_v1_bim_edms_inbox_publish_batch_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/bim/edms/publish-batch": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Publish Batch",
+        "operationId": "publish_batch_api_v1_bim_edms_publish_batch_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/bim/edms/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Get Publish Run",
+        "operationId": "get_publish_run_api_v1_bim_edms_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/edms/runs/{run_id}/items": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Get Publish Run Items",
+        "operationId": "get_publish_run_items_api_v1_bim_edms_runs__run_id__items_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/edms/inbox/runs": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "List Inbox Runs",
+        "operationId": "list_inbox_runs_api_v1_bim_edms_inbox_runs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "project_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Code"
+            }
+          },
+          {
+            "name": "created_from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created From"
+            }
+          },
+          {
+            "name": "created_to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created To"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/edms/inbox/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Get Inbox Run",
+        "operationId": "get_inbox_run_api_v1_bim_edms_inbox_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/edms/inbox/runs/{run_id}/items": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Get Inbox Run Items",
+        "operationId": "get_inbox_run_items_api_v1_bim_edms_inbox_runs__run_id__items_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/edms/inbox/runs/{run_id}/approve": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Approve Inbox Run",
+        "operationId": "approve_inbox_run_api_v1_bim_edms_inbox_runs__run_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/edms/inbox/runs/{run_id}/reject": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Reject Inbox Run",
+        "operationId": "reject_inbox_run_api_v1_bim_edms_inbox_runs__run_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRejectIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/schedules/ingest": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Ingest Schedule",
+        "operationId": "ingest_schedule_api_v1_bim_schedules_ingest_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleIngestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/bim/schedules/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Get Schedule Run",
+        "operationId": "get_schedule_run_api_v1_bim_schedules_runs__run_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/schedules/runs/{run_id}/approve": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Approve Schedule Run",
+        "operationId": "approve_schedule_run_api_v1_bim_schedules_runs__run_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/schedules/runs/{run_id}/reject": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Reject Schedule Run",
+        "operationId": "reject_schedule_run_api_v1_bim_schedules_runs__run_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleRejectIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/config": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Get Bim Config",
+        "operationId": "get_bim_config_api_v1_bim_config_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Code"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/site-logs/revit/manifest": {
+      "get": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Get Site Log Manifest",
+        "operationId": "get_site_log_manifest_api_v1_bim_site_logs_revit_manifest_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project_code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Code"
+            }
+          },
+          {
+            "name": "client_model_guid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Client Model Guid"
+            }
+          },
+          {
+            "name": "updated_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated After"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 500,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bim/site-logs/revit/pull": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Pull Site Log Rows",
+        "operationId": "pull_site_log_rows_api_v1_bim_site_logs_revit_pull_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteLogPullIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/bim/site-logs/revit/ack": {
+      "post": {
+        "tags": [
+          "BIM"
+        ],
+        "summary": "Ack Site Log Sync",
+        "operationId": "ack_site_log_sync_api_v1_bim_site_logs_revit_ack_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteLogAckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -11546,6 +14038,121 @@
         },
         "type": "object",
         "title": "ActivityIn"
+      },
+      "BimRevitSettingsIn": {
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "api_endpoint_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Endpoint Url"
+          },
+          "require_plugin_signature": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Require Plugin Signature"
+          },
+          "plugin_key_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plugin Key Id"
+          },
+          "plugin_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plugin Secret"
+          },
+          "default_category_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Category Id"
+          },
+          "default_folder_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Folder Id"
+          },
+          "allowed_mime": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Mime"
+          },
+          "max_batch_size": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 5000.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Batch Size"
+          }
+        },
+        "type": "object",
+        "title": "BimRevitSettingsIn"
       },
       "BlockDeleteIn": {
         "properties": {
@@ -11736,6 +14343,41 @@
         },
         "type": "object",
         "title": "Body_parse_import_source_api_v1_mdr_parse_import_source_post"
+      },
+      "Body_permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post": {
+        "properties": {
+          "module_key": {
+            "type": "string",
+            "title": "Module Key",
+            "default": "contractor"
+          },
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          },
+          "file_kind": {
+            "type": "string",
+            "title": "File Kind",
+            "default": "attachment"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_permit_qc_upload_attachment_api_v1_permit_qc__permit_id__attachments_post"
       },
       "Body_register_and_upload_api_v1_archive_register_and_upload_post": {
         "properties": {
@@ -14148,6 +16790,81 @@
         "type": "object",
         "title": "EquipmentIn"
       },
+      "GooglePingIn": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 3,
+            "title": "Service"
+          },
+          "oauth_client_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2048
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Client Id"
+          },
+          "oauth_client_secret": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Client Secret"
+          },
+          "oauth_refresh_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oauth Refresh Token"
+          },
+          "sender_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Email"
+          },
+          "calendar_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "service"
+        ],
+        "title": "GooglePingIn"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -14636,6 +17353,90 @@
         "type": "object",
         "title": "NcrDetailIn"
       },
+      "NextcloudFoldersIn": {
+        "properties": {
+          "path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path",
+            "default": "/"
+          }
+        },
+        "type": "object",
+        "title": "NextcloudFoldersIn"
+      },
+      "NextcloudPingIn": {
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          },
+          "app_password": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "App Password"
+          },
+          "root_path": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Root Path"
+          },
+          "skip_ssl_verify": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skip Ssl Verify"
+          }
+        },
+        "type": "object",
+        "title": "NextcloudPingIn"
+      },
       "OpenProjectImportExecuteIn": {
         "properties": {
           "target_parent_work_package_id": {
@@ -14653,6 +17454,67 @@
         },
         "type": "object",
         "title": "OpenProjectImportExecuteIn"
+      },
+      "OpenProjectPingIn": {
+        "properties": {
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
+          "api_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Token"
+          },
+          "skip_ssl_verify": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skip Ssl Verify"
+          }
+        },
+        "type": "object",
+        "title": "OpenProjectPingIn"
+      },
+      "OpenProjectProjectImportIn": {
+        "properties": {
+          "max_items": {
+            "type": "integer",
+            "maximum": 50000.0,
+            "minimum": 1.0,
+            "title": "Max Items",
+            "default": 5000
+          },
+          "page_size": {
+            "type": "integer",
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "default": 200
+          }
+        },
+        "type": "object",
+        "title": "OpenProjectProjectImportIn"
       },
       "OpenProjectStatusIn": {
         "properties": {
@@ -14835,7 +17697,7 @@
           "employer",
           "consultant",
           "contractor",
-          "subcontractor"
+          "dcc"
         ],
         "title": "OrganizationType"
       },
@@ -15005,6 +17867,633 @@
         ],
         "title": "PermissionScopeIn"
       },
+      "PermitQcCreateIn": {
+        "properties": {
+          "module_key": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Module Key",
+            "default": "contractor"
+          },
+          "permit_no": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Permit No"
+          },
+          "permit_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permit Date"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "wall_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Name"
+          },
+          "floor_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floor Label"
+          },
+          "elevation_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevation Start"
+          },
+          "elevation_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevation End"
+          },
+          "project_code": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Project Code"
+          },
+          "discipline_code": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Discipline Code"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "consultant_org_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consultant Org Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "permit_no",
+          "title",
+          "project_code",
+          "discipline_code"
+        ],
+        "title": "PermitQcCreateIn"
+      },
+      "PermitQcReviewCheckIn": {
+        "properties": {
+          "check_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Check Id"
+          },
+          "value_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Text"
+          },
+          "value_bool": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Bool"
+          },
+          "value_number": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Number"
+          },
+          "value_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Date"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_id"
+        ],
+        "title": "PermitQcReviewCheckIn"
+      },
+      "PermitQcReviewIn": {
+        "properties": {
+          "station_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Station Id"
+          },
+          "action": {
+            "type": "string",
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Action"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/PermitQcReviewCheckIn"
+            },
+            "type": "array",
+            "title": "Checks"
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_id",
+          "action"
+        ],
+        "title": "PermitQcReviewIn"
+      },
+      "PermitQcTemplateActivateIn": {
+        "properties": {
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          }
+        },
+        "type": "object",
+        "title": "PermitQcTemplateActivateIn"
+      },
+      "PermitQcTemplateCheckUpsertIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "station_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Station Id"
+          },
+          "check_code": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Check Code"
+          },
+          "check_label": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Check Label"
+          },
+          "check_type": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Check Type",
+            "default": "BOOLEAN"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required",
+            "default": true
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_id",
+          "check_code",
+          "check_label"
+        ],
+        "title": "PermitQcTemplateCheckUpsertIn"
+      },
+      "PermitQcTemplateStationUpsertIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "station_key": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Station Key"
+          },
+          "station_label": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Station Label"
+          },
+          "organization_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization Id"
+          },
+          "is_required": {
+            "type": "boolean",
+            "title": "Is Required",
+            "default": true
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "station_key",
+          "station_label"
+        ],
+        "title": "PermitQcTemplateStationUpsertIn"
+      },
+      "PermitQcTemplateUpsertIn": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "project_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Code"
+          },
+          "discipline_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discipline Code"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "is_default": {
+            "type": "boolean",
+            "title": "Is Default",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "PermitQcTemplateUpsertIn"
+      },
+      "PermitQcUpdateIn": {
+        "properties": {
+          "permit_no": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permit No"
+          },
+          "permit_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Permit Date"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "wall_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Name"
+          },
+          "floor_label": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Floor Label"
+          },
+          "elevation_start": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevation Start"
+          },
+          "elevation_end": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevation End"
+          },
+          "project_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Code"
+          },
+          "discipline_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discipline Code"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "consultant_org_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consultant Org Id"
+          }
+        },
+        "type": "object",
+        "title": "PermitQcUpdateIn"
+      },
       "PhaseDeleteIn": {
         "properties": {
           "ph_code": {
@@ -15151,6 +18640,21 @@
         ],
         "title": "ProjectIn"
       },
+      "PublishRejectIn": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "PublishRejectIn"
+      },
       "ReviewResultIn": {
         "properties": {
           "code": {
@@ -15258,6 +18762,111 @@
           "viewer"
         ],
         "title": "Role"
+      },
+      "ScheduleIngestIn": {
+        "properties": {
+          "project_code": {
+            "type": "string",
+            "title": "Project Code"
+          },
+          "profile_code": {
+            "type": "string",
+            "title": "Profile Code"
+          },
+          "model_guid": {
+            "type": "string",
+            "title": "Model Guid"
+          },
+          "view_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Name"
+          },
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ScheduleRowIn"
+            },
+            "type": "array",
+            "title": "Rows"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_code",
+          "profile_code",
+          "model_guid",
+          "schema_version"
+        ],
+        "title": "ScheduleIngestIn"
+      },
+      "ScheduleRejectIn": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ScheduleRejectIn"
+      },
+      "ScheduleRowIn": {
+        "properties": {
+          "row_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Row No"
+          },
+          "element_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Element Key"
+          },
+          "equipment_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equipment Key"
+          },
+          "values": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "title": "ScheduleRowIn"
       },
       "SiteAgentHeartbeatIn": {
         "properties": {
@@ -15661,6 +19270,56 @@
         ],
         "title": "SiteCacheTokenRevokeIn"
       },
+      "SiteLogAckErrorIn": {
+        "properties": {
+          "sync_key": {
+            "type": "string",
+            "title": "Sync Key"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sync_key",
+          "message"
+        ],
+        "title": "SiteLogAckErrorIn"
+      },
+      "SiteLogAckIn": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "applied_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Applied Count"
+          },
+          "failed_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed Count"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/SiteLogAckErrorIn"
+            },
+            "type": "array",
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "applied_count",
+          "failed_count"
+        ],
+        "title": "SiteLogAckIn"
+      },
       "SiteLogCreateIn": {
         "properties": {
           "log_type": {
@@ -15769,6 +19428,37 @@
           "log_date"
         ],
         "title": "SiteLogCreateIn"
+      },
+      "SiteLogPullIn": {
+        "properties": {
+          "project_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Code"
+          },
+          "client_model_guid": {
+            "type": "string",
+            "title": "Client Model Guid"
+          },
+          "log_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Log Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "client_model_guid"
+        ],
+        "title": "SiteLogPullIn"
       },
       "SiteLogUpdateIn": {
         "properties": {
@@ -15907,6 +19597,18 @@
       },
       "StorageIntegrationsIn": {
         "properties": {
+          "mirror": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mirror"
+          },
           "google_drive": {
             "anyOf": [
               {
@@ -15930,6 +19632,18 @@
               }
             ],
             "title": "Openproject"
+          },
+          "nextcloud": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nextcloud"
           },
           "local_cache": {
             "anyOf": [
