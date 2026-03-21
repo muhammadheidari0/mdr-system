@@ -1913,6 +1913,41 @@ class SettingsAuditLog(Base):
     actor: Mapped["User"] = relationship(back_populates="settings_audit_logs")
 
 
+class NativeEdmsSyncEvent(Base):
+    __tablename__ = "native_edms_sync_events"
+    __table_args__ = (
+        UniqueConstraint("event_id", name="uq_native_edms_sync_events_event_id"),
+        Index("ix_native_edms_sync_events_entity_state", "entity", "delivery_state"),
+        Index("ix_native_edms_sync_events_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    entity: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    operation: Mapped[str] = mapped_column(String(32), nullable=False)
+    endpoint: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    signature: Mapped[str] = mapped_column(String(128), nullable=False)
+    delivery_state: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class NativeEdmsCutoverSnapshot(Base):
+    __tablename__ = "native_edms_cutover_snapshots"
+    __table_args__ = (
+        Index("ix_native_edms_cutover_snapshots_snapshot_type", "snapshot_type"),
+        Index("ix_native_edms_cutover_snapshots_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    snapshot_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    snapshot_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False)
+    checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class RolePermission(Base):
     __tablename__ = "role_permissions"
     __table_args__ = (

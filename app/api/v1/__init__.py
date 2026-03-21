@@ -8,6 +8,7 @@ from app.api.v1.routers.bim import router as bim_router
 from app.api.v1.routers.communication_items import router as communication_items_router
 from app.api.v1.routers.correspondence import router as correspondence_router
 from app.api.v1.routers.dashboard import router as dashboard_router
+from app.api.v1.routers.edms_sync_admin import router as edms_sync_admin_router
 from app.api.v1.routers.lookup import router as lookup_router
 from app.api.v1.routers.mdr import router as mdr_router
 from app.api.v1.routers.permit_qc import router as permit_qc_router
@@ -25,6 +26,7 @@ api_router.include_router(lookup_router)
 api_router.include_router(settings_router)
 api_router.include_router(site_cache_router)
 api_router.include_router(storage_router)
+api_router.include_router(edms_sync_admin_router)
 api_router.include_router(mdr_router)
 api_router.include_router(archive_router)
 api_router.include_router(transmittal_router)
