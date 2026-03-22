@@ -35,8 +35,8 @@ def _has_working_bash() -> bool:
 
 
 @pytest.mark.skipif(not _has_working_bash(), reason="working bash is required")
-def test_render_caddyfile_domain_mode(tmp_path: Path) -> None:
-    output = tmp_path / "Caddyfile.domain"
+def test_render_caddyfile_http_mode_for_fqdn(tmp_path: Path) -> None:
+    output = tmp_path / "Caddyfile.http"
     bash = _bash_executable()
     assert bash is not None
     result = subprocess.run(
@@ -44,7 +44,9 @@ def test_render_caddyfile_domain_mode(tmp_path: Path) -> None:
             bash,
             "tools/render_caddyfile.sh",
             "--domain",
-            "https://esms.example.com/path",
+            "mdr.internal",
+            "--tls-mode",
+            "http",
             "--output",
             str(output),
         ],
@@ -54,37 +56,13 @@ def test_render_caddyfile_domain_mode(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     text = output.read_text(encoding="utf-8")
-    assert "esms.example.com {" in text
-    assert "Strict-Transport-Security" in text
-
-
-@pytest.mark.skipif(not _has_working_bash(), reason="working bash is required")
-def test_render_caddyfile_ip_mode(tmp_path: Path) -> None:
-    output = tmp_path / "Caddyfile.ip"
-    bash = _bash_executable()
-    assert bash is not None
-    result = subprocess.run(
-        [
-            bash,
-            "tools/render_caddyfile.sh",
-            "--domain",
-            "http://185.231.181.48:443/anything",
-            "--output",
-            str(output),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    text = output.read_text(encoding="utf-8")
-    assert ":80 {" in text
+    assert "http://mdr.internal {" in text
     assert "Strict-Transport-Security" not in text
 
 
 @pytest.mark.skipif(not _has_working_bash(), reason="working bash is required")
-def test_render_caddyfile_domain_normalization_with_port_and_path(tmp_path: Path) -> None:
-    output = tmp_path / "Caddyfile.normalized"
+def test_render_caddyfile_internal_mode(tmp_path: Path) -> None:
+    output = tmp_path / "Caddyfile.internal"
     bash = _bash_executable()
     assert bash is not None
     result = subprocess.run(
@@ -92,7 +70,9 @@ def test_render_caddyfile_domain_normalization_with_port_and_path(tmp_path: Path
             bash,
             "tools/render_caddyfile.sh",
             "--domain",
-            " https://esms.example.com:443/some/path ",
+            "mdr.internal",
+            "--tls-mode",
+            "internal",
             "--output",
             str(output),
         ],
@@ -102,5 +82,58 @@ def test_render_caddyfile_domain_normalization_with_port_and_path(tmp_path: Path
     )
     assert result.returncode == 0, result.stderr
     text = output.read_text(encoding="utf-8")
-    assert "esms.example.com {" in text
-    assert "Strict-Transport-Security" in text
+    assert "tls internal" in text
+    assert "mdr.internal {" in text
+
+
+@pytest.mark.skipif(not _has_working_bash(), reason="working bash is required")
+def test_render_caddyfile_custom_mode(tmp_path: Path) -> None:
+    output = tmp_path / "Caddyfile.custom"
+    bash = _bash_executable()
+    assert bash is not None
+    result = subprocess.run(
+        [
+            bash,
+            "tools/render_caddyfile.sh",
+            "--domain",
+            "mdr.internal",
+            "--tls-mode",
+            "custom",
+            "--tls-cert-file",
+            "/opt/mdr_app/docker/certs/server.crt",
+            "--tls-key-file",
+            "/opt/mdr_app/docker/certs/server.key",
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    text = output.read_text(encoding="utf-8")
+    assert "tls /opt/mdr_app/docker/certs/server.crt /opt/mdr_app/docker/certs/server.key" in text
+
+
+@pytest.mark.skipif(not _has_working_bash(), reason="working bash is required")
+def test_render_caddyfile_rejects_non_http_tls_mode_for_ipv4(tmp_path: Path) -> None:
+    output = tmp_path / "Caddyfile.invalid"
+    bash = _bash_executable()
+    assert bash is not None
+    result = subprocess.run(
+        [
+            bash,
+            "tools/render_caddyfile.sh",
+            "--domain",
+            "185.231.181.48",
+            "--tls-mode",
+            "internal",
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "IPv4 deployments only support --tls-mode http" in result.stderr

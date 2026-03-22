@@ -67,6 +67,7 @@ For direct Ubuntu Server deployment with Docker Engine and Caddy TLS proxy, use:
 - `docker/Caddyfile`
 - `.env.production.example`
 - `docs/ubuntu_server_docker_caddy_runbook.md`
+- `docs/offline_ubuntu_install_runbook.md`
 - `docs/storage_upgrade_runbook.md`
 
 Current stable release anchor:

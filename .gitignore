@@ -47,6 +47,7 @@ celerybeat-schedule
 # --- Frontend / test artifacts ---
 node_modules/
 static/dist/
+dist/
 test-results/
 playwright-report/
 reports/
@@ -59,4 +60,6 @@ help.md
 *.tmp
 *.temp
 *.tar.gz
+docker/Caddyfile.generated
+docker/certs/
 helpserver.md

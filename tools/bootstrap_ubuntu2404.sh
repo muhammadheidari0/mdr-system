@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/bootstrap_common.sh"
+
 SCRIPT_NAME="$(basename "$0")"
 
 DEFAULT_REPO_URL="git@github.com:muhammadheidari0/mdr-system.git"
@@ -29,7 +33,6 @@ DRY_RUN=0
 RESET_DB=0
 DOCKER_GROUP_CHANGED=0
 DOCKER_USE_SUDO=0
-
 
 usage() {
   cat <<'EOF'
@@ -65,55 +68,6 @@ Example:
 EOF
 }
 
-
-log_info() { printf '[INFO] %s\n' "$*"; }
-log_warn() { printf '[WARN] %s\n' "$*" >&2; }
-log_error() { printf '[ERROR] %s\n' "$*" >&2; }
-
-die() {
-  log_error "$*"
-  exit 1
-}
-
-require_cmd() {
-  local cmd="$1"
-  command -v "$cmd" >/dev/null 2>&1 || die "Missing required command: $cmd"
-}
-
-run() {
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] $*"
-    return 0
-  fi
-  "$@"
-}
-
-run_sudo() {
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] sudo $*"
-    return 0
-  fi
-  sudo "$@"
-}
-
-run_sudo_shell() {
-  local cmd="$1"
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] sudo bash -lc \"$cmd\""
-    return 0
-  fi
-  sudo bash -lc "$cmd"
-}
-
-run_in_app() {
-  local -a cmd=("$@")
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] (cd $APP_DIR && ${cmd[*]})"
-    return 0
-  fi
-  (cd "$APP_DIR" && "${cmd[@]}")
-}
-
 run_compose() {
   if [[ "$DOCKER_USE_SUDO" -eq 1 ]]; then
     run_in_app sudo docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml "$@"
@@ -121,7 +75,6 @@ run_compose() {
     run_in_app docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml "$@"
   fi
 }
-
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -155,27 +108,14 @@ parse_args() {
       --dry-run)
         DRY_RUN=1; shift ;;
       -h|--help)
-        usage; exit 0 ;;
+        usage
+        exit 0
+        ;;
       *)
         die "Unknown argument: $1 (use --help)"
         ;;
     esac
   done
-}
-
-validate_runtime() {
-  [[ "$EUID" -eq 0 ]] && die "Run as a non-root sudo-enabled user."
-  require_cmd sudo
-
-  [[ -r /etc/os-release ]] || die "Cannot read /etc/os-release."
-  # shellcheck disable=SC1091
-  source /etc/os-release
-  [[ "${ID:-}" == "ubuntu" ]] || die "This script only supports Ubuntu."
-  [[ "${VERSION_ID:-}" == "24.04" ]] || die "This script requires Ubuntu 24.04 LTS."
-
-  if [[ "$DRY_RUN" -eq 0 ]]; then
-    sudo -v >/dev/null 2>&1 || die "Sudo validation failed."
-  fi
 }
 
 install_prerequisites() {
@@ -214,144 +154,6 @@ install_prerequisites() {
     run_sudo usermod -aG docker "$USER"
     DOCKER_GROUP_CHANGED=1
   fi
-}
-
-configure_docker_access() {
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    DOCKER_USE_SUDO=0
-    return 0
-  fi
-
-  if docker info >/dev/null 2>&1; then
-    DOCKER_USE_SUDO=0
-    return 0
-  fi
-
-  if sudo docker info >/dev/null 2>&1; then
-    DOCKER_USE_SUDO=1
-    log_warn "Docker requires sudo in this session. Re-login later to use docker without sudo."
-    return 0
-  fi
-
-  die "Docker daemon is not reachable (neither docker nor sudo docker works)."
-}
-
-env_get() {
-  local key="$1"
-  local file="$2"
-  local line=""
-  [[ -f "$file" ]] || { printf ''; return 0; }
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    if [[ "$line" == "${key}="* ]]; then
-      printf '%s' "${line#*=}"
-      return 0
-    fi
-  done < "$file"
-  printf ''
-}
-
-env_set() {
-  local key="$1"
-  local value="$2"
-  local file="$3"
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] update .env key: $key"
-    return 0
-  fi
-
-  local tmp found line
-  tmp="$(mktemp)"
-  found=0
-
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    if [[ "$line" == "${key}="* ]]; then
-      printf '%s=%s\n' "$key" "$value" >> "$tmp"
-      found=1
-    else
-      printf '%s\n' "$line" >> "$tmp"
-    fi
-  done < "$file"
-
-  if [[ "$found" -eq 0 ]]; then
-    printf '%s=%s\n' "$key" "$value" >> "$tmp"
-  fi
-
-  mv "$tmp" "$file"
-}
-
-trim_text() {
-  local value="$1"
-  value="${value#"${value%%[![:space:]]*}"}"
-  value="${value%"${value##*[![:space:]]}"}"
-  printf '%s' "$value"
-}
-
-normalize_mdr_domain() {
-  local value
-  value="$(trim_text "$1")"
-  value="${value#http://}"
-  value="${value#https://}"
-  value="${value%%/*}"
-  if [[ "$value" =~ ^[^/:]+:[0-9]+$ ]]; then
-    value="${value%%:*}"
-  fi
-  printf '%s' "$value"
-}
-
-is_ipv4_address() {
-  local value="$1"
-  local a b c d octet
-  [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
-  IFS='.' read -r a b c d <<<"$value"
-  for octet in "$a" "$b" "$c" "$d"; do
-    ((octet >= 0 && octet <= 255)) || return 1
-  done
-  return 0
-}
-
-public_health_url() {
-  local domain_value normalized
-  domain_value="$1"
-  normalized="$(normalize_mdr_domain "$domain_value")"
-  if is_ipv4_address "$normalized"; then
-    printf 'http://%s/api/v1/health' "$normalized"
-  else
-    printf 'https://%s/api/v1/health' "$normalized"
-  fi
-}
-
-is_placeholder_value() {
-  local key="$1"
-  local value="$2"
-  local v
-  v="$(printf '%s' "$value" | tr -d '\r\n')"
-
-  [[ -z "$v" ]] && return 0
-  [[ "$v" == \<* ]] && return 0
-
-  case "$v" in
-    CHANGE_ME*|change_me*|change-me*|REPLACE_ME*)
-      return 0
-      ;;
-  esac
-
-  case "$key" in
-    MDR_DOMAIN)
-      [[ "$v" == "esms.example.com" || "$v" == *"your-domain"* ]] && return 0
-      ;;
-    ADMIN_EMAIL)
-      [[ "$v" == "admin@your-domain.com" || "$v" == "admin@example.com" ]] && return 0
-      ;;
-    SECRET_KEY)
-      [[ "$v" == "change-me-in-production" || "$v" == "change-me" ]] && return 0
-      ;;
-    DATABASE_URL|COMPOSE_DATABASE_URL)
-      [[ "$v" == *"CHANGE_ME"* ]] && return 0
-      ;;
-  esac
-
-  return 1
 }
 
 prepare_paths() {
@@ -464,84 +266,6 @@ prepare_env_file() {
   fi
 }
 
-validate_env() {
-  local env_file="${APP_DIR}/.env"
-  local -a required_keys missing
-  required_keys=(
-    MDR_DOMAIN
-    MDR_DATA_ROOT
-    POSTGRES_PASSWORD
-    DATABASE_URL
-    COMPOSE_DATABASE_URL
-    SECRET_KEY
-    ADMIN_EMAIL
-    ADMIN_PASSWORD
-    ADMIN_FULL_NAME
-  )
-  missing=()
-
-  local key value
-  for key in "${required_keys[@]}"; do
-    value="$(env_get "$key" "$env_file")"
-    if is_placeholder_value "$key" "$value"; then
-      missing+=("$key")
-    fi
-  done
-
-  local domain_value normalized_domain
-  domain_value="$(env_get MDR_DOMAIN "$env_file")"
-  normalized_domain="$(normalize_mdr_domain "$domain_value")"
-  if [[ -z "$normalized_domain" ]]; then
-    missing+=("MDR_DOMAIN (invalid)")
-  fi
-
-  local database_url compose_database_url
-  database_url="$(env_get DATABASE_URL "$env_file")"
-  compose_database_url="$(env_get COMPOSE_DATABASE_URL "$env_file")"
-  if [[ -n "$database_url" && -n "$compose_database_url" && "$database_url" != "$compose_database_url" ]]; then
-    missing+=("COMPOSE_DATABASE_URL (must match DATABASE_URL)")
-  fi
-
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    printf '[ERROR] Missing/placeholder env keys:\n' >&2
-    printf '  - %s\n' "${missing[@]}" >&2
-    die "Fix .env values before deploy."
-  fi
-
-  local admin_password admin_password_bytes
-  admin_password="$(env_get ADMIN_PASSWORD "$env_file")"
-  admin_password_bytes="$(printf '%s' "$admin_password" | wc -c | tr -d ' ')"
-  if [[ "${admin_password_bytes:-0}" -gt 72 ]]; then
-    die "ADMIN_PASSWORD exceeds bcrypt 72-byte limit (${admin_password_bytes} bytes)."
-  fi
-}
-
-render_caddyfile_runtime() {
-  local env_file="${APP_DIR}/.env"
-  local domain_value normalized_domain caddyfile_path output_path
-  domain_value="$(env_get MDR_DOMAIN "$env_file")"
-  normalized_domain="$(normalize_mdr_domain "$domain_value")"
-  [[ -n "$normalized_domain" ]] || die "MDR_DOMAIN is required to render Caddyfile."
-  env_set MDR_DOMAIN "$normalized_domain" "$env_file"
-
-  caddyfile_path="$(env_get CADDYFILE_PATH "$env_file")"
-  [[ -n "$caddyfile_path" ]] || caddyfile_path="./docker/Caddyfile.generated"
-  env_set CADDYFILE_PATH "$caddyfile_path" "$env_file"
-
-  if [[ "$caddyfile_path" = /* ]]; then
-    output_path="$caddyfile_path"
-  else
-    output_path="${APP_DIR}/${caddyfile_path#./}"
-  fi
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] would render Caddyfile for ${normalized_domain} -> ${output_path}"
-    return 0
-  fi
-
-  run_in_app bash ./tools/render_caddyfile.sh --domain "$normalized_domain" --output "$output_path"
-}
-
 reset_database_if_requested() {
   local pg_data_dir="${DATA_ROOT}/postgres"
   if [[ "$RESET_DB" -ne 1 ]]; then
@@ -553,46 +277,6 @@ reset_database_if_requested() {
   run_sudo mkdir -p "$pg_data_dir"
   run_sudo find "$pg_data_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
   run_sudo chown -R "$USER:$USER" "$pg_data_dir"
-}
-
-postgres_preflight() {
-  local env_file="${APP_DIR}/.env"
-  local pg_user pg_db pg_password
-  pg_user="$(env_get POSTGRES_USER "$env_file")"
-  pg_db="$(env_get POSTGRES_DB "$env_file")"
-  pg_password="$(env_get POSTGRES_PASSWORD "$env_file")"
-  [[ -n "$pg_user" ]] || pg_user="mdr"
-  [[ -n "$pg_db" ]] || pg_db="mdr_app"
-
-  log_info "Starting PostgreSQL preflight..."
-  run_compose up -d postgres
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] would wait for pg_isready and verify DB credentials."
-    return 0
-  fi
-
-  local i
-  for i in $(seq 1 40); do
-    if run_compose exec -T postgres pg_isready -U "$pg_user" -d "$pg_db" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 2
-  done
-  if [[ "$i" -eq 40 ]]; then
-    die "PostgreSQL did not become ready in time."
-  fi
-
-  if run_compose exec -T -e PGPASSWORD="$pg_password" postgres \
-    psql -h 127.0.0.1 -U "$pg_user" -d "$pg_db" -c "select 1;" >/dev/null 2>&1; then
-    log_info "PostgreSQL credential preflight passed."
-    return 0
-  fi
-
-  if [[ "$RESET_DB" -eq 1 ]]; then
-    die "PostgreSQL credential preflight failed even with --reset-db; verify POSTGRES_* and .env."
-  fi
-  die "PostgreSQL auth mismatch detected. Update .env credentials or rerun with --reset-db."
 }
 
 apply_firewall() {
@@ -649,70 +333,6 @@ deploy_stack() {
   fi
 }
 
-post_deploy_checks() {
-  local env_file="${APP_DIR}/.env"
-  local domain_value public_url
-  domain_value="$(env_get MDR_DOMAIN "$env_file")"
-  public_url="$(public_health_url "$domain_value")"
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] would run health checks for local and ${public_url}"
-    return 0
-  fi
-
-  log_info "Running local health check..."
-  local i
-  for i in $(seq 1 30); do
-    if curl -fsS "http://127.0.0.1:8000/api/v1/health" >/dev/null 2>&1; then
-      log_info "Local health check passed."
-      break
-    fi
-    sleep 2
-  done
-  if [[ "$i" -eq 30 ]]; then
-    die "Local health check failed at http://127.0.0.1:8000/api/v1/health"
-  fi
-
-  if curl -fsS "$public_url" >/dev/null 2>&1; then
-    log_info "Public health check passed: ${public_url}"
-  else
-    log_warn "Public health check failed (DNS/TLS/network may still be propagating): ${public_url}"
-  fi
-}
-
-sync_admin_account() {
-  local env_file="${APP_DIR}/.env"
-  local admin_email admin_password admin_full_name admin_password_bytes
-  admin_email="$(env_get ADMIN_EMAIL "$env_file")"
-  admin_password="$(env_get ADMIN_PASSWORD "$env_file")"
-  admin_full_name="$(env_get ADMIN_FULL_NAME "$env_file")"
-  admin_password_bytes="$(printf '%s' "$admin_password" | wc -c | tr -d ' ')"
-
-  if [[ "${admin_password_bytes:-0}" -gt 72 ]]; then
-    die "ADMIN_PASSWORD exceeds bcrypt 72-byte limit (${admin_password_bytes} bytes)."
-  fi
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    log_info "[dry-run] would sync admin account via create_admin.py"
-    return 0
-  fi
-
-  log_info "Syncing admin account..."
-  if [[ "$DOCKER_USE_SUDO" -eq 1 ]]; then
-    run_in_app sudo docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec -T \
-      -e ADMIN_EMAIL="$admin_email" \
-      -e ADMIN_PASSWORD="$admin_password" \
-      -e ADMIN_FULL_NAME="$admin_full_name" \
-      web python create_admin.py
-  else
-    run_in_app docker compose -f docker-compose.yml -f docker-compose.windows.prod.yml exec -T \
-      -e ADMIN_EMAIL="$admin_email" \
-      -e ADMIN_PASSWORD="$admin_password" \
-      -e ADMIN_FULL_NAME="$admin_full_name" \
-      web python create_admin.py
-  fi
-}
-
 print_next_steps() {
   log_info "Bootstrap completed."
   if [[ "$DOCKER_GROUP_CHANGED" -eq 1 ]]; then
@@ -729,14 +349,14 @@ main() {
   configure_docker_access
   fetch_code
   prepare_env_file
-  validate_env
-  render_caddyfile_runtime
+  validate_env "${APP_DIR}/.env"
+  render_caddyfile_runtime "${APP_DIR}/.env"
   reset_database_if_requested
   apply_firewall
-  postgres_preflight
+  postgres_preflight "${APP_DIR}/.env"
   deploy_stack
-  post_deploy_checks
-  sync_admin_account
+  post_deploy_checks "${APP_DIR}/.env"
+  sync_admin_account "${APP_DIR}/.env"
   print_next_steps
 }
 

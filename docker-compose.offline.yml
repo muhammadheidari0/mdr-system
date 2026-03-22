@@ -1,0 +1,120 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?POSTGRES_IMAGE is required}
+    container_name: mdr_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mdr_app}
+      POSTGRES_USER: ${POSTGRES_USER:-mdr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "${POSTGRES_PORT_BIND:-127.0.0.1:5432:5432}"
+    volumes:
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mdr} -d ${POSTGRES_DB:-mdr_app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    container_name: mdr_app
+    restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      API_PREFIX: ${API_PREFIX:-/api/v1}
+      APP_ENV: ${APP_ENV:-production}
+      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-${DATABASE_URL:?DATABASE_URL (or COMPOSE_DATABASE_URL) is required}}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@mdr.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-System Administrator}
+      READ_ONLY_MODE: ${COMPOSE_READ_ONLY_MODE:-false}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+      DB_ECHO: ${DB_ECHO:-false}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    ports:
+      - "${WEB_PORT_BIND:-127.0.0.1:8000:8000}"
+    volumes:
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/database:/app/database
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/data_store:/app/data_store
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/archive_storage:/app/archive_storage
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/logs:/app/logs
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import sys,urllib.request; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3).getcode() == 200 else sys.exit(1)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    command: ["/app/docker/start.sh"]
+
+  worker:
+    image: ${APP_IMAGE:?APP_IMAGE is required}
+    container_name: mdr_worker
+    restart: unless-stopped
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: ${COMPOSE_DATABASE_URL:-${DATABASE_URL:?DATABASE_URL (or COMPOSE_DATABASE_URL) is required}}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-10}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-20}
+      DB_POOL_TIMEOUT: ${DB_POOL_TIMEOUT:-30}
+      DB_POOL_RECYCLE: ${DB_POOL_RECYCLE:-1800}
+      DB_ECHO: ${DB_ECHO:-false}
+      GDRIVE_SERVICE_ACCOUNT_JSON: ${GDRIVE_SERVICE_ACCOUNT_JSON:-}
+      GDRIVE_SHARED_DRIVE_ID: ${GDRIVE_SHARED_DRIVE_ID:-}
+      OPENPROJECT_BASE_URL: ${OPENPROJECT_BASE_URL:-}
+      OPENPROJECT_API_TOKEN: ${OPENPROJECT_API_TOKEN:-}
+      OPENPROJECT_DEFAULT_PROJECT_ID: ${OPENPROJECT_DEFAULT_PROJECT_ID:-}
+    volumes:
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/database:/app/database
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/data_store:/app/data_store
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/archive_storage:/app/archive_storage
+      - ${MDR_DATA_ROOT:-/opt/mdr_data}/logs:/app/logs
+    command: ["/app/docker/start_worker.sh"]
+
+  caddy:
+    image: ${CADDY_IMAGE:?CADDY_IMAGE is required}
+    container_name: mdr_caddy
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      MDR_DOMAIN: ${MDR_DOMAIN:?MDR_DOMAIN is required}
+      TLS_CERT_FILE: ${TLS_CERT_FILE:-}
+      TLS_KEY_FILE: ${TLS_KEY_FILE:-}
+    ports:
+      - "${CADDY_HTTP_PORT_BIND:-80:80}"
+      - "${CADDY_HTTPS_PORT_BIND:-127.0.0.1:8443:443}"
+    volumes:
+      - ${CADDYFILE_PATH:-./docker/Caddyfile.generated}:/etc/caddy/Caddyfile:ro
+      - ./docker/certs:/opt/mdr_app/docker/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
