@@ -275,7 +275,7 @@ copy_release_runtime() {
 prepare_env_file_offline() {
   local env_file="${APP_DIR}/.env"
   local template_file="${APP_DIR}/.env.production.example"
-  local pg_user pg_db db_url
+  local pg_user pg_db pg_password_encoded db_url
 
   if [[ ! -f "$env_file" ]]; then
     run cp "$template_file" "$env_file"
@@ -285,7 +285,8 @@ prepare_env_file_offline() {
   pg_db="$(env_get POSTGRES_DB "$env_file")"
   [[ -n "$pg_user" ]] || pg_user="mdr"
   [[ -n "$pg_db" ]] || pg_db="mdr_app"
-  db_url="postgresql+psycopg://${pg_user}:${POSTGRES_PASSWORD}@postgres:5432/${pg_db}"
+  pg_password_encoded="$(url_encode "$POSTGRES_PASSWORD")"
+  db_url="postgresql+psycopg://${pg_user}:${pg_password_encoded}@postgres:5432/${pg_db}"
 
   env_set MDR_DOMAIN "$DOMAIN" "$env_file"
   env_set MDR_DATA_ROOT "$DATA_ROOT" "$env_file"

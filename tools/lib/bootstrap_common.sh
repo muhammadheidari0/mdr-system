@@ -98,6 +98,7 @@ env_get() {
     return 0
   }
   while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
     if [[ "$line" == "${key}="* ]]; then
       printf '%s' "${line#*=}"
       return 0
@@ -122,6 +123,7 @@ env_set() {
 
   if [[ -f "$file" ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do
+      line="${line%$'\r'}"
       if [[ "$line" == "${key}="* ]]; then
         printf '%s=%s\n' "$key" "$value" >> "$tmp"
         found=1
@@ -143,6 +145,16 @@ trim_text() {
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
   printf '%s' "$value"
+}
+
+url_encode() {
+  local value="$1"
+  python3 - "$value" <<'PY'
+import sys
+from urllib.parse import quote
+
+print(quote(sys.argv[1], safe=""), end="")
+PY
 }
 
 normalize_mdr_domain() {

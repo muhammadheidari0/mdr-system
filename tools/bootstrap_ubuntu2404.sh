@@ -246,12 +246,13 @@ prepare_env_file() {
 
   if [[ "$POSTGRES_PASSWORD_EXPLICIT" -eq 1 ]]; then
     env_set POSTGRES_PASSWORD "$POSTGRES_PASSWORD" "$env_file"
-    local pg_user pg_db db_url
+    local pg_user pg_db pg_password_encoded db_url
     pg_user="$(env_get POSTGRES_USER "$env_file")"
     pg_db="$(env_get POSTGRES_DB "$env_file")"
     [[ -n "$pg_user" ]] || pg_user="mdr"
     [[ -n "$pg_db" ]] || pg_db="mdr_app"
-    db_url="postgresql+psycopg://${pg_user}:${POSTGRES_PASSWORD}@postgres:5432/${pg_db}"
+    pg_password_encoded="$(url_encode "$POSTGRES_PASSWORD")"
+    db_url="postgresql+psycopg://${pg_user}:${pg_password_encoded}@postgres:5432/${pg_db}"
     env_set DATABASE_URL "$db_url" "$env_file"
     env_set COMPOSE_DATABASE_URL "$db_url" "$env_file"
   fi

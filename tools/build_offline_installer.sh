@@ -6,17 +6,19 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 VERSION=""
 OUTPUT_DIR="${REPO_ROOT}/dist"
+OFFLINE=0
 
 usage() {
   cat <<'EOF'
 Build the MDR offline installer bundle.
 
 Usage:
-  tools/build_offline_installer.sh --version <vX.Y.Z> [--output-dir <path>]
+  tools/build_offline_installer.sh --version <vX.Y.Z> [--output-dir <path>] [--offline]
 
 Options:
   --version <vX.Y.Z>   Release version tag used for image names and package name
   --output-dir <path>  Directory for the final tar.gz output (default: ./dist)
+  --offline            Require all images to exist locally; do not pull from registries
   -h, --help           Show this help
 EOF
 }
@@ -45,6 +47,8 @@ parse_args() {
         VERSION="${2:-}"; shift 2 ;;
       --output-dir)
         OUTPUT_DIR="${2:-}"; shift 2 ;;
+      --offline)
+        OFFLINE=1; shift ;;
       -h|--help)
         usage
         exit 0
@@ -54,6 +58,30 @@ parse_args() {
         ;;
     esac
   done
+}
+
+image_exists() {
+  local image_ref="$1"
+  docker image inspect "$image_ref" >/dev/null 2>&1
+}
+
+ensure_image_available() {
+  local image_ref="$1"
+  local source_hint="${2:-}"
+
+  if image_exists "$image_ref"; then
+    log_info "Using local image: ${image_ref}"
+    return 0
+  fi
+
+  if [[ "$OFFLINE" -eq 1 ]]; then
+    die "Required image is missing locally in --offline mode: ${image_ref}${source_hint:+ (${source_hint})}"
+  fi
+
+  log_info "Pulling image: ${image_ref}"
+  if ! docker pull "$image_ref"; then
+    die "Could not pull ${image_ref}. If registry access is blocked, load it locally first and rerun with --offline."
+  fi
 }
 
 write_install_wrapper() {
@@ -105,13 +133,17 @@ build_and_export_images() {
   local package_root="$1"
   local images_root="${package_root}/bundle/images"
   local app_image="mdr_app:${VERSION}"
+  local builder_image="node:20-alpine"
+  local runtime_image="python:3.10-slim"
+
+  ensure_image_available "$builder_image" "Dockerfile frontend builder base image"
+  ensure_image_available "$runtime_image" "Dockerfile app runtime base image"
 
   log_info "Building application image ${app_image}..."
-  run docker build -t "$app_image" "$REPO_ROOT"
+  run env DOCKER_BUILDKIT=0 docker build --pull=false -t "$app_image" "$REPO_ROOT"
 
-  log_info "Pulling supporting images..."
-  run docker pull postgres:16-alpine
-  run docker pull caddy:2.8-alpine
+  ensure_image_available "postgres:16-alpine" "offline package dependency"
+  ensure_image_available "caddy:2.8-alpine" "offline package dependency"
 
   log_info "Saving image archives..."
   run docker save -o "${images_root}/mdr_app_${VERSION}.tar" "$app_image"
@@ -136,6 +168,9 @@ main() {
   require_cmd sha256sum
   require_cmd mktemp
 
+  if [[ "$OUTPUT_DIR" != /* ]]; then
+    OUTPUT_DIR="${REPO_ROOT}/${OUTPUT_DIR}"
+  fi
   mkdir -p "$OUTPUT_DIR"
 
   local staging_dir package_name package_root output_file
