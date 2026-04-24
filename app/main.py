@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
         debug=settings.DEBUG,
         lifespan=lifespan,
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.add_middleware(ReadOnlyModeMiddleware)
     app.add_middleware(
         RateLimitMiddleware,
@@ -163,6 +165,7 @@ def create_app() -> FastAPI:
         allowed_views = {
             "dashboard": "views/dashboard.html",
             "edms": "views/edms.html",
+            "document-detail": "views/document_detail.html",
             "reports": "views/reports.html",
             "contractor": "views/contractor_hub.html",
             "consultant": "views/consultant_hub.html",

@@ -52,6 +52,9 @@ let SELECTED_DOC_ID = null; // Ø¨Ø±Ø§ÛŒ Ù…Ù†ÙˆÛŒ Ø±Ø§Ø³�
 // Ù„ÛŒØ³Øª ØªÙ…Ø§Ù… Ù†Ù…Ø§Ù‡Ø§ÛŒ Ø³ÛŒØ³ØªÙ…
 let PENDING_SETTINGS_TAB = null;
 let PENDING_EDMS_TAB = null;
+let PENDING_DOCUMENT_DETAIL_ID = null;
+let PENDING_DOCUMENT_DETAIL_EDIT_MODE = false;
+let PENDING_TRANSMITTAL_DOC = null;
 let EDMS_DEFAULT_TAB = 'archive';
 let EDMS_TAB_VISIBILITY = {
     archive: true,
@@ -89,6 +92,8 @@ let CONSULTANT_TAB_VISIBILITY = {
     control: true,
     'permit-qc': true,
 };
+
+let NAV_CAPABILITIES = {};
 
 const HUB_TO_VIEW = {
     dashboard: 'view-dashboard',
@@ -167,6 +172,7 @@ function buildSiteLogsUiDeps() {
 const VIEW_IDS = [
     'view-dashboard',
     'view-edms',
+    'view-document-detail',
     'view-reports',
     'view-contractor',
     'view-consultant',
@@ -186,6 +192,7 @@ const ADMIN_ONLY_VIEWS = new Set([
 const VIEW_PARTIALS = {
     'view-dashboard': 'dashboard',
     'view-edms': 'edms',
+    'view-document-detail': 'document-detail',
     'view-reports': 'reports',
     'view-contractor': 'contractor',
     'view-consultant': 'consultant',
@@ -378,6 +385,11 @@ function mapToRoutedView(viewId) {
             return resolveInitialView();
         }
         return 'view-edms';
+    }
+
+    if (requested === 'view-document-detail') {
+        if (!isHubVisible('edms')) return resolveInitialView();
+        return 'view-document-detail';
     }
 
     const requestedHub = hubFromView(requested);
@@ -584,6 +596,44 @@ function consumePendingEdmsTab() {
 window.consumePendingSettingsTab = consumePendingSettingsTab;
 window.consumePendingEdmsTab = consumePendingEdmsTab;
 
+function setPendingDocumentDetailId(documentId, options = {}) {
+    const parsedId = Number(documentId || 0);
+    PENDING_DOCUMENT_DETAIL_ID = Number.isFinite(parsedId) && parsedId > 0 ? parsedId : null;
+    PENDING_DOCUMENT_DETAIL_EDIT_MODE = Boolean(options?.editMode);
+}
+
+function consumePendingDocumentDetailId() {
+    const current = PENDING_DOCUMENT_DETAIL_ID;
+    PENDING_DOCUMENT_DETAIL_ID = null;
+    return current;
+}
+
+function consumePendingDocumentDetailEditMode() {
+    const current = Boolean(PENDING_DOCUMENT_DETAIL_EDIT_MODE);
+    PENDING_DOCUMENT_DETAIL_EDIT_MODE = false;
+    return current;
+}
+
+function setPendingTransmittalDoc(payload) {
+    if (!payload || typeof payload !== 'object') {
+        PENDING_TRANSMITTAL_DOC = null;
+        return;
+    }
+    PENDING_TRANSMITTAL_DOC = { ...payload };
+}
+
+function consumePendingTransmittalDoc() {
+    const current = PENDING_TRANSMITTAL_DOC;
+    PENDING_TRANSMITTAL_DOC = null;
+    return current;
+}
+
+window.setPendingDocumentDetailId = setPendingDocumentDetailId;
+window.consumePendingDocumentDetailId = consumePendingDocumentDetailId;
+window.consumePendingDocumentDetailEditMode = consumePendingDocumentDetailEditMode;
+window.setPendingTransmittalDoc = setPendingTransmittalDoc;
+window.consumePendingTransmittalDoc = consumePendingTransmittalDoc;
+
 function normalizeHubKey(value) {
     const key = String(value || '').trim().toLowerCase();
     return HUB_TO_VIEW[key] ? key : '';
@@ -592,6 +642,21 @@ function normalizeHubKey(value) {
 function normalizeUserRole(value) {
     return String(value || '').trim().toLowerCase();
 }
+
+function currentEffectiveUserRole() {
+    return normalizeUserRole(
+        window.authManager?.user?.effective_role || window.authManager?.user?.role || '',
+    );
+}
+
+function hasCapability(permissionKey) {
+    const key = String(permissionKey || '').trim();
+    if (!key) return false;
+    if (window.authManager?.user?.is_system_admin === true) return true;
+    return NAV_CAPABILITIES[key] === true;
+}
+
+window.hasCapability = hasCapability;
 
 function fallbackHubByRole(roleValue) {
     const orgType = String(
@@ -635,7 +700,7 @@ function hubFromView(viewId) {
     const view = String(viewId || '').trim().toLowerCase();
     if (!view) return '';
     if (view === 'view-dashboard') return 'dashboard';
-    if (view === 'view-edms' || view === 'view-archive' || view === 'view-transmittal' || view === 'view-correspondence' || view === 'view-edms-settings') return 'edms';
+    if (view === 'view-edms' || view === 'view-archive' || view === 'view-transmittal' || view === 'view-correspondence' || view === 'view-document-detail' || view === 'view-edms-settings') return 'edms';
     if (view === 'view-reports') return 'reports';
     if (view === 'view-contractor' || view === 'view-contractor-settings') return 'contractor';
     if (view === 'view-consultant' || view === 'view-consultant-settings') return 'consultant';
@@ -647,7 +712,7 @@ function getHubLastStorageKey() {
     if (userId !== undefined && userId !== null && String(userId).trim() !== '') {
         return `last_hub_user_${String(userId).trim()}`;
     }
-    const role = normalizeUserRole(window.authManager?.user?.role) || 'unknown';
+    const role = currentEffectiveUserRole() || 'unknown';
     return `last_hub_role_${role}`;
 }
 
@@ -672,12 +737,35 @@ function loadLastHub() {
 }
 
 function getResolvedDefaultHub() {
-    const preferred = normalizeHubKey(DEFAULT_HUB) || fallbackHubByRole(window.authManager?.user?.role);
+    const preferred = normalizeHubKey(DEFAULT_HUB) || fallbackHubByRole(currentEffectiveUserRole());
     if (preferred && isHubVisible(preferred)) return preferred;
     return getFirstVisibleHub() || 'dashboard';
 }
 
+function resolveInitialViewFromQuery() {
+    const qs = new URLSearchParams(window.location.search || '');
+    const queryView = String(qs.get('view') || '').trim().toLowerCase();
+    if (!queryView) return '';
+
+    if (queryView === 'document-detail' || queryView === 'view-document-detail') {
+        const documentId = Number(qs.get('document_id') || 0);
+        if (Number.isFinite(documentId) && documentId > 0) {
+            PENDING_DOCUMENT_DETAIL_ID = documentId;
+        }
+        return 'view-document-detail';
+    }
+    if (queryView === 'archive') return 'view-archive';
+    if (queryView === 'transmittal') return 'view-transmittal';
+    if (queryView === 'correspondence') return 'view-correspondence';
+    if (queryView.startsWith('view-')) return queryView;
+    return `view-${queryView}`;
+}
+
 function resolveInitialView() {
+    const queryView = resolveInitialViewFromQuery();
+    if (queryView) {
+        return mapToRoutedView(queryView);
+    }
     const lastHub = loadLastHub();
     if (lastHub && isHubVisible(lastHub)) return resolveHubView(lastHub);
     return resolveHubView(getResolvedDefaultHub());
@@ -773,9 +861,15 @@ function applyNavigationPayload(payload) {
     const body = payload && typeof payload === 'object' ? payload : {};
     const hubs = body && typeof body.hubs === 'object' ? body.hubs : {};
     const modules = body && typeof body.modules === 'object' ? body.modules : {};
+    const capabilities = body && typeof body.capabilities === 'object' ? body.capabilities : {};
     const moduleSettings = modules && typeof modules.settings === 'object' ? modules.settings : {};
     const contractorModules = modules && typeof modules.contractor === 'object' ? modules.contractor : {};
     const consultantModules = modules && typeof modules.consultant === 'object' ? modules.consultant : {};
+
+    NAV_CAPABILITIES = {};
+    Object.keys(capabilities).forEach((key) => {
+        NAV_CAPABILITIES[key] = capabilities[key] === true;
+    });
 
     HUB_VISIBILITY = {
         dashboard: hubs.dashboard !== false,
@@ -786,7 +880,7 @@ function applyNavigationPayload(payload) {
     };
 
     const payloadDefaultHub = normalizeHubKey(body.default_hub);
-    DEFAULT_HUB = payloadDefaultHub || fallbackHubByRole(window.authManager?.user?.role);
+    DEFAULT_HUB = payloadDefaultHub || fallbackHubByRole(currentEffectiveUserRole());
     if (!isHubVisible(DEFAULT_HUB)) {
         DEFAULT_HUB = getFirstVisibleHub() || 'dashboard';
     }
@@ -847,13 +941,13 @@ function getEdmsLastTabStorageKey() {
     if (userId !== undefined && userId !== null && String(userId).trim() !== '') {
         return `edms_last_tab_user_${String(userId).trim()}`;
     }
-    const role = String(window.authManager?.user?.role || 'unknown').trim().toLowerCase();
+    const role = currentEffectiveUserRole() || 'unknown';
     return `edms_last_tab_role_${role || 'unknown'}`;
 }
 
 function saveEdmsLastTab(tabName) {
     if (TS_EDMS_STATE?.saveLastTab) {
-        TS_EDMS_STATE.saveLastTab(tabName, window.authManager?.user?.id, window.authManager?.user?.role);
+        TS_EDMS_STATE.saveLastTab(tabName, window.authManager?.user?.id, currentEffectiveUserRole());
         return;
     }
 
@@ -868,7 +962,7 @@ function saveEdmsLastTab(tabName) {
 
 function loadEdmsLastTab() {
     if (TS_EDMS_STATE?.loadLastTab) {
-        return TS_EDMS_STATE.loadLastTab(window.authManager?.user?.id, window.authManager?.user?.role);
+        return TS_EDMS_STATE.loadLastTab(window.authManager?.user?.id, currentEffectiveUserRole());
     }
 
     try {
@@ -1096,13 +1190,13 @@ window.loadEdmsHeaderStats = loadEdmsHeaderStats;
 
 async function loadEdmsNavigation() {
     applyNavigationPayload({
-        default_hub: fallbackHubByRole(window.authManager?.user?.role),
+        default_hub: fallbackHubByRole(currentEffectiveUserRole()),
     });
 
     if (TS_EDMS_STATE?.loadNavigationAndApply) {
         try {
             const handled = await TS_EDMS_STATE.loadNavigationAndApply({
-                role: window.authManager?.user?.role,
+                role: currentEffectiveUserRole(),
                 fetchNavigation: async () => {
                     const res = (typeof window.fetchWithAuth === 'function')
                         ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`)
@@ -1130,7 +1224,7 @@ async function loadEdmsNavigation() {
         throw new Error('EDMS state bridge does not provide navigation loader.');
     }
     await TS_EDMS_STATE.loadNavigation({
-        role: window.authManager?.user?.role,
+        role: currentEffectiveUserRole(),
         fetchNavigation: async () => {
             const res = (typeof window.fetchWithAuth === 'function')
                 ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`)
@@ -1158,7 +1252,7 @@ function openEdmsTab(tabName, btnEl = null) {
                 tabName,
                 button: btnEl || null,
                 userId: window.authManager?.user?.id,
-                role: window.authManager?.user?.role,
+                role: currentEffectiveUserRole(),
                 showAccessDenied: () => {
                     showToast('Access denied for this tab.', 'error');
                 },
@@ -1562,11 +1656,19 @@ function moduleBoardKey(moduleKey, tabKey) {
 }
 
 function moduleBoardCanEdit() {
+    const canWriteByCapability = (
+        hasCapability('workboard:create')
+        || hasCapability('workboard:update')
+        || hasCapability('workboard:delete')
+    );
+    if (canWriteByCapability) return true;
+    if (hasCapability('workboard:read')) return false;
+
     if (TS_MODULE_BOARD?.canEdit) {
-        return !!TS_MODULE_BOARD.canEdit(window.authManager?.user?.role);
+        return !!TS_MODULE_BOARD.canEdit(currentEffectiveUserRole());
     }
 
-    const role = String(window.authManager?.user?.role || '').trim().toLowerCase();
+    const role = currentEffectiveUserRole();
     return role !== 'viewer';
 }
 
@@ -2437,6 +2539,11 @@ function buildRouterDeps() {
         initUserSettingsView: () => {
             if (typeof initUserSettingsView === 'function') initUserSettingsView();
         },
+        initDocumentDetailView: () => {
+            if (typeof initDocumentDetailView === 'function') {
+                initDocumentDetailView();
+            }
+        },
         emitViewActivated: (routedViewId) => {
             window.AppEvents?.emit?.('view:activated', { viewId: routedViewId });
         },
@@ -2452,11 +2559,58 @@ async function navigateTo(viewId) {
     if (!handled) {
         throw new Error(`App router failed to handle navigation for view: ${String(viewId || '')}`);
     }
+    clearDocumentDetailQueryStringForNonDetailRoute(viewId);
+}
+
+function syncDocumentDetailQueryString(documentId) {
+    const id = Number(documentId || 0);
+    if (!Number.isFinite(id) || id <= 0) return;
+    const params = new URLSearchParams(window.location.search || '');
+    params.set('view', 'document-detail');
+    params.set('document_id', String(id));
+    const next = `${window.location.pathname}?${params.toString()}`;
+    window.history.replaceState({}, '', next);
+}
+
+function clearDocumentDetailQueryStringForNonDetailRoute(viewId) {
+    const requested = String(viewId || '').trim().toLowerCase();
+    if (requested === 'view-document-detail' || requested === 'document-detail') return;
+
+    const params = new URLSearchParams(window.location.search || '');
+    const currentView = String(params.get('view') || '').trim().toLowerCase();
+    let changed = false;
+
+    if (currentView === 'document-detail' || currentView === 'view-document-detail') {
+        params.delete('view');
+        changed = true;
+    }
+    if (params.has('document_id')) {
+        params.delete('document_id');
+        changed = true;
+    }
+    if (!changed) return;
+
+    const query = params.toString();
+    const next = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+    window.history.replaceState({}, '', next);
+}
+
+async function navigateToDocumentDetail(documentId, options = {}) {
+    const id = Number(documentId || 0);
+    if (!Number.isFinite(id) || id <= 0) {
+        showToast('شناسه سند معتبر نیست.', 'error');
+        return;
+    }
+    setPendingDocumentDetailId(id, { editMode: Boolean(options?.editMode) });
+    syncDocumentDetailQueryString(id);
+    await navigateTo('view-document-detail');
 }
 
 window.navigateTo = navigateTo;
+window.navigateToDocumentDetail = navigateToDocumentDetail;
 window.App = window.App || {};
 window.App.navigateTo = navigateTo;
+window.App.navigateToDocumentDetail = navigateToDocumentDetail;
 window.App.events = window.AppEvents || null;
 
 function updateSidebarState(activeViewId) {
@@ -2478,7 +2632,7 @@ function updateSidebarState(activeViewId) {
     let navTargetView = activeViewId;
     if (activeViewId === 'view-users' || activeViewId === 'view-bulk') {
         navTargetView = 'view-settings';
-    } else if (activeViewId === 'view-archive' || activeViewId === 'view-transmittal' || activeViewId === 'view-correspondence') {
+    } else if (activeViewId === 'view-archive' || activeViewId === 'view-transmittal' || activeViewId === 'view-correspondence' || activeViewId === 'view-document-detail') {
         navTargetView = 'view-edms';
     } else if (activeViewId === 'view-edms-settings') {
         navTargetView = 'view-edms';

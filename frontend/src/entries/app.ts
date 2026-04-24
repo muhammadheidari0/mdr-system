@@ -1,8 +1,7 @@
-import "./runtime";
-
 const pathname = String(window.location.pathname || "").trim();
 
 void (async () => {
+  // Login pages: skip runtime bridges entirely for faster load
   if (pathname === "/login") {
     await import("../legacy_runtime/loaders/login");
     return;
@@ -12,6 +11,9 @@ void (async () => {
     await import("../legacy_runtime/loaders/debug_login");
     return;
   }
+
+  // All other pages need the full runtime bridges
+  await import("./runtime");
 
   if (pathname === "/api/v1/mdr/bulk-register-page") {
     await import("../legacy_runtime/loaders/bulk_register");

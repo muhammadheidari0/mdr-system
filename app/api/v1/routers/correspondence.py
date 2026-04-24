@@ -26,6 +26,7 @@ from app.db.models import (
     CorrespondenceCategory,
     Discipline,
     IssuingEntity,
+    OpenProjectLink,
     Project,
 )
 from app.services.folder_service import safe_name
@@ -363,9 +364,99 @@ class CorrespondenceActionUpdateIn(BaseModel):
 
 def _attachment_kind(value: Optional[str]) -> str:
     kind = _norm(value).lower()
+    aliases = {
+        "main": "letter",
+        "inside": "original",
+        "attachments": "attachment",
+    }
+    if kind in aliases:
+        return aliases[kind]
     if kind in {"letter", "original", "attachment"}:
         return kind
     return "attachment"
+
+
+def _correspondence_bucket_for_kind(file_kind: str) -> str:
+    return {
+        "letter": "main",
+        "original": "inside",
+        "attachment": "attachments",
+    }.get(_attachment_kind(file_kind), "attachments")
+
+
+def _corr_category_folder(row: Correspondence) -> str:
+    category = getattr(row, "category", None)
+    value = (
+        getattr(category, "name_e", None)
+        or getattr(category, "name_p", None)
+        or row.category_code
+        or "GENERAL"
+    )
+    return safe_name(value) or "GENERAL"
+
+
+def _corr_direction_folder(row: Correspondence) -> str:
+    return safe_name(_norm(row.direction).upper() or "IN") or "IN"
+
+
+def _corr_reference_folder(row: Correspondence) -> str:
+    return safe_name(row.reference_no or f"CORR-{row.id}") or f"CORR-{row.id}"
+
+
+def _unique_file_name(folder: Path, desired_name: str) -> str:
+    candidate = safe_name(desired_name)
+    if not candidate:
+        candidate = "file"
+    path = folder / candidate
+    if not path.exists():
+        return candidate
+
+    suffix = Path(candidate).suffix
+    stem = Path(candidate).stem or "file"
+    counter = 2
+    while True:
+        next_name = safe_name(f"{stem}_{counter:02d}{suffix}")
+        if not (folder / next_name).exists():
+            return next_name
+        counter += 1
+
+
+def _next_corr_attachment_sequence(db: Session, correspondence_id: int) -> int:
+    existing = (
+        db.query(func.count(CorrespondenceAttachment.id))
+        .filter(
+            CorrespondenceAttachment.correspondence_id == int(correspondence_id),
+            CorrespondenceAttachment.file_kind == "attachment",
+            CorrespondenceAttachment.deleted_at.is_(None),
+        )
+        .scalar()
+    )
+    return int(existing or 0) + 1
+
+
+def _corr_storage_file_name(
+    db: Session,
+    row: Correspondence,
+    *,
+    file_kind: str,
+    original_name: str,
+    folder: Path,
+) -> str:
+    safe_original = safe_name(original_name) or "file"
+    original_path = Path(safe_original)
+    suffix = original_path.suffix or ".pdf"
+    stem = safe_name(original_path.stem) or "InsideLetter"
+    reference_no = _corr_reference_folder(row)
+
+    normalized_kind = _attachment_kind(file_kind)
+    if normalized_kind == "letter":
+        title = safe_name(row.subject or row.reference_no or "Untitled") or "Untitled"
+        desired = f"{reference_no}_{title}{suffix}"
+    elif normalized_kind == "original":
+        desired = f"{reference_no}_{stem}{suffix}"
+    else:
+        desired = f"{_next_corr_attachment_sequence(db, int(row.id or 0)):02d}_{safe_original}"
+    return _unique_file_name(folder, desired)
 
 
 def _serialize_action(row: CorrespondenceAction) -> dict:
@@ -433,10 +524,54 @@ def _load_action_or_404(db: Session, action_id: int) -> CorrespondenceAction:
 
 
 def _load_attachment_or_404(db: Session, attachment_id: int) -> CorrespondenceAttachment:
-    row = db.query(CorrespondenceAttachment).filter(CorrespondenceAttachment.id == attachment_id).first()
+    row = (
+        db.query(CorrespondenceAttachment)
+        .filter(
+            CorrespondenceAttachment.id == attachment_id,
+            CorrespondenceAttachment.deleted_at.is_(None),
+        )
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Attachment not found")
     return row
+
+
+def _attachment_preview_supported(row: CorrespondenceAttachment | None) -> bool:
+    if not row or row.deleted_at is not None:
+        return False
+    mime_type = _norm(row.mime_type or row.detected_mime).lower()
+    return mime_type.startswith("image/") or mime_type in {"application/pdf", "application/x-pdf"}
+
+
+def _attachment_sort_key(row: CorrespondenceAttachment) -> tuple[str, int]:
+    return (
+        row.uploaded_at.isoformat() if row.uploaded_at else "",
+        int(row.id or 0),
+    )
+
+
+def _resolve_correspondence_preview_attachment(row: Correspondence) -> CorrespondenceAttachment | None:
+    attachments = [
+        attachment
+        for attachment in list(row.attachments or [])
+        if attachment.deleted_at is None and _attachment_preview_supported(attachment)
+    ]
+    if not attachments:
+        return None
+
+    kind_rank = {"letter": 0, "original": 1, "attachment": 2}
+    attachments.sort(
+        key=lambda item: (
+            kind_rank.get(_attachment_kind(item.file_kind), 9),
+            *_attachment_sort_key(item),
+        ),
+        reverse=False,
+    )
+    best_rank = kind_rank.get(_attachment_kind(attachments[0].file_kind), 9)
+    same_kind = [item for item in attachments if kind_rank.get(_attachment_kind(item.file_kind), 9) == best_rank]
+    same_kind.sort(key=_attachment_sort_key, reverse=True)
+    return same_kind[0] if same_kind else attachments[0]
 
 
 def _enforce_corr_scope(db: Session, user: User, row: Correspondence) -> None:
@@ -451,13 +586,11 @@ def _enforce_corr_scope(db: Session, user: User, row: Correspondence) -> None:
 def _corr_storage_dir(db: Session, row: Correspondence, file_kind: str) -> Path:
     base = StorageManager(db).get_correspondence_base_path()
     issuing = safe_name(row.issuing_code or "GENERAL")
+    category = _corr_category_folder(row)
+    direction = _corr_direction_folder(row)
     ref = safe_name(row.reference_no or f"CORR-{row.id}")
-    kind_folder = {
-        "letter": "Letter",
-        "original": "Original",
-        "attachment": "Attachment",
-    }.get(file_kind, "Attachment")
-    path = base / issuing / ref / kind_folder
+    kind_folder = _correspondence_bucket_for_kind(file_kind)
+    path = base / issuing / category / direction / ref / kind_folder
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -513,7 +646,10 @@ def _counts_for_rows(db: Session, correspondence_ids: list[int]) -> tuple[dict[i
                 CorrespondenceAttachment.correspondence_id.label("correspondence_id"),
                 func.count(CorrespondenceAttachment.id).label("count"),
             )
-            .filter(CorrespondenceAttachment.correspondence_id.in_(correspondence_ids))
+            .filter(
+                CorrespondenceAttachment.correspondence_id.in_(correspondence_ids),
+                CorrespondenceAttachment.deleted_at.is_(None),
+            )
             .group_by(CorrespondenceAttachment.correspondence_id)
             .all()
         )
@@ -987,6 +1123,66 @@ def update_correspondence(
     return {"ok": True, "data": _serialize_correspondence(row)}
 
 
+@router.get("/{correspondence_id}/preview")
+def preview_correspondence_attachment(
+    correspondence_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:read")),
+):
+    row = _load_correspondence_or_404(db, correspondence_id)
+    _enforce_corr_scope(db, user, row)
+
+    attachment = _resolve_correspondence_preview_attachment(row)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="No previewable attachment found")
+
+    file_path = Path(attachment.stored_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Attachment file not found")
+
+    filename = safe_name(attachment.file_name or f"correspondence-{correspondence_id}")
+    media_type = _norm(attachment.mime_type or attachment.detected_mime) or "application/octet-stream"
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.delete("/{correspondence_id}")
+def delete_correspondence(
+    correspondence_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:delete")),
+):
+    row = _load_correspondence_or_404(db, correspondence_id)
+    _enforce_corr_scope(db, user, row)
+
+    file_paths = [
+        Path(attachment.stored_path)
+        for attachment in list(row.attachments or [])
+        if _norm(attachment.stored_path)
+    ]
+    attachment_ids = [int(attachment.id or 0) for attachment in list(row.attachments or []) if int(attachment.id or 0) > 0]
+    if attachment_ids:
+        db.query(OpenProjectLink).filter(
+            OpenProjectLink.entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT,
+            OpenProjectLink.entity_id.in_(attachment_ids),
+        ).delete(synchronize_session=False)
+    db.delete(row)
+    db.commit()
+
+    for file_path in file_paths:
+        try:
+            if file_path.exists():
+                os.remove(file_path)
+        except Exception:
+            pass
+
+    return {"ok": True, "id": correspondence_id}
+
+
 @router.get("/{correspondence_id}/actions")
 def list_correspondence_actions(
     correspondence_id: int,
@@ -1092,6 +1288,7 @@ def list_correspondence_attachments(
     rows = (
         db.query(CorrespondenceAttachment)
         .filter(CorrespondenceAttachment.correspondence_id == correspondence_id)
+        .filter(CorrespondenceAttachment.deleted_at.is_(None))
         .order_by(CorrespondenceAttachment.uploaded_at.desc(), CorrespondenceAttachment.id.desc())
         .all()
     )
@@ -1136,15 +1333,20 @@ def upload_correspondence_attachment(
             raise HTTPException(status_code=400, detail="Action does not belong to this correspondence")
         linked_action_id = action.id
 
-    now = datetime.utcnow()
     original_name = safe_name(file.filename)
-    unique_name = safe_name(f"{now.strftime('%Y%m%d%H%M%S%f')}_{original_name}")
     folder = _corr_storage_dir(db, corr, normalized_kind)
+    stored_name = _corr_storage_file_name(
+        db,
+        corr,
+        file_kind=normalized_kind,
+        original_name=original_name,
+        folder=folder,
+    )
     storage_manager = StorageManager(db)
     saved = storage_manager.save_upload_secure(
         file=file,
         destination_folder=str(folder),
-        new_name=unique_name,
+        new_name=stored_name,
         file_kind="attachment",
     )
     path_obj = Path(saved.stored_path)
@@ -1157,7 +1359,7 @@ def upload_correspondence_attachment(
     row = CorrespondenceAttachment(
         correspondence_id=correspondence_id,
         action_id=linked_action_id,
-        file_name=original_name,
+        file_name=stored_name,
         stored_path=str(path_obj),
         file_kind=normalized_kind,
         mime_type=saved.declared_mime or _norm(file.content_type) or None,
@@ -1165,7 +1367,7 @@ def upload_correspondence_attachment(
         validation_status=saved.validation_status,
         sha256=saved.sha256,
         size_bytes=saved.size_bytes,
-        storage_backend="local",
+        storage_backend=storage_manager.resolve_storage_backend_for_path(saved.stored_path),
         gdrive_file_id=None,
         mirror_provider=mirror_provider or None,
         mirror_remote_id=None,

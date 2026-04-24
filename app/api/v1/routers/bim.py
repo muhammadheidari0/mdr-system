@@ -21,7 +21,7 @@ from app.api.dependencies import (
     has_permission_for_user,
 )
 from app.core.config import settings
-from app.core.roles import Role, normalize_role
+from app.core.roles import Role
 from app.db.models import (
     BimEquipmentItem,
     BimMtoItem,
@@ -36,6 +36,7 @@ from app.db.models import (
     SiteLog,
 )
 from app.services import archive_service, docnum_service
+from app.services.access_control import resolve_effective_access
 from app.services.bim_revit_security import (
     build_signature_canonical,
     compute_body_sha256,
@@ -239,7 +240,7 @@ def _require_permission(db: Session, user: User, permission: str) -> None:
 
 
 def _require_schedule_approver(user: User) -> None:
-    role = normalize_role(getattr(user, "role", None))
+    role = str(resolve_effective_access(user).effective_role or "").strip().lower()
     if role in {Role.ADMIN.value, Role.DCC.value, Role.MANAGER.value}:
         return
     raise _http_error(403, ERROR_PERMISSION, "Only admin/manager/dcc can approve or reject schedule runs.")
@@ -383,7 +384,7 @@ def _build_publish_meta(
 
 
 def _require_inbox_approver(user: User) -> None:
-    role = normalize_role(getattr(user, "role", None))
+    role = str(resolve_effective_access(user).effective_role or "").strip().lower()
     if role in {Role.ADMIN.value, Role.DCC.value, Role.MANAGER.value}:
         return
     raise _http_error(403, ERROR_PERMISSION, "Only admin/manager/dcc can approve or reject BIM inbox runs.")

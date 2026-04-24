@@ -56,7 +56,6 @@ def test_smoke_navigation_for_all_org_categories() -> None:
         "contractor": "contractor",
         "employer": "reports",
         "dcc": "edms",
-        "system": "dashboard",
     }
 
     nav_permissions = [
@@ -124,23 +123,34 @@ def test_smoke_navigation_for_all_org_categories() -> None:
             edms_tabs = body.get("edms_tabs", {})
             assert isinstance(edms_tabs, dict)
             assert body.get("default_edms_tab") in edms_tabs
+        admin_nav_res = client.get("/api/v1/auth/navigation", headers=admin)
+        assert admin_nav_res.status_code == 200, admin_nav_res.text
+        admin_nav = admin_nav_res.json()
+        assert admin_nav.get("ok") is True
+        assert admin_nav.get("is_system_admin") is True
+        assert admin_nav.get("permission_category") == "system"
+        assert admin_nav.get("default_hub") == "dashboard"
     finally:
         for category, matrix in original_by_category.items():
             _save_matrix(admin, category, matrix)
 
 
-def test_smoke_permissions_matrix_categories_and_system_enforcement() -> None:
+def test_smoke_permissions_matrix_categories_and_roles() -> None:
     admin = admin_headers(client)
-    categories = ["consultant", "contractor", "employer", "dcc", "system"]
+    categories = ["consultant", "contractor", "employer", "dcc"]
 
     payload_by_category = {category: _get_matrix(admin, category) for category in categories}
     for category in categories:
         body = payload_by_category[category]
         assert category in (body.get("categories") or [])
-        assert bool(body.get("read_only")) is (category == "system")
+        assert "system" not in (body.get("categories") or [])
+        assert bool(body.get("read_only")) is False
         assert isinstance(body.get("matrix"), dict)
         assert isinstance(body.get("roles"), list)
         assert isinstance(body.get("permissions"), list)
+        roles = [str(item) for item in (body.get("roles") or [])]
+        assert "admin" not in roles
+        assert set(roles).issubset({"manager", "dcc", "user", "viewer"})
 
     # DCC matrix is editable and independent from consultant matrix.
     dcc_payload = payload_by_category["dcc"]
@@ -168,22 +178,6 @@ def test_smoke_permissions_matrix_categories_and_system_enforcement() -> None:
         )
     finally:
         _save_matrix(admin, "dcc", dcc_original)
-
-    # system category must remain full-access even after POST with false values.
-    system_payload = _get_matrix(admin, "system")
-    roles = [str(item) for item in (system_payload.get("roles") or [])]
-    permissions = [str(item) for item in (system_payload.get("permissions") or [])]
-    assert roles and permissions
-
-    all_false_matrix = {role: {permission: False for permission in permissions} for role in roles}
-    _save_matrix(admin, "system", all_false_matrix)
-
-    system_after = _get_matrix(admin, "system")
-    matrix_after = system_after.get("matrix", {})
-    for role in roles:
-        role_map = matrix_after.get(role, {})
-        for permission in permissions:
-            assert bool(role_map.get(permission, False)) is True
 
 
 def test_smoke_endpoint_authorization_respects_permission_matrix_for_contractor(monkeypatch) -> None:

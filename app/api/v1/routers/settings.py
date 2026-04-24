@@ -16,7 +16,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
 
-from app.api.dependencies import get_db, allow_admin
+from app.api.dependencies import get_db, require_permission
 from app.core.config import settings
 from app.core.redaction import redact_secrets
 from app.core.organizations import (
@@ -24,9 +24,9 @@ from app.core.organizations import (
     DEFAULT_PERMISSION_CATEGORY,
     PERMISSION_CATEGORIES,
     normalize_permission_category,
-    resolve_user_permission_category,
 )
-from app.core.roles import ALL_ROLES, ROLE_PERMISSIONS, Role, normalize_role
+from app.core.roles import MATRIX_ROLES, ROLE_PERMISSIONS, Role, normalize_role
+from app.core.permission_catalog import permission_keys
 from app.db.models import (
     Project, Phase, Discipline, Package, Level,
     SettingsKV, Block, MdrCategory, DocStatus, User as DbUser, Organization, WorkboardItem,
@@ -37,6 +37,7 @@ from app.db.models import (
     Correspondence, CorrespondenceAction, CorrespondenceAttachment,
     CorrespondenceCategory, IssuingEntity,
     WorkflowStatus, WorkflowTransition, TechSubtype, ReviewResult,
+    SiteLogRoleCatalog, SiteLogEquipmentCatalog, SiteLogEquipmentStatusCatalog,
 )
 
 # ✅ استفاده از سرویس Seed
@@ -48,6 +49,7 @@ from app.services.storage_policy import (
     get_bim_revit_integration,
     get_storage_integrations,
     get_storage_policy,
+    resolve_primary_storage_provider,
     set_bim_revit_integration,
     set_storage_integrations,
     set_storage_policy,
@@ -55,8 +57,13 @@ from app.services.storage_policy import (
 from app.services.bim_revit_security import encrypt_plugin_secret, generate_plugin_secret
 from app.services.storage_sync import resolve_nextcloud_runtime, resolve_openproject_runtime
 from app.services.storage import StorageManager
+from app.services.access_control import resolve_effective_access
 
-router = APIRouter(prefix="/settings", tags=["settings"], dependencies=[Depends(allow_admin)])
+router = APIRouter(
+    prefix="/settings",
+    tags=["settings"],
+    dependencies=[Depends(require_permission("settings:read"))],
+)
 
 KV_RESERVED_KEYS = {
     "transmittal.state.v1",
@@ -139,6 +146,7 @@ class StoragePolicyIn(BaseModel):
 
 
 class StorageIntegrationsIn(BaseModel):
+    primary: Optional[Dict[str, Any]] = None
     mirror: Optional[Dict[str, Any]] = None
     google_drive: Optional[Dict[str, Any]] = None
     openproject: Optional[Dict[str, Any]] = None
@@ -291,6 +299,20 @@ class UserPermissionScopeIn(BaseModel):
     disciplines: List[str] = Field(default_factory=list)
 
 
+class SiteLogCatalogUpsertIn(BaseModel):
+    catalog_type: str = Field(..., min_length=1, max_length=32)
+    id: Optional[int] = Field(default=None, ge=1)
+    code: str = Field(..., min_length=1, max_length=32)
+    label: str = Field(..., min_length=1, max_length=255)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class SiteLogCatalogDeleteIn(BaseModel):
+    catalog_type: str = Field(..., min_length=1, max_length=32)
+    id: int = Field(..., ge=1)
+
+
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -300,6 +322,57 @@ def _norm(s: Any) -> str:
 
 def _upper(s: Any) -> str:
     return _norm(s).upper()
+
+
+SITE_LOG_CATALOG_MODELS: Dict[str, Any] = {
+    "role": SiteLogRoleCatalog,
+    "equipment": SiteLogEquipmentCatalog,
+    "equipment_status": SiteLogEquipmentStatusCatalog,
+}
+
+SITE_LOG_CATALOG_TITLES: Dict[str, str] = {
+    "role": "فهرست نقش‌ها",
+    "equipment": "فهرست تجهیزات",
+    "equipment_status": "فهرست وضعیت تجهیزات",
+}
+
+
+def _normalize_site_log_catalog_type_or_400(value: Optional[str]) -> str:
+    key = _norm(value).lower()
+    if key not in SITE_LOG_CATALOG_MODELS:
+        raise HTTPException(status_code=400, detail=f"Invalid catalog_type: {value}")
+    return key
+
+
+def _site_log_catalog_model(catalog_type: str):
+    return SITE_LOG_CATALOG_MODELS[_normalize_site_log_catalog_type_or_400(catalog_type)]
+
+
+def _serialize_site_log_catalog_row(row: Any) -> Dict[str, Any]:
+    return {
+        "id": int(getattr(row, "id", 0) or 0),
+        "code": _upper(getattr(row, "code", None)),
+        "label": _norm(getattr(row, "label", None)),
+        "sort_order": int(getattr(row, "sort_order", 0) or 0),
+        "is_active": bool(getattr(row, "is_active", False)),
+    }
+
+
+def _load_site_log_catalog_items(db: Session, catalog_type: str) -> List[Dict[str, Any]]:
+    model = _site_log_catalog_model(catalog_type)
+    rows = (
+        db.query(model)
+        .order_by(model.sort_order.asc(), model.code.asc(), model.id.asc())
+        .all()
+    )
+    return [_serialize_site_log_catalog_row(row) for row in rows]
+
+
+def _load_site_log_catalogs_payload(db: Session) -> Dict[str, List[Dict[str, Any]]]:
+    return {
+        catalog_type: _load_site_log_catalog_items(db, catalog_type)
+        for catalog_type in SITE_LOG_CATALOG_MODELS.keys()
+    }
 
 
 VALID_WORKFLOW_ITEM_TYPES = {"RFI", "NCR", "TECH"}
@@ -370,7 +443,9 @@ def _normalize_permission_category_or_400(value: Optional[str]) -> str:
     if raw in PERMISSION_CATEGORIES:
         return raw
     if raw in ALL_ORG_TYPES:
-        return normalize_permission_category(raw)
+        mapped = normalize_permission_category(raw)
+        if mapped in PERMISSION_CATEGORIES:
+            return mapped
     raise HTTPException(status_code=400, detail=f"Invalid category: {value}")
 
 
@@ -415,8 +490,72 @@ def _storage_integrations_nextcloud_credential_source(integrations: Dict[str, An
     return "none"
 
 
-def _masked_storage_integrations_payload(integrations: Dict[str, Any]) -> Dict[str, Any]:
+def _path_under_storage_root(path_value: str, root_value: str) -> bool:
+    raw_path = _norm(path_value)
+    raw_root = _norm(root_value)
+    if not raw_path or not raw_root:
+        return False
+    return StorageManager._path_is_under_root_value(raw_path, raw_root)
+
+
+def _storage_primary_runtime_payload(
+    db: Session | None,
+    integrations: Dict[str, Any],
+) -> Dict[str, Any]:
+    selected_provider = resolve_primary_storage_provider(integrations)
+    nextcloud_runtime = resolve_nextcloud_runtime(integrations)
+    mount_root = _norm(nextcloud_runtime.get("local_mount_root_effective"))
+    nextcloud_ready = bool(
+        nextcloud_runtime.get("enabled")
+        and _norm(nextcloud_runtime.get("base_url"))
+        and _norm(nextcloud_runtime.get("username"))
+        and _norm(nextcloud_runtime.get("app_password"))
+        and mount_root
+    )
+    mdr_path = _kv_get_value(db, STORAGE_PATH_MDR_KEY, DEFAULT_MDR_STORAGE_PATH) if db else ""
+    corr_path = _kv_get_value(
+        db,
+        STORAGE_PATH_CORRESPONDENCE_KEY,
+        DEFAULT_CORRESPONDENCE_STORAGE_PATH,
+    ) if db else ""
+    mdr_on_mount = bool(db and mount_root and _path_under_storage_root(mdr_path, mount_root))
+    corr_on_mount = bool(db and mount_root and _path_under_storage_root(corr_path, mount_root))
+
+    effective_provider = "local"
+    status = "local_active"
+    status_message = "Primary storage is local filesystem / UNC path."
+    if selected_provider == "nextcloud":
+        if nextcloud_ready and mdr_on_mount and corr_on_mount:
+            effective_provider = "nextcloud"
+            status = "ready"
+            status_message = "Primary storage is Nextcloud via mounted local/UNC path."
+        elif not nextcloud_ready:
+            status = "misconfigured"
+            status_message = "Nextcloud primary storage needs enabled integration, credentials, and Local Mount Root."
+        else:
+            status = "paths_pending"
+            status_message = "Move MDR and Correspondence paths under the Nextcloud Local Mount Root to activate primary storage."
+
+    return {
+        "provider": selected_provider,
+        "effective_provider": effective_provider,
+        "status": status,
+        "status_message": status_message,
+        "nextcloud_ready": nextcloud_ready,
+        "local_mount_root_effective": mount_root,
+        "local_mount_root_source": str(nextcloud_runtime.get("local_mount_root_source") or "none"),
+        "mdr_path_under_mount": mdr_on_mount,
+        "correspondence_path_under_mount": corr_on_mount,
+    }
+
+
+def _masked_storage_integrations_payload(
+    integrations: Dict[str, Any],
+    db: Session | None = None,
+) -> Dict[str, Any]:
     masked = dict(integrations or {})
+    masked["primary"] = _storage_primary_runtime_payload(db, integrations)
+
     openproject = dict(masked.get("openproject", {}))
     if not str(openproject.get("default_work_package_id") or "").strip():
         openproject["default_work_package_id"] = str(openproject.get("default_project_id") or "").strip()
@@ -570,8 +709,9 @@ def _build_access_report_items(
 
     items: List[Dict[str, Any]] = []
     for user in users:
-        role = normalize_role(user.role)
-        category = resolve_user_permission_category(user)
+        access = resolve_effective_access(user)
+        role = access.effective_role
+        category = access.permission_category
         project_allowed = True
         discipline_allowed = True
         has_access = True
@@ -580,7 +720,7 @@ def _build_access_report_items(
         project_restricted = False
         discipline_restricted = False
 
-        if role != Role.ADMIN.value:
+        if not access.full_access:
             role_scope = _scope_for_category(category)
             role_projects = role_scope.get(role, {}).get("projects", [])
             role_disciplines = role_scope.get(role, {}).get("disciplines", [])
@@ -603,7 +743,9 @@ def _build_access_report_items(
                     "email": user.email,
                     "full_name": user.full_name,
                     "role": role,
+                    "organization_role": getattr(user, "organization_role", None),
                     "category": category,
+                    "is_system_admin": access.is_system_admin,
                     "is_active": user.is_active,
                     "has_access": has_access,
                     "project_allowed": project_allowed,
@@ -656,18 +798,13 @@ def _is_allowed_kv_write_key(key: str) -> bool:
 
 
 def _permission_keys() -> List[str]:
-    keys: set[str] = set()
-    for perms in ROLE_PERMISSIONS.values():
-        for perm in perms:
-            if perm != "*":
-                keys.add(perm)
-    return sorted(keys)
+    return permission_keys()
 
 
 def _default_permission_matrix() -> Dict[str, Dict[str, bool]]:
     perms = _permission_keys()
     matrix: Dict[str, Dict[str, bool]] = {}
-    for role in ALL_ROLES:
+    for role in MATRIX_ROLES:
         role_enum = Role(role)
         role_permissions = ROLE_PERMISSIONS.get(role_enum, [])
         if "*" in role_permissions:
@@ -684,11 +821,7 @@ def _normalize_permission_matrix(raw: Any) -> Dict[str, Dict[str, bool]]:
     if not isinstance(raw, dict):
         return normalized
 
-    for role in ALL_ROLES:
-        if role == Role.ADMIN.value:
-            normalized[role] = {perm: True for perm in perms}
-            continue
-
+    for role in MATRIX_ROLES:
         role_data = raw.get(role)
         if not isinstance(role_data, dict):
             continue
@@ -723,10 +856,7 @@ def _load_permission_matrix(
     for row in rows:
         role = _norm(getattr(row, "role", None)).lower()
         perm = _norm(getattr(row, "permission", None))
-        if role not in ALL_ROLES or perm not in perms:
-            continue
-        if role == Role.ADMIN.value:
-            matrix[role][perm] = True
+        if role not in MATRIX_ROLES or perm not in perms:
             continue
         matrix[role][perm] = bool(getattr(row, "allowed", False))
     return matrix
@@ -739,7 +869,7 @@ def _default_scope_rules() -> Dict[str, Dict[str, List[str]]]:
             "projects": [],
             "disciplines": [],
         }
-        for role in ALL_ROLES
+        for role in MATRIX_ROLES
     }
 
 
@@ -760,12 +890,7 @@ def _normalize_scope_rules(raw: Any) -> Dict[str, Dict[str, List[str]]]:
     if not isinstance(raw, dict):
         return normalized
 
-    for role in ALL_ROLES:
-        if role == Role.ADMIN.value:
-            # ادمین همیشه unrestricted است
-            normalized[role] = {"projects": [], "disciplines": []}
-            continue
-
+    for role in MATRIX_ROLES:
         role_data = raw.get(role)
         if not isinstance(role_data, dict):
             continue
@@ -820,7 +945,7 @@ def _load_scope_rules(
         if role_key in normalized and discipline_code:
             normalized[role_key]["disciplines"].append(_upper(discipline_code))
 
-    for role in ALL_ROLES:
+    for role in MATRIX_ROLES:
         normalized[role]["projects"] = sorted(set(normalized[role]["projects"]))
         normalized[role]["disciplines"] = sorted(set(normalized[role]["disciplines"]))
     return normalized
@@ -969,7 +1094,10 @@ def overview(db: Session = Depends(get_db)):
     }
 
 @router.post("/seed")
-def seed_all(db: Session = Depends(get_db)):
+def seed_all(
+    db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("settings:update")),
+):
     """
     فراخوانی سرویس Seed برای خواندن اکسل Master Data و آپدیت دیتابیس.
     همراه با لاگ‌گیری دقیق خطاها.
@@ -1006,6 +1134,7 @@ def list_organizations_settings(
     include_inactive: bool = Query(default=False),
     tree: bool = Query(default=False),
     db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("organizations:read")),
 ):
     all_rows = db.query(Organization).order_by(Organization.id.asc()).all()
     parent_lookup = {int(row.id): row for row in all_rows}
@@ -1065,7 +1194,7 @@ def list_organizations_settings(
 def upsert_organization_settings(
     payload: OrganizationIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("organizations:manage")),
 ):
     code = _upper(payload.code)
     name = _norm(payload.name)
@@ -1151,7 +1280,7 @@ def upsert_organization_settings(
 def delete_organization_settings(
     payload: OrganizationDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("organizations:manage")),
 ):
     if payload.id is None and not _norm(payload.code):
         raise HTTPException(status_code=400, detail="id or code is required")
@@ -1238,7 +1367,7 @@ def list_projects(db: Session = Depends(get_db)):
 def upsert_project(
     payload: ProjectIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     if not code: raise HTTPException(status_code=400, detail="code is required")
@@ -1271,7 +1400,7 @@ def upsert_project(
 def delete_project(
     payload: ProjectDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     row = db.query(Project).filter(Project.code == code).first()
@@ -1329,7 +1458,7 @@ def list_blocks(project_code: Optional[str] = Query(default=None), db: Session =
 def upsert_block(
     payload: BlockIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     pcode = _upper(payload.project_code)
     bcode = _upper(payload.code)
@@ -1362,7 +1491,7 @@ def upsert_block(
 def delete_block(
     payload: BlockDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     pcode = _upper(payload.project_code)
     bcode = _upper(payload.code)
@@ -1397,7 +1526,7 @@ def list_mdr_categories(db: Session = Depends(get_db)):
 def upsert_mdr_category(
     payload: MdrCategoryIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     if not code: raise HTTPException(status_code=400, detail="code is required")
@@ -1430,7 +1559,7 @@ def upsert_mdr_category(
 def delete_mdr_category(
     payload: MdrCategoryDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     row = db.query(MdrCategory).filter(MdrCategory.code == code).first()
@@ -1461,7 +1590,7 @@ def list_phases_settings(db: Session = Depends(get_db)):
 def upsert_phase_settings(
     payload: PhaseIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.ph_code)
     ph = db.query(Phase).filter(Phase.ph_code == code).first()
@@ -1486,7 +1615,7 @@ def upsert_phase_settings(
 def delete_phase_settings(
     payload: PhaseDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.ph_code)
     row = db.query(Phase).filter(Phase.ph_code == code).first()
@@ -1524,7 +1653,7 @@ def list_disciplines_settings(db: Session = Depends(get_db)):
 def upsert_discipline_settings(
     payload: DisciplineIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     disc = db.query(Discipline).filter(Discipline.code == code).first()
@@ -1551,7 +1680,7 @@ def upsert_discipline_settings(
 def delete_discipline_settings(
     payload: DisciplineDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     row = db.query(Discipline).filter(Discipline.code == code).first()
@@ -1600,7 +1729,7 @@ def list_packages_settings(discipline_code: Optional[str] = Query(default=None),
 def upsert_package_settings(
     payload: PackageIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     dcode = _upper(payload.discipline_code)
     raw_pcode = _upper(payload.package_code)
@@ -1652,7 +1781,7 @@ def upsert_package_settings(
 def delete_package_settings(
     payload: PackageDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     dcode = _upper(payload.discipline_code)
     pcode = _upper(payload.package_code)
@@ -1691,7 +1820,7 @@ def list_levels_settings(db: Session = Depends(get_db)):
 def upsert_level_settings(
     payload: LevelIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _norm(payload.code)
     lvl = db.query(Level).filter(Level.code == code).first()
@@ -1719,7 +1848,7 @@ def upsert_level_settings(
 def delete_level_settings(
     payload: LevelDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _norm(payload.code)
     row = db.query(Level).filter(Level.code == code).first()
@@ -1757,7 +1886,7 @@ def list_statuses_settings(db: Session = Depends(get_db)):
 def upsert_status_settings(
     payload: DocStatusIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     st = db.query(DocStatus).filter(DocStatus.code == code).first()
@@ -1785,7 +1914,7 @@ def upsert_status_settings(
 def delete_status_settings(
     payload: DocStatusDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     row = db.query(DocStatus).filter(DocStatus.code == code).first()
@@ -1834,7 +1963,7 @@ def list_correspondence_issuing_settings(db: Session = Depends(get_db)):
 def upsert_correspondence_issuing_settings(
     payload: CorrespondenceIssuingIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     if not code:
@@ -1886,7 +2015,7 @@ def upsert_correspondence_issuing_settings(
 def delete_correspondence_issuing_settings(
     payload: CorrespondenceIssuingDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     row = db.query(IssuingEntity).filter(IssuingEntity.code == code).first()
@@ -1955,7 +2084,7 @@ def list_correspondence_categories_settings(db: Session = Depends(get_db)):
 def upsert_correspondence_categories_settings(
     payload: CorrespondenceCategoryIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     if not code:
@@ -1999,7 +2128,7 @@ def upsert_correspondence_categories_settings(
 def delete_correspondence_categories_settings(
     payload: CorrespondenceCategoryDeleteIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     row = db.query(CorrespondenceCategory).filter(CorrespondenceCategory.code == code).first()
@@ -2054,7 +2183,7 @@ def kv_list(
 def kv_set(
     payload: KvIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     key = _norm(payload.key)
     if not _is_allowed_kv_write_key(key):
@@ -2100,7 +2229,7 @@ def get_storage_paths(db: Session = Depends(get_db)):
 def save_storage_paths(
     payload: StoragePathsIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     mdr_storage_path = _norm(payload.mdr_storage_path)
     correspondence_storage_path = _norm(payload.correspondence_storage_path)
@@ -2164,7 +2293,7 @@ def get_storage_policy_settings(db: Session = Depends(get_db)):
 def save_storage_policy_settings(
     payload: StoragePolicyIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     before = get_storage_policy(db)
     incoming = payload.model_dump(exclude_unset=True)
@@ -2187,7 +2316,7 @@ def save_storage_policy_settings(
 @router.get("/storage-integrations")
 def get_storage_integrations_settings(db: Session = Depends(get_db)):
     integrations = get_storage_integrations(db)
-    masked = _masked_storage_integrations_payload(integrations)
+    masked = _masked_storage_integrations_payload(integrations, db)
     return {
         "ok": True,
         "integrations": masked,
@@ -2199,7 +2328,7 @@ def get_storage_integrations_settings(db: Session = Depends(get_db)):
 def save_storage_integrations_settings(
     payload: StorageIntegrationsIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     before = get_storage_integrations(db)
     incoming = payload.model_dump(exclude_unset=True)
@@ -2231,13 +2360,24 @@ def save_storage_integrations_settings(
             nextcloud_incoming["app_password"] = str((before.get("nextcloud") or {}).get("app_password") or "")
 
     merged = dict(before)
-    for key in ("mirror", "google_drive", "openproject", "nextcloud", "local_cache"):
+    for key in ("primary", "mirror", "google_drive", "openproject", "nextcloud", "local_cache"):
         if isinstance(incoming.get(key), dict):
             current = dict(merged.get(key) or {})
             current.update(incoming.get(key) or {})
             merged[key] = current
+
+    primary_status = _storage_primary_runtime_payload(db, merged)
+    if (
+        str(primary_status.get("effective_provider") or "") == "nextcloud"
+        and str(((merged.get("mirror") or {}).get("provider")) or "").strip().lower() == "nextcloud"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Nextcloud mirror cannot be enabled when Nextcloud is already the effective primary storage.",
+        )
+
     integrations = set_storage_integrations(db, merged)
-    masked = _masked_storage_integrations_payload(integrations)
+    masked = _masked_storage_integrations_payload(integrations, db)
     _audit_log(
         db,
         actor=current_user,
@@ -2254,7 +2394,7 @@ def save_storage_integrations_settings(
 @router.post("/storage-integrations/openproject/clear-token")
 def clear_storage_openproject_token(
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     before = get_storage_integrations(db)
     merged = dict(before)
@@ -2262,7 +2402,7 @@ def clear_storage_openproject_token(
     openproject["api_token"] = ""
     merged["openproject"] = openproject
     integrations = set_storage_integrations(db, merged)
-    masked = _masked_storage_integrations_payload(integrations)
+    masked = _masked_storage_integrations_payload(integrations, db)
     _audit_log(
         db,
         actor=current_user,
@@ -2279,7 +2419,7 @@ def clear_storage_openproject_token(
 @router.get("/bim-revit")
 def get_bim_revit_settings(
     db: Session = Depends(get_db),
-    _: DbUser = Depends(allow_admin),
+    _: DbUser = Depends(require_permission("settings:update")),
 ):
     current = get_bim_revit_integration(db)
     return {
@@ -2293,7 +2433,7 @@ def get_bim_revit_settings(
 def save_bim_revit_settings(
     payload: BimRevitSettingsIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     before = get_bim_revit_integration(db)
     incoming = payload.model_dump(exclude_unset=True)
@@ -2359,7 +2499,7 @@ def save_bim_revit_settings(
 @router.post("/bim-revit/rotate-secret")
 def rotate_bim_revit_secret(
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     before = get_bim_revit_integration(db)
     merged = dict(before)
@@ -2395,10 +2535,115 @@ def rotate_bim_revit_secret(
     }
 
 
+@router.get("/site-log-catalogs")
+def get_site_log_catalogs(
+    db: Session = Depends(get_db),
+):
+    return {
+        "ok": True,
+        "catalogs": _load_site_log_catalogs_payload(db),
+        "catalog_titles": dict(SITE_LOG_CATALOG_TITLES),
+    }
+
+
+@router.post("/site-log-catalogs/upsert")
+def upsert_site_log_catalog(
+    payload: SiteLogCatalogUpsertIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    catalog_type = _normalize_site_log_catalog_type_or_400(payload.catalog_type)
+    model = _site_log_catalog_model(catalog_type)
+    code = _upper(payload.code)
+    label = _norm(payload.label)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+    if not label:
+        raise HTTPException(status_code=400, detail="label is required")
+
+    row = None
+    if payload.id:
+        row = db.query(model).filter(model.id == payload.id).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Catalog item not found")
+
+    duplicate = (
+        db.query(model)
+        .filter(func.upper(model.code) == code)
+        .first()
+    )
+    if duplicate and (not row or int(duplicate.id) != int(row.id)):
+        raise HTTPException(status_code=409, detail="Catalog code already exists")
+
+    before = _serialize_site_log_catalog_row(row) if row else None
+    if not row:
+        row = model(code=code)
+        db.add(row)
+
+    row.code = code
+    row.label = label
+    row.sort_order = int(payload.sort_order or 0)
+    row.is_active = bool(payload.is_active)
+
+    db.flush()
+    after = _serialize_site_log_catalog_row(row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_catalog.upsert",
+        target_type=f"site_log_catalog.{catalog_type}",
+        target_key=str(after["id"]),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "item": after,
+        "catalog_type": catalog_type,
+        "catalogs": _load_site_log_catalogs_payload(db),
+    }
+
+
+@router.post("/site-log-catalogs/delete")
+def delete_site_log_catalog(
+    payload: SiteLogCatalogDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    catalog_type = _normalize_site_log_catalog_type_or_400(payload.catalog_type)
+    model = _site_log_catalog_model(catalog_type)
+    row = db.query(model).filter(model.id == payload.id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Catalog item not found")
+
+    before = _serialize_site_log_catalog_row(row)
+    row.is_active = False
+    db.flush()
+    after = _serialize_site_log_catalog_row(row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_catalog.delete",
+        target_type=f"site_log_catalog.{catalog_type}",
+        target_key=str(payload.id),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "catalog_type": catalog_type,
+        "item": after,
+        "catalogs": _load_site_log_catalogs_payload(db),
+    }
+
+
 @router.get("/permissions/matrix")
 def get_permissions_matrix(
     category: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("permissions:read")),
 ):
     category_key = _normalize_permission_category_or_400(category)
     matrix = _load_permission_matrix(db, category=category_key)
@@ -2406,8 +2651,8 @@ def get_permissions_matrix(
         "ok": True,
         "category": category_key,
         "categories": list(PERMISSION_CATEGORIES),
-        "read_only": bool(category_key == "system"),
-        "roles": list(ALL_ROLES),
+        "read_only": False,
+        "roles": list(MATRIX_ROLES),
         "permissions": _permission_keys(),
         "matrix": matrix,
     }
@@ -2418,27 +2663,23 @@ def save_permissions_matrix(
     payload: PermissionMatrixIn,
     category: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("permissions:update")),
 ):
     category_key = _normalize_permission_category_or_400(category)
     before = _load_permission_matrix(db, category=category_key)
-    if category_key == "system":
-        perms = _permission_keys()
-        matrix = {role: {perm: True for perm in perms} for role in ALL_ROLES}
-    else:
-        matrix = _normalize_permission_matrix(payload.matrix)
+    matrix = _normalize_permission_matrix(payload.matrix)
     perms = _permission_keys()
     db.query(RoleCategoryPermission).filter(
         RoleCategoryPermission.category == category_key
     ).delete(synchronize_session=False)
-    for role in ALL_ROLES:
+    for role in MATRIX_ROLES:
         for perm in perms:
             db.add(
                 RoleCategoryPermission(
                     category=category_key,
                     role=role,
                     permission=perm,
-                    allowed=True if role == Role.ADMIN.value else bool(matrix[role][perm]),
+                    allowed=bool(matrix[role][perm]),
                 )
             )
     _audit_log(
@@ -2463,6 +2704,7 @@ def save_permissions_matrix(
 def get_permissions_scope(
     category: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("permissions:read")),
 ):
     category_key = _normalize_permission_category_or_400(category)
     scope = _load_scope_rules(db, category=category_key)
@@ -2478,7 +2720,7 @@ def get_permissions_scope(
         "ok": True,
         "category": category_key,
         "categories": list(PERMISSION_CATEGORIES),
-        "roles": list(ALL_ROLES),
+        "roles": list(MATRIX_ROLES),
         "scope": scope,
         "projects": projects,
         "disciplines": disciplines,
@@ -2490,7 +2732,7 @@ def save_permissions_scope(
     payload: PermissionScopeIn,
     category: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("permissions:update")),
 ):
     category_key = _normalize_permission_category_or_400(category)
     before = _load_scope_rules(db, category=category_key)
@@ -2505,7 +2747,7 @@ def save_permissions_scope(
         RoleCategoryDisciplineScope.category == category_key
     ).delete(synchronize_session=False)
 
-    for role in ALL_ROLES:
+    for role in MATRIX_ROLES:
         for code in scope.get(role, {}).get("projects", []):
             if code in project_codes:
                 db.add(
@@ -2543,7 +2785,10 @@ def save_permissions_scope(
 
 
 @router.get("/permissions/user-scope")
-def get_permissions_user_scope(db: Session = Depends(get_db)):
+def get_permissions_user_scope(
+    db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("permissions:read")),
+):
     scope = _load_user_scope_rules(db)
     users = db.query(DbUser).order_by(DbUser.id).all()
     return {
@@ -2566,7 +2811,7 @@ def get_permissions_user_scope(db: Session = Depends(get_db)):
 def upsert_permissions_user_scope(
     payload: UserPermissionScopeIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("permissions:update")),
 ):
     user = db.query(DbUser).filter(DbUser.id == payload.user_id).first()
     if not user:
@@ -2623,6 +2868,7 @@ def permissions_access_report(
     include_inactive: bool = Query(default=False),
     include_denied: bool = Query(default=False),
     db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("permissions:audit_read")),
 ):
     project = _upper(project_code)
     discipline = _upper(discipline_code)
@@ -2654,6 +2900,7 @@ def permissions_access_report_csv(
     include_inactive: bool = Query(default=False),
     include_denied: bool = Query(default=False),
     db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("permissions:audit_read")),
 ):
     project = _upper(project_code)
     discipline = _upper(discipline_code)
@@ -2726,6 +2973,7 @@ def permissions_user_access_report(
     user_id: int,
     include_catalog: bool = Query(default=True),
     db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("permissions:audit_read")),
 ):
     user = (
         db.query(DbUser)
@@ -2736,8 +2984,9 @@ def permissions_user_access_report(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    role = normalize_role(user.role)
-    category = resolve_user_permission_category(user)
+    access = resolve_effective_access(user)
+    role = access.effective_role
+    category = access.permission_category
     role_scope = _load_scope_rules(db, category=category).get(role, {"projects": [], "disciplines": []})
     user_scope = _load_user_scope_rules(db).get(str(user_id), {"projects": [], "disciplines": []})
     projects, projects_restricted = _effective_scope_values(
@@ -2757,7 +3006,10 @@ def permissions_user_access_report(
             "email": user.email,
             "full_name": user.full_name,
             "role": role,
+            "organization_role": user.organization_role,
+            "effective_role": role,
             "category": category,
+            "is_system_admin": access.is_system_admin,
             "is_active": user.is_active,
         },
         "role_scope": role_scope,
@@ -2798,6 +3050,7 @@ def permissions_audit_logs(
     target_type: Optional[str] = Query(default=None),
     target_key: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("permissions:audit_read")),
 ):
     q = db.query(SettingsAuditLog)
     if action:
@@ -2881,7 +3134,7 @@ def list_workflow_statuses(
 def upsert_workflow_status(
     payload: WorkflowStatusIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     item_type = _normalize_workflow_item_type_or_400(payload.item_type)
     code = _upper(payload.code)
@@ -2976,7 +3229,7 @@ def list_workflow_transitions(
 def upsert_workflow_transition(
     payload: WorkflowTransitionIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     item_type = _normalize_workflow_item_type_or_400(payload.item_type)
     from_status = _upper(payload.from_status_code)
@@ -3065,7 +3318,7 @@ def list_tech_subtypes(
 def upsert_tech_subtype(
     payload: TechSubtypeIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     label = _norm(payload.label)
@@ -3129,7 +3382,7 @@ def list_review_results(
 def upsert_review_result(
     payload: ReviewResultIn,
     db: Session = Depends(get_db),
-    current_user: DbUser = Depends(allow_admin),
+    current_user: DbUser = Depends(require_permission("settings:update")),
 ):
     code = _upper(payload.code)
     label = _norm(payload.label)
@@ -3168,3 +3421,4 @@ def upsert_review_result(
             "is_active": bool(row.is_active),
         },
     }
+

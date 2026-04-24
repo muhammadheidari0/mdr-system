@@ -27,12 +27,15 @@
     <section id="storage-step-paths" class="storage-step-panel active" data-storage-step-panel="paths">
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">folder</span>
-        <div>مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور قرار بگیرند و توسط Service Account قابل‌نوشتن باشند. در ویندوز می‌توانید مسیر UNC مثل <code>\\192.168.5.5\share\technical</code> هم وارد کنید.</div>
+        <div>مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور قرار بگیرند و توسط Service Account قابل‌نوشتن باشند. در ویندوز می‌توانید مسیر UNC مثل <code>\\192.168.5.5\share\technical</code> هم وارد کنید. اگر Primary Storage Provider روی Nextcloud باشد، همین دو مسیر MDR و Correspondence محل ذخیره اصلی را تعیین می‌کنند و باید زیر Local Mount Root نکست‌کلاد باشند.</div>
       </div>
       <div id="storageNextcloudPickerInlineHint" class="form-help storage-nextcloud-picker-hint"></div>
       <div class="general-form-grid">
         <div class="storage-path-field-group">
-          <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ (MDR / Archive)</div>
+          <div class="storage-path-field-title">
+            Ù…Ø³ÛŒØ± Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ (MDR / Archive)
+            <span id="storagePathMdrBadge" class="storage-path-backend-badge">-</span>
+          </div>
           <div class="storage-path-input-row">
             <input id="mdrStoragePathInput" class="form-input" placeholder="/app/archive_storage/technical">
             <button
@@ -47,12 +50,25 @@
               <span class="material-icons-round">cloud</span>
             </button>
           </div>
+          <div class="storage-path-quick-actions">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              data-general-action="apply-suggested-nextcloud-path"
+              data-storage-path-kind="mdr"
+            >
+              اعمال مسیر پیشنهادی نکست‌کلاد
+            </button>
+          </div>
           <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/technical</code></div>
           <div class="storage-path-preview">Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ normalize Ø´Ø¯Ù‡: <code id="storagePathMdrPreview">-</code></div>
           <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ ÙØ§ÛŒÙ„â€ŒÙ‡Ø§ÛŒ Ø¢Ø±Ø´ÛŒÙˆ Ù…Ø¯Ø§Ø±Ú©ØŒ Ù†Ø³Ø®Ù‡â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ MDR</span>
         </div>
         <div class="storage-path-field-group">
-          <div class="storage-path-field-title">Ù…Ø³ÛŒØ± Ù…Ú©Ø§ØªØ¨Ø§Øª (Correspondence)</div>
+          <div class="storage-path-field-title">
+            Ù…Ø³ÛŒØ± Ù…Ú©Ø§ØªØ¨Ø§Øª (Correspondence)
+            <span id="storagePathCorrespondenceBadge" class="storage-path-backend-badge">-</span>
+          </div>
           <div class="storage-path-input-row">
             <input id="correspondenceStoragePathInput" class="form-input" placeholder="/app/archive_storage/correspondence">
             <button
@@ -65,6 +81,16 @@
               title="Select folder from Nextcloud"
             >
               <span class="material-icons-round">cloud</span>
+            </button>
+          </div>
+          <div class="storage-path-quick-actions">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              data-general-action="apply-suggested-nextcloud-path"
+              data-storage-path-kind="correspondence"
+            >
+              اعمال مسیر پیشنهادی نکست‌کلاد
             </button>
           </div>
           <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/correspondence</code></div>

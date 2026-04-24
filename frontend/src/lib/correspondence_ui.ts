@@ -16,6 +16,8 @@ export interface CorrespondenceUiDeps {
   uploadAttachment: () => Promise<void> | void;
   openEdit: (id: number) => Promise<void> | void;
   openWorkflow: (id: number) => Promise<void> | void;
+  previewCorrespondence: (id: number) => Promise<void> | void;
+  deleteCorrespondence: (id: number) => Promise<void> | void;
   copyRef: (value: string) => Promise<void> | void;
   editAction: (id: number) => Promise<void> | void;
   deleteAction: (id: number) => Promise<void> | void;
@@ -47,6 +49,25 @@ async function invoke(handler: () => Promise<void> | void): Promise<void> {
 function toInt(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function closeRowMenus(root: HTMLElement): void {
+  root.querySelectorAll("[data-corr-row-menu].is-open").forEach((menu) => {
+    menu.classList.remove("is-open");
+    const trigger = menu.querySelector("[data-corr-action='toggle-row-menu']");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleRowMenu(root: HTMLElement, trigger: HTMLElement): void {
+  const menu = trigger.closest("[data-corr-row-menu]");
+  if (!(menu instanceof HTMLElement)) return;
+  const shouldOpen = !menu.classList.contains("is-open");
+  closeRowMenus(root);
+  if (shouldOpen) {
+    menu.classList.add("is-open");
+    trigger.setAttribute("aria-expanded", "true");
+  }
 }
 
 function bindEvents(root: HTMLElement | null, deps: CorrespondenceUiDeps): boolean {
@@ -116,7 +137,13 @@ function bindEvents(root: HTMLElement | null, deps: CorrespondenceUiDeps): boole
     if (!actionEl || !root.contains(actionEl)) return;
 
     const action = String(actionEl.getAttribute("data-corr-action") || "").trim();
+    if (action && action !== "toggle-row-menu") {
+      closeRowMenus(root);
+    }
     switch (action) {
+      case "toggle-row-menu":
+        toggleRowMenu(root, actionEl);
+        break;
       case "open-create":
         void invoke(deps.openCreate);
         break;
@@ -150,6 +177,12 @@ function bindEvents(root: HTMLElement | null, deps: CorrespondenceUiDeps): boole
       case "open-workflow":
         void invoke(() => deps.openWorkflow(toInt(actionEl.getAttribute("data-corr-id"))));
         break;
+      case "preview-correspondence":
+        void invoke(() => deps.previewCorrespondence(toInt(actionEl.getAttribute("data-corr-id"))));
+        break;
+      case "delete-correspondence":
+        void invoke(() => deps.deleteCorrespondence(toInt(actionEl.getAttribute("data-corr-id"))));
+        break;
       case "copy-ref":
         void invoke(() => deps.copyRef(String(actionEl.getAttribute("data-corr-ref") || "")));
         break;
@@ -175,6 +208,19 @@ function bindEvents(root: HTMLElement | null, deps: CorrespondenceUiDeps): boole
         break;
       default:
         break;
+    }
+  });
+
+  root.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    if (!target?.closest("[data-corr-row-menu]")) {
+      closeRowMenus(root);
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!root.contains(event.target as Node | null)) {
+      closeRowMenus(root);
     }
   });
 

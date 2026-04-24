@@ -268,11 +268,30 @@ function renderRows(state: CorrespondenceRowsState, deps: CorrespondenceStateDep
         <td>${offset + index + 1}</td><td style="font-family:monospace;">${ref}</td><td>${subject}</td>
         <td>${issuing}</td><td>${category}</td><td>${direction}</td>
         <td>${corrDate}</td><td><span class="corr-status-badge ${statusClass(item?.status)}">${status}</span></td><td>${openActions}</td><td>${attachments}</td>
-        <td><div class="corr-row-actions">
-          <button class="btn-archive-icon" type="button" data-corr-action="open-edit" data-corr-id="${itemId}"><span class="material-icons-round">edit</span></button>
-          <button class="btn-archive-icon" type="button" data-corr-action="open-workflow" data-corr-id="${itemId}"><span class="material-icons-round">assignment</span></button>
-          <button class="btn-archive-icon" type="button" data-corr-action="copy-ref" data-corr-ref="${ref}"><span class="material-icons-round">content_copy</span></button>
-        </div></td>
+        <td class="corr-row-actions-cell">
+          <div class="archive-row-menu corr-row-menu" data-corr-row-menu>
+            <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="عملیات" data-corr-action="toggle-row-menu" aria-expanded="false">
+              <span class="material-icons-round" style="font-size:18px;">more_vert</span>
+            </button>
+            <div class="archive-row-menu-dropdown corr-row-menu-dropdown">
+              <button class="archive-row-menu-item" type="button" data-corr-action="open-edit" data-corr-id="${itemId}">
+                <span class="material-icons-round">edit</span> ویرایش
+              </button>
+              <button class="archive-row-menu-item" type="button" data-corr-action="open-workflow" data-corr-id="${itemId}">
+                <span class="material-icons-round">assignment</span> اقدامات و پیوست‌ها
+              </button>
+              <button class="archive-row-menu-item" type="button" data-corr-action="preview-correspondence" data-corr-id="${itemId}">
+                <span class="material-icons-round">visibility</span> پیش‌نمایش
+              </button>
+              <button class="archive-row-menu-item" type="button" data-corr-action="copy-ref" data-corr-ref="${ref}">
+                <span class="material-icons-round">content_copy</span> کپی شماره
+              </button>
+              <button class="archive-row-menu-item text-danger" type="button" data-corr-action="delete-correspondence" data-corr-id="${itemId}">
+                <span class="material-icons-round">delete</span> حذف مدرک
+              </button>
+            </div>
+          </div>
+        </td>
       </tr>`;
     })
     .join("");

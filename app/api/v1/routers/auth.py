@@ -1,13 +1,19 @@
+import json
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from hashlib import sha256
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from app.db import models
-from app.core import security
-from app.core.roles import Role, normalize_role
-from app.core.organizations import OrganizationType, resolve_user_permission_category
-from app.schemas import auth as auth_schemas
+
 from app.api import dependencies
+from app.core import security
+from app.core.organizations import OrganizationType
+from app.core.roles import Role, normalize_role
+from app.db import models
+from app.schemas import auth as auth_schemas
+from app.services.access_control import resolve_effective_access
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -33,10 +39,11 @@ async def login(
         )
     
     access_token_expires = timedelta(minutes=30)
+    access = resolve_effective_access(user)
     
     # ساخت توکن
     access_token = security.create_access_token(
-        data={"sub": user.email, "role": user.role},
+        data={"sub": user.email, "role": access.effective_role},
         expires_delta=access_token_expires
     )
     
@@ -45,43 +52,103 @@ async def login(
 @router.get("/me", response_model=auth_schemas.UserResponse)
 # اصلاح این خط: استفاده از dependencies.get_current_user به جای security.get_current_user
 def read_users_me(current_user: models.User = Depends(dependencies.get_current_user)):
-    return current_user
+    access = resolve_effective_access(current_user)
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "role": current_user.role,
+        "organization_id": current_user.organization_id,
+        "organization_role": current_user.organization_role,
+        "effective_role": access.effective_role,
+        "permission_category": access.permission_category,
+        "is_system_admin": access.is_system_admin,
+        "organization_type": access.organization_type,
+        "organization": current_user.organization,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at,
+    }
 
 
 @router.get("/navigation")
 def get_navigation(
+    request: Request,
     db: Session = Depends(dependencies.get_db),
     current_user: models.User = Depends(dependencies.get_current_user),
 ):
-    user_role = normalize_role(current_user.role)
-    category = resolve_user_permission_category(current_user)
+    access = resolve_effective_access(current_user)
+    user_role = access.effective_role
+    category = access.permission_category
 
-    module_settings_allowed = dependencies.has_permission_for_user(db, current_user, "module_settings:read")
+    # --- ETag caching: return 304 if permissions haven't changed ---
+    etag_base = f"{user_role}:{category}:{getattr(current_user, 'organization_id', 0) or 0}"
+    etag = f'W/"{sha256(etag_base.encode()).hexdigest()[:16]}"'
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers={"ETag": etag})
+
+    # --- Bulk permission check: single DB round-trip instead of 22 queries ---
+    all_permissions = [
+        "module_settings:read",
+        "module_archive:read", "archive:read",
+        "module_transmittal:read", "transmittal:read",
+        "module_correspondence:read", "correspondence:read",
+        "module_reports:read", "reports:read",
+        "module_site_logs_contractor:read",
+        "module_comm_items_contractor:read",
+        "module_permit_qc_contractor:read",
+        "module_site_logs_consultant:read",
+        "module_comm_items_consultant:read",
+        "module_permit_qc_consultant:read",
+        "dashboard:read",
+        "hub_edms:read",
+        "hub_reports:read",
+        "hub_contractor:read",
+        "hub_consultant:read",
+        "users:read",
+        "users:create",
+        "users:update",
+        "users:delete",
+        "organizations:read",
+        "organizations:manage",
+        "permissions:read",
+        "permissions:update",
+        "permissions:audit_read",
+        "settings:read",
+        "settings:update",
+        "lookup:read",
+        "lookup:manage",
+        "storage:read",
+        "storage:update",
+        "storage:sync_manage",
+        "site_cache:read",
+        "site_cache:manage",
+        "integrations:read",
+        "integrations:update",
+    ]
+    p = dependencies.bulk_check_permissions_for_user(db, current_user, all_permissions)
+
+    module_settings_allowed = p["module_settings:read"]
 
     modules = {
         "edms": {
-            "archive": dependencies.has_permission_for_user(db, current_user, "module_archive:read")
-            and dependencies.has_permission_for_user(db, current_user, "archive:read"),
-            "transmittal": dependencies.has_permission_for_user(db, current_user, "module_transmittal:read")
-            and dependencies.has_permission_for_user(db, current_user, "transmittal:read"),
-            "correspondence": dependencies.has_permission_for_user(db, current_user, "module_correspondence:read")
-            and dependencies.has_permission_for_user(db, current_user, "correspondence:read"),
+            "archive": p["module_archive:read"] and p["archive:read"],
+            "transmittal": p["module_transmittal:read"] and p["transmittal:read"],
+            "correspondence": p["module_correspondence:read"] and p["correspondence:read"],
         },
         "reports": {
-            "overview": dependencies.has_permission_for_user(db, current_user, "module_reports:read")
-            and dependencies.has_permission_for_user(db, current_user, "reports:read"),
+            "overview": p["module_reports:read"] and p["reports:read"],
         },
         "contractor": {
-            "execution": dependencies.has_permission_for_user(db, current_user, "module_site_logs_contractor:read"),
-            "requests": dependencies.has_permission_for_user(db, current_user, "module_comm_items_contractor:read"),
-            "permit_qc": dependencies.has_permission_for_user(db, current_user, "module_permit_qc_contractor:read"),
+            "execution": p["module_site_logs_contractor:read"],
+            "requests": p["module_comm_items_contractor:read"],
+            "permit_qc": p["module_permit_qc_contractor:read"],
         },
         "consultant": {
-            "inspection": dependencies.has_permission_for_user(db, current_user, "module_site_logs_consultant:read"),
-            "defects": dependencies.has_permission_for_user(db, current_user, "module_comm_items_consultant:read"),
-            "instructions": dependencies.has_permission_for_user(db, current_user, "module_comm_items_consultant:read"),
-            "control": dependencies.has_permission_for_user(db, current_user, "module_comm_items_consultant:read"),
-            "permit_qc": dependencies.has_permission_for_user(db, current_user, "module_permit_qc_consultant:read"),
+            "inspection": p["module_site_logs_consultant:read"],
+            "defects": p["module_comm_items_consultant:read"],
+            "instructions": p["module_comm_items_consultant:read"],
+            "control": p["module_comm_items_consultant:read"],
+            "permit_qc": p["module_permit_qc_consultant:read"],
         },
         "settings": {
             "module_settings": module_settings_allowed,
@@ -89,15 +156,11 @@ def get_navigation(
     }
 
     hubs = {
-        "dashboard": dependencies.has_permission_for_user(db, current_user, "dashboard:read"),
-        "edms": dependencies.has_permission_for_user(db, current_user, "hub_edms:read")
-        and any(bool(v) for v in modules["edms"].values()),
-        "reports": dependencies.has_permission_for_user(db, current_user, "hub_reports:read")
-        and bool(modules["reports"].get("overview")),
-        "contractor": dependencies.has_permission_for_user(db, current_user, "hub_contractor:read")
-        and any(bool(v) for v in modules["contractor"].values()),
-        "consultant": dependencies.has_permission_for_user(db, current_user, "hub_consultant:read")
-        and any(bool(v) for v in modules["consultant"].values()),
+        "dashboard": p["dashboard:read"],
+        "edms": p["hub_edms:read"] and any(bool(v) for v in modules["edms"].values()),
+        "reports": p["hub_reports:read"] and bool(modules["reports"].get("overview")),
+        "contractor": p["hub_contractor:read"] and any(bool(v) for v in modules["contractor"].values()),
+        "consultant": p["hub_consultant:read"] and any(bool(v) for v in modules["consultant"].values()),
     }
 
     category_default_hub = {
@@ -129,9 +192,14 @@ def get_navigation(
     if not tabs.get(default_tab):
         default_tab = next((key for key in ("archive", "transmittal", "correspondence", "reports") if tabs.get(key)), "archive")
 
-    response = {
+    response_data = {
         "ok": True,
         "category": category,
+        "effective_role": access.effective_role,
+        "permission_category": access.permission_category,
+        "organization_type": access.organization_type,
+        "is_system_admin": access.is_system_admin,
+        "capabilities": p,
         "hubs": hubs,
         "default_hub": default_hub,
         "modules": modules,
@@ -140,10 +208,15 @@ def get_navigation(
         "module_settings": module_settings_allowed,
     }
     # Backward compatibility for legacy clients expecting per-hub module-settings flags.
-    response["edms"] = module_settings_allowed
-    response["contractor"] = module_settings_allowed
-    response["consultant"] = module_settings_allowed
-    return response
+    response_data["edms"] = module_settings_allowed
+    response_data["contractor"] = module_settings_allowed
+    response_data["consultant"] = module_settings_allowed
+
+    return Response(
+        content=json.dumps(response_data),
+        media_type="application/json",
+        headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.post("/change-password")

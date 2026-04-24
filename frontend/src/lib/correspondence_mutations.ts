@@ -34,6 +34,11 @@ export interface CorrespondenceAttachmentDownloadResult {
   fileName: string | null;
 }
 
+export interface CorrespondencePreviewResult {
+  blob: Blob;
+  fileName: string | null;
+}
+
 export interface CorrespondenceMutationsBridge {
   saveCorrespondence(
     correspondenceId: number,
@@ -61,6 +66,11 @@ export interface CorrespondenceMutationsBridge {
     attachmentId: number,
     deps: CorrespondenceHttpDeps
   ): Promise<CorrespondenceAttachmentDownloadResult>;
+  previewCorrespondence(
+    correspondenceId: number,
+    deps: CorrespondenceHttpDeps
+  ): Promise<CorrespondencePreviewResult>;
+  deleteCorrespondence(correspondenceId: number, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
   deleteAttachment(attachmentId: number, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
 }
 
@@ -202,6 +212,32 @@ async function downloadAttachment(
   return { blob, fileName };
 }
 
+async function previewCorrespondence(
+  correspondenceId: number,
+  deps: CorrespondenceHttpDeps
+): Promise<CorrespondencePreviewResult> {
+  const id = Math.max(0, Number(correspondenceId) || 0);
+  const response = await deps.fetch(`/api/v1/correspondence/${id}/preview`);
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    const body = asRecord(await parseJsonSafe(response.clone()));
+    const detail = String(body.detail || body.message || "").trim();
+    if (detail) message = detail;
+    throw new Error(message);
+  }
+  const fileName = parseFileNameFromHeaders(response.headers);
+  const blob = await response.blob();
+  return { blob, fileName };
+}
+
+async function deleteCorrespondence(
+  correspondenceId: number,
+  deps: CorrespondenceHttpDeps
+): Promise<Record<string, unknown>> {
+  const id = Math.max(0, Number(correspondenceId) || 0);
+  return requestJson(`/api/v1/correspondence/${id}`, { method: "DELETE" }, deps);
+}
+
 async function deleteAttachment(
   attachmentId: number,
   deps: CorrespondenceHttpDeps
@@ -218,6 +254,8 @@ export function createCorrespondenceMutationsBridge(): CorrespondenceMutationsBr
     deleteAction,
     uploadAttachment,
     downloadAttachment,
+    previewCorrespondence,
+    deleteCorrespondence,
     deleteAttachment,
   };
 }

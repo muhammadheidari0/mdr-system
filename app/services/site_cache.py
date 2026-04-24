@@ -130,13 +130,31 @@ def build_archive_relative_path(file_row: ArchiveFile) -> str:
     revision = file_row.document_revision
     document = revision.document if revision else None
     project_code = _safe_segment(document.project_code if document else "", default="project")
-    discipline_code = _safe_segment(document.discipline_code if document else "", default="XX")
-    package_code = _safe_segment(document.package_code if document else "", default="00")
-    doc_number = _safe_segment(document.doc_number if document else f"doc-{file_row.id}", default="doc")
-    rev = _safe_segment(file_row.revision or (revision.revision if revision else ""), default="00")
+    project = getattr(document, "project", None) if document else None
+    project_name = _safe_segment(
+        getattr(project, "name_e", None) or getattr(project, "name_p", None) or "",
+        default="",
+    )
+    project_folder = f"{project_code} - {project_name}" if project_name and project_name.lower() != "unk" else project_code
+    category = getattr(document, "mdr_category", None) if document else None
+    mdr_folder = _safe_segment(
+        getattr(category, "folder_name", None)
+        or getattr(category, "name_e", None)
+        or (document.mdr_code if document else ""),
+        default="MDR",
+    )
+    phase_code = _safe_segment(document.phase_code if document else "", default="Phase")
+    discipline_code = _safe_segment(document.discipline_code if document else "", default="GN")
+    package = getattr(document, "package", None) if document else None
+    package_name = _safe_segment(
+        getattr(package, "name_e", None)
+        or getattr(package, "name_p", None)
+        or (document.package_code if document else ""),
+        default="00",
+    )
     kind = _safe_segment(file_row.file_kind or "pdf", default="pdf")
     file_name = _safe_segment(file_row.original_name or f"file-{file_row.id}", default=f"file-{file_row.id}")
-    return "/".join([project_code, discipline_code, package_code, doc_number, rev, kind, file_name])
+    return "/".join([project_folder, mdr_folder, phase_code, discipline_code, package_name, kind, file_name])
 
 
 def _effective_version_hash(file_row: ArchiveFile, manifest_row: LocalSyncManifest | None = None) -> str:
@@ -152,7 +170,7 @@ def _base_archive_query(db: Session):
         db.query(ArchiveFile)
         .join(DocumentRevision, ArchiveFile.revision_id == DocumentRevision.id)
         .join(MdrDocument, DocumentRevision.document_id == MdrDocument.id)
-        .filter(ArchiveFile.deleted_at.is_(None))
+        .filter(ArchiveFile.deleted_at.is_(None), MdrDocument.deleted_at.is_(None))
     )
 
 
@@ -359,10 +377,16 @@ def build_site_manifest(
 
     archive_rows = (
         db.query(ArchiveFile)
+        .join(DocumentRevision, ArchiveFile.revision_id == DocumentRevision.id)
+        .join(MdrDocument, DocumentRevision.document_id == MdrDocument.id)
         .options(
             joinedload(ArchiveFile.document_revision).joinedload(DocumentRevision.document),
         )
-        .filter(ArchiveFile.id.in_(file_ids), ArchiveFile.deleted_at.is_(None))
+        .filter(
+            ArchiveFile.id.in_(file_ids),
+            ArchiveFile.deleted_at.is_(None),
+            MdrDocument.deleted_at.is_(None),
+        )
         .all()
     )
     archives_by_id: dict[int, ArchiveFile] = {int(row.id): row for row in archive_rows}

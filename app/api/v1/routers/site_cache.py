@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.dependencies import User, allow_admin, get_db
+from app.api.dependencies import User, get_db, require_permission
 from app.db.models import (
     SiteCacheAgentToken,
     SiteCachePinRule,
@@ -32,7 +32,7 @@ from app.services.site_cache import (
 router = APIRouter(
     prefix="/settings/site-cache",
     tags=["settings-site-cache"],
-    dependencies=[Depends(allow_admin)],
+    dependencies=[Depends(require_permission("site_cache:read"))],
 )
 
 
@@ -124,7 +124,7 @@ def _load_profile(db: Session, *, profile_id: int | None = None, code: str | Non
 def list_profiles(
     include_inactive: bool = Query(default=True),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     query = (
@@ -146,7 +146,7 @@ def list_profiles(
 def upsert_profile(
     payload: SiteCacheProfileIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     code = normalize_site_code(payload.code)
@@ -182,7 +182,7 @@ def upsert_profile(
 def delete_profile(
     payload: SiteCacheProfileDeleteIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     if not payload.id and not payload.code:
@@ -202,7 +202,7 @@ def delete_profile(
 def list_profile_cidrs(
     profile_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     _load_profile(db, profile_id=profile_id)
@@ -229,7 +229,7 @@ def list_profile_cidrs(
 def upsert_profile_cidr(
     payload: SiteCacheCIDRIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     _load_profile(db, profile_id=payload.profile_id)
@@ -283,7 +283,7 @@ def upsert_profile_cidr(
 def delete_profile_cidr(
     payload: SiteCacheCIDRDeleteIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     row = db.query(SiteCacheProfileCIDR).filter(SiteCacheProfileCIDR.id == int(payload.id)).first()
@@ -298,7 +298,7 @@ def delete_profile_cidr(
 def list_pin_rules(
     profile_id: int = Query(..., ge=1),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     _load_profile(db, profile_id=profile_id)
@@ -334,7 +334,7 @@ def list_pin_rules(
 def upsert_pin_rule(
     payload: SiteCacheRuleIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     _load_profile(db, profile_id=payload.profile_id)
@@ -390,7 +390,7 @@ def upsert_pin_rule(
 def delete_pin_rule(
     payload: SiteCacheRuleDeleteIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     row = db.query(SiteCachePinRule).filter(SiteCachePinRule.id == int(payload.id)).first()
@@ -406,7 +406,7 @@ def list_agent_tokens(
     profile_id: int = Query(..., ge=1),
     include_inactive: bool = Query(default=False),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     _load_profile(db, profile_id=profile_id)
@@ -438,7 +438,7 @@ def list_agent_tokens(
 def mint_agent_token(
     payload: SiteCacheTokenMintIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     profile = _load_profile(db, profile_id=payload.profile_id)
     if not profile.is_active:
@@ -476,7 +476,7 @@ def mint_agent_token(
 def revoke_agent_token(
     payload: SiteCacheTokenRevokeIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     row = db.query(SiteCacheAgentToken).filter(SiteCacheAgentToken.id == int(payload.token_id)).first()
@@ -492,7 +492,7 @@ def revoke_agent_token(
 def rebuild_site_pins(
     payload: SiteCacheRebuildPinsIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("site_cache:manage")),
 ):
     del user
     profile = _load_profile(db, profile_id=payload.profile_id)

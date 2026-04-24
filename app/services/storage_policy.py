@@ -87,6 +87,9 @@ DEFAULT_STORAGE_POLICY: dict[str, Any] = {
 }
 
 DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
+    "primary": {
+        "provider": "local",  # local | nextcloud
+    },
     "mirror": {
         "provider": "none",  # none | google_drive | nextcloud
     },
@@ -248,13 +251,18 @@ def _normalize_policy(raw: dict[str, Any]) -> dict[str, Any]:
 
 def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
     merged = deepcopy(DEFAULT_STORAGE_INTEGRATIONS)
-    for top_key in ("mirror", "google_drive", "openproject", "nextcloud", "local_cache"):
+    for top_key in ("primary", "mirror", "google_drive", "openproject", "nextcloud", "local_cache"):
         if isinstance(raw.get(top_key), dict):
             merged[top_key].update(raw[top_key])
 
     for key in ("google_drive", "openproject", "nextcloud", "local_cache"):
         enabled = bool(merged[key].get("enabled", False))
         merged[key]["enabled"] = enabled
+
+    primary_provider = str(merged.get("primary", {}).get("provider") or "").strip().lower()
+    if primary_provider not in {"local", "nextcloud"}:
+        primary_provider = "local"
+    merged["primary"]["provider"] = primary_provider
 
     provider = str(merged.get("mirror", {}).get("provider") or "").strip().lower()
     if provider not in {"none", "google_drive", "nextcloud"}:
@@ -380,6 +388,14 @@ def set_storage_integrations(db: Session, payload: dict[str, Any]) -> dict[str, 
     normalized = _normalize_integrations(payload)
     _set_kv_value(db, STORAGE_INTEGRATIONS_KEY, normalized)
     return normalized
+
+
+def resolve_primary_storage_provider(integrations: dict[str, Any] | None) -> str:
+    primary_cfg = dict((integrations or {}).get("primary") or {})
+    provider = str(primary_cfg.get("provider") or "").strip().lower()
+    if provider == "nextcloud":
+        return "nextcloud"
+    return "local"
 
 
 def get_bim_revit_integration(db: Session) -> dict[str, Any]:

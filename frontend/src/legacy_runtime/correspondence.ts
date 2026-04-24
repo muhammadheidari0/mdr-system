@@ -509,6 +509,50 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       err(error?.message || "خطا در دانلود");
     }
   }
+  function corrOpenBlobPreview(result, fallbackName = "preview") {
+    if (!result?.blob) return err("فایلی برای پیش‌نمایش دریافت نشد.");
+    const url = URL.createObjectURL(result.blob);
+    const opened = window.open(url, "_blank", "noopener");
+    if (!opened) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.download = String(result?.fileName || fallbackName || "preview");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+  async function corrPreviewCorrespondence(id) {
+    try {
+      if (!TS_CORRESPONDENCE_WORKFLOW?.previewCorrespondence) {
+        throw new Error("Preview bridge unavailable.");
+      }
+      const result = await TS_CORRESPONDENCE_WORKFLOW.previewCorrespondence(Number(id), { fetch: getCorrFetchFn() });
+      corrOpenBlobPreview(result, `correspondence-${id}`);
+    } catch (error) {
+      err(error?.message || "پیش‌نمایش برای این مکاتبه در دسترس نیست.");
+    }
+  }
+  async function corrDeleteCorrespondence(id) {
+    const correspondenceId = Number(id || 0);
+    if (!correspondenceId) return;
+    if (!confirm("این مکاتبه و همه اقدامات و پیوست‌های آن حذف شود؟")) return;
+    try {
+      if (!TS_CORRESPONDENCE_WORKFLOW?.deleteCorrespondence) {
+        throw new Error("Delete correspondence bridge unavailable.");
+      }
+      const b = await TS_CORRESPONDENCE_WORKFLOW.deleteCorrespondence(correspondenceId, { fetch: getCorrFetchFn() });
+      if (!b?.ok) return err(b?.detail || "خطا در حذف مکاتبه");
+      info("مکاتبه حذف شد.");
+      await loadDashboard();
+      await loadList();
+    } catch (error) {
+      err(error?.message || "خطا در حذف مکاتبه");
+    }
+  }
   async function corrDeleteAttachment(id) {
     if (!confirm("فایل حذف شود؟")) return;
     try {
@@ -630,6 +674,8 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       uploadAttachment: () => corrUploadAttachment(),
       openEdit: (id) => corrOpenEdit(id),
       openWorkflow: (id) => corrOpenWorkflow(id),
+      previewCorrespondence: (id) => corrPreviewCorrespondence(id),
+      deleteCorrespondence: (id) => corrDeleteCorrespondence(id),
       copyRef: (value) => corrCopyRef(value),
       editAction: (id) => corrEditAction(id),
       deleteAction: (id) => corrDeleteAction(id),
@@ -653,7 +699,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     await loadList();
   }
   window.initCorrespondenceView = init; window.corrOpenCreate = corrOpenCreate; window.corrOpenEdit = corrOpenEdit; window.corrOpenWorkflow = corrOpenWorkflow; window.corrCloseModal = corrCloseModal; window.corrSave = corrSave;
-  window.corrDebouncedSearch = corrDebouncedSearch; window.corrApplyFilters = corrApplyFilters; window.corrResetFilters = corrResetFilters; window.corrPrevPage = corrPrevPage; window.corrNextPage = corrNextPage; window.corrChangePageSize = corrChangePageSize; window.corrRefresh = corrRefresh; window.corrUpdateReferencePreview = corrUpdateReferencePreview; window.corrSubmitAction = corrSubmitAction; window.corrClearActionEditor = clearActionEditor; window.corrUploadAttachment = corrUploadAttachment; window.corrCopyRef = corrCopyRef; window.corrEditAction = corrEditAction; window.corrDeleteAction = corrDeleteAction; window.corrToggleActionClosed = corrToggleActionClosed; window.corrDownloadAttachment = corrDownloadAttachment; window.corrDeleteAttachment = corrDeleteAttachment;
+  window.corrDebouncedSearch = corrDebouncedSearch; window.corrApplyFilters = corrApplyFilters; window.corrResetFilters = corrResetFilters; window.corrPrevPage = corrPrevPage; window.corrNextPage = corrNextPage; window.corrChangePageSize = corrChangePageSize; window.corrRefresh = corrRefresh; window.corrUpdateReferencePreview = corrUpdateReferencePreview; window.corrSubmitAction = corrSubmitAction; window.corrClearActionEditor = clearActionEditor; window.corrUploadAttachment = corrUploadAttachment; window.corrPreviewCorrespondence = corrPreviewCorrespondence; window.corrDeleteCorrespondence = corrDeleteCorrespondence; window.corrCopyRef = corrCopyRef; window.corrEditAction = corrEditAction; window.corrDeleteAction = corrDeleteAction; window.corrToggleActionClosed = corrToggleActionClosed; window.corrDownloadAttachment = corrDownloadAttachment; window.corrDeleteAttachment = corrDeleteAttachment;
   const corrRoot = q("view-correspondence");
   if (corrRoot && corrRoot.style.display !== "none") init();
 })();

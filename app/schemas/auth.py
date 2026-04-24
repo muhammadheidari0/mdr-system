@@ -35,6 +35,10 @@ class UserResponse(BaseModel):
     role: Role
     organization_id: Optional[int] = None
     organization_role: Optional[OrganizationRole] = None
+    effective_role: Optional[str] = None
+    permission_category: Optional[str] = None
+    is_system_admin: bool = False
+    organization_type: Optional[str] = None
     organization: Optional["OrganizationRef"] = None
     is_active: bool
     created_at: Optional[datetime] = None

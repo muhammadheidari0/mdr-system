@@ -3,6 +3,7 @@ import {
   type CorrespondenceAttachmentDownloadResult,
   createCorrespondenceMutationsBridge,
   type CorrespondenceActionPayload,
+  type CorrespondencePreviewResult,
   type CorrespondenceSavePayload,
 } from "./correspondence_mutations";
 
@@ -85,6 +86,14 @@ export interface CorrespondenceWorkflowBridge {
     attachmentId: number,
     deps: CorrespondenceWorkflowHttpDeps
   ): Promise<CorrespondenceAttachmentDownloadResult>;
+  previewCorrespondence(
+    correspondenceId: number,
+    deps: CorrespondenceWorkflowHttpDeps
+  ): Promise<CorrespondencePreviewResult>;
+  deleteCorrespondence(
+    correspondenceId: number,
+    deps: CorrespondenceWorkflowHttpDeps
+  ): Promise<CorrespondenceWorkflowMutationResult>;
   afterActionMutation(deps: CorrespondenceWorkflowAfterActionDeps): Promise<boolean>;
   afterAttachmentMutation(deps: CorrespondenceWorkflowAfterAttachmentDeps): Promise<boolean>;
 }
@@ -298,6 +307,28 @@ async function downloadAttachment(
   return mutationBridge.downloadAttachment(attachmentId, deps);
 }
 
+async function previewCorrespondence(
+  correspondenceId: number,
+  deps: CorrespondenceWorkflowHttpDeps
+): Promise<CorrespondencePreviewResult> {
+  return mutationBridge.previewCorrespondence(correspondenceId, deps);
+}
+
+async function deleteCorrespondence(
+  correspondenceId: number,
+  deps: CorrespondenceWorkflowHttpDeps
+): Promise<CorrespondenceWorkflowMutationResult> {
+  try {
+    const body = asRecord(await mutationBridge.deleteCorrespondence(correspondenceId, deps));
+    return toMutationResult(body, true);
+  } catch (error) {
+    return {
+      ok: false,
+      detail: asMessage(error, "Failed to delete correspondence."),
+    };
+  }
+}
+
 async function afterActionMutation(
   deps: CorrespondenceWorkflowAfterActionDeps
 ): Promise<boolean> {
@@ -333,6 +364,8 @@ export function createCorrespondenceWorkflowBridge(): CorrespondenceWorkflowBrid
     uploadAttachment,
     deleteAttachment,
     downloadAttachment,
+    previewCorrespondence,
+    deleteCorrespondence,
     afterActionMutation,
     afterAttachmentMutation,
   };

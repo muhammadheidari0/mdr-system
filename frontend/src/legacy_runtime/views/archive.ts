@@ -556,6 +556,50 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             return String(document.getElementById('regSubjectE')?.value || '').trim();
         }
 
+        function archiveGetPackageNames(disciplineCode, packageCode) {
+            const normalizedDiscipline = String(disciplineCode || '').trim();
+            const normalizedPackage = String(packageCode || '').trim();
+            const hit = allPackages.find((item) => (
+                String(item?.discipline_code || '') === normalizedDiscipline &&
+                String(item?.code || '') === normalizedPackage
+            ));
+            const fallback = normalizedPackage || '00';
+            const nameE = String(hit?.name_e || hit?.name || fallback).trim() || fallback;
+            const nameP = String(hit?.name_p || hit?.name_e || hit?.name || fallback).trim() || nameE;
+            return { nameE, nameP };
+        }
+
+        function archiveBuildPreviewTitles() {
+            const discipline = String(document.getElementById('regDisc')?.value || '').trim();
+            const pkg = String(document.getElementById('regPkg')?.value || '').trim();
+            const block = String(document.getElementById('regBlock')?.value || 'G').trim().toUpperCase() || 'G';
+            const level = String(document.getElementById('regLevel')?.value || 'GEN').trim().toUpperCase() || 'GEN';
+            const subject = archiveGetUnifiedSubject();
+            if (!pkg || !block || !level) {
+                return { titleE: '', titleP: '' };
+            }
+
+            const pkgNames = archiveGetPackageNames(discipline, pkg);
+            const isGeneral = level === 'GEN';
+            const locationPart = `${block}${level}`;
+
+            let titleE = pkgNames.nameE;
+            if (!isGeneral) titleE = `${titleE}-${locationPart}`;
+            if (subject) titleE = `${titleE} - ${subject}`;
+
+            let titleP = isGeneral ? pkgNames.nameP : `${locationPart}-${pkgNames.nameP}`;
+            if (subject) titleP = `${titleP}-${subject}`;
+
+            return { titleE, titleP };
+        }
+
+        function archiveUpdateTitlePreview() {
+            const titlePreviewEl = document.getElementById('fullDocTitlePPreview');
+            if (!titlePreviewEl) return;
+            const { titleP } = archiveBuildPreviewTitles();
+            titlePreviewEl.value = titleP || '';
+        }
+
         async function updateSerialAndPreview() {
             if (archiveSuspendAutoPreview) return;
             const project = document.getElementById('regProject').value;
@@ -568,6 +612,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             const subjectValue = archiveGetUnifiedSubject();
             const subjE = subjectValue;
             const subjP = subjectValue;
+            archiveUpdateTitlePreview();
             if(!project || !mdr || !phase) {
                 document.getElementById('fullDocNumber').value = '';
                 document.getElementById('realDocId').value = '';
@@ -834,6 +879,18 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 const data = await archiveRequestJson(url);
                 let rows = Array.isArray(data?.data) ? data.data : [];
                 rows = await archiveEnrichOpenProjectStatus(rows);
+                const effectiveRole = String(
+                    window.authManager?.user?.effective_role || window.authManager?.user?.role || ''
+                ).trim().toLowerCase();
+                const hasCapability = (permissionKey, roleFallback = []) => {
+                    if (typeof window.hasCapability === 'function') {
+                        return Boolean(window.hasCapability(permissionKey));
+                    }
+                    return roleFallback.includes(effectiveRole);
+                };
+                const canEditDocument = hasCapability('documents:update', ['admin', 'manager', 'dcc', 'user']);
+                const canSendTransmittal = hasCapability('transmittal:create', ['admin', 'manager', 'dcc', 'user']);
+                const canDeleteDocument = hasCapability('documents:delete', ['admin', 'manager', 'dcc']);
 
                 if (rows.length > 0) {
                     tbody.innerHTML = rows.map((f, i) => {
@@ -906,19 +963,43 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                                             <span class="material-icons-round" style="font-size:18px;">more_vert</span>
                                         </button>
                                         <div class="archive-row-menu-dropdown">
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="open-detail" data-document-id="${Number(f.document_id || 0)}">
+                                                <span class="material-icons-round">visibility</span>
+                                                مشاهده جزییات
+                                            </button>
+                                            ${canEditDocument ? `
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="edit-detail" data-document-id="${Number(f.document_id || 0)}">
+                                                <span class="material-icons-round">edit</span>
+                                                ویرایش
+                                            </button>` : ''}
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="download-latest" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath || nativeRelativePath || ''))}" data-file-name="${archiveEsc(f.pdf_file_name || f.native_file_name || f.name || '')}">
+                                                <span class="material-icons-round">download</span>
+                                                دانلود
+                                            </button>
+                                            ${canSendTransmittal ? `
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="send-transmittal" data-doc-number="${archiveEsc(f.doc_number)}" data-project-code="${archiveEsc(f.project_code || '')}" data-discipline-code="${archiveEsc(f.discipline_code || '')}" data-revision="${archiveEsc(f.revision || '00')}">
+                                                <span class="material-icons-round">send</span>
+                                                ارسال ترنسمیتال
+                                            </button>` : ''}
                                             <button class="archive-row-menu-item" type="button" data-archive-action="copy-doc" data-doc-number="${archiveEsc(f.doc_number)}">
                                                 <span class="material-icons-round">content_copy</span>
                                                 Copy Doc Number
                                             </button>
                                             ${localMenuItem}
-                                            <button class="archive-row-menu-item" type="button" data-archive-action="show-integrity" data-file-id="${fileId}" data-file-name="${archiveEsc(f.name)}">
-                                                <span class="material-icons-round">verified</span>
-                                                Integrity
-                                            </button>
                                             <button class="archive-row-menu-item" type="button" data-archive-action="open-history" data-document-id="${Number(f.document_id || 0)}" data-doc-number="${archiveEsc(f.doc_number)}">
                                                 <span class="material-icons-round">history</span>
                                                 Revision History
                                             </button>
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="show-integrity" data-file-id="${fileId}" data-file-name="${archiveEsc(f.name)}">
+                                                <span class="material-icons-round">verified</span>
+                                                Integrity
+                                            </button>
+                                            ${canDeleteDocument ? `
+                                            <div class="divider"></div>
+                                            <button class="archive-row-menu-item text-danger" type="button" data-archive-action="delete-document" data-document-id="${Number(f.document_id || 0)}">
+                                                <span class="material-icons-round">delete</span>
+                                                حذف
+                                            </button>` : ''}
                                         </div>
                                     </div>
                                 </td>
@@ -1218,6 +1299,63 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             });
         }
 
+        async function archiveNavigateToDocumentDetail(documentId, editMode = false) {
+            const id = Number(documentId || 0);
+            if (!id) {
+                alert('Document id not found.');
+                return;
+            }
+            if (typeof window.navigateToDocumentDetail === 'function') {
+                await window.navigateToDocumentDetail(id, { editMode: Boolean(editMode) });
+                return;
+            }
+            if (typeof window.navigateTo === 'function') {
+                if (typeof window.setPendingDocumentDetailId === 'function') {
+                    window.setPendingDocumentDetailId(id, { editMode: Boolean(editMode) });
+                }
+                await window.navigateTo('view-document-detail');
+            }
+        }
+
+        async function archiveDeleteDocument(documentId) {
+            const id = Number(documentId || 0);
+            if (!id) {
+                alert('Document id not found.');
+                return;
+            }
+            const confirmed = window.confirm('این سند به صورت Soft Delete حذف شود؟');
+            if (!confirmed) return;
+            try {
+                await archiveRequestJson(`/api/v1/archive/documents/${id}`, { method: 'DELETE' });
+                if (typeof showToast === 'function') showToast('سند حذف شد.', 'success');
+                await archiveLoadFiles();
+            } catch (error) {
+                alert(`خطا در حذف سند.\nجزئیات: ${String(error?.message || '')}`);
+            }
+        }
+
+        async function archiveSendTransmittalFromRow(docNumber, projectCode, disciplineCode, revision) {
+            const normalizedDoc = String(docNumber || '').trim();
+            if (!normalizedDoc) return;
+            if (typeof window.setPendingTransmittalDoc === 'function') {
+                window.setPendingTransmittalDoc({
+                    doc_number: normalizedDoc,
+                    project_code: String(projectCode || '').trim().toUpperCase(),
+                    discipline_code: String(disciplineCode || '').trim().toUpperCase(),
+                    revision: String(revision || '00').trim() || '00',
+                    status: 'IFA',
+                });
+            }
+            if (typeof window.navigateTo === 'function') {
+                await window.navigateTo('view-transmittal');
+                setTimeout(() => {
+                    if (typeof window.showCreateMode === 'function') {
+                        window.showCreateMode();
+                    }
+                }, 0);
+            }
+        }
+
         async function archiveOpenHistory(documentId, docNumber) {
             const id = Number(documentId || 0);
             if (!id) {
@@ -1469,6 +1607,29 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                         archiveDownloadByKind(pdfId, nativeId, kind, relativePath, fileName);
                         break;
                     }
+                    case 'download-latest': {
+                        const pdfId = Number(actionEl.getAttribute('data-pdf-id') || 0);
+                        const nativeId = Number(actionEl.getAttribute('data-native-id') || 0);
+                        const encodedRel = String(actionEl.getAttribute('data-site-relative-path') || '');
+                        const relativePath = encodedRel ? decodeURIComponent(encodedRel) : '';
+                        const fileName = String(actionEl.getAttribute('data-file-name') || '');
+                        archiveDownloadByKind(pdfId, nativeId, pdfId > 0 ? 'pdf' : 'native', relativePath, fileName);
+                        break;
+                    }
+                    case 'open-detail':
+                        archiveNavigateToDocumentDetail(Number(actionEl.getAttribute('data-document-id') || 0), false);
+                        break;
+                    case 'edit-detail':
+                        archiveNavigateToDocumentDetail(Number(actionEl.getAttribute('data-document-id') || 0), true);
+                        break;
+                    case 'send-transmittal':
+                        archiveSendTransmittalFromRow(
+                            actionEl.getAttribute('data-doc-number') || '',
+                            actionEl.getAttribute('data-project-code') || '',
+                            actionEl.getAttribute('data-discipline-code') || '',
+                            actionEl.getAttribute('data-revision') || '00',
+                        );
+                        break;
                     case 'copy-doc':
                         archiveCopyDocNumber(actionEl.getAttribute('data-doc-number') || '');
                         break;
@@ -1502,6 +1663,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                             Number(actionEl.getAttribute('data-file-id') || 0),
                             actionEl.getAttribute('data-file-name') || ''
                         );
+                        break;
+                    case 'delete-document':
+                        archiveDeleteDocument(Number(actionEl.getAttribute('data-document-id') || 0));
                         break;
                     default:
                         break;

@@ -23,7 +23,7 @@
           <input id="usersSearchInput" type="text" class="users-toolbar-input" placeholder="جستجو بر اساس ایمیل یا نام">
         </div>
 
-        <select id="usersRoleFilter" class="users-toolbar-select" aria-label="فیلتر نقش">
+        <select id="usersRoleFilter" class="users-toolbar-select" aria-label="فیلتر نقش موثر">
           <option value="">همه نقش‌ها</option>
           <option value="admin">مدیر سیستم</option>
           <option value="manager">سرپرست</option>
@@ -38,7 +38,7 @@
           <option value="inactive">فقط غیرفعال</option>
         </select>
 
-        <select id="usersOrgTypeFilter" class="users-toolbar-select" aria-label="فیلتر دسته سازمان">
+        <select id="usersOrgTypeFilter" class="users-toolbar-select" aria-label="فیلتر نوع سازمان">
           <option value="">همه دسته‌ها</option>
           <option value="employer">کارفرما</option>
           <option value="consultant">مشاور</option>
@@ -73,9 +73,9 @@
             <th>شناسه</th>
             <th>ایمیل</th>
             <th>نام کامل</th>
-            <th>نقش</th>
+            <th>نقش موثر</th>
             <th>سازمان</th>
-            <th>نقش سازمانی</th>
+            <th>نوع سازمان</th>
             <th>وضعیت</th>
             <th>وضعیت دسترسی</th>
             <th>تاریخ ایجاد</th>
@@ -133,17 +133,6 @@
       </div>
 
       <div class="form-group">
-        <label for="userRole" class="form-label-sm">نقش</label>
-        <select id="userRole" class="form-input">
-          <option value="viewer">مشاهده‌گر</option>
-          <option value="user">کاربر عادی</option>
-          <option value="dcc">کنترل مدارک (DCC)</option>
-          <option value="manager">سرپرست</option>
-          <option value="admin">مدیر سیستم</option>
-        </select>
-      </div>
-
-      <div class="form-group">
         <label for="userOrganization" class="form-label-sm">سازمان</label>
         <select id="userOrganization" class="form-input">
           <option value="">-</option>
@@ -151,12 +140,15 @@
       </div>
 
       <div class="form-group">
-        <label for="userOrganizationRole" class="form-label-sm">نقش سازمانی</label>
+        <label for="userOrganizationRole" class="form-label-sm">نقش در سازمان</label>
         <select id="userOrganizationRole" class="form-input">
-          <option value="viewer">مشاهده‌گر</option>
+          <option value="manager">سرپرست</option>
           <option value="dcc">کنترل مدارک (DCC)</option>
-          <option value="admin">مدیر سازمان</option>
+          <option value="user">کاربر عادی</option>
+          <option value="viewer">مشاهده‌گر</option>
+          <option value="admin">مدیر سیستم</option>
         </select>
+        <small class="form-help" id="userOrganizationRoleHint">نقش مؤثر از نوع سازمان و نقش در سازمان محاسبه می‌شود.</small>
       </div>
 
       <div class="form-group">
@@ -226,7 +218,7 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label-sm">دیسیپلین‌های مجاز</label>
+            <label class="form-label-sm">دیسپلین‌های مجاز</label>
             <div id="accessDisciplinesTagsInput" class="tags-input">
               <div id="accessDisciplinesTags" class="tags-list"></div>
               <input id="accessDisciplinesInput" class="tags-input-field" type="text" placeholder="کد دیسیپلین را وارد کنید و Enter بزنید">
@@ -251,7 +243,7 @@
                 <div id="accessPreviewRoleProjects" class="access-preview-values"></div>
               </div>
               <div class="access-preview-row">
-                <div class="access-preview-label">دیسیپلین‌ها</div>
+                <div class="access-preview-label">دیسپلین‌ها</div>
                 <div id="accessPreviewRoleDisciplines" class="access-preview-values"></div>
               </div>
             </div>
@@ -262,7 +254,7 @@
                 <div id="accessPreviewUserProjects" class="access-preview-values"></div>
               </div>
               <div class="access-preview-row">
-                <div class="access-preview-label">دیسیپلین‌ها</div>
+                <div class="access-preview-label">دیسپلین‌ها</div>
                 <div id="accessPreviewUserDisciplines" class="access-preview-values"></div>
               </div>
             </div>
@@ -273,7 +265,7 @@
                 <div id="accessPreviewEffectiveProjects" class="access-preview-values"></div>
               </div>
               <div class="access-preview-row">
-                <div class="access-preview-label">دیسیپلین‌ها</div>
+                <div class="access-preview-label">دیسپلین‌ها</div>
                 <div id="accessPreviewEffectiveDisciplines" class="access-preview-values"></div>
               </div>
             </div>
@@ -282,12 +274,12 @@
             محاسبه بر اساس تقاطع نقش و محدودیت کاربر انجام می‌شود.
           </div>
           <div id="accessPreviewWarning" class="access-preview-warning" style="display: none;">
-            هشدار: دسترسی نهایی خالی است و کاربر به هیچ پروژه/دیسیپلین دسترسی ندارد.
+            هشدار: دسترسی نهایی خالی است و کاربر به هیچ پروژه/دیسپلین دسترسی ندارد.
           </div>
         </div>
 
         <div id="accessAdminNote" class="form-help text-danger" style="margin-top: 10px; display: none;">
-          ادمین دسترسی کامل دارد و محدودیت برای او اعمال نمی‌شود.
+          کاربر سیستم دسترسی کامل دارد و محدودیت برای او اعمال نمی‌شود.
         </div>
       </div>
     </div>
@@ -299,5 +291,3 @@
     </div>
   </div>
 </div>
-
-

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import json
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -21,7 +23,12 @@ from app.db.models import (
     ArchiveFile,
     Block,
     Discipline,
+    DocumentActivity,
+    DocumentComment,
+    DocumentRelation,
     DocumentRevision,
+    DocumentTag,
+    DocumentTagAssignment,
     Level,
     LocalSyncManifest,
     MdrCategory,
@@ -136,6 +143,218 @@ def _subject_key_for_coding(subject_e: str | None, subject_p: str | None) -> str
     return _resolve_single_subject(subject_e, subject_p)
 
 
+class DocumentMetadataUpdateIn(BaseModel):
+    doc_title_e: Optional[str] = None
+    doc_title_p: Optional[str] = None
+    subject: Optional[str] = None
+    phase_code: Optional[str] = None
+    package_code: Optional[str] = None
+    block: Optional[str] = None
+    level_code: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class DocumentCommentCreateIn(BaseModel):
+    body: str
+    parent_id: Optional[int] = None
+
+
+class DocumentCommentUpdateIn(BaseModel):
+    body: str
+
+
+class DocumentRelationCreateIn(BaseModel):
+    target_document_id: int
+    relation_type: Optional[str] = "related"
+    notes: Optional[str] = None
+
+
+class DocumentTagCreateIn(BaseModel):
+    name: str
+    color: Optional[str] = None
+
+
+class DocumentTagAssignIn(BaseModel):
+    tag_id: Optional[int] = None
+    tag_name: Optional[str] = None
+    color: Optional[str] = None
+
+
+def _parse_json_text(raw: str | None) -> Any:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return json.loads(text)
+    except Exception:
+        return text
+
+
+def _user_display_name(user_obj: Any) -> str | None:
+    if not user_obj:
+        return None
+    return str(getattr(user_obj, "full_name", None) or getattr(user_obj, "email", None) or "").strip() or None
+
+
+def _serialize_document_payload(document: MdrDocument) -> dict[str, Any]:
+    return {
+        "id": int(document.id or 0),
+        "doc_number": document.doc_number,
+        "doc_title_e": document.doc_title_e,
+        "doc_title_p": document.doc_title_p,
+        "subject": document.subject,
+        "project_code": document.project_code,
+        "phase_code": document.phase_code,
+        "discipline_code": document.discipline_code,
+        "package_code": document.package_code,
+        "block": document.block,
+        "level_code": document.level_code,
+        "mdr_code": document.mdr_code,
+        "notes": document.notes,
+        "created_at": document.created_at.isoformat() if document.created_at else None,
+        "updated_at": document.updated_at.isoformat() if document.updated_at else None,
+        "deleted_at": document.deleted_at.isoformat() if document.deleted_at else None,
+        "updated_by_id": document.updated_by_id,
+        "updated_by_name": _user_display_name(getattr(document, "updated_by", None)),
+        "deleted_by_id": document.deleted_by_id,
+        "deleted_by_name": _user_display_name(getattr(document, "deleted_by", None)),
+    }
+
+
+def _serialize_archive_file(row: ArchiveFile | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "id": int(row.id or 0),
+        "name": row.original_name,
+        "mime_type": row.mime_type,
+        "detected_mime": row.detected_mime,
+        "size_bytes": row.size_bytes,
+        "file_kind": row.file_kind,
+        "status": row.status,
+        "is_primary": bool(row.is_primary) if row.is_primary is not None else True,
+        "revision": row.revision,
+        "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
+    }
+
+
+def _serialize_revision_payload(row: DocumentRevision | None) -> dict[str, Any] | None:
+    if not row:
+        return None
+    return {
+        "revision_id": int(row.id or 0),
+        "revision": row.revision,
+        "status": row.status,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _serialize_activity_payload(row: DocumentActivity) -> dict[str, Any]:
+    return {
+        "id": int(row.id or 0),
+        "document_id": int(row.document_id or 0),
+        "action": row.action,
+        "detail": row.detail,
+        "before_data": _parse_json_text(row.before_json),
+        "after_data": _parse_json_text(row.after_json),
+        "actor_user_id": row.actor_user_id,
+        "actor_name": row.actor_name,
+        "actor_email": row.actor_email,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _serialize_comment_payload(row: DocumentComment) -> dict[str, Any]:
+    return {
+        "id": int(row.id or 0),
+        "document_id": int(row.document_id or 0),
+        "parent_id": int(row.parent_id or 0) or None,
+        "author_id": int(row.author_id or 0) or None,
+        "author_name": row.author_name,
+        "author_email": row.author_email,
+        "body": None if row.deleted_at else row.body,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "deleted_at": row.deleted_at.isoformat() if row.deleted_at else None,
+        "is_deleted": bool(row.deleted_at),
+        "children": [],
+    }
+
+
+def _build_comment_tree(rows: list[DocumentComment]) -> list[dict[str, Any]]:
+    ordered = sorted(
+        rows,
+        key=lambda row: (
+            row.created_at.isoformat() if row.created_at else "",
+            int(row.id or 0),
+        ),
+    )
+    by_id: dict[int, dict[str, Any]] = {}
+    roots: list[dict[str, Any]] = []
+    for row in ordered:
+        payload = _serialize_comment_payload(row)
+        by_id[payload["id"]] = payload
+        parent_id = payload["parent_id"]
+        if parent_id and parent_id in by_id:
+            by_id[parent_id]["children"].append(payload)
+        else:
+            roots.append(payload)
+    return roots
+
+
+def _serialize_relation_payload(row: DocumentRelation, *, direction: str) -> dict[str, Any]:
+    counterpart = row.target_document if direction == "outgoing" else row.source_document
+    return {
+        "id": int(row.id or 0),
+        "source_document_id": int(row.source_document_id or 0),
+        "target_document_id": int(row.target_document_id or 0),
+        "relation_type": row.relation_type,
+        "notes": row.notes,
+        "created_by_id": row.created_by_id,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "direction": direction,
+        "counterpart": {
+            "id": int(getattr(counterpart, "id", 0) or 0),
+            "doc_number": getattr(counterpart, "doc_number", None),
+            "doc_title_e": getattr(counterpart, "doc_title_e", None),
+            "doc_title_p": getattr(counterpart, "doc_title_p", None),
+            "subject": getattr(counterpart, "subject", None),
+            "project_code": getattr(counterpart, "project_code", None),
+            "discipline_code": getattr(counterpart, "discipline_code", None),
+            "deleted_at": (
+                getattr(counterpart, "deleted_at", None).isoformat()
+                if getattr(counterpart, "deleted_at", None)
+                else None
+            ),
+        },
+    }
+
+
+def _serialize_tag_payload(row: DocumentTag) -> dict[str, Any]:
+    return {
+        "id": int(row.id or 0),
+        "name": row.name,
+        "color": row.color,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _serialize_tag_assignment_payload(row: DocumentTagAssignment) -> dict[str, Any]:
+    tag = getattr(row, "tag", None)
+    return {
+        "id": int(row.id or 0),
+        "document_id": int(row.document_id or 0),
+        "tag_id": int(row.tag_id or 0),
+        "assigned_by_id": row.assigned_by_id,
+        "assigned_at": row.assigned_at.isoformat() if row.assigned_at else None,
+        "tag": {
+            "id": int(getattr(tag, "id", 0) or 0),
+            "name": getattr(tag, "name", None),
+            "color": getattr(tag, "color", None),
+        },
+    }
+
+
 @router.get("/check-status")
 async def check_document_status(
     doc_code: str = Query(..., min_length=3),
@@ -176,7 +395,7 @@ def get_doc_suggestions(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
 ):
-    query = db.query(MdrDocument)
+    query = db.query(MdrDocument).filter(MdrDocument.deleted_at.is_(None))
     query = apply_scope_query_filters(
         query,
         db,
@@ -290,6 +509,7 @@ async def register_document_only(
         doc, created = archive_service.register_document_metadata(
             db=db,
             meta_data=meta_data,
+            actor=user,
         )
         status_info = archive_service.get_document_status_info(db, doc.doc_number)
         return {
@@ -339,6 +559,7 @@ async def upload_file(
             file_kind=file_kind,
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
+            actor=user,
         )
         status_map, fallback_status = _archive_openproject_status_map(db, [int(result.id or 0)])
         return {
@@ -391,6 +612,7 @@ async def upload_dual_files(
             status_code=status,
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
+            actor=user,
         )
         status_map, fallback_status = _archive_openproject_status_map(
             db, [int(pdf_entry.id or 0), int(native_entry.id or 0)]
@@ -484,6 +706,7 @@ async def register_and_upload(
             file_kind=file_kind,
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
+            actor=user,
         )
         status_map, fallback_status = _archive_openproject_status_map(db, [int(result.id or 0)])
 
@@ -559,6 +782,7 @@ async def register_and_upload_dual(
             status_code=status,
             openproject_work_package_id=openproject_work_package_id,
             is_admin=user.role == "admin",
+            actor=user,
         )
         status_map, fallback_status = _archive_openproject_status_map(
             db, [int(pdf_entry.id or 0), int(native_entry.id or 0)]
@@ -625,6 +849,7 @@ async def list_archives(
         )
         .join(DocumentRevision)
         .join(MdrDocument)
+        .filter(ArchiveFile.deleted_at.is_(None), MdrDocument.deleted_at.is_(None))
     )
     query = apply_scope_query_filters(
         query,
@@ -798,6 +1023,8 @@ async def revision_history(
     all_file_ids: list[int] = []
     for rev in document.revisions or []:
         for af in rev.archive_files or []:
+            if af.deleted_at is not None:
+                continue
             all_file_ids.append(int(af.id or 0))
     status_map, fallback_status = _archive_openproject_status_map(db, all_file_ids)
 
@@ -813,6 +1040,8 @@ async def revision_history(
             key=lambda r: (r.uploaded_at is not None, r.uploaded_at or ""),
             reverse=True,
         ):
+            if af.deleted_at is not None:
+                continue
             op_payload = _archive_openproject_payload(status_map, fallback_status, int(af.id or 0))
             files_payload.append(
                 {
@@ -869,7 +1098,7 @@ async def download_file(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
 ):
-    file_record = db.query(ArchiveFile).filter(ArchiveFile.id == file_id).first()
+    file_record = db.query(ArchiveFile).filter(ArchiveFile.id == file_id, ArchiveFile.deleted_at.is_(None)).first()
     if not file_record or not os.path.exists(file_record.stored_path):
         raise HTTPException(status_code=404, detail="???? ???? ???.")
     if file_record.document_revision and file_record.document_revision.document:
@@ -894,7 +1123,7 @@ async def get_file_integrity(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
 ):
-    file_record = db.query(ArchiveFile).filter(ArchiveFile.id == file_id).first()
+    file_record = db.query(ArchiveFile).filter(ArchiveFile.id == file_id, ArchiveFile.deleted_at.is_(None)).first()
     if not file_record:
         raise HTTPException(status_code=404, detail="File not found")
     if file_record.document_revision and file_record.document_revision.document:
@@ -925,6 +1154,309 @@ async def get_file_integrity(
         else None,
         **op_payload,
     }
+
+
+@router.get("/documents/{document_id}")
+async def get_document_detail(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    payload = archive_service.get_document_detail(db, int(document_id), user)
+    document = payload.get("document")
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    is_deleted = bool(payload.get("is_deleted"))
+    capabilities = dict(payload.get("capabilities") or {})
+    if is_deleted:
+        capabilities.update(
+            {
+                "can_edit": False,
+                "can_delete": False,
+                "can_comment": False,
+                "can_manage_relations": False,
+                "can_manage_tags": False,
+            }
+        )
+
+    return {
+        "ok": True,
+        "document": _serialize_document_payload(document),
+        "latest_revision": _serialize_revision_payload(payload.get("latest_revision")),
+        "latest_files": {
+            "preview": _serialize_archive_file((payload.get("latest_files") or {}).get("preview")),
+            "latest": _serialize_archive_file((payload.get("latest_files") or {}).get("latest")),
+        },
+        "preview_meta": payload.get("preview_meta") or {},
+        "counts": payload.get("counts") or {},
+        "capabilities": capabilities,
+        "is_deleted": is_deleted,
+        "revisions": payload.get("revisions") or [],
+        "comments": payload.get("comments") or [],
+        "activities": [_serialize_activity_payload(row) for row in payload.get("activities") or []],
+        "relations": {
+            "outgoing": [
+                _serialize_relation_payload(row, direction="outgoing")
+                for row in (payload.get("relations") or {}).get("outgoing", [])
+            ],
+            "incoming": [
+                _serialize_relation_payload(row, direction="incoming")
+                for row in (payload.get("relations") or {}).get("incoming", [])
+            ],
+        },
+        "tags": [_serialize_tag_assignment_payload(row) for row in payload.get("tags") or []],
+        "transmittals": payload.get("transmittals") or [],
+    }
+
+
+@router.put("/documents/{document_id}")
+async def update_document_metadata(
+    document_id: int,
+    body: DocumentMetadataUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:update")),
+):
+    updates = body.model_dump(exclude_none=True)
+    updated = archive_service.update_document_metadata(db, int(document_id), updates, user)
+    detail = archive_service.get_document_detail(db, int(updated.id or 0), user)
+    return {
+        "ok": True,
+        "document": _serialize_document_payload(updated),
+        "capabilities": detail.get("capabilities") or {},
+        "is_deleted": bool(updated.deleted_at),
+    }
+
+
+@router.delete("/documents/{document_id}")
+async def delete_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:delete")),
+):
+    deleted = archive_service.soft_delete_document(db, int(document_id), user)
+    return {
+        "ok": True,
+        "document_id": int(deleted.id or 0),
+        "deleted_at": deleted.deleted_at.isoformat() if deleted.deleted_at else None,
+        "deleted_by_id": deleted.deleted_by_id,
+    }
+
+
+@router.get("/documents/{document_id}/preview")
+async def stream_document_preview(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    payload = archive_service.get_document_detail(db, int(document_id), user)
+    preview_file = (payload.get("latest_files") or {}).get("preview")
+    if not preview_file:
+        raise HTTPException(status_code=404, detail="Preview file not found")
+    if preview_file.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Preview file not found")
+    file_path = str(preview_file.stored_path or "").strip()
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Preview file not found")
+    media_type = str(preview_file.mime_type or preview_file.detected_mime or "application/octet-stream")
+    filename = str(preview_file.original_name or f"document_{document_id}").replace('"', "")
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+@router.get("/documents/{document_id}/activity")
+async def list_document_activity(
+    document_id: int,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    payload = archive_service.list_document_activity(db, int(document_id), user, skip=skip, limit=limit)
+    return {
+        "ok": True,
+        "total": int(payload.get("total") or 0),
+        "data": [_serialize_activity_payload(row) for row in payload.get("data") or []],
+    }
+
+
+@router.get("/documents/{document_id}/comments")
+async def list_document_comments(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    rows = archive_service.list_document_comments(db, int(document_id), user)
+    return {"ok": True, "items": _build_comment_tree(rows)}
+
+
+@router.post("/documents/{document_id}/comments")
+async def create_document_comment(
+    document_id: int,
+    body: DocumentCommentCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:comment_create")),
+):
+    row = archive_service.create_document_comment(
+        db,
+        int(document_id),
+        body=str(body.body or "").strip(),
+        user=user,
+        parent_id=body.parent_id,
+    )
+    return {"ok": True, "item": _serialize_comment_payload(row)}
+
+
+@router.put("/documents/{document_id}/comments/{comment_id}")
+async def update_document_comment(
+    document_id: int,
+    comment_id: int,
+    body: DocumentCommentUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:comment_update")),
+):
+    row = archive_service.update_document_comment(
+        db,
+        int(document_id),
+        int(comment_id),
+        body=str(body.body or "").strip(),
+        user=user,
+    )
+    return {"ok": True, "item": _serialize_comment_payload(row)}
+
+
+@router.delete("/documents/{document_id}/comments/{comment_id}")
+async def delete_document_comment(
+    document_id: int,
+    comment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:comment_delete")),
+):
+    row = archive_service.delete_document_comment(db, int(document_id), int(comment_id), user)
+    return {"ok": True, "item": _serialize_comment_payload(row)}
+
+
+@router.get("/documents/{document_id}/transmittals")
+async def list_document_transmittals(
+    document_id: int,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    payload = archive_service.list_document_transmittals(
+        db,
+        int(document_id),
+        user=user,
+        skip=skip,
+        limit=limit,
+    )
+    return payload
+
+
+@router.get("/documents/{document_id}/relations")
+async def list_document_relations(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    payload = archive_service.list_document_relations(db, int(document_id), user)
+    return {
+        "ok": True,
+        "outgoing": [_serialize_relation_payload(row, direction="outgoing") for row in payload.get("outgoing") or []],
+        "incoming": [_serialize_relation_payload(row, direction="incoming") for row in payload.get("incoming") or []],
+    }
+
+
+@router.post("/documents/{document_id}/relations")
+async def create_document_relation(
+    document_id: int,
+    body: DocumentRelationCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:relation_manage")),
+):
+    row = archive_service.create_document_relation(
+        db,
+        int(document_id),
+        int(body.target_document_id),
+        relation_type=str(body.relation_type or "related"),
+        notes=body.notes,
+        user=user,
+    )
+    return {"ok": True, "relation": _serialize_relation_payload(row, direction="outgoing")}
+
+
+@router.delete("/documents/{document_id}/relations/{relation_id}")
+async def delete_document_relation(
+    document_id: int,
+    relation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:relation_manage")),
+):
+    archive_service.delete_document_relation(db, int(document_id), int(relation_id), user)
+    return {"ok": True, "document_id": int(document_id), "relation_id": int(relation_id)}
+
+
+@router.get("/tags")
+async def list_tags(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    del user
+    rows = archive_service.list_tags(db)
+    return {"ok": True, "items": [_serialize_tag_payload(row) for row in rows]}
+
+
+@router.post("/tags")
+async def create_tag(
+    body: DocumentTagCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:tag_manage")),
+):
+    row = archive_service.create_tag(db, name=body.name, color=body.color, user=user)
+    return {"ok": True, "tag": _serialize_tag_payload(row)}
+
+
+@router.get("/documents/{document_id}/tags")
+async def list_document_tags(
+    document_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    rows = archive_service.list_document_tags(db, int(document_id), user)
+    return {"ok": True, "items": [_serialize_tag_assignment_payload(row) for row in rows]}
+
+
+@router.post("/documents/{document_id}/tags")
+async def assign_document_tag(
+    document_id: int,
+    body: DocumentTagAssignIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:tag_manage")),
+):
+    row = archive_service.assign_tag_to_document(
+        db,
+        int(document_id),
+        tag_name=body.tag_name,
+        tag_id=body.tag_id,
+        color=body.color,
+        user=user,
+    )
+    return {"ok": True, "item": _serialize_tag_assignment_payload(row)}
+
+
+@router.delete("/documents/{document_id}/tags/{tag_id}")
+async def remove_document_tag(
+    document_id: int,
+    tag_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:tag_manage")),
+):
+    archive_service.remove_tag_from_document(db, int(document_id), int(tag_id), user)
+    return {"ok": True, "document_id": int(document_id), "tag_id": int(tag_id)}
 
 
 @router.get("/form-data")
@@ -962,6 +1494,8 @@ def get_archive_form_data(
             {
                 "code": p.package_code,
                 "name": p.name_e or p.name_p or "",
+                "name_e": p.name_e or p.name_p or "",
+                "name_p": p.name_p or p.name_e or "",
                 "discipline_code": p.discipline_code,
             }
             for p in db.query(Package).all()

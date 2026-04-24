@@ -246,8 +246,10 @@ def process_upload_request(
         project_name=proj.name_e,
         mdr_folder_name=folder_service.get_mdr_folder_name(db, parsed.mdr),
         phase_name=phase_folder_name, # ✅ استفاده از نام کامل فاز
+        phase_code=parsed.phase,
         disc_name=disc_name, disc_code=disc_code,
-        pkg_name=pkg_name, pkg_code=parsed.pkg
+        pkg_name=pkg_name, pkg_code=parsed.pkg,
+        package_name=pkg_name,
     )
 
     # خروجی متادیتا برای استفاده در روتر

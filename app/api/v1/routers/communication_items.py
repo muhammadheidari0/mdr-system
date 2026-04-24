@@ -1970,7 +1970,7 @@ def upload_comm_item_attachment(
         validation_status=saved.validation_status,
         sha256=saved.sha256,
         size_bytes=saved.size_bytes,
-        storage_backend="local",
+        storage_backend=storage_manager.resolve_storage_backend_for_path(saved.stored_path),
         gdrive_file_id=None,
         mirror_provider=mirror_provider or None,
         mirror_remote_id=None,

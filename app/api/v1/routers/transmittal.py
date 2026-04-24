@@ -21,6 +21,7 @@ from app.db.models import (
     Transmittal,
     TransmittalDoc,
 )
+from app.services.document_activity_service import log_document_activity
 from app.services.pdf_service import generate_transmittal_pdf
 
 router = APIRouter(prefix="/transmittal", tags=["Transmittal"])
@@ -192,6 +193,11 @@ def _validate_payload_documents(
         )
 
     for doc in docs_by_code.values():
+        if doc.deleted_at is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Document {doc.doc_number} is deleted and cannot be used",
+            )
         if _normalize_code(doc.project_code) != project_code:
             raise HTTPException(
                 status_code=400,
@@ -266,7 +272,7 @@ def get_eligible_documents(
         project_column=MdrDocument.project_code,
         discipline_column=MdrDocument.discipline_code,
     )
-    query = query.filter(MdrDocument.project_code == project)
+    query = query.filter(MdrDocument.project_code == project, MdrDocument.deleted_at.is_(None))
 
     discipline = _normalize_code(discipline_code)
     if discipline:
@@ -384,6 +390,19 @@ def create_transmittal(
         _set_transmittal_state(new_tr, initial_state)
         if initial_state == STATE_ISSUED and not new_tr.send_date:
             new_tr.send_date = datetime.utcnow().date().isoformat()
+        if initial_state == STATE_ISSUED:
+            for doc in docs_by_code.values():
+                log_document_activity(
+                    db,
+                    int(doc.id or 0),
+                    "transmittal_sent",
+                    user,
+                    detail=f"transmittal:{transmittal_id}",
+                    after_data={
+                        "transmittal_id": transmittal_id,
+                        "document_code": doc.doc_number,
+                    },
+                )
         db.commit()
         return {
             "ok": True,
@@ -500,6 +519,28 @@ def issue_transmittal(
 
     _set_transmittal_state(tr, STATE_ISSUED)
     tr.send_date = tr.send_date or datetime.utcnow().date().isoformat()
+    doc_codes = [str(row.document_code or "").strip() for row in (tr.docs or []) if str(row.document_code or "").strip()]
+    if doc_codes:
+        docs = (
+            db.query(MdrDocument)
+            .filter(
+                MdrDocument.doc_number.in_(doc_codes),
+                MdrDocument.project_code == tr.project_code,
+            )
+            .all()
+        )
+        for doc in docs:
+            log_document_activity(
+                db,
+                int(doc.id or 0),
+                "transmittal_sent",
+                user,
+                detail=f"transmittal:{tr.id}",
+                after_data={
+                    "transmittal_id": tr.id,
+                    "document_code": doc.doc_number,
+                },
+            )
     db.commit()
     return {"ok": True, "id": tr.id, "status": STATE_ISSUED, "message": "Transmittal issued"}
 

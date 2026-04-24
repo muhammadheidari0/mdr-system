@@ -37,7 +37,8 @@ function mapSidebarTarget(activeViewId: string): string {
   if (
     normalized === "view-archive" ||
     normalized === "view-transmittal" ||
-    normalized === "view-correspondence"
+    normalized === "view-correspondence" ||
+    normalized === "view-document-detail"
   ) {
     return "view-edms";
   }

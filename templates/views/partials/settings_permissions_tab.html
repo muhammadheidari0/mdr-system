@@ -6,7 +6,7 @@
         ماتریس سطح دسترسی
       </h2>
       <p class="archive-subtitle">
-        نقش‌ها را بر اساس مجوزهای ماژولی مدیریت کنید. دسترسی ادمین همیشه کامل است.
+        نقش‌ها را بر اساس مجوزهای ماژولی مدیریت کنید. کاربران سازمان System همیشه دسترسی کامل دارند و در ماتریس مدیریت نمی‌شوند.
       </p>
     </div>
     <div class="header-actions">
@@ -19,7 +19,7 @@
 
   <div class="archive-content">
     <div class="form-help" style="margin-bottom: 10px;">
-      مدیریت Scope پروژه/دیسیپلین از بخش کاربران انجام می‌شود.
+      مدیریت Scope پروژه/دیسپلین از بخش کاربران انجام می‌شود.
     </div>
 
     <div id="permissionsCategoryTabs" class="edms-tab-buttons" style="margin-bottom: 12px;">
@@ -38,10 +38,6 @@
       <button type="button" class="edms-tab-btn" data-permissions-category="dcc" data-permissions-action="switch-permissions-category">
         <span class="material-icons-round">badge</span>
         DCC
-      </button>
-      <button type="button" class="edms-tab-btn" data-permissions-category="system" data-permissions-action="switch-permissions-category">
-        <span class="material-icons-round">admin_panel_settings</span>
-        سیستم (کامل)
       </button>
     </div>
 
@@ -77,7 +73,7 @@
     </div>
 
     <div class="table-container permissions-table-wrap">
-      <table class="archive-table permissions-matrix-table" id="permissionsMatrixTable">
+      <table class="archive-table permissions-matrix-table" id="permissionsMatrixTable" data-bulk-enabled="false">
         <thead id="permissionsMatrixHead"></thead>
         <tbody id="permissionsMatrixBody">
           <tr>

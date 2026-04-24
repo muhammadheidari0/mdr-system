@@ -30,6 +30,16 @@ function shouldTryNextCandidate(status, stdout, stderr) {
   return text.includes("no module named");
 }
 
+function childEnv() {
+  const env = { ...process.env };
+  const debug = String(env.DEBUG || "").trim().toLowerCase();
+  const validDebugValues = new Set(["", "1", "true", "yes", "on", "0", "false", "no", "off"]);
+  if (!validDebugValues.has(debug)) {
+    delete env.DEBUG;
+  }
+  return env;
+}
+
 const args = process.argv.slice(2);
 if (!args.length) {
   console.error("Usage: node tools/run_python.mjs <python-args...>");
@@ -43,6 +53,7 @@ for (let i = 0; i < candidates.length; i += 1) {
   const pythonBin = candidates[i];
   const result = spawnSync(pythonBin, args, {
     encoding: "utf-8",
+    env: childEnv(),
     stdio: "pipe",
   });
 

@@ -69,20 +69,39 @@ def test_nextcloud_folder_picker_success(monkeypatch) -> None:
     assert body.get("current_local_path") == "/mnt/nextcloud/archive"
     assert body.get("local_mount_root_effective") == "/mnt/nextcloud"
     assert body.get("local_mount_root_source") == "settings"
+    assert body.get("local_mapping_available") is True
     assert body.get("folders") == [
         {"name": "2026", "path": "/archive/2026", "local_path": "/mnt/nextcloud/archive/2026"},
         {"name": "reports", "path": "/archive/reports", "local_path": "/mnt/nextcloud/archive/reports"},
     ]
 
 
-def test_nextcloud_folder_picker_requires_mount_root(monkeypatch) -> None:
+def test_nextcloud_folder_picker_without_mount_root_is_browse_only(monkeypatch) -> None:
     headers = _admin_headers()
     _patch_env_defaults(monkeypatch)
     _patch_integrations(monkeypatch, local_mount_root="")
 
+    def _fake_list(self, path: str = "/"):
+        assert path == "/"
+        return {
+            "current_path": "/",
+            "folders": [
+                {"name": "archive", "path": "/archive"},
+            ],
+        }
+
+    monkeypatch.setattr(NextcloudAdapter, "list_directories", _fake_list)
     res = client.post("/api/v1/storage/nextcloud/folders", headers=headers, json={"path": "/"})
-    assert res.status_code == 400, res.text
-    assert "NEXTCLOUD_LOCAL_MOUNT_ROOT" in str(res.json().get("detail") or "")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body.get("ok") is True
+    assert body.get("current_local_path") == ""
+    assert body.get("local_mount_root_effective") == ""
+    assert body.get("local_mount_root_source") == "none"
+    assert body.get("local_mapping_available") is False
+    assert body.get("folders") == [
+        {"name": "archive", "path": "/archive", "local_path": ""},
+    ]
 
 
 def test_nextcloud_folder_picker_requires_enabled_and_credentials(monkeypatch) -> None:

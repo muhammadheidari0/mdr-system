@@ -247,7 +247,7 @@ def test_regression_correspondence_c2_router_flow() -> None:
         list_correspondence,
         update_correspondence,
     )
-    from app.db.models import Correspondence, Project
+    from app.db.models import Correspondence, CorrespondenceAttachment, Project
 
     project_code = f"CP{uuid.uuid4().hex[:6].upper()}"
     created_project = False
@@ -320,7 +320,7 @@ def test_regression_correspondence_c3_auto_reference_numbering() -> None:
     from types import SimpleNamespace
 
     from app.api.v1.routers.correspondence import CorrespondenceCreateIn, create_correspondence
-    from app.db.models import Correspondence, Project
+    from app.db.models import Correspondence, CorrespondenceAttachment, Project
 
     project_code = f"CR{uuid.uuid4().hex[:6].upper()}"
     created_project = False
@@ -400,7 +400,7 @@ def test_regression_correspondence_c5_actions_and_attachments_flow() -> None:
         upload_correspondence_attachment,
     )
     from app.api.v1.routers.correspondence import CorrespondenceActionUpdateIn
-    from app.db.models import Correspondence, Project
+    from app.db.models import Correspondence, CorrespondenceAttachment, Project
 
     project_code = f"CX{uuid.uuid4().hex[:6].upper()}"
     corr_id: int | None = None
@@ -473,6 +473,19 @@ def test_regression_correspondence_c5_actions_and_attachments_flow() -> None:
         attachment = upload.get("data", {})
         attachment_id = int(attachment.get("id"))
         assert str(attachment.get("file_kind")) == "letter"
+        attachment_row = (
+            db.query(CorrespondenceAttachment)
+            .filter(CorrespondenceAttachment.id == attachment_id)
+            .first()
+        )
+        corr_row = db.query(Correspondence).filter(Correspondence.id == corr_id).first()
+        assert attachment_row is not None
+        assert corr_row is not None
+        stored_path = Path(str(attachment_row.stored_path))
+        assert stored_path.parent.name == "main"
+        assert stored_path.parent.parent.name == corr_row.reference_no
+        assert stored_path.parent.parent.parent.name == "O"
+        assert stored_path.name.startswith(f"{corr_row.reference_no}_")
 
         attachments = list_correspondence_attachments(correspondence_id=corr_id, db=db, user=actor)
         assert attachments.get("ok") is True
@@ -566,6 +579,14 @@ def test_regression_archive_dual_upload_links_files(admin_headers: dict[str, str
         assert pdf_row.revision_id == native_row.revision_id
         pdf_path = pdf_row.stored_path
         native_path = native_row.stored_path
+        pdf_path_obj = Path(str(pdf_path))
+        native_path_obj = Path(str(native_path))
+        assert pdf_path_obj.parent.name == "pdf"
+        assert native_path_obj.parent.name == "native"
+        assert f"{project_code} - Dual Test {project_code}" in pdf_path_obj.parts
+        assert f"{project_code} - Dual Test {project_code}" in native_path_obj.parts
+        assert "GN" in pdf_path_obj.parts
+        assert "GN" in native_path_obj.parts
 
         revision_row = db.query(DocumentRevision).filter(DocumentRevision.id == pdf_row.revision_id).first()
         assert revision_row is not None

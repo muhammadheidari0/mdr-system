@@ -22,8 +22,6 @@ from app.api.dependencies import (
     has_permission_for_user,
     require_permission,
 )
-from app.core.organizations import resolve_user_permission_category
-from app.core.roles import normalize_role
 from app.db.models import (
     Discipline,
     Organization,
@@ -37,6 +35,7 @@ from app.db.models import (
     PermitQcTemplateStation,
     Project,
 )
+from app.services.access_control import resolve_effective_access
 from app.services.folder_service import safe_name
 from app.services.storage import StorageManager
 
@@ -91,6 +90,18 @@ def _json_dumps(value: dict[str, Any] | None) -> str | None:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _effective_role(user: User) -> str:
+    return str(resolve_effective_access(user).effective_role or "").strip().lower()
+
+
+def _permission_category(user: User) -> str:
+    return str(resolve_effective_access(user).permission_category or "").strip().lower()
+
+
+def _is_system_admin(user: User) -> bool:
+    return bool(resolve_effective_access(user).is_system_admin)
+
+
 def _module_key_or_400(value: str) -> str:
     module = _lower(value)
     if module not in MODULE_KEYS:
@@ -127,9 +138,9 @@ def _coerce_bool(value: Any) -> bool | None:
 
 def _ensure_module_access(user: User, module_key: str) -> str:
     module = _module_key_or_400(module_key)
-    if normalize_role(getattr(user, "role", None)) == "admin":
+    if _is_system_admin(user):
         return module
-    category = resolve_user_permission_category(user)
+    category = _permission_category(user)
     if module == "contractor" and category != "contractor":
         raise HTTPException(status_code=403, detail="Contractor module access denied.")
     if module == "consultant" and category not in CONSULTANT_CATEGORIES:
@@ -138,9 +149,9 @@ def _ensure_module_access(user: User, module_key: str) -> str:
 
 
 def _ensure_consultant_template_access(user: User) -> None:
-    if normalize_role(getattr(user, "role", None)) == "admin":
+    if _is_system_admin(user):
         return
-    category = resolve_user_permission_category(user)
+    category = _permission_category(user)
     if category not in CONSULTANT_CATEGORIES:
         raise HTTPException(
             status_code=403,
@@ -151,7 +162,7 @@ def _ensure_consultant_template_access(user: User) -> None:
 def _effective_read_module_key(user: User, requested: str | None) -> str:
     if requested:
         return _ensure_module_access(user, requested)
-    category = resolve_user_permission_category(user)
+    category = _permission_category(user)
     fallback = "contractor" if category == "contractor" else "consultant"
     return _ensure_module_access(user, fallback)
 
@@ -677,7 +688,7 @@ def _enforce_permit_module_access(db: Session, user: User, permit: PermitQcPermi
         project_code=permit.project_code,
         discipline_code=permit.discipline_code,
     )
-    if normalize_role(getattr(user, "role", None)) == "admin":
+    if _is_system_admin(user):
         return module
 
     if module == "contractor":
@@ -803,7 +814,7 @@ def permit_qc_catalog(
         )
     else:
         user_org_id = int(getattr(user, "organization_id", 0) or 0)
-        if normalize_role(getattr(user, "role", None)) != "admin" and user_org_id > 0:
+        if not _is_system_admin(user) and user_org_id > 0:
             query = query.filter(
                 or_(
                     PermitQcPermit.consultant_org_id == user_org_id,
@@ -887,7 +898,7 @@ def permit_qc_list(
         )
     else:
         user_org_id = int(getattr(user, "organization_id", 0) or 0)
-        if normalize_role(getattr(user, "role", None)) != "admin" and user_org_id > 0:
+        if not _is_system_admin(user) and user_org_id > 0:
             query = query.filter(
                 or_(
                     PermitQcPermit.consultant_org_id == user_org_id,
@@ -1260,7 +1271,7 @@ def permit_qc_review(
     user_org_id = int(getattr(user, "organization_id", 0) or 0)
     station_org_id = int(station.organization_id or 0)
     if (
-        normalize_role(getattr(user, "role", None)) != "admin"
+        not _is_system_admin(user)
         and station_org_id > 0
         and user_org_id > 0
         and station_org_id != user_org_id
@@ -1385,7 +1396,8 @@ def permit_qc_upload_attachment(
     original_name = safe_name(file.filename)
     unique_name = safe_name(f"{now.strftime('%Y%m%d%H%M%S%f')}_{original_name}")
     folder = _permit_attachment_dir(db, row)
-    saved = StorageManager(db).save_upload_secure(
+    storage_manager = StorageManager(db)
+    saved = storage_manager.save_upload_secure(
         file=file,
         destination_folder=str(folder),
         new_name=unique_name,
@@ -1401,7 +1413,7 @@ def permit_qc_upload_attachment(
         validation_status=saved.validation_status,
         sha256=saved.sha256,
         size_bytes=saved.size_bytes,
-        storage_backend="local",
+        storage_backend=storage_manager.resolve_storage_backend_for_path(saved.stored_path),
         uploaded_by_id=getattr(user, "id", None),
         uploaded_at=datetime.utcnow(),
     )

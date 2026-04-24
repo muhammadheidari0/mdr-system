@@ -12,7 +12,9 @@ class OrganizationType(str, Enum):
 
 class OrganizationRole(str, Enum):
     ADMIN = "admin"
+    MANAGER = "manager"
     DCC = "dcc"
+    USER = "user"
     VIEWER = "viewer"
 
 
@@ -24,7 +26,6 @@ PERMISSION_CATEGORIES: tuple[str, ...] = (
     OrganizationType.CONSULTANT.value,
     OrganizationType.CONTRACTOR.value,
     OrganizationType.DCC.value,
-    OrganizationType.SYSTEM.value,
 )
 DEFAULT_PERMISSION_CATEGORY = OrganizationType.CONSULTANT.value
 
@@ -48,6 +49,8 @@ def normalize_org_role(value: str | None) -> str:
 def normalize_permission_category(value: str | None) -> str:
     key = normalize_org_type(value)
     mapped = ORG_TYPE_TO_PERMISSION_CATEGORY.get(key, key)
+    if mapped == OrganizationType.SYSTEM.value:
+        return OrganizationType.SYSTEM.value
     if mapped not in PERMISSION_CATEGORIES:
         return DEFAULT_PERMISSION_CATEGORY
     return mapped

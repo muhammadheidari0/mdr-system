@@ -417,6 +417,35 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             await loadCreateFormData();
         }
         resetCreateForm();
+        const pendingDoc =
+            typeof window.consumePendingTransmittalDoc === "function"
+                ? window.consumePendingTransmittalDoc()
+                : null;
+        if (pendingDoc && typeof pendingDoc === "object") {
+            const projectCode = String(pendingDoc.project_code || "").trim().toUpperCase();
+            const disciplineCode = String(pendingDoc.discipline_code || "").trim().toUpperCase();
+            const docNumber = String(pendingDoc.doc_number || "").trim();
+            const revision = String(pendingDoc.revision || "00").trim() || "00";
+            const status = String(pendingDoc.status || "IFA").trim() || "IFA";
+
+            const projectEl = document.getElementById("tr2-project");
+            const disciplineEl = document.getElementById("tr2-discipline");
+            if (projectEl && projectCode) projectEl.value = projectCode;
+            if (disciplineEl && disciplineCode) disciplineEl.value = disciplineCode;
+
+            await refreshTransmittalNumber();
+            await searchEligibleDocs();
+
+            if (docNumber) {
+                window.addTr2Doc({
+                    doc_number: docNumber,
+                    revision,
+                    status,
+                    doc_title: pendingDoc.doc_title || pendingDoc.doc_title_p || pendingDoc.doc_title_e || docNumber,
+                });
+            }
+            return;
+        }
         await refreshTransmittalNumber();
         await searchEligibleDocs();
     };

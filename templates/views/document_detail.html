@@ -1,0 +1,92 @@
+<div id="view-document-detail" class="view-section" style="display:none;">
+    <div class="doc-detail-card">
+        <div class="doc-detail-header">
+            <div class="doc-detail-header-main">
+                <button type="button" class="doc-icon-btn" data-doc-detail-action="go-back" title="بازگشت به آرشیو">
+                    <span class="material-icons-round">arrow_back</span>
+                </button>
+                <div class="doc-detail-title-block">
+                    <div class="doc-detail-kicker">
+                        <span class="material-icons-round">description</span>
+                        جزئیات مدرک
+                    </div>
+                    <h2 class="doc-detail-title">
+                        <span id="docDetailDocNumber">-</span>
+                    </h2>
+                    <p class="doc-detail-summary" id="docDetailSummary">در حال بارگذاری مدرک...</p>
+                </div>
+            </div>
+            <div class="doc-detail-actions">
+                <button type="button" class="doc-action-btn" data-doc-detail-action="edit-toggle">
+                    <span class="material-icons-round">edit</span>
+                    <span>ویرایش اطلاعات</span>
+                </button>
+                <button type="button" class="doc-action-btn" data-doc-detail-action="new-revision">
+                    <span class="material-icons-round">upload_file</span>
+                    <span>نسخه جدید</span>
+                </button>
+                <button type="button" class="doc-action-btn doc-action-primary" data-doc-detail-action="send-transmittal">
+                    <span class="material-icons-round">send</span>
+                    <span>ارسال ترنسمیتال</span>
+                </button>
+                <button type="button" class="doc-action-btn" data-doc-detail-action="download-latest">
+                    <span class="material-icons-round">download</span>
+                    <span>دانلود</span>
+                </button>
+                <button type="button" class="doc-action-btn doc-action-danger" data-doc-detail-action="delete-document">
+                    <span class="material-icons-round">delete</span>
+                    <span>حذف</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="docDetailDeletedBanner" class="doc-deleted-banner" style="display:none;">
+            این سند حذف نرم شده است و در حالت فقط خواندنی نمایش داده می‌شود.
+        </div>
+
+        <div class="doc-detail-overview">
+            <section class="doc-detail-identity-card">
+                <div class="doc-detail-section-head">
+                    <div>
+                        <span class="doc-detail-section-eyebrow">مدرک جاری</span>
+                        <h3 id="docDetailTitle">-</h3>
+                    </div>
+                    <span id="docDetailStatusBadge" class="doc-status-badge">فعال</span>
+                </div>
+                <p id="docDetailSubject" class="doc-detail-subject">-</p>
+                <div id="docDetailQuickStats" class="doc-detail-stat-grid"></div>
+            </section>
+
+            <aside class="doc-detail-side-card">
+                <div class="doc-detail-section-head compact">
+                    <div>
+                        <span class="doc-detail-section-eyebrow">دسته‌بندی</span>
+                        <h3>تگ‌ها</h3>
+                    </div>
+                    <span class="material-icons-round">sell</span>
+                </div>
+                <div id="docDetailTags" class="doc-detail-tags"></div>
+            </aside>
+        </div>
+
+        <div class="doc-detail-tabs" role="tablist" aria-label="تب‌های جزئیات مدرک">
+            <button type="button" class="edms-tab-btn active" data-doc-detail-tab="metadata"><span class="material-icons-round">badge</span> اطلاعات</button>
+            <button type="button" class="edms-tab-btn" data-doc-detail-tab="revisions"><span class="material-icons-round">history</span> نسخه‌ها <span id="docDetailTabRevisionsCount" class="doc-tab-count">0</span></button>
+            <button type="button" class="edms-tab-btn" data-doc-detail-tab="preview"><span class="material-icons-round">visibility</span> پیش‌نمایش</button>
+            <button type="button" class="edms-tab-btn" data-doc-detail-tab="comments"><span class="material-icons-round">forum</span> کامنت‌ها <span id="docDetailTabCommentsCount" class="doc-tab-count">0</span></button>
+            <button type="button" class="edms-tab-btn" data-doc-detail-tab="activity"><span class="material-icons-round">timeline</span> فعالیت‌ها <span id="docDetailTabActivityCount" class="doc-tab-count">0</span></button>
+            <button type="button" class="edms-tab-btn" data-doc-detail-tab="transmittals"><span class="material-icons-round">send</span> ترنسمیتال‌ها</button>
+            <button type="button" class="edms-tab-btn" data-doc-detail-tab="relations"><span class="material-icons-round">account_tree</span> ارتباطات</button>
+        </div>
+
+        <div class="doc-detail-panel-stack">
+            <div id="docDetailPanelMetadata" class="doc-tab-panel active" data-doc-detail-panel="metadata"></div>
+            <div id="docDetailPanelRevisions" class="doc-tab-panel" data-doc-detail-panel="revisions" style="display:none;"></div>
+            <div id="docDetailPanelPreview" class="doc-tab-panel" data-doc-detail-panel="preview" style="display:none;"></div>
+            <div id="docDetailPanelComments" class="doc-tab-panel" data-doc-detail-panel="comments" style="display:none;"></div>
+            <div id="docDetailPanelActivity" class="doc-tab-panel" data-doc-detail-panel="activity" style="display:none;"></div>
+            <div id="docDetailPanelTransmittals" class="doc-tab-panel" data-doc-detail-panel="transmittals" style="display:none;"></div>
+            <div id="docDetailPanelRelations" class="doc-tab-panel" data-doc-detail-panel="relations" style="display:none;"></div>
+        </div>
+    </div>
+</div>

@@ -14,7 +14,8 @@ from app.core.config import settings
 from app.db.models import SettingsKV
 from app.services.file_integrity import SavedFileInfo, save_upload_with_integrity
 from app.services.folder_service import safe_name
-from app.services.storage_policy import get_storage_policy
+from app.services.storage_policy import get_storage_integrations, get_storage_policy, resolve_primary_storage_provider
+from app.services.storage_sync import resolve_nextcloud_runtime
 
 
 class StorageManager:
@@ -367,6 +368,45 @@ class StorageManager:
         )
         return self._resolve_path(raw)
 
+    @classmethod
+    def _path_is_under_root_value(cls, path_value: str, root_value: str) -> bool:
+        raw_path = str(path_value or "").strip()
+        raw_root = str(root_value or "").strip()
+        if not raw_path or not raw_root:
+            return False
+
+        path_is_unc = cls._is_unc_path(raw_path)
+        root_is_unc = cls._is_unc_path(raw_root)
+        if path_is_unc or root_is_unc:
+            if not (path_is_unc and root_is_unc):
+                return False
+            try:
+                return cls._is_under_unc_root(raw_path, raw_root)
+            except Exception:
+                return False
+
+        try:
+            normalized_path = cls._resolve_path(raw_path).resolve(strict=False)
+            normalized_root = cls._resolve_path(raw_root).resolve(strict=False)
+        except Exception:
+            return False
+        return cls._is_under_root(normalized_path, normalized_root)
+
+    def get_selected_primary_storage_provider(self) -> str:
+        integrations = get_storage_integrations(self.db)
+        return resolve_primary_storage_provider(integrations)
+
+    def resolve_storage_backend_for_path(self, path_value: str) -> str:
+        integrations = get_storage_integrations(self.db)
+        if resolve_primary_storage_provider(integrations) != "nextcloud":
+            return "local"
+
+        runtime = resolve_nextcloud_runtime(integrations)
+        mount_root = str(runtime.get("local_mount_root_effective") or "").strip()
+        if mount_root and self._path_is_under_root_value(path_value, mount_root):
+            return "nextcloud"
+        return "local"
+
     def get_mdr_path(
         self,
         *,
@@ -378,11 +418,14 @@ class StorageManager:
         disc_code: str,
         pkg_name: str,
         pkg_code: str,
+        phase_code: str | None = None,
+        package_name: str | None = None,
+        file_kind: str | None = None,
         project_root_path: str | None = None,
     ) -> str:
         """
         Build and create MDR storage path.
-        Order: root / project / mdr / phase / discipline / package
+        Order: root / project / mdr / phase-code / discipline-code / package-name / file-kind
         """
         base = self._resolve_path(project_root_path) if project_root_path else self.get_mdr_base_path()
 
@@ -393,22 +436,23 @@ class StorageManager:
         else:
             project_folder = safe_project_code
 
-        safe_disc_code = safe_name(disc_code)
-        safe_disc_name = safe_name(disc_name)
-        disc_folder = f"{safe_disc_code}-{safe_disc_name}" if safe_disc_name else safe_disc_code
+        phase_folder = safe_name(phase_code or phase_name) or "Phase"
+        safe_disc_code = safe_name(disc_code) or "GN"
 
         safe_pkg_code = safe_name(pkg_code)
-        safe_pkg_name = safe_name(pkg_name)
-        pkg_folder = f"{safe_pkg_code}-{safe_pkg_name}" if safe_pkg_name else safe_pkg_code
+        safe_pkg_name = safe_name(package_name or pkg_name)
+        pkg_folder = safe_pkg_name or safe_pkg_code
 
         full_path = (
             base
             / safe_name(project_folder)
             / safe_name(mdr_folder_name)
-            / safe_name(phase_name)
-            / safe_name(disc_folder)
+            / phase_folder
+            / safe_disc_code
             / safe_name(pkg_folder)
         )
+        if file_kind:
+            full_path = full_path / safe_name(file_kind)
         full_path.mkdir(parents=True, exist_ok=True)
         return str(full_path)
 

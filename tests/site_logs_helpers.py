@@ -77,6 +77,8 @@ def create_scoped_user_and_login(
     project_code: str,
     discipline_code: str,
     email_prefix: str,
+    role: str = "user",
+    organization_role: str = "viewer",
 ) -> dict[str, str | int]:
     organization_id = ensure_org(client, admin, org_type=org_type, code_prefix=email_prefix.upper())
     assert organization_id > 0
@@ -89,9 +91,9 @@ def create_scoped_user_and_login(
             "email": email,
             "password": password,
             "full_name": email_prefix.title(),
-            "role": "user",
+            "role": role,
             "organization_id": organization_id,
-            "organization_role": "viewer",
+            "organization_role": organization_role,
             "is_active": True,
         },
         headers=admin,

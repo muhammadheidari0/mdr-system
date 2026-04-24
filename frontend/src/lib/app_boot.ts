@@ -39,8 +39,8 @@ async function runOnLoad(pathname: string, deps: AppBootDeps): Promise<boolean> 
   deps.toggleLoader(true);
   try {
     deps.primeLoadedScriptCache();
-    await deps.loadDictionary();
-    await deps.loadEdmsNavigation();
+    // Load dictionary and navigation in parallel instead of sequentially
+    await Promise.all([deps.loadDictionary(), deps.loadEdmsNavigation()]);
     const initialView = String(deps.resolveInitialView?.() || "").trim() || "view-dashboard";
     await deps.navigateTo(initialView);
 

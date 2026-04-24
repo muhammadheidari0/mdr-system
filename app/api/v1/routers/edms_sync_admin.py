@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_current_admin_user, get_db
+from app.api.dependencies import get_db, require_permission
 from app.core.config import settings
 from app.services.edms_export_manifest import export_archive_manifest_rows
 from app.services.edms_sync_outbox import EVENT_ENDPOINTS, build_master_data_snapshot, build_sync_envelopes
@@ -35,7 +35,7 @@ def _resolved_target_url(payload: NativeEdmsPushRequest) -> str:
 @router.get("/master-data-snapshot")
 def get_native_edms_master_data_snapshot(
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_admin_user),
+    _: object = Depends(require_permission("integrations:read")),
 ):
     return {
         "ok": True,
@@ -48,7 +48,7 @@ def get_native_edms_archive_manifest(
     project_code: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1, le=5000),
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_admin_user),
+    _: object = Depends(require_permission("integrations:read")),
 ):
     rows = export_archive_manifest_rows(db, project_code=project_code, limit=limit)
     return {
@@ -62,7 +62,7 @@ def get_native_edms_archive_manifest(
 def preview_native_edms_sync_events(
     include: list[str] | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_admin_user),
+    _: object = Depends(require_permission("integrations:read")),
 ):
     secret = str(settings.NATIVE_EDMS_SYNC_SHARED_SECRET or "").strip()
     if not secret:
@@ -81,7 +81,7 @@ def preview_native_edms_sync_events(
 def push_native_edms_sync_events(
     payload: NativeEdmsPushRequest,
     db: Session = Depends(get_db),
-    _: object = Depends(get_current_admin_user),
+    _: object = Depends(require_permission("integrations:update")),
 ):
     secret = _resolved_secret(payload)
     if not secret:

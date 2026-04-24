@@ -352,7 +352,10 @@ import { formatShamsiDateTime } from "../lib/persian_datetime";
         state.projects = Array.isArray(scopePayload?.projects) ? scopePayload.projects : [];
         state.disciplines = Array.isArray(scopePayload?.disciplines) ? scopePayload.disciplines : [];
         state.users = Array.isArray(usersPayload)
-            ? usersPayload.filter((u) => String(u.role || '').toLowerCase() !== 'admin')
+            ? usersPayload.filter((u) => {
+                const effectiveRole = String(u.effective_role || u.role || '').toLowerCase();
+                return !(u.is_system_admin === true || effectiveRole === 'admin');
+            })
             : [];
 
         setSelectOptions('reportProjectCode', state.projects, 'Ù‡Ù…Ù‡ Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§');

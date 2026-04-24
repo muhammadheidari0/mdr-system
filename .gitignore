@@ -59,7 +59,12 @@ help.md
 *.log
 *.tmp
 *.temp
+*.tar
 *.tar.gz
+nul
 docker/Caddyfile.generated
 docker/certs/
 helpserver.md
+helpdocker.md
+nasb.md
+helpupdateserver.md

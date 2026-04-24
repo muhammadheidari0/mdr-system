@@ -55,6 +55,7 @@
             currentLocalPath: '',
             localMountRoot: '',
             localMountRootSource: 'none',
+            localMappingAvailable: false,
             ready: false,
             loading: false,
         },
@@ -890,6 +891,7 @@
         if (corrPreview && corrInput) {
             corrPreview.textContent = normalizeStoragePathForCompare(corrInput.value) || '-';
         }
+        updateStoragePathBackendBadges();
     }
 
     function showStorageStepSaved(step, message) {
@@ -1101,7 +1103,237 @@
         tokenSavedState.textContent = text;
     }
 
+    function setStoragePrimaryProviderHint(message = '', level = 'info') {
+        const hint = document.getElementById('storagePrimaryProviderHint');
+        if (!hint) return;
+        hint.textContent = message;
+        hint.classList.remove('is-error', 'is-success');
+        if (level === 'error') hint.classList.add('is-error');
+        if (level === 'success') hint.classList.add('is-success');
+    }
+
+    function renderPrimaryStorageStatusCard() {
+        const badge = document.getElementById('storagePrimaryStatusBadge');
+        const message = document.getElementById('storagePrimaryStatusMessage');
+        const mdrValue = document.getElementById('storagePrimaryStatusMdrValue');
+        const mdrMeta = document.getElementById('storagePrimaryStatusMdrMeta');
+        const corrValue = document.getElementById('storagePrimaryStatusCorrValue');
+        const corrMeta = document.getElementById('storagePrimaryStatusCorrMeta');
+        const mountValue = document.getElementById('storagePrimaryStatusMountValue');
+        const mountMeta = document.getElementById('storagePrimaryStatusMountMeta');
+        const mirrorValue = document.getElementById('storagePrimaryStatusMirrorValue');
+        const mirrorMeta = document.getElementById('storagePrimaryStatusMirrorMeta');
+        const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
+        const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
+        const mdrPathInput = document.getElementById('mdrStoragePathInput');
+        const corrPathInput = document.getElementById('correspondenceStoragePathInput');
+        if (!badge || !message || !mdrValue || !mdrMeta || !corrValue || !corrMeta || !mountValue || !mountMeta || !mirrorValue || !mirrorMeta) return;
+
+        const selectedPrimary = ['local', 'nextcloud'].includes(norm(primaryProvider?.value).toLowerCase())
+            ? norm(primaryProvider?.value).toLowerCase()
+            : 'local';
+        const selectedMirror = ['none', 'google_drive', 'nextcloud'].includes(norm(mirrorProvider?.value).toLowerCase())
+            ? norm(mirrorProvider?.value).toLowerCase()
+            : 'none';
+        const mountRoot = norm(nextcloudLocalMountRoot?.value);
+        const mdrPath = norm(mdrPathInput?.value);
+        const corrPath = norm(corrPathInput?.value);
+        const mdrOnMount = pathIsUnderMountRoot(mdrPath, mountRoot);
+        const corrOnMount = pathIsUnderMountRoot(corrPath, mountRoot);
+        const nextcloudReady = Boolean(
+            nextcloudEnabled?.checked
+            && norm(nextcloudBaseUrl?.value)
+            && norm(nextcloudUsername?.value)
+            && ['env', 'settings'].includes(norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase())
+            && mountRoot
+        );
+
+        let tone = 'warning';
+        let badgeText = 'نیاز به بررسی';
+        let messageText = 'تنظیمات ذخیره‌سازی را بررسی کنید.';
+
+        if (selectedPrimary === 'local') {
+            tone = 'success';
+            badgeText = 'محلی فعال';
+            messageText = 'ذخیره اصلی روی مسیر محلی/UNC انجام می‌شود. در صورت نیاز می‌توان از میرور جداگانه استفاده کرد.';
+        } else if (!nextcloudReady) {
+            tone = 'error';
+            badgeText = 'نکست‌کلاد آماده نیست';
+            messageText = 'برای ذخیره اصلی روی نکست‌کلاد باید اتصال، اعتبارنامه و Local Mount Root کامل باشد.';
+        } else if (!mdrOnMount || !corrOnMount) {
+            tone = 'warning';
+            badgeText = 'مسیرها ناقص‌اند';
+            messageText = 'هر دو مسیر مدارک مهندسی و مکاتبات باید زیر Local Mount Root نکست‌کلاد قرار بگیرند.';
+        } else {
+            tone = 'success';
+            badgeText = 'نکست‌کلاد فعال';
+            messageText = 'ذخیره اصلی برای مدارک مهندسی و مکاتبات روی مسیر Mount شده نکست‌کلاد فعال است.';
+        }
+
+        badge.textContent = badgeText;
+        badge.dataset.tone = tone;
+        message.textContent = messageText;
+        mdrValue.textContent = mdrPath || '-';
+        mdrMeta.textContent = selectedPrimary === 'nextcloud'
+            ? (mdrOnMount ? 'زیر ریشه Mount نکست‌کلاد است' : 'خارج از ریشه Mount نکست‌کلاد است')
+            : 'روی مسیر محلی/UNC ذخیره می‌شود';
+        corrValue.textContent = corrPath || '-';
+        corrMeta.textContent = selectedPrimary === 'nextcloud'
+            ? (corrOnMount ? 'زیر ریشه Mount نکست‌کلاد است' : 'خارج از ریشه Mount نکست‌کلاد است')
+            : 'روی مسیر محلی/UNC ذخیره می‌شود';
+        mountValue.textContent = mountRoot || '-';
+        mountMeta.textContent = mountRoot
+            ? 'این همان مسیر local/UNC است که نکست‌کلاد از طریق آن به‌عنوان استورج اصلی استفاده می‌شود.'
+            : 'برای فعال شدن ذخیره اصلی نکست‌کلاد باید Local Mount Root تنظیم شود.';
+        if (selectedMirror === 'none') {
+            mirrorValue.textContent = 'غیرفعال';
+            mirrorMeta.textContent = 'هیچ job میروری اجرا نمی‌شود.';
+        } else if (selectedMirror === 'google_drive') {
+            mirrorValue.textContent = 'گوگل‌درایو';
+            mirrorMeta.textContent = 'پس از ذخیره فایل، job میرور روی گوگل‌درایو اجرا می‌شود.';
+        } else if (selectedPrimary === 'nextcloud' && nextcloudReady && mdrOnMount && corrOnMount) {
+            mirrorValue.textContent = 'خودکار غیرفعال';
+            mirrorMeta.textContent = 'چون استورج اصلی خود نکست‌کلاد است، میرور نکست‌کلاد غیرفعال می‌شود.';
+        } else {
+            mirrorValue.textContent = 'نکست‌کلاد';
+            mirrorMeta.textContent = 'پس از ذخیره فایل، job میرور روی نکست‌کلاد اجرا می‌شود.';
+        }
+    }
+
+    function updateStoragePathBackendBadges() {
+        const mdrBadge = document.getElementById('storagePathMdrBadge');
+        const corrBadge = document.getElementById('storagePathCorrespondenceBadge');
+        const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
+        const mdrPathInput = document.getElementById('mdrStoragePathInput');
+        const corrPathInput = document.getElementById('correspondenceStoragePathInput');
+        if (!mdrBadge || !corrBadge) return;
+
+        const selectedPrimary = ['local', 'nextcloud'].includes(norm(primaryProvider?.value).toLowerCase())
+            ? norm(primaryProvider?.value).toLowerCase()
+            : 'local';
+        const mountRoot = norm(nextcloudLocalMountRoot?.value);
+        const nextcloudReady = Boolean(
+            nextcloudEnabled?.checked
+            && norm(nextcloudBaseUrl?.value)
+            && norm(nextcloudUsername?.value)
+            && ['env', 'settings'].includes(norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase())
+            && mountRoot
+        );
+
+        const rows = [
+            { badge: mdrBadge, path: norm(mdrPathInput?.value) },
+            { badge: corrBadge, path: norm(corrPathInput?.value) },
+        ];
+        rows.forEach(({ badge, path }) => {
+            let text = 'محلی';
+            let tone = 'success';
+            if (selectedPrimary === 'nextcloud') {
+                if (!nextcloudReady) {
+                    text = 'نکست‌کلاد آماده نیست';
+                    tone = 'error';
+                } else if (pathIsUnderMountRoot(path, mountRoot)) {
+                    text = 'نکست‌کلاد';
+                    tone = 'success';
+                } else {
+                    text = 'خارج از Mount';
+                    tone = 'warning';
+                }
+            }
+            badge.textContent = text;
+            badge.dataset.tone = tone;
+        });
+    }
+
+    function pathIsUnderMountRoot(pathValue, rootValue) {
+        const pathNorm = toComparablePath(pathValue);
+        const rootNorm = toComparablePath(rootValue);
+        if (!pathNorm || !rootNorm) return false;
+        return pathNorm === rootNorm || pathNorm.startsWith(`${rootNorm}/`);
+    }
+
+    function updatePrimaryStorageProviderHint() {
+        const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
+        const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
+        const mdrPathInput = document.getElementById('mdrStoragePathInput');
+        const corrPathInput = document.getElementById('correspondenceStoragePathInput');
+        const nextcloudMirrorOption = mirrorProvider?.querySelector('option[value="nextcloud"]');
+
+        const selectedPrimary = ['local', 'nextcloud'].includes(norm(primaryProvider?.value).toLowerCase())
+            ? norm(primaryProvider?.value).toLowerCase()
+            : 'local';
+        const mountRoot = norm(nextcloudLocalMountRoot?.value);
+        const mdrOnMount = pathIsUnderMountRoot(mdrPathInput?.value, mountRoot);
+        const corrOnMount = pathIsUnderMountRoot(corrPathInput?.value, mountRoot);
+        const nextcloudReady = Boolean(
+            nextcloudEnabled?.checked
+            && norm(nextcloudBaseUrl?.value)
+            && norm(nextcloudUsername?.value)
+            && ['env', 'settings'].includes(norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase())
+            && mountRoot
+        );
+
+        if (nextcloudMirrorOption) {
+            const disableMirror = selectedPrimary === 'nextcloud' && nextcloudReady && mdrOnMount && corrOnMount;
+            nextcloudMirrorOption.disabled = disableMirror;
+            if (disableMirror && norm(mirrorProvider?.value).toLowerCase() === 'nextcloud') {
+                mirrorProvider.value = 'none';
+            }
+        }
+
+        renderPrimaryStorageStatusCard();
+        updateStoragePathBackendBadges();
+
+        if (selectedPrimary !== 'nextcloud') {
+            setStoragePrimaryProviderHint(
+                'استورج اصلی محلی/UNC است. در صورت نیاز می‌توانید نکست‌کلاد را فقط برای میرور نگه دارید.',
+                'info'
+            );
+            return;
+        }
+
+        if (!nextcloudReady) {
+            setStoragePrimaryProviderHint(
+                'برای استفاده از نکست‌کلاد به‌عنوان استورج اصلی، باید اتصال نکست‌کلاد فعال، اعتبارنامه ذخیره و Local Mount Root تنظیم شده باشد.',
+                'error'
+            );
+            return;
+        }
+
+        if (!mdrOnMount || !corrOnMount) {
+            const missing = [
+                !mdrOnMount ? 'مسیر MDR' : '',
+                !corrOnMount ? 'مسیر مکاتبات' : '',
+            ].filter(Boolean).join(' + ');
+            setStoragePrimaryProviderHint(
+                `${missing} باید زیر Local Mount Root نکست‌کلاد قرار بگیرد تا ذخیره اصلی روی نکست‌کلاد فعال شود.`,
+                'error'
+            );
+            return;
+        }
+
+        setStoragePrimaryProviderHint(
+            'فایل‌های جدید مستقیم روی مسیر Mount شده نکست‌کلاد ذخیره می‌شوند. اگر میرور نکست‌کلاد انتخاب شود، به‌دلیل یکسان بودن با استورج اصلی غیرفعال می‌شود.',
+            'success'
+        );
+    }
+
     function updateStorageIntegrationsFieldState() {
+        const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
         const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const googleEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const googleDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
@@ -1198,6 +1430,7 @@
         const bimSignatureOn = bimOn && Boolean(bimRequireSignature?.checked);
         const readyForExecute = openprojectOn && Number(STORE.openprojectImport?.lastValidatedRunId || 0) > 0;
 
+        if (primaryProvider) primaryProvider.disabled = false;
         if (mirrorProvider) mirrorProvider.disabled = false;
         if (googleOauthClientId) googleOauthClientId.disabled = !googleOn;
         if (googleOauthClientSecret) googleOauthClientSecret.disabled = !googleOn;
@@ -1283,6 +1516,7 @@
         if (tokenHint) tokenHint.textContent = envManagedToken ? 'Token is managed by environment' : '';
         updateOpenProjectTokenSavedState(tokenSource, norm(openprojectToken?.value));
         updateStorageNextcloudPickerAvailability();
+        updatePrimaryStorageProviderHint();
     }
 
     function bindStorageWorkflowInputs() {
@@ -1461,6 +1695,7 @@
     }
 
     function applyStorageIntegrationsToForm(integrations = {}) {
+        const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
         const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const gdriveDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
@@ -1496,10 +1731,14 @@
         const nextcloudSslWarning = document.getElementById('storageNextcloudSkipSslWarning');
         const nextcloudLocalMountRootHint = document.getElementById('storageNextcloudLocalMountRootHint');
 
+        const primary = integrations?.primary || {};
         const mirror = integrations?.mirror || {};
         const gdrive = integrations?.google_drive || {};
         const openproject = integrations?.openproject || {};
         const nextcloud = integrations?.nextcloud || {};
+        const primaryProviderValue = ['local', 'nextcloud'].includes(norm(primary.provider).toLowerCase())
+            ? norm(primary.provider).toLowerCase()
+            : 'local';
         const mirrorProviderValue = ['none', 'google_drive', 'nextcloud'].includes(norm(mirror.provider).toLowerCase())
             ? norm(mirror.provider).toLowerCase()
             : 'none';
@@ -1515,6 +1754,11 @@
         const nextcloudLocalMountRootSource = norm(nextcloud.local_mount_root_source || 'none').toLowerCase();
         const nextcloudLocalMountRootConfigured = Boolean(nextcloud.local_mount_root_configured);
 
+        if (primaryProvider) {
+            primaryProvider.value = primaryProviderValue;
+            primaryProvider.dataset.effectiveProvider = norm(primary.effective_provider || 'local').toLowerCase() || 'local';
+            primaryProvider.dataset.primaryStatus = norm(primary.status || '');
+        }
         if (mirrorProvider) mirrorProvider.value = mirrorProviderValue;
 
         if (gdriveEnabled) gdriveEnabled.checked = Boolean(gdrive.enabled);
@@ -1734,6 +1978,7 @@
     }
 
     async function saveStorageIntegrations() {
+        const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
         const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         const gdriveDriveEnabled = document.getElementById('storageGoogleDriveDriveEnabledInput');
@@ -1759,7 +2004,8 @@
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
         if (
-            !mirrorProvider
+            !primaryProvider
+            || !mirrorProvider
             || !gdriveEnabled
             || !openprojectEnabled
             || !openprojectWp
@@ -1801,10 +2047,16 @@
         const selectedMirrorProvider = ['none', 'google_drive', 'nextcloud'].includes(norm(mirrorProvider.value).toLowerCase())
             ? norm(mirrorProvider.value).toLowerCase()
             : 'none';
+        const selectedPrimaryProvider = ['local', 'nextcloud'].includes(norm(primaryProvider.value).toLowerCase())
+            ? norm(primaryProvider.value).toLowerCase()
+            : 'local';
 
         const payload = await request(`${API_BASE}/storage-integrations`, {
             method: 'POST',
             body: JSON.stringify({
+                primary: {
+                    provider: selectedPrimaryProvider,
+                },
                 mirror: {
                     provider: selectedMirrorProvider,
                 },
@@ -1826,10 +2078,14 @@
             }),
         });
         applyStorageIntegrationsToForm(payload?.integrations || {});
-        await saveBimRevitSettings({ silent: true });
+        const activeProviderTab = norm(STORE.integrationsProviderTab || '').toLowerCase();
+        const shouldSaveBim = activeProviderTab === 'bim';
+        if (shouldSaveBim) {
+            await saveBimRevitSettings({ silent: true });
+        }
         STORE.storageIntegrationsLoaded = true;
         setStorageSyncResult('');
-        tSuccess('تنظیمات یکپارچه‌سازی و BIM/Revit ذخیره شد.');
+        tSuccess(shouldSaveBim ? 'تنظیمات یکپارچه‌سازی و BIM/Revit ذخیره شد.' : 'تنظیمات یکپارچه‌سازی ذخیره شد.');
     }
 
     function runSummaryText(run) {
@@ -3620,6 +3876,65 @@
         return normalizeRemotePath(rest) || '/';
     }
 
+    function joinStorageLikePath(rootValue, childName) {
+        const root = norm(rootValue);
+        const child = norm(childName);
+        if (!root) return '';
+        if (!child) return root;
+        const useBackslash = root.includes('\\') || root.startsWith('\\\\');
+        const separator = useBackslash ? '\\' : '/';
+        const trimmedRoot = root.replace(/[\\/]+$/g, '');
+        const trimmedChild = child.replace(/^[\\/]+/g, '');
+        return `${trimmedRoot}${separator}${trimmedChild}`;
+    }
+
+    function suggestedNextcloudStoragePath(kind = '') {
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
+        const mountRoot = norm(nextcloudLocalMountRoot?.value);
+        if (!mountRoot) return '';
+        const normalizedKind = norm(kind).toLowerCase();
+        if (normalizedKind === 'mdr') {
+            return joinStorageLikePath(mountRoot, 'MDR');
+        }
+        if (normalizedKind === 'correspondence') {
+            return joinStorageLikePath(mountRoot, 'Correspondence');
+        }
+        return mountRoot;
+    }
+
+    function applySuggestedNextcloudStoragePath(kind = '') {
+        const normalizedKind = norm(kind).toLowerCase();
+        const targetInput = normalizedKind === 'mdr'
+            ? document.getElementById('mdrStoragePathInput')
+            : normalizedKind === 'correspondence'
+                ? document.getElementById('correspondenceStoragePathInput')
+                : null;
+        if (!targetInput) return;
+
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
+        const mountRoot = norm(nextcloudLocalMountRoot?.value);
+        if (!mountRoot) {
+            tError('ابتدا Local Mount Root نکست‌کلاد را تنظیم کنید.');
+            return;
+        }
+
+        const suggestedPath = suggestedNextcloudStoragePath(normalizedKind);
+        if (!suggestedPath) {
+            tError('مسیر پیشنهادی نکست‌کلاد قابل محاسبه نیست.');
+            return;
+        }
+
+        targetInput.value = suggestedPath;
+        targetInput.dataset.storagePathDirty = '1';
+        hideStorageStepSaved('paths');
+        markStorageStepDirty('paths');
+        updateStoragePathPreview();
+        validateStoragePathConflict(true);
+        tSuccess(normalizedKind === 'mdr'
+            ? 'مسیر پیشنهادی نکست‌کلاد برای مدارک مهندسی اعمال شد.'
+            : 'مسیر پیشنهادی نکست‌کلاد برای مکاتبات اعمال شد.');
+    }
+
     function setStorageNextcloudPickerStatus(message = '', level = 'info') {
         const box = document.getElementById('storageNextcloudFolderPickerStatus');
         if (!box) return;
@@ -3651,6 +3966,12 @@
                 '#storageMdrPathNextcloudPickerBtn, #storageCorrPathNextcloudPickerBtn'
             )
         );
+        const suggestedButtons = Array.from(
+            document.querySelectorAll('[data-general-action="apply-suggested-nextcloud-path"]')
+        );
+        const selectCurrentBtn = document.querySelector(
+            '[data-general-action="nextcloud-folder-picker-select-current"]'
+        );
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
@@ -3663,7 +3984,7 @@
         const credentialSource = norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase();
         const credentialReady = credentialSource === 'env' || credentialSource === 'settings';
         const localMountRoot = norm(nextcloudLocalMountRoot?.value);
-        const localMountRootReady = Boolean(localMountRoot);
+        const localMappingAvailable = Boolean(localMountRoot);
         const localMountRootSource = norm(nextcloudLocalMountRoot?.dataset?.mountRootSource || 'none').toLowerCase() || 'none';
 
         let reason = '';
@@ -3671,12 +3992,12 @@
         else if (!baseReady) reason = 'Nextcloud base URL is required.';
         else if (!userReady) reason = 'Nextcloud username is required.';
         else if (!credentialReady) reason = 'Nextcloud credentials are not configured yet.';
-        else if (!localMountRootReady) reason = 'Local mount root is required for folder picker.';
 
         const ready = !reason;
         STORE.nextcloudPicker.ready = ready;
         STORE.nextcloudPicker.localMountRoot = localMountRoot;
         STORE.nextcloudPicker.localMountRootSource = localMountRootSource;
+        STORE.nextcloudPicker.localMappingAvailable = localMappingAvailable;
 
         buttons.forEach((btn) => {
             btn.disabled = !ready;
@@ -3684,15 +4005,39 @@
             btn.setAttribute('title', ready ? defaultTitle : reason);
             btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
         });
+        suggestedButtons.forEach((btn) => {
+            btn.disabled = !ready;
+            const defaultTitle = String(btn.getAttribute('title') || 'Apply suggested Nextcloud path');
+            btn.setAttribute('title', ready ? defaultTitle : reason);
+            btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
+        });
+        if (selectCurrentBtn) {
+            const canSelectCurrent = ready && localMappingAvailable;
+            selectCurrentBtn.disabled = !canSelectCurrent;
+            selectCurrentBtn.setAttribute(
+                'title',
+                canSelectCurrent
+                    ? 'Apply mapped local path'
+                    : (ready
+                        ? 'Local mount root is empty; local path mapping is unavailable.'
+                        : reason)
+            );
+        }
 
-        if (ready) {
+        if (ready && localMappingAvailable) {
             setStorageNextcloudPickerInlineHint('Nextcloud folder picker is ready.', 'success');
+        } else if (ready) {
+            setStorageNextcloudPickerInlineHint(
+                'Nextcloud connected. Local mount root is empty, so picker works in browse-only mode.',
+                'info'
+            );
         } else {
             setStorageNextcloudPickerInlineHint(reason, 'error');
             if (STORE.nextcloudPicker.open) {
                 setStorageNextcloudPickerStatus(reason, 'error');
             }
         }
+        updatePrimaryStorageProviderHint();
         return { ready, reason };
     }
 
@@ -3764,11 +4109,18 @@
             STORE.nextcloudPicker.currentLocalPath = norm(payload?.current_local_path || '');
             STORE.nextcloudPicker.localMountRoot = norm(payload?.local_mount_root_effective || STORE.nextcloudPicker.localMountRoot);
             STORE.nextcloudPicker.localMountRootSource = norm(payload?.local_mount_root_source || STORE.nextcloudPicker.localMountRootSource || 'none');
+            STORE.nextcloudPicker.localMappingAvailable = Boolean(
+                payload?.local_mapping_available
+                ?? STORE.nextcloudPicker.localMountRoot
+            );
             renderStorageNextcloudPickerList(payload?.folders || []);
             setStorageNextcloudPickerStatus(
-                `Current path: ${currentPath} | mount: ${STORE.nextcloudPicker.localMountRoot || '-'}`,
+                STORE.nextcloudPicker.localMappingAvailable
+                    ? `Current path: ${currentPath} | mount: ${STORE.nextcloudPicker.localMountRoot || '-'}`
+                    : `Current path: ${currentPath} | local mapping unavailable (set Local Mount Root).`,
                 'success'
             );
+            updateStorageNextcloudPickerAvailability();
         } catch (err) {
             STORE.nextcloudPicker.loading = false;
             renderStorageNextcloudPickerList([]);
@@ -3814,7 +4166,10 @@
         }
         const localPath = norm(STORE.nextcloudPicker.currentLocalPath || '');
         if (!localPath) {
-            setStorageNextcloudPickerStatus('No local path resolved for current folder.', 'error');
+            setStorageNextcloudPickerStatus(
+                'No local path mapping is available. Set Local Mount Root or enter the path manually.',
+                'error'
+            );
             return;
         }
         targetInput.value = localPath;
@@ -4025,6 +4380,9 @@
                     break;
                 case 'open-nextcloud-folder-picker':
                     openStorageNextcloudFolderPicker(actionEl.dataset.targetInput || '');
+                    break;
+                case 'apply-suggested-nextcloud-path':
+                    applySuggestedNextcloudStoragePath(actionEl.dataset.storagePathKind || '');
                     break;
                 case 'close-nextcloud-folder-picker':
                     closeStorageNextcloudPickerModal();

@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     UniqueConstraint,
+    CheckConstraint,
     Text,
     Index,
     Float,
@@ -297,12 +298,28 @@ class MdrDocument(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # Audit / soft-delete
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    deleted_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="documents")
     phase: Mapped["Phase"] = relationship(back_populates="documents")
     discipline: Mapped["Discipline"] = relationship(back_populates="documents")
     level: Mapped["Level"] = relationship(back_populates="documents")
     mdr_category: Mapped["MdrCategory"] = relationship(back_populates="documents")
+    updated_by: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[updated_by_id]
+    )
+    deleted_by: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[deleted_by_id]
+    )
 
     # Special relation with package (composite key)
     package: Mapped["Package"] = relationship(
@@ -318,6 +335,27 @@ class MdrDocument(Base):
 
     revisions: Mapped[List["DocumentRevision"]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
+    )
+    comments: Mapped[List["DocumentComment"]] = relationship(
+        "DocumentComment", back_populates="document", cascade="all, delete-orphan"
+    )
+    activities: Mapped[List["DocumentActivity"]] = relationship(
+        "DocumentActivity", back_populates="document", cascade="all, delete-orphan"
+    )
+    outgoing_relations: Mapped[List["DocumentRelation"]] = relationship(
+        "DocumentRelation",
+        foreign_keys="DocumentRelation.source_document_id",
+        back_populates="source_document",
+        cascade="all, delete-orphan",
+    )
+    incoming_relations: Mapped[List["DocumentRelation"]] = relationship(
+        "DocumentRelation",
+        foreign_keys="DocumentRelation.target_document_id",
+        back_populates="target_document",
+        cascade="all, delete-orphan",
+    )
+    tag_assignments: Mapped[List["DocumentTagAssignment"]] = relationship(
+        "DocumentTagAssignment", back_populates="document", cascade="all, delete-orphan"
     )
 
 class DocumentRevision(Base):
@@ -395,6 +433,148 @@ class ArchiveFile(Base):
         uselist=False,
     )
 
+# ----------------------------------------------------------------
+# 5a. Document Comments, Activity, Relations & Tags
+# ----------------------------------------------------------------
+class DocumentComment(Base):
+    __tablename__ = "document_comments"
+    __table_args__ = (
+        Index("ix_doc_comments_document_id", "document_id"),
+        Index("ix_doc_comments_parent_id", "parent_id"),
+        Index("ix_doc_comments_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    parent_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("document_comments.id", ondelete="CASCADE"), nullable=True
+    )
+    author_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    author_name: Mapped[str | None] = mapped_column(String(255))
+    author_email: Mapped[str | None] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    document: Mapped["MdrDocument"] = relationship("MdrDocument", back_populates="comments")
+    parent: Mapped[Optional["DocumentComment"]] = relationship(
+        "DocumentComment", remote_side="DocumentComment.id", uselist=False
+    )
+    author: Mapped[Optional["User"]] = relationship("User")
+
+
+class DocumentActivity(Base):
+    __tablename__ = "document_activities"
+    __table_args__ = (
+        Index("ix_doc_activities_doc_created", "document_id", "created_at"),
+        Index("ix_doc_activities_action", "action"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text)
+    before_json: Mapped[str | None] = mapped_column(Text)
+    after_json: Mapped[str | None] = mapped_column(Text)
+    actor_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_name: Mapped[str | None] = mapped_column(String(255))
+    actor_email: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    document: Mapped["MdrDocument"] = relationship("MdrDocument", back_populates="activities")
+    actor: Mapped[Optional["User"]] = relationship("User")
+
+
+class DocumentRelation(Base):
+    __tablename__ = "document_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_document_id", "target_document_id", "relation_type",
+            name="uq_document_relation",
+        ),
+        CheckConstraint(
+            "source_document_id != target_document_id",
+            name="ck_document_relation_no_self",
+        ),
+        Index("ix_doc_relations_source", "source_document_id"),
+        Index("ix_doc_relations_target", "target_document_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    target_document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False, default="related")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    source_document: Mapped["MdrDocument"] = relationship(
+        "MdrDocument", foreign_keys=[source_document_id], back_populates="outgoing_relations"
+    )
+    target_document: Mapped["MdrDocument"] = relationship(
+        "MdrDocument", foreign_keys=[target_document_id], back_populates="incoming_relations"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
+
+
+class DocumentTag(Base):
+    __tablename__ = "document_tags"
+    __table_args__ = (
+        Index("ix_doc_tags_name", "name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    color: Mapped[str | None] = mapped_column(String(7))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    assignments: Mapped[List["DocumentTagAssignment"]] = relationship(
+        "DocumentTagAssignment", back_populates="tag", cascade="all, delete-orphan"
+    )
+
+
+class DocumentTagAssignment(Base):
+    __tablename__ = "document_tag_assignments"
+    __table_args__ = (
+        UniqueConstraint("document_id", "tag_id", name="uq_doc_tag_assignment"),
+        Index("ix_dta_document", "document_id"),
+        Index("ix_dta_tag", "tag_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    tag_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("document_tags.id", ondelete="CASCADE"), nullable=False
+    )
+    assigned_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    document: Mapped["MdrDocument"] = relationship("MdrDocument", back_populates="tag_assignments")
+    tag: Mapped["DocumentTag"] = relationship("DocumentTag", back_populates="assignments")
+    assigned_by: Mapped[Optional["User"]] = relationship("User")
+
+
+# ----------------------------------------------------------------
+# 5b. Transmittals
+# ----------------------------------------------------------------
 class Transmittal(Base):
     __tablename__ = "transmittals"
 
@@ -997,6 +1177,45 @@ class SiteLogWorkflowStatus(Base):
 
     code: Mapped[str] = mapped_column(String(32), primary_key=True)
     label: Mapped[str] = mapped_column(String(128), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogRoleCatalog(Base):
+    __tablename__ = "site_log_role_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_role_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogEquipmentCatalog(Base):
+    __tablename__ = "site_log_equipment_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_equipment_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogEquipmentStatusCatalog(Base):
+    __tablename__ = "site_log_equipment_status_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_equipment_status_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 

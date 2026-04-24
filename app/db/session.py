@@ -16,7 +16,8 @@ from app.core.organizations import (
     normalize_org_role,
     normalize_permission_category,
 )
-from app.core.roles import ALL_ROLES, ROLE_PERMISSIONS, Role
+from app.core.roles import ALL_ROLES, MATRIX_ROLES, ROLE_PERMISSIONS, Role
+from app.core.permission_catalog import permission_keys
 from app.db.base import Base
 
 
@@ -78,12 +79,7 @@ def _safe_json_dict(raw: str | None) -> Dict[str, Any]:
 
 
 def _permission_keys() -> List[str]:
-    keys: set[str] = set()
-    for perms in ROLE_PERMISSIONS.values():
-        for perm in perms:
-            if perm != "*":
-                keys.add(perm)
-    return sorted(keys)
+    return permission_keys()
 
 
 def _migrate_transmittal_state_from_kv(db: Session) -> None:
@@ -562,8 +558,12 @@ def _normalize_seed_org_role(system_role: str) -> str:
     role_key = str(system_role or "").strip().lower()
     if role_key == Role.ADMIN.value:
         return OrganizationRole.ADMIN.value
+    if role_key == Role.MANAGER.value:
+        return OrganizationRole.MANAGER.value
     if role_key == Role.DCC.value:
         return OrganizationRole.DCC.value
+    if role_key == Role.USER.value:
+        return OrganizationRole.USER.value
     return OrganizationRole.VIEWER.value
 
 
@@ -585,8 +585,15 @@ def _backfill_user_organization_defaults(db: Session) -> None:
 
     users = db.query(User).all()
     for user in users:
+        legacy_role = str(getattr(user, "role", "") or "").strip().lower()
+        if legacy_role == Role.ADMIN.value:
+            user.organization_id = system_root.id
+            user.organization_role = OrganizationRole.ADMIN.value
+            user.role = Role.ADMIN.value
+            continue
+
         if getattr(user, "organization_id", None) is None:
-            if str(getattr(user, "role", "") or "").strip().lower() == Role.DCC.value and dcc_root is not None:
+            if legacy_role == Role.DCC.value and dcc_root is not None:
                 user.organization_id = dcc_root.id
             else:
                 user.organization_id = system_root.id
@@ -594,6 +601,18 @@ def _backfill_user_organization_defaults(db: Session) -> None:
         role_value = normalize_org_role(getattr(user, "organization_role", None))
         if role_value not in ALL_ORG_ROLES:
             user.organization_role = _normalize_seed_org_role(getattr(user, "role", None))
+            role_value = normalize_org_role(user.organization_role)
+
+        organization = db.query(Organization).filter(Organization.id == user.organization_id).first()
+        org_type = str(getattr(organization, "org_type", "") or "").strip().lower()
+        if org_type == OrganizationType.SYSTEM.value:
+            user.organization_role = OrganizationRole.ADMIN.value
+            user.role = Role.ADMIN.value
+        else:
+            if role_value == OrganizationRole.ADMIN.value:
+                user.organization_role = OrganizationRole.MANAGER.value
+                role_value = OrganizationRole.MANAGER.value
+            user.role = role_value if role_value in {role.value for role in Role} else Role.VIEWER.value
 
 
 def _seed_role_category_rules_from_base(db: Session) -> None:
@@ -612,7 +631,7 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
     role_discipline_rows = db.query(RoleDisciplineScope.role, RoleDisciplineScope.discipline_code).all()
 
     if not role_perm_rows:
-        for role in ALL_ROLES:
+        for role in MATRIX_ROLES:
             role_enum = Role(role)
             role_perms = ROLE_PERMISSIONS.get(role_enum, [])
             has_wildcard = "*" in role_perms
@@ -621,7 +640,7 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
                     (
                         role,
                         perm,
-                        True if role == Role.ADMIN.value else (has_wildcard or perm in role_perms),
+                        has_wildcard or perm in role_perms,
                     )
                 )
 
@@ -629,7 +648,7 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
     for role, permission, allowed in role_perm_rows:
         role_key = str(role or "").strip().lower()
         perm_key = str(permission or "").strip()
-        if role_key in ALL_ROLES and perm_key in perms:
+        if role_key in MATRIX_ROLES and perm_key in perms:
             role_permission_map[(role_key, perm_key)] = bool(allowed)
 
     existing_perm_rows = db.query(RoleCategoryPermission).all()
@@ -638,7 +657,7 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
         cat_key = normalize_permission_category(getattr(row, "category", None))
         role_key = str(getattr(row, "role", "") or "").strip().lower()
         perm_key = str(getattr(row, "permission", "") or "").strip()
-        if role_key in ALL_ROLES and perm_key in perms:
+        if role_key in MATRIX_ROLES and perm_key in perms:
             existing_perm_map[(cat_key, role_key, perm_key)] = row
 
     consultant_permission_map: dict[tuple[str, str], bool] = {}
@@ -649,24 +668,20 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
 
     for category in PERMISSION_CATEGORIES:
         category_key = normalize_permission_category(category)
-        for role in ALL_ROLES:
+        for role in MATRIX_ROLES:
             for permission in perms:
                 key = (category_key, role, permission)
                 existing_row = existing_perm_map.get(key)
                 if existing_row is not None:
-                    if category_key == OrganizationType.SYSTEM.value and not bool(existing_row.allowed):
-                        existing_row.allowed = True
                     continue
 
-                if category_key == OrganizationType.SYSTEM.value:
-                    allowed = True
-                elif category_key == OrganizationType.DCC.value:
+                if category_key == OrganizationType.DCC.value:
                     allowed = consultant_permission_map.get(
                         (role, permission),
-                        role_permission_map.get((role, permission), role == Role.ADMIN.value),
+                        role_permission_map.get((role, permission), False),
                     )
                 else:
-                    allowed = role_permission_map.get((role, permission), role == Role.ADMIN.value)
+                    allowed = role_permission_map.get((role, permission), False)
 
                 db.add(
                     RoleCategoryPermission(
@@ -717,15 +732,6 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
 
     for category in PERMISSION_CATEGORIES:
         category_key = normalize_permission_category(category)
-        if category_key == OrganizationType.SYSTEM.value:
-            db.query(RoleCategoryProjectScope).filter(
-                RoleCategoryProjectScope.category == category_key
-            ).delete(synchronize_session=False)
-            db.query(RoleCategoryDisciplineScope).filter(
-                RoleCategoryDisciplineScope.category == category_key
-            ).delete(synchronize_session=False)
-            continue
-
         project_source = role_project_rows
         discipline_source = role_discipline_rows
         if category_key == OrganizationType.DCC.value:
@@ -737,7 +743,7 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
             if not project_key:
                 continue
             role_key = str(role or "").strip().lower()
-            if role_key not in ALL_ROLES:
+            if role_key not in MATRIX_ROLES:
                 continue
             key = (category_key, role_key, project_key)
             if key in existing_project_keys:
@@ -756,7 +762,7 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
             if not discipline_key:
                 continue
             role_key = str(role or "").strip().lower()
-            if role_key not in ALL_ROLES:
+            if role_key not in MATRIX_ROLES:
                 continue
             key = (category_key, role_key, discipline_key)
             if key in existing_discipline_keys:

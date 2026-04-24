@@ -17,12 +17,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.dependencies import (
     User,
-    allow_admin,
-    allow_editor,
-    allow_viewer,
     apply_scope_query_filters,
     enforce_scope_access,
     get_db,
+    require_permission,
 )
 from app.db.models import (
     ArchiveFile,
@@ -322,6 +320,8 @@ def _normalize_nextcloud_relative_path(value: Any) -> str:
 
 def _join_nextcloud_local_mount_path(local_mount_root: str, relative_path: str) -> str:
     root = str(local_mount_root or "").strip()
+    if not root:
+        return ""
     rel = _normalize_nextcloud_relative_path(relative_path)
     parts = [part for part in rel.strip("/").split("/") if part]
     if root.startswith("\\\\"):
@@ -550,7 +550,7 @@ def _resolve_predecessor_work_package_id(
 def run_google_drive_jobs(
     limit: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     result = run_storage_jobs(db, limit=limit, job_types=[JOB_GOOGLE_DRIVE_MIRROR])
@@ -561,7 +561,7 @@ def run_google_drive_jobs(
 def run_openproject_jobs(
     limit: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     result = run_storage_jobs(db, limit=limit, job_types=[JOB_OPENPROJECT_SYNC])
@@ -572,7 +572,7 @@ def run_openproject_jobs(
 def run_nextcloud_jobs(
     limit: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     result = run_storage_jobs(db, limit=limit, job_types=[JOB_NEXTCLOUD_MIRROR])
@@ -583,7 +583,7 @@ def run_nextcloud_jobs(
 def ping_openproject(
     payload: Optional[OpenProjectPingIn] = Body(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     integrations = get_storage_integrations(db)
@@ -683,7 +683,7 @@ def ping_openproject(
 def ping_nextcloud(
     payload: Optional[NextcloudPingIn] = Body(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     integrations = get_storage_integrations(db)
@@ -811,7 +811,7 @@ def ping_nextcloud(
 def list_nextcloud_folders(
     payload: Optional[NextcloudFoldersIn] = Body(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     integrations = get_storage_integrations(db)
@@ -831,14 +831,7 @@ def list_nextcloud_folders(
         )
 
     local_mount_root = str(runtime.get("local_mount_root_effective") or "").strip()
-    if not local_mount_root:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "nextcloud.local_mount_root (settings) or "
-                "NEXTCLOUD_LOCAL_MOUNT_ROOT (env) is required."
-            ),
-        )
+    local_mapping_available = bool(local_mount_root)
 
     requested_path = _normalize_nextcloud_relative_path(
         payload.path if payload else "/"
@@ -911,6 +904,7 @@ def list_nextcloud_folders(
         "local_mount_root_source": str(
             runtime.get("local_mount_root_source") or "none"
         ),
+        "local_mapping_available": local_mapping_available,
     }
 
 
@@ -920,7 +914,7 @@ def preview_openproject_project_work_packages(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=1000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     integrations = get_storage_integrations(db)
@@ -970,7 +964,7 @@ def import_openproject_project_work_packages(
     project_ref: str,
     payload: OpenProjectProjectImportIn = Body(default={}),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     integrations = get_storage_integrations(db)
     runtime = resolve_openproject_runtime(integrations)
@@ -1134,7 +1128,7 @@ def import_openproject_project_work_packages(
 def ping_google(
     payload: GooglePingIn = Body(...),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     service = str(payload.service or "").strip().lower()
@@ -1192,7 +1186,7 @@ def download_openproject_import_template(
 def validate_openproject_import_file(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     file_name = str(file.filename or "").strip() or "openproject_import.xlsx"
     if not file_name.lower().endswith(".xlsx"):
@@ -1260,7 +1254,7 @@ def execute_openproject_import_run(
     run_id: int,
     payload: OpenProjectImportExecuteIn = Body(default={}),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     run = _load_openproject_import_run_or_404(db, run_id)
@@ -1776,7 +1770,7 @@ def list_openproject_import_runs(
     status_code: Optional[str] = Query(default=None),
     limit: int = Query(default=30, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     query = db.query(OpenProjectImportRun).options(joinedload(OpenProjectImportRun.started_by))
@@ -1791,7 +1785,7 @@ def list_openproject_import_runs(
 def get_openproject_import_run(
     run_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     row = _load_openproject_import_run_or_404(db, run_id)
@@ -1804,7 +1798,7 @@ def list_openproject_import_rows(
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=200, ge=1, le=1000),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     _load_openproject_import_run_or_404(db, run_id)
@@ -1834,7 +1828,7 @@ def list_openproject_import_rows(
 def list_openproject_activity(
     limit: int = Query(default=30, ge=1, le=200),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("storage:sync_manage")),
 ):
     del user
     activity: list[dict[str, Any]] = []
@@ -1907,7 +1901,7 @@ def list_openproject_activity(
 def get_openproject_sync_status(
     payload: OpenProjectStatusIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("storage:read")),
 ):
     requested: list[tuple[str, int]] = []
     seen: set[tuple[str, int]] = set()
@@ -2107,7 +2101,7 @@ def get_site_context(
     request: Request,
     project_code: Optional[str] = Query(default=None, max_length=50),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("storage:read")),
 ):
     normalized_project = str(project_code or "").strip().upper()
     if normalized_project:
@@ -2151,7 +2145,7 @@ def get_site_context(
 def pin_local_cache_file(
     payload: LocalCachePinIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("storage:update")),
 ):
     if not is_valid_entity_type(payload.entity_type):
         raise HTTPException(status_code=400, detail="Unsupported entity_type")
@@ -2228,7 +2222,7 @@ def pin_local_cache_file(
 def unpin_local_cache_file(
     payload: LocalCacheUnpinIn,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_editor),
+    user: User = Depends(require_permission("storage:update")),
 ):
     if not is_valid_entity_type(payload.entity_type):
         raise HTTPException(status_code=400, detail="Unsupported entity_type")
@@ -2255,7 +2249,7 @@ def get_local_cache_manifest(
     only_pinned: bool = Query(default=True),
     entity_type: Optional[str] = Query(default=None),
     db: Session = Depends(get_db),
-    user: User = Depends(allow_viewer),
+    user: User = Depends(require_permission("storage:read")),
 ):
     scope = _scope_value(user, policy_scope)
     if entity_type is not None and not is_valid_entity_type(entity_type):
@@ -2332,3 +2326,82 @@ def get_local_cache_manifest(
             }
         )
     return {"ok": True, "scope": scope, "items": items}
+
+
+# ------------------------------------------------------------
+# Storage Health Check
+# ------------------------------------------------------------
+@router.get("/health-check")
+def storage_health_check(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("storage:sync_manage")),
+):
+    """Diagnostic endpoint: verify Nextcloud connectivity, local mount, and storage roots."""
+    del user
+    checks: dict[str, Any] = {
+        "nextcloud_configured": False,
+        "nextcloud_reachable": False,
+        "nextcloud_auth_ok": False,
+        "local_mount_configured": False,
+        "local_mount_accessible": False,
+    }
+    errors: list[str] = []
+
+    # --- Nextcloud configuration ---
+    integrations = get_storage_integrations(db)
+    runtime_integrations = dict(integrations or {})
+    runtime = resolve_nextcloud_runtime(runtime_integrations)
+    base_url = NextcloudAdapter.normalize_base_url(str(runtime.get("base_url") or ""))
+    username = str(runtime.get("username") or "").strip()
+    app_password = str(runtime.get("app_password") or "").strip()
+
+    if base_url and username and app_password:
+        checks["nextcloud_configured"] = True
+        adapter = NextcloudAdapter(
+            base_url=base_url,
+            username=username,
+            app_password=app_password,
+            root_path=str(runtime.get("root_path") or ""),
+            connect_timeout=float(runtime.get("connect_timeout") or 5),
+            read_timeout=float(runtime.get("read_timeout") or 10),
+            tls_verify=bool(runtime.get("tls_verify")),
+        )
+        try:
+            resp = adapter.ping_raw()
+            checks["nextcloud_reachable"] = True
+            checks["nextcloud_auth_ok"] = int(resp.status_code) < 400
+            if not checks["nextcloud_auth_ok"]:
+                errors.append(f"Nextcloud auth failed (HTTP {resp.status_code})")
+        except requests.Timeout:
+            errors.append("Nextcloud ping timed out")
+        except requests.RequestException as exc:
+            errors.append(f"Nextcloud unreachable: {exc}")
+        except RuntimeError as exc:
+            errors.append(f"Nextcloud error: {exc}")
+    else:
+        missing = []
+        if not base_url:
+            missing.append("base_url")
+        if not username:
+            missing.append("username")
+        if not app_password:
+            missing.append("app_password")
+        errors.append(f"Nextcloud not configured (missing: {', '.join(missing)})")
+
+    # --- Local mount ---
+    local_mount = str(settings.NEXTCLOUD_LOCAL_MOUNT_ROOT or "").strip()
+    if local_mount:
+        checks["local_mount_configured"] = True
+        mount_path = Path(local_mount)
+        if mount_path.exists() and mount_path.is_dir():
+            checks["local_mount_accessible"] = True
+        else:
+            errors.append(f"Local mount not accessible: {local_mount}")
+    else:
+        checks["local_mount_configured"] = False
+
+    return {
+        "ok": len(errors) == 0,
+        "checks": checks,
+        "errors": errors,
+    }

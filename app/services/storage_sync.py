@@ -11,6 +11,7 @@ from app.db.models import ArchiveFile, CorrespondenceAttachment, ItemAttachment,
 from app.services.google_drive_adapter import GoogleDriveAdapter
 from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.openproject_adapter import OpenProjectAdapter
+from app.services.folder_service import get_mdr_folder_name, safe_name
 from app.services.storage_jobs import (
     claim_pending_jobs,
     enqueue_storage_job,
@@ -199,6 +200,26 @@ def resolve_mirror_enqueue_plan(integrations: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _row_uses_nextcloud_primary_storage(
+    db: Session,
+    *,
+    entity_type: str,
+    entity_id: int,
+) -> bool:
+    row = None
+    if entity_type == ENTITY_ARCHIVE_FILE:
+        row = db.query(ArchiveFile).filter(ArchiveFile.id == int(entity_id)).first()
+    elif entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT:
+        row = (
+            db.query(CorrespondenceAttachment)
+            .filter(CorrespondenceAttachment.id == int(entity_id))
+            .first()
+        )
+    elif entity_type == ENTITY_COMM_ITEM_ATTACHMENT:
+        row = db.query(ItemAttachment).filter(ItemAttachment.id == int(entity_id)).first()
+    return bool(row and str(getattr(row, "storage_backend", "") or "").strip().lower() == "nextcloud")
+
+
 def _resolve_default_work_package_id(
     db: Session,
     *,
@@ -230,6 +251,15 @@ def enqueue_archive_mirror_job(
     mirror_plan = resolve_mirror_enqueue_plan(integrations)
     if not bool(mirror_plan.get("enqueue")):
         return None
+    if (
+        str(mirror_plan.get("provider") or "").strip().lower() == "nextcloud"
+        and _row_uses_nextcloud_primary_storage(
+            db,
+            entity_type=ENTITY_ARCHIVE_FILE,
+            entity_id=int(archive_file_id),
+        )
+    ):
+        return None
     effective_work_package_id = _effective_work_package_id(db, work_package_id)
     payload = {
         "entity_type": ENTITY_ARCHIVE_FILE,
@@ -256,6 +286,15 @@ def enqueue_correspondence_mirror_job(
     mirror_plan = resolve_mirror_enqueue_plan(integrations)
     if not bool(mirror_plan.get("enqueue")):
         return None
+    if (
+        str(mirror_plan.get("provider") or "").strip().lower() == "nextcloud"
+        and _row_uses_nextcloud_primary_storage(
+            db,
+            entity_type=ENTITY_CORRESPONDENCE_ATTACHMENT,
+            entity_id=int(attachment_id),
+        )
+    ):
+        return None
     effective_work_package_id = _effective_work_package_id(db, work_package_id)
     payload = {
         "entity_type": ENTITY_CORRESPONDENCE_ATTACHMENT,
@@ -281,6 +320,15 @@ def enqueue_comm_item_mirror_job(
     integrations = get_storage_integrations(db)
     mirror_plan = resolve_mirror_enqueue_plan(integrations)
     if not bool(mirror_plan.get("enqueue")):
+        return None
+    if (
+        str(mirror_plan.get("provider") or "").strip().lower() == "nextcloud"
+        and _row_uses_nextcloud_primary_storage(
+            db,
+            entity_type=ENTITY_COMM_ITEM_ATTACHMENT,
+            entity_id=int(attachment_id),
+        )
+    ):
         return None
     effective_work_package_id = _effective_work_package_id(db, work_package_id)
     payload = {
@@ -353,19 +401,107 @@ def _entity_context(entity_type: str, row: Any) -> dict[str, str]:
     }
 
 
-def _nextcloud_relative_path(entity_type: str, row: Any, display_name: str) -> str:
+def _mirror_segment(value: Any, fallback: str) -> str:
+    cleaned = safe_name(str(value or "").strip())
+    return cleaned or fallback
+
+
+def _project_folder_for_document(document: Any) -> str:
+    project_code = _mirror_segment(getattr(document, "project_code", None), "project")
+    project = getattr(document, "project", None)
+    project_name = safe_name(
+        getattr(project, "name_e", None)
+        or getattr(project, "name_p", None)
+        or ""
+    )
+    if project_name and project_name.lower() != "unk":
+        return _mirror_segment(f"{project_code} - {project_name}", project_code)
+    return project_code
+
+
+def _mdr_folder_for_document(db: Session, document: Any) -> str:
+    category = getattr(document, "mdr_category", None)
+    folder = (
+        getattr(category, "folder_name", None)
+        or getattr(category, "name_e", None)
+        or getattr(document, "mdr_code", None)
+    )
+    if not folder and getattr(document, "mdr_code", None):
+        folder = get_mdr_folder_name(db, getattr(document, "mdr_code"))
+    return _mirror_segment(folder, "MDR")
+
+
+def _package_folder_for_document(document: Any) -> str:
+    package = getattr(document, "package", None)
+    return _mirror_segment(
+        getattr(package, "name_e", None)
+        or getattr(package, "name_p", None)
+        or getattr(document, "package_code", None)
+        or "00",
+        "00",
+    )
+
+
+def _correspondence_bucket_for_kind(file_kind: Any) -> str:
+    kind = str(file_kind or "").strip().lower()
+    if kind in {"letter", "main"}:
+        return "main"
+    if kind in {"original", "inside"}:
+        return "inside"
+    return "attachments"
+
+
+def _category_folder_for_correspondence(corr: Any) -> str:
+    category = getattr(corr, "category", None)
+    return _mirror_segment(
+        getattr(category, "name_e", None)
+        or getattr(category, "name_p", None)
+        or getattr(corr, "category_code", None)
+        or "GENERAL",
+        "GENERAL",
+    )
+
+
+def _mirror_relative_path(db: Session, entity_type: str, row: Any, display_name: str) -> str:
+    safe_file_name = _mirror_segment(display_name, f"file_{int(getattr(row, 'id', 0) or 0)}")
+    if entity_type == ENTITY_ARCHIVE_FILE:
+        revision = getattr(row, "document_revision", None)
+        document = getattr(revision, "document", None) if revision else None
+        if document is None:
+            context = _entity_context(entity_type, row)
+            return "/".join(["archive", context["project_code"], context["discipline_code"], safe_file_name])
+        return "/".join(
+            [
+                _project_folder_for_document(document),
+                _mdr_folder_for_document(db, document),
+                _mirror_segment(getattr(document, "phase_code", None), "Phase"),
+                _mirror_segment(getattr(document, "discipline_code", None), "GN"),
+                _package_folder_for_document(document),
+                _mirror_segment(getattr(row, "file_kind", None) or "pdf", "pdf"),
+                safe_file_name,
+            ]
+        )
+    if entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT:
+        corr = getattr(row, "correspondence", None)
+        if corr is None:
+            context = _entity_context(entity_type, row)
+            return "/".join(["correspondence", context["project_code"], context["discipline_code"], safe_file_name])
+        return "/".join(
+            [
+                _mirror_segment(getattr(corr, "issuing_code", None), "GENERAL"),
+                _category_folder_for_correspondence(corr),
+                _mirror_segment(str(getattr(corr, "direction", "") or "").upper(), "IN"),
+                _mirror_segment(getattr(corr, "reference_no", None) or f"CORR-{getattr(corr, 'id', 0)}", "CORR"),
+                _correspondence_bucket_for_kind(getattr(row, "file_kind", None)),
+                safe_file_name,
+            ]
+        )
+
     context = _entity_context(entity_type, row)
     now = datetime.utcnow()
     year = now.strftime("%Y")
     month = now.strftime("%m")
-    safe_file_name = _safe_path_part(display_name, fallback=f"file_{int(getattr(row, 'id', 0) or 0)}")
     unique_name = f"{now.strftime('%Y%m%d%H%M%S')}_{int(getattr(row, 'id', 0) or 0)}_{safe_file_name}"
-    if entity_type == ENTITY_ARCHIVE_FILE:
-        prefix = "archive"
-        return "/".join([prefix, context["project_code"], context["discipline_code"], year, month, unique_name])
-    if entity_type == ENTITY_CORRESPONDENCE_ATTACHMENT:
-        prefix = "correspondence"
-        return "/".join([prefix, context["project_code"], context["discipline_code"], year, month, unique_name])
     return "/".join(
         [
             "comm-items",
@@ -449,6 +585,10 @@ def _sync_google_drive(db: Session, job: StorageJob, integrations: dict[str, Any
         entity_type=entity_type,
         entity_id=entity_id,
     )
+    remote_rel_path = _mirror_relative_path(db, entity_type, row, display_name)
+    remote_segments = [part for part in remote_rel_path.split("/") if part]
+    remote_display_name = remote_segments[-1] if remote_segments else display_name
+    remote_folder_path = "/".join(remote_segments[:-1])
     adapter = GoogleDriveAdapter(
         service_account_json=service_account_json,
         shared_drive_id=str(settings.GDRIVE_SHARED_DRIVE_ID or "").strip(),
@@ -456,8 +596,9 @@ def _sync_google_drive(db: Session, job: StorageJob, integrations: dict[str, Any
     )
     upload_result = adapter.upload_file(
         local_path=local_path,
-        display_name=display_name,
+        display_name=remote_display_name,
         mime_type=mime_type,
+        folder_path=remote_folder_path,
     )
     _set_mirror_result(
         row=row,
@@ -525,7 +666,7 @@ def _sync_nextcloud(db: Session, job: StorageJob, integrations: dict[str, Any]) 
         read_timeout=float(runtime.get("read_timeout") or 10),
         tls_verify=bool(runtime.get("tls_verify")),
     )
-    remote_rel_path = _nextcloud_relative_path(entity_type, row, display_name)
+    remote_rel_path = _mirror_relative_path(db, entity_type, row, display_name)
     upload_result = adapter.upload_file(
         local_path=local_path,
         remote_relative_path=remote_rel_path,

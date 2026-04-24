@@ -1,14 +1,15 @@
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.dependencies import get_db, get_current_admin_user
-from app.core.organizations import ALL_ORG_TYPES, normalize_org_type
+from app.api.dependencies import get_db, require_permission
+from app.core.organizations import ALL_ORG_TYPES, OrganizationRole, OrganizationType, normalize_org_role, normalize_org_type
 from app.db.models import Organization, User, UserDisciplineScope, UserProjectScope
 from app.core.security import get_password_hash
 from app.schemas.auth import UserResponse, UserCreate, UserUpdate, UserListResponse
+from app.services.access_control import resolve_effective_access, sync_legacy_role_from_access
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -39,7 +40,32 @@ def _base_users_query(
 
     role_value = _normalize_text(role).lower()
     if role_value:
-        q = q.filter(User.role == role_value)
+        if role_value not in {"admin", "manager", "dcc", "user", "viewer"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role filter: {role_value}",
+            )
+        if role_value == OrganizationRole.ADMIN.value:
+            q = q.filter(
+                or_(
+                    User.role == OrganizationRole.ADMIN.value,
+                    User.organization.has(Organization.org_type == OrganizationType.SYSTEM.value),
+                )
+            )
+        else:
+            q = q.filter(
+                or_(
+                    and_(
+                        User.organization_id.isnot(None),
+                        User.organization.has(Organization.org_type != OrganizationType.SYSTEM.value),
+                        User.organization_role == role_value,
+                    ),
+                    and_(
+                        User.organization_id.is_(None),
+                        User.role == role_value,
+                    ),
+                )
+            )
 
     if organization_id is not None:
         q = q.filter(User.organization_id == int(organization_id))
@@ -80,6 +106,24 @@ def _default_organization(db: Session) -> Optional[Organization]:
     if root:
         return root
     return db.query(Organization).filter(Organization.is_active == True).order_by(Organization.id.asc()).first()
+
+
+def _normalize_user_org_role_or_400(org: Optional[Organization], requested_role: Optional[str]) -> str:
+    org_type = normalize_org_type(getattr(org, "org_type", None))
+    role_value = normalize_org_role(requested_role) or OrganizationRole.VIEWER.value
+    if org_type == OrganizationType.SYSTEM.value:
+        return OrganizationRole.ADMIN.value
+    if role_value == OrganizationRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="organization_role=admin is only allowed for system organizations.",
+        )
+    if role_value not in {item.value for item in OrganizationRole if item.value != OrganizationRole.ADMIN.value}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid organization_role: {requested_role}",
+        )
+    return role_value
 
 
 def _scope_counts_map(db: Session, user_ids: List[int]) -> Dict[int, dict]:
@@ -126,14 +170,14 @@ def _scope_counts_map(db: Session, user_ids: List[int]) -> Dict[int, dict]:
 
 
 def _serialize_user_with_scope(user: User, scope_map: Dict[int, dict]) -> dict:
+    access = resolve_effective_access(user)
     scope_summary = scope_map.get(int(user.id), {
         "projects_count": 0,
         "disciplines_count": 0,
         "has_custom_scope": False,
         "status": "full",
     })
-    role_key = _normalize_text(user.role).lower()
-    if role_key == "admin":
+    if access.full_access:
         scope_summary = {
             "projects_count": 0,
             "disciplines_count": 0,
@@ -148,6 +192,10 @@ def _serialize_user_with_scope(user: User, scope_map: Dict[int, dict]) -> dict:
         "role": user.role,
         "organization_id": user.organization_id,
         "organization_role": user.organization_role,
+        "effective_role": access.effective_role,
+        "permission_category": access.permission_category,
+        "is_system_admin": access.is_system_admin,
+        "organization_type": access.organization_type,
         "organization": (
             {
                 "id": user.organization.id,
@@ -175,7 +223,7 @@ def list_users(
     organization_type: Optional[str] = Query(default=None),
     is_active: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(require_permission("users:read"))
 ):
     """
     لیست تمام کاربران (فقط ادمین)
@@ -208,7 +256,7 @@ def list_users_paged(
     organization_type: Optional[str] = Query(default=None),
     is_active: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(require_permission("users:read")),
 ):
     """
     لیست صفحه‌بندی‌شده کاربران با قابلیت جستجو و فیلتر (فقط ادمین)
@@ -255,7 +303,7 @@ def list_users_paged(
 def create_user(
     user: UserCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(require_permission("users:create"))
 ):
     """
     ایجاد کاربر جدید (فقط ادمین)
@@ -280,27 +328,35 @@ def create_user(
         ) from exc
     
     # ایجاد کاربر جدید
+    organization_role = _normalize_user_org_role_or_400(org, user.organization_role.value)
     db_user = User(
         email=user.email,
         hashed_password=hashed_password,
         full_name=user.full_name,
-        role=user.role.value,
+        role=user.role.value,  # legacy input; synchronized below from effective role
         organization_id=(org.id if org else None),
-        organization_role=user.organization_role.value,
+        organization_role=organization_role,
         is_active=user.is_active
     )
+    sync_legacy_role_from_access(db_user)
     
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    
-    return db_user
+    db_user = (
+        db.query(User)
+        .options(joinedload(User.organization))
+        .filter(User.id == db_user.id)
+        .first()
+    )
+    scope_map = _scope_counts_map(db, [int(db_user.id)])
+    return _serialize_user_with_scope(db_user, scope_map)
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(require_permission("users:read"))
 ):
     """
     دریافت اطلاعات کاربر مشخص (فقط ادمین)
@@ -316,14 +372,15 @@ def get_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="کاربر یافت نشد"
         )
-    return user
+    scope_map = _scope_counts_map(db, [int(user.id)])
+    return _serialize_user_with_scope(user, scope_map)
 
 @router.put("/{user_id}", response_model=UserResponse)
 def update_user(
     user_id: int,
     user_update: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(require_permission("users:update"))
 ):
     """
     ویرایش اطلاعات کاربر (فقط ادمین)
@@ -348,21 +405,32 @@ def update_user(
     if user_update.organization_id is not None:
         org = _validate_organization_or_400(db, user_update.organization_id)
         user.organization_id = org.id if org else None
+    else:
+        org = user.organization
     if user_update.organization_role is not None:
-        user.organization_role = user_update.organization_role.value
+        user.organization_role = _normalize_user_org_role_or_400(org, user_update.organization_role.value)
+    else:
+        user.organization_role = _normalize_user_org_role_or_400(org, user.organization_role)
     if user_update.is_active is not None:
         user.is_active = user_update.is_active
+    sync_legacy_role_from_access(user)
     
     db.commit()
     db.refresh(user)
-    
-    return user
+    user = (
+        db.query(User)
+        .options(joinedload(User.organization))
+        .filter(User.id == user_id)
+        .first()
+    )
+    scope_map = _scope_counts_map(db, [int(user.id)])
+    return _serialize_user_with_scope(user, scope_map)
 
 @router.delete("/{user_id}")
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(require_permission("users:delete"))
 ):
     """
     حذف کاربر (فقط ادمین)
@@ -390,7 +458,7 @@ def delete_user(
 @router.get("/organizations/catalog")
 def list_organizations_catalog(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user),
+    current_user: User = Depends(require_permission("organizations:read")),
 ):
     rows = (
         db.query(Organization)

@@ -11,6 +11,16 @@ class Role(str, Enum):
 
 
 ALL_ROLES: tuple[str, ...] = tuple(role.value for role in Role)
+MATRIX_ROLES: tuple[str, ...] = (
+    Role.MANAGER.value,
+    Role.DCC.value,
+    Role.USER.value,
+    Role.VIEWER.value,
+)
+EFFECTIVE_ROLES: tuple[str, ...] = (
+    Role.ADMIN.value,
+    *MATRIX_ROLES,
+)
 
 
 COMMON_NAV_PERMISSIONS: List[str] = [
@@ -70,6 +80,15 @@ COMM_ITEMS_WRITE_PERMISSIONS: List[str] = [
     "comm_items:relation_manage",
 ]
 
+DOCUMENT_WRITE_PERMISSIONS: List[str] = [
+    "documents:delete",
+    "documents:comment_create",
+    "documents:comment_update",
+    "documents:comment_delete",
+    "documents:relation_manage",
+    "documents:tag_manage",
+]
+
 BIM_READ_PERMISSIONS: List[str] = [
     "bim:read",
 ]
@@ -92,6 +111,7 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "documents:read",
         "documents:create",
         "documents:update",
+        *DOCUMENT_WRITE_PERMISSIONS,
         "archive:read",
         "archive:update",
         "transmittal:read",
@@ -122,6 +142,7 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "documents:read",
         "documents:create",
         "documents:update",
+        *DOCUMENT_WRITE_PERMISSIONS,
         "archive:read",
         "archive:update",
         "transmittal:read",
@@ -154,6 +175,11 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "documents:read",
         "documents:create",
         "documents:update",
+        "documents:comment_create",
+        "documents:comment_update",
+        "documents:comment_delete",
+        "documents:relation_manage",
+        "documents:tag_manage",
         "archive:read",
         "archive:update",
         "transmittal:read",
@@ -202,7 +228,7 @@ def normalize_role(user_role: str | None) -> str:
 
 
 def is_valid_role(user_role: str | None) -> bool:
-    return normalize_role(user_role) in ALL_ROLES
+    return normalize_role(user_role) in EFFECTIVE_ROLES
 
 
 def verify_role_access(user_role: str, required_roles: List[str]) -> bool:

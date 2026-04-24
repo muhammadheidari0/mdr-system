@@ -27,6 +27,7 @@ export interface AppRouterDeps {
   initModuleSettingsView: () => void;
   openSettingsTab: (tabName: string) => void;
   initUserSettingsView: () => void;
+  initDocumentDetailView: () => void;
   emitViewActivated: (viewId: string) => void;
   updateSidebarState: (viewId: string) => void;
 }
@@ -94,6 +95,9 @@ async function runViewInitializerForRoute(routedViewId: string, deps: AppRouterD
     }
     case "view-profile":
       deps.initUserSettingsView();
+      return true;
+    case "view-document-detail":
+      deps.initDocumentDetailView();
       return true;
     default:
       return true;

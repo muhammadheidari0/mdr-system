@@ -197,6 +197,18 @@ $env:PW_CHROME_EXECUTABLE_PATH="C:\Program Files\Google\Chrome\Application\chrom
 npm run e2e:critical
 ```
 
+## Document Detail Regression
+
+Run the full repeatable regression lane for Document Detail and related EDMS flows:
+
+```powershell
+$env:PW_USE_SYSTEM_CHROME="1"   # optional when Playwright browser download is blocked
+npm run regression:document-detail
+```
+
+This command runs the frontend build, targeted backend regression tests, and the Playwright suite:
+`document_detail_flows`, `app_smoke`, and `critical_flows`. By default Playwright runs with one worker for reproducibility; set `E2E_WORKERS=3` to opt into the parallel run used during local verification.
+
 ## Rehearsal / Production Checklist
 
 See `docs/cutover_runbook.md` for:

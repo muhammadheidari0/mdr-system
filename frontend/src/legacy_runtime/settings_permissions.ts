@@ -3,61 +3,31 @@
     const MATRIX_ENDPOINT = '/api/v1/settings/permissions/matrix';
     const SEARCH_DEBOUNCE_MS = 180;
     const DEFAULT_CATEGORY = 'consultant';
-    const KNOWN_CATEGORIES = ['consultant', 'contractor', 'employer', 'dcc', 'system'];
+    const KNOWN_CATEGORIES = ['consultant', 'contractor', 'employer', 'dcc'];
 
     const TREE_CATALOG = [
         {
-            key: 'engineering_docs',
-            label: 'Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ',
+            key: 'edms_core',
+            label: 'هسته EDMS',
             pages: [
-                { key: 'documents', label: 'Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ', groupKeys: ['documents'] },
-                { key: 'archive', label: 'Ø¢Ø±Ø´ÛŒÙˆ Ù…Ø¯Ø§Ø±Ú©', groupKeys: ['archive'] },
-                { key: 'transmittal', label: 'ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„', groupKeys: ['transmittal'] },
-                { key: 'correspondence', label: 'Ù…Ú©Ø§ØªØ¨Ø§Øª', groupKeys: ['correspondence'] },
-            ],
-        },
-        {
-            key: 'reports',
-            label: 'Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§',
-            pages: [
-                { key: 'dashboard', label: 'Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯', groupKeys: ['dashboard'] },
-                { key: 'reports', label: 'Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§ÛŒ ØªØ­Ù„ÛŒÙ„ÛŒ', groupKeys: ['reports'] },
-            ],
-        },
-        {
-            key: 'contractor_hub',
-            label: 'Ø¯ÙØªØ± ÙÙ†ÛŒ Ùˆ Ø§Ø¬Ø±Ø§ (Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±)',
-            pages: [
-                {
-                    key: 'workboard_contractor',
-                    label: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
-                    groupKeys: ['workboard_contractor', 'contractor_workboard', 'contractor'],
-                },
-            ],
-        },
-        {
-            key: 'consultant_hub',
-            label: 'Ù†Ø¸Ø§Ø±Øª Ùˆ Ú©Ù†ØªØ±Ù„ Ù¾Ø±ÙˆÚ˜Ù‡ (Ù…Ø´Ø§ÙˆØ±)',
-            pages: [
-                {
-                    key: 'workboard_consultant',
-                    label: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù…Ø´Ø§ÙˆØ±',
-                    groupKeys: ['workboard_consultant', 'consultant_workboard', 'consultant'],
-                },
+                { key: 'documents', label: 'مدارک مهندسی', groupKeys: ['documents'] },
+                { key: 'archive', label: 'آرشیو مدارک', groupKeys: ['archive'] },
+                { key: 'transmittal', label: 'ترنسمیتال', groupKeys: ['transmittal'] },
+                { key: 'correspondence', label: 'مکاتبات', groupKeys: ['correspondence'] },
             ],
         },
         {
             key: 'visibility',
-            label: 'Hub + Module Visibility',
+            label: 'نمایش هاب‌ها و ماژول‌ها',
             pages: [
                 {
                     key: 'hub_visibility',
-                    label: 'Hub visibility',
+                    label: 'نمایش هاب‌ها',
                     groupKeys: ['hub_edms', 'hub_reports', 'hub_contractor', 'hub_consultant'],
                 },
                 {
                     key: 'module_visibility',
-                    label: 'Module visibility',
+                    label: 'نمایش ماژول‌ها',
                     groupKeys: [
                         'module_archive',
                         'module_transmittal',
@@ -69,31 +39,54 @@
                         'module_site_logs_consultant',
                         'module_comm_items_consultant',
                         'module_permit_qc_consultant',
+                        'module_settings',
                     ],
                 },
             ],
         },
         {
-            key: 'operations',
-            label: 'Operational permissions',
+            key: 'field_control',
+            label: 'فرآیندهای اجرایی',
             pages: [
-                { key: 'ops_workboard', label: 'Workboard', groupKeys: ['workboard'] },
-                { key: 'ops_site_logs', label: 'Site logs', groupKeys: ['site_logs'] },
-                { key: 'ops_comm_items', label: 'Communication items', groupKeys: ['comm_items'] },
-                { key: 'ops_permit_qc', label: 'Permit + QC', groupKeys: ['permit_qc'] },
-                { key: 'ops_bim', label: 'BIM', groupKeys: ['bim'] },
+                { key: 'ops_workboard', label: 'کارتابل', groupKeys: ['workboard'] },
+                { key: 'ops_site_logs', label: 'گزارش‌های کارگاهی', groupKeys: ['site_logs'] },
+                { key: 'ops_comm_items', label: 'اقلام ارتباطی', groupKeys: ['comm_items'] },
+                { key: 'ops_permit_qc', label: 'پرمیت و کنترل کیفیت', groupKeys: ['permit_qc'] },
+                { key: 'ops_bim', label: 'مدل‌سازی اطلاعات ساختمان (BIM)', groupKeys: ['bim'] },
             ],
         },
         {
-            key: 'system_settings',
-            label: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³ÛŒØ³ØªÙ…',
+            key: 'analytics',
+            label: 'گزارش و پایش',
             pages: [
-                { key: 'settings', label: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ', groupKeys: ['settings'] },
-                { key: 'users', label: 'Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø§Ø±Ø¨Ø±Ø§Ù†', groupKeys: ['users'] },
-                { key: 'organizations', label: 'Ù…Ø¯ÛŒØ±ÛŒØª Ø³Ø§Ø²Ù…Ø§Ù†â€ŒÙ‡Ø§', groupKeys: ['organizations'] },
-                { key: 'permissions', label: 'Ø³Ø·Ø­ Ø¯Ø³ØªØ±Ø³ÛŒ', groupKeys: ['permissions'] },
-                { key: 'bulk', label: 'Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ', groupKeys: ['bulk'] },
-                { key: 'module_settings', label: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ø®Ù„ÛŒ', groupKeys: ['module_settings'] },
+                { key: 'dashboard', label: 'داشبورد', groupKeys: ['dashboard'] },
+                { key: 'reports', label: 'گزارش‌ها', groupKeys: ['reports'] },
+            ],
+        },
+        {
+            key: 'admin_control',
+            label: 'پیکربندی و مدیریت',
+            pages: [
+                {
+                    key: 'users_access',
+                    label: 'کاربران و سطح دسترسی',
+                    groupKeys: ['users', 'organizations', 'permissions'],
+                },
+                {
+                    key: 'settings_catalog',
+                    label: 'تنظیمات و فهرست‌های پایه',
+                    groupKeys: ['settings', 'lookup'],
+                },
+                {
+                    key: 'storage_sync',
+                    label: 'ذخیره‌سازی و کش',
+                    groupKeys: ['storage', 'site_cache'],
+                },
+                {
+                    key: 'integrations',
+                    label: 'یکپارچه‌سازی‌ها',
+                    groupKeys: ['integrations'],
+                },
             ],
         },
     ];
@@ -173,22 +166,19 @@
 
     function categoryLabel(value) {
         const map = {
-            consultant: 'Ù…Ø´Ø§ÙˆØ±',
-            contractor: 'Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
-            employer: 'Ú©Ø§Ø±ÙØ±Ù…Ø§',
-            dcc: 'DCC',
-            system: 'SYSTEM',
-        };
-        return map[normalizeCategory(value)] || 'Ù…Ø´Ø§ÙˆØ±';
+            consultant: 'مشاور',
+            contractor: 'پیمانکار',
+            employer: 'کارفرما',
+            dcc: 'DCC',        };
+        return map[normalizeCategory(value)] || 'مشاور';
     }
 
     function roleLabel(role) {
         const map = {
-            admin: 'Ù…Ø¯ÛŒØ± Ø³ÛŒØ³ØªÙ…',
-            manager: 'Ø³Ø±Ù¾Ø±Ø³Øª',
-            user: 'Ú©Ø§Ø±Ø¨Ø± Ø¹Ø§Ø¯ÛŒ',
-            dcc: 'Ú©Ù†ØªØ±Ù„ Ù…Ø¯Ø§Ø±Ú© (DCC)',
-            viewer: 'Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ú¯Ø±',
+            manager: 'سرپرست',
+            user: 'کاربر عادی',
+            dcc: 'کنترل مدارک (DCC)',
+            viewer: 'مشاهده‌گر',
         };
         const roleKey = normalizeRole(role);
         return map[roleKey] || role;
@@ -212,19 +202,33 @@
     function readableToken(token) {
         const key = String(token || '').trim().toLowerCase();
         const map = {
-            read: 'Ù…Ø´Ø§Ù‡Ø¯Ù‡',
-            create: 'Ø§ÛŒØ¬Ø§Ø¯',
-            update: 'ÙˆÛŒØ±Ø§ÛŒØ´',
-            delete: 'Ø­Ø°Ù',
-            issue: 'ØµØ¯ÙˆØ±',
-            void: 'Ø§Ø¨Ø·Ø§Ù„',
-            manage: 'Ù…Ø¯ÛŒØ±ÛŒØª',
-            upload: 'Ø¢Ù¾Ù„ÙˆØ¯',
-            download: 'Ø¯Ø§Ù†Ù„ÙˆØ¯',
-            export: 'Ø®Ø±ÙˆØ¬ÛŒ',
-            import: 'ÙˆØ±ÙˆØ¯ÛŒ',
+            read: 'مشاهده',
+            create: 'ایجاد',
+            update: 'ویرایش',
+            delete: 'حذف',
+            issue: 'صدور',
+            void: 'ابطال',
+            manage: 'مدیریت',
+            upload: 'آپلود',
+            download: 'دانلود',
+            export: 'خروجی',
+            import: 'ورودی',
+            review: 'بررسی',
+            approve: 'تایید',
+            reject: 'رد',
+            publish: 'انتشار',
+            submit: 'ارسال',
+            sync: 'همگام‌سازی',
+            ingest: 'دریافت',
+            audit: 'ممیزی',
+            relation: 'ارتباطات',
+            tag: 'تگ‌ها',
+            comment: 'کامنت',
+            template: 'قالب',
+            attachment: 'پیوست',
+            report: 'گزارش',
         };
-        if (map[key]) return `${map[key]} (${key.toUpperCase()})`;
+        if (map[key]) return map[key];
         return String(token || '')
             .replace(/[_-]+/g, ' ')
             .replace(/\s+/g, ' ')
@@ -254,42 +258,43 @@
     function permissionGroupLabel(groupKey) {
         const key = String(groupKey || '').toLowerCase();
         const map = {
-            archive: 'Ø¢Ø±Ø´ÛŒÙˆ Ù…Ø¯Ø§Ø±Ú©',
-            dashboard: 'Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯',
-            documents: 'Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ',
-            transmittal: 'ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„',
-            correspondence: 'Ù…Ú©Ø§ØªØ¨Ø§Øª',
-            settings: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¹Ù…ÙˆÙ…ÛŒ',
-            users: 'Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø§Ø±Ø¨Ø±Ø§Ù†',
-            organizations: 'Ù…Ø¯ÛŒØ±ÛŒØª Ø³Ø§Ø²Ù…Ø§Ù†â€ŒÙ‡Ø§',
-            permissions: 'Ø³Ø·Ø­ Ø¯Ø³ØªØ±Ø³ÛŒ',
-            bulk: 'Ø«Ø¨Øª Ú¯Ø±ÙˆÙ‡ÛŒ',
-            module_settings: 'ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø¯Ø§Ø®Ù„ÛŒ',
-            reports: 'Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§',
-            workboard_contractor: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
-            workboard_consultant: 'Ú©Ø§Ø±ØªØ§Ø¨Ù„ Ù…Ø´Ø§ÙˆØ±',
-            hub_edms: 'Hub EDMS',
-            hub_reports: 'Hub Reports',
-            hub_contractor: 'Hub Contractor',
-            hub_consultant: 'Hub Consultant',
-            module_archive: 'Module Archive',
-            module_transmittal: 'Module Transmittal',
-            module_correspondence: 'Module Correspondence',
-            module_reports: 'Module Reports',
-            module_site_logs_contractor: 'Module Contractor Site Logs',
-            module_comm_items_contractor: 'Module Contractor Comm Items',
-            module_permit_qc_contractor: 'Module Contractor Permit+QC',
-            module_site_logs_consultant: 'Module Consultant Site Logs',
-            module_comm_items_consultant: 'Module Consultant Comm Items',
-            module_permit_qc_consultant: 'Module Consultant Permit+QC',
-            workboard: 'Workboard',
-            site_logs: 'Site logs',
-            comm_items: 'Communication items',
-            permit_qc: 'Permit + QC',
-            bim: 'BIM',
+            archive: 'آرشیو مدارک',
+            dashboard: 'داشبورد',
+            documents: 'مدارک مهندسی',
+            transmittal: 'ترنسمیتال',
+            correspondence: 'مکاتبات',
+            settings: 'تنظیمات عمومی',
+            users: 'کاربران',
+            organizations: 'سازمان‌ها',
+            permissions: 'سطح دسترسی',
+            module_settings: 'نمایش ماژول تنظیمات',
+            reports: 'گزارش‌ها',
+            hub_edms: 'نمایش هاب EDMS',
+            hub_reports: 'نمایش هاب گزارش‌ها',
+            hub_contractor: 'نمایش هاب پیمانکار',
+            hub_consultant: 'نمایش هاب مشاور',
+            module_archive: 'نمایش ماژول آرشیو مدارک',
+            module_transmittal: 'نمایش ماژول ترنسمیتال',
+            module_correspondence: 'نمایش ماژول مکاتبات',
+            module_reports: 'نمایش ماژول گزارش‌ها',
+            module_site_logs_contractor: 'نمایش ماژول گزارش کارگاهی پیمانکار',
+            module_comm_items_contractor: 'نمایش ماژول اقلام ارتباطی پیمانکار',
+            module_permit_qc_contractor: 'نمایش ماژول Permit/QC پیمانکار',
+            module_site_logs_consultant: 'نمایش ماژول گزارش کارگاهی مشاور',
+            module_comm_items_consultant: 'نمایش ماژول اقلام ارتباطی مشاور',
+            module_permit_qc_consultant: 'نمایش ماژول Permit/QC مشاور',
+            workboard: 'کارتابل',
+            site_logs: 'گزارش‌های کارگاهی',
+            comm_items: 'اقلام ارتباطی',
+            permit_qc: 'پرمیت و کنترل کیفیت',
+            bim: 'مدل‌سازی اطلاعات ساختمان (BIM)',
+            lookup: 'فهرست‌های پایه',
+            storage: 'ذخیره‌سازی',
+            site_cache: 'کش سایت و مسیرها',
+            integrations: 'یکپارچه‌سازی‌ها',
         };
         if (map[key]) return map[key];
-        if (!key || key === 'other') return 'Ø³Ø§ÛŒØ±';
+        if (!key || key === 'other') return 'سایر';
         return key.replace(/[_-]+/g, ' ').toUpperCase();
     }
 
@@ -314,7 +319,7 @@
         if (saveBtn) {
             saveBtn.disabled = !!state.readOnly;
             saveBtn.setAttribute('aria-disabled', state.readOnly ? 'true' : 'false');
-            saveBtn.title = state.readOnly ? 'This category is read-only.' : '';
+            saveBtn.title = state.readOnly ? 'این دسته فقط خواندنی است.' : '';
             saveBtn.classList.toggle('is-disabled', !!state.readOnly);
         }
     }
@@ -343,7 +348,7 @@
     function getUniqueGroups() {
         const groups = new Set();
         (state.permissions || []).forEach((perm) => groups.add(permissionGroupKey(perm)));
-        return Array.from(groups).sort((a, b) => String(a).localeCompare(String(b)));
+        return Array.from(groups).sort((a, b) => permissionGroupLabel(a).localeCompare(permissionGroupLabel(b), 'fa'));
     }
 
     function getFilteredPermissions() {
@@ -383,6 +388,29 @@
         });
     }
 
+    function cleanupMatrixBulkUi() {
+        const table = document.getElementById('permissionsMatrixTable');
+        if (!(table instanceof HTMLTableElement)) return;
+
+        try {
+            if (window.TableBulk && typeof window.TableBulk.clearSelection === 'function') {
+                window.TableBulk.clearSelection(table.id);
+            }
+        } catch (_) {}
+
+        const parent = table.parentElement;
+        if (parent) {
+            Array.from(parent.querySelectorAll('.table-bulk-toolbar'))
+                .filter((node) => !node.dataset.bulkFor || node.dataset.bulkFor === table.id)
+                .forEach((node) => node.remove());
+        }
+
+        table.querySelectorAll('.table-bulk-cell').forEach((cell) => cell.remove());
+        table.querySelectorAll('tr.bulk-row-selected').forEach((row) => row.classList.remove('bulk-row-selected'));
+        table.querySelectorAll('[data-bulk-resolved-key]').forEach((row) => row.removeAttribute('data-bulk-resolved-key'));
+        table.querySelectorAll('[data-bulk-row]').forEach((row) => row.removeAttribute('data-bulk-row'));
+    }
+
     function renderGroupOptions() {
         const groupSelect = document.getElementById('permissionsResourceFilter');
         if (!groupSelect) return;
@@ -391,7 +419,7 @@
         const selected = String(state.filterGroup || '');
 
         groupSelect.innerHTML = `
-            <option value="">Ù‡Ù…Ù‡ Ù…Ù†Ø§Ø¨Ø¹</option>
+            <option value="">همه منابع</option>
             ${groups.map((group) => `<option value="${esc(group)}">${esc(permissionGroupLabel(group))}</option>`).join('')}
         `;
         groupSelect.value = groups.indexOf(selected) >= 0 ? selected : '';
@@ -401,14 +429,8 @@
     function resolveSectionForGroup(groupKey) {
         const key = String(groupKey || '').toLowerCase();
         const pageKey = catalogIndex.groupToPage.get(key);
-        if (pageKey) return catalogIndex.pageToSection.get(pageKey) || 'engineering_docs';
-        if (key.startsWith('hub_') || key.startsWith('module_')) return 'visibility';
-        if (['workboard', 'site_logs', 'comm_items', 'permit_qc', 'bim'].includes(key)) return 'operations';
-        if (key === 'dashboard' || key.includes('report')) return 'reports';
-        if (key.startsWith('workboard')) return key.includes('consult') ? 'consultant_hub' : 'contractor_hub';
-        if (['settings', 'users', 'permissions', 'bulk', 'organizations', 'module_settings'].includes(key)) return 'system_settings';
-        if (['archive', 'documents', 'transmittal', 'correspondence'].includes(key)) return 'engineering_docs';
-        return 'engineering_docs';
+        if (pageKey) return catalogIndex.pageToSection.get(pageKey) || 'admin_control';
+        return 'admin_control';
     }
 
     function resolvePageForGroup(groupKey) {
@@ -418,15 +440,14 @@
             return {
                 key: mapped,
                 label: catalogIndex.pageLabels.get(mapped) || permissionGroupLabel(key),
-                sectionKey: catalogIndex.pageToSection.get(mapped) || 'engineering_docs',
+                sectionKey: catalogIndex.pageToSection.get(mapped) || 'admin_control',
                 dynamic: false,
             };
         }
-        const sectionKey = resolveSectionForGroup(key);
         return {
             key: `dynamic:${key}`,
             label: permissionGroupLabel(key),
-            sectionKey,
+            sectionKey: resolveSectionForGroup(key),
             dynamic: true,
         };
     }
@@ -435,10 +456,11 @@
         const tree = TREE_CATALOG.map((section) => ({
             key: section.key,
             label: section.label,
-            pages: (section.pages || []).map((page) => ({
+            pages: (section.pages || []).map((page, index) => ({
                 key: page.key,
                 label: page.label,
                 dynamic: false,
+                sortIndex: index,
                 permissions: [],
             })),
         }));
@@ -465,6 +487,7 @@
                     key: target.key,
                     label: target.label,
                     dynamic: true,
+                    sortIndex: section.pages.length + 1000,
                     permissions: [],
                 };
                 section.pages.push(page);
@@ -473,20 +496,25 @@
             page.permissions.push(permission);
         });
 
-        tree.forEach((section) => {
-            section.pages.forEach((page) => {
-                page.permissions = page.permissions
-                    .slice()
-                    .sort((a, b) => String(a).localeCompare(String(b)));
-            });
-            section.pages.sort((a, b) => {
-                if (a.dynamic && !b.dynamic) return 1;
-                if (!a.dynamic && b.dynamic) return -1;
-                return String(a.label).localeCompare(String(b.label));
-            });
-        });
-
-        return tree;
+        return tree
+            .map((section) => ({
+                ...section,
+                pages: section.pages
+                    .map((page) => ({
+                        ...page,
+                        permissions: page.permissions
+                            .slice()
+                            .sort((a, b) => String(a).localeCompare(String(b))),
+                    }))
+                    .filter((page) => page.permissions.length > 0)
+                    .sort((a, b) => {
+                        if (a.dynamic && !b.dynamic) return 1;
+                        if (!a.dynamic && b.dynamic) return -1;
+                        if (a.sortIndex !== b.sortIndex) return Number(a.sortIndex) - Number(b.sortIndex);
+                        return String(a.label).localeCompare(String(b.label), 'fa');
+                    }),
+            }))
+            .filter((section) => section.pages.length > 0);
     }
 
     function getRoleStateForPermissions(role, permissions) {
@@ -495,9 +523,7 @@
         if (!perms.length) {
             return { checked: false, indeterminate: false, disabled: true, empty: true };
         }
-        if (roleKey === 'admin') {
-            return { checked: true, indeterminate: false, disabled: true, empty: false };
-        }
+
         const values = perms.map((permission) => Boolean(state.matrix[roleKey] && state.matrix[roleKey][permission]));
         const enabledCount = values.filter(Boolean).length;
         return {
@@ -519,7 +545,7 @@
         const indeterminate = roleState.indeterminate ? 'data-indeterminate="1"' : '';
         return `
             <td class="center-text matrix-role-cell">
-                <label class="toggle-switch ${roleState.disabled ? 'is-disabled' : ''}" ${roleState.disabled ? 'title="Ø§Ø¯Ù…ÛŒÙ† Ù‡Ù…ÛŒØ´Ù‡ Ø¯Ø³ØªØ±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ø¯Ø§Ø±Ø¯"' : ''}>
+                <label class="toggle-switch ${roleState.disabled ? 'is-disabled' : ''}">
                     <input
                         type="checkbox"
                         ${checked}
@@ -557,13 +583,13 @@
 
         if (!state.roles.length || !allPermissions.length) {
             head.innerHTML = '';
-            body.innerHTML = `<tr><td class="center-text muted" colspan="${columnCount}" style="padding: 36px;">Ø¯Ø§Ø¯Ù‡ Ø§ÛŒ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒØ´ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯</td></tr>`;
+            body.innerHTML = `<tr><td class="center-text muted" colspan="${columnCount}" style="padding: 36px;">داده‌ای برای نمایش وجود ندارد.</td></tr>`;
             return;
         }
 
         head.innerHTML = `
             <tr>
-                <th class="sticky-col matrix-permission-col">Ù…Ø¬ÙˆØ² (Ø¯Ø±Ø®ØªÛŒ)</th>
+                <th class="sticky-col matrix-permission-col">مجوز (درختی)</th>
                 ${state.roles.map((role) => `<th class="matrix-role-head">${esc(roleLabel(role))}</th>`).join('')}
             </tr>
         `;
@@ -571,7 +597,7 @@
         if (!filteredPermissions.length) {
             state.renderedSections = {};
             state.renderedPages = {};
-            body.innerHTML = `<tr><td class="center-text muted" colspan="${columnCount}" style="padding: 34px;">Ù†ØªÛŒØ¬Ù‡ Ø§ÛŒ Ù…Ø·Ø§Ø¨Ù‚ ÙÛŒÙ„ØªØ± ÙØ¹Ù„ÛŒ Ù¾ÛŒØ¯Ø§ Ù†Ø´Ø¯</td></tr>`;
+            body.innerHTML = `<tr><td class="center-text muted" colspan="${columnCount}" style="padding: 34px;">نتیجه‌ای مطابق فیلتر فعلی پیدا نشد.</td></tr>`;
             return;
         }
 
@@ -602,9 +628,6 @@
 
                 const pageHiddenClass = hiddenBySection ? 'is-collapsed' : '';
                 const pageCollapsedClass = pageCollapsed ? 'is-page-collapsed' : '';
-                const emptyNote = !pagePerms.length
-                    ? '<span class="matrix-tree-empty-note">Ú©Ù„ÛŒØ¯ Ù…Ø¬ÙˆØ²ÛŒ ØªØ¹Ø±ÛŒÙ Ù†Ø´Ø¯Ù‡</span>'
-                    : '';
 
                 const childRows = pagePerms.map((permission) => {
                     const childHidden = hiddenBySection || pageCollapsed;
@@ -618,12 +641,11 @@
                             </td>
                             ${state.roles.map((role) => {
                                 const roleKey = normalizeRole(role);
-                                const isAdmin = roleKey === 'admin';
-                                const isDisabled = isAdmin || !!state.readOnly;
+                                const isDisabled = !!state.readOnly;
                                 const checked = Boolean(state.matrix[roleKey] && state.matrix[roleKey][permission]);
                                 return `
                                     <td class="center-text matrix-role-cell">
-                                        <label class="toggle-switch ${isDisabled ? 'is-disabled' : ''}" ${isAdmin ? 'title="Ø§Ø¯Ù…ÛŒÙ† Ù‡Ù…ÛŒØ´Ù‡ Ø¯Ø³ØªØ±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ø¯Ø§Ø±Ø¯"' : ''}>
+                                        <label class="toggle-switch ${isDisabled ? 'is-disabled' : ''}">
                                             <input
                                                 type="checkbox"
                                                 ${checked ? 'checked' : ''}
@@ -649,7 +671,6 @@
                                 <span class="matrix-tree-group-name">${esc(page.label)}</span>
                             </button>
                             <span class="matrix-group-count">${pagePerms.length}</span>
-                            ${emptyNote}
                         </td>
                         ${pageRoleCells}
                     </tr>
@@ -676,6 +697,7 @@
     }
 
     function bindToolbar() {
+        cleanupMatrixBulkUi();
         if (state.toolbarBound) return;
 
         const root = document.getElementById('settingsPermissionsTabRoot');
@@ -784,6 +806,7 @@
 
     async function load(force = false) {
         bindToolbar();
+        cleanupMatrixBulkUi();
         renderCategoryTabs();
 
         if (state.initialized && !force) {
@@ -794,13 +817,16 @@
 
         const body = document.getElementById('permissionsMatrixBody');
         if (body) {
-            body.innerHTML = '<tr><td class="center-text muted" colspan="6" style="padding: 36px;">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù…Ø§ØªØ±ÛŒØ³ Ø¯Ø³ØªØ±Ø³ÛŒ...</td></tr>';
+            body.innerHTML = '<tr><td class="center-text muted" colspan="6" style="padding: 36px;">در حال بارگذاری ماتریس دسترسی...</td></tr>';
         }
 
         const payload = await request(matrixUrl());
         state.activeCategory = normalizeCategory(payload && payload.category);
         if (Array.isArray(payload && payload.categories) && payload.categories.length) {
-            state.categories = payload.categories.map((item) => normalizeCategory(item));
+            const normalized = payload.categories
+                .map((item) => normalizeCategory(item))
+                .filter((item, idx, arr) => arr.indexOf(item) === idx);
+            state.categories = normalized.length ? normalized : KNOWN_CATEGORIES.slice();
         }
         state.roles = Array.isArray(payload.roles) ? payload.roles : [];
         state.permissions = Array.isArray(payload.permissions) ? payload.permissions : [];
@@ -818,9 +844,7 @@
 
     window.togglePermissionCell = function togglePermissionCell(role, permission, checked) {
         if (state.readOnly) return;
-        const roleKey = normalizeRole(role);
-        if (roleKey === 'admin') return;
-        if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
+        const roleKey = normalizeRole(role);        if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
         state.matrix[roleKey][permission] = Boolean(checked);
         renderMatrix();
     };
@@ -829,7 +853,7 @@
         if (state.readOnly) return;
         const sectionKey = decodeURIComponent(String(encodedSectionKey || ''));
         const roleKey = normalizeRole(role);
-        if (!sectionKey || roleKey === 'admin') return;
+        if (!sectionKey) return;
         const perms = state.renderedSections[sectionKey] || [];
         if (!perms.length) return;
         if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
@@ -843,7 +867,7 @@
         if (state.readOnly) return;
         const pageKey = decodeURIComponent(String(encodedPageKey || ''));
         const roleKey = normalizeRole(role);
-        if (!pageKey || roleKey === 'admin') return;
+        if (!pageKey) return;
         const perms = state.renderedPages[pageKey] || [];
         if (!perms.length) return;
         if (!state.matrix[roleKey]) state.matrix[roleKey] = {};
@@ -900,7 +924,7 @@
 
     window.savePermissionsMatrix = async function savePermissionsMatrix() {
         if (state.readOnly) {
-            notify('warning', 'SYSTEM category is read-only.');
+            notify('warning', 'این دسته فقط خواندنی است.');
             return;
         }
         try {
@@ -909,10 +933,10 @@
                 method: 'POST',
                 body: JSON.stringify({ matrix: state.matrix }),
             });
-            notify('success', `Ù…Ø§ØªØ±ÛŒØ³ Ø³Ø·Ø­ Ø¯Ø³ØªØ±Ø³ÛŒ ${categoryLabel(state.activeCategory)} Ø°Ø®ÛŒØ±Ù‡ Ø´Ø¯`);
+            notify('success', `ماتریس سطح دسترسی ${categoryLabel(state.activeCategory)} ذخیره شد.`);
             await load(true);
         } catch (error) {
-            notify('error', error.message || 'Ø°Ø®ÛŒØ±Ù‡ Ù…Ø§ØªØ±ÛŒØ³ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯');
+            notify('error', error.message || 'ذخیره ماتریس ناموفق بود.');
         }
     };
 
@@ -932,7 +956,10 @@
         try {
             await load(force);
         } catch (error) {
-            notify('error', error.message || 'Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù…Ø§ØªØ±ÛŒØ³ Ø¯Ø³ØªØ±Ø³ÛŒ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯');
+            notify('error', error.message || 'بارگذاری ماتریس دسترسی ناموفق بود.');
         }
     };
 })();
+
+
+

@@ -31,11 +31,14 @@ def ensure_storage_folder(
     mdr_folder_name: str,
     phase_name: str,
     disc_name: str, disc_code: str,
-    pkg_name: str, pkg_code: str
+    pkg_name: str, pkg_code: str,
+    phase_code: str | None = None,
+    package_name: str | None = None,
+    file_kind: str | None = None,
 ) -> str:
     """
     ساخت ساختار سلسله‌مراتب پوشه‌ها و بازگرداندن مسیر کامل.
-    Path: Root / Project / MDR / Phase / Discipline / Package
+    Path: Root / Project / MDR / PhaseCode / DisciplineCode / PackageName / FileKind
     """
     # مسیر پایه: اگر root_path پروژه تنظیم شده باشد از آن استفاده می‌کند، وگرنه پوشه پیش‌فرض data_store
     base = Path(root_path) if root_path else Path(settings.BASE_DIR) / "data_store"
@@ -45,23 +48,21 @@ def ensure_storage_folder(
     # اگر نام پروژه "unk" یا خالی بود، فقط کد را بگذار
     proj_folder = f"{project_code} - {p_name}" if p_name and p_name.lower() != "unk" else safe_name(project_code)
 
-    # 2. Discipline Folder
-    d_name = safe_name(disc_name)
-    disc_folder = f"{disc_code}-{d_name}" if d_name else safe_name(disc_code)
-
-    # 3. Package Folder
-    pk_name = safe_name(pkg_name)
-    pkg_folder = f"{pkg_code}-{pk_name}" if pk_name else safe_name(pkg_code)
+    phase_folder = safe_name(phase_code or phase_name) or "Phase"
+    disc_folder = safe_name(disc_code) or "GN"
+    pkg_folder = safe_name(package_name or pkg_name) or safe_name(pkg_code)
 
     # ساخت مسیر نهایی
     full_path = (
         base 
         / safe_name(proj_folder)
         / safe_name(mdr_folder_name) 
-        / safe_name(phase_name) 
+        / phase_folder
         / disc_folder  
         / pkg_folder   
     )
+    if file_kind:
+        full_path = full_path / safe_name(file_kind)
     
     # ایجاد دایرکتوری (بازگشتی) اگر وجود ندارد
     try:

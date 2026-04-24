@@ -7,15 +7,17 @@ export default defineConfig({
     outDir: "static/dist",
     emptyOutDir: true,
     sourcemap: true,
+    target: "es2020",
     rollupOptions: {
       input: {
-        app: resolve(__dirname, "frontend/src/entries/app.ts")
+        app: resolve(__dirname, "frontend/src/entries/app.ts"),
+        login: resolve(__dirname, "frontend/src/entries/login.ts"),
       },
       output: {
         entryFileNames: "[name].js",
         chunkFileNames: "chunks/[name]-[hash].js",
-        assetFileNames: "assets/[name]-[hash][extname]"
-      }
-    }
-  }
+        assetFileNames: "assets/[name]-[hash][extname]",
+      },
+    },
+  },
 });

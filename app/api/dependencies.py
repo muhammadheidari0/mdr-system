@@ -7,7 +7,6 @@ from app.db.session import get_db as _get_db
 from app.core.organizations import (
     is_contractor_category,
     normalize_permission_category,
-    resolve_user_permission_category,
 )
 from app.db.models import (
     Organization,
@@ -22,7 +21,8 @@ from app.db.models import (
     UserProjectScope,
 )
 from app.core.security import verify_token
-from app.core.roles import ALL_ROLES, ROLE_PERMISSIONS, Role, is_valid_role, normalize_role
+from app.core.roles import MATRIX_ROLES, ROLE_PERMISSIONS, Role, is_valid_role, normalize_role
+from app.services.access_control import resolve_effective_access
 
 def get_db() -> Generator[Session, None, None]:
     yield from _get_db()
@@ -56,36 +56,9 @@ def get_current_user(
     return user
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    if normalize_role(current_user.role) != Role.ADMIN.value:
+    if not resolve_effective_access(current_user).is_system_admin:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return current_user
-
-# ✅ کلاس جدید: مدیریت سطوح دسترسی
-class RoleChecker:
-    def __init__(self, allowed_roles: List[str]):
-        self.allowed_roles = [normalize_role(role) for role in allowed_roles]
-
-    def __call__(self, user: User = Depends(get_current_user)):
-        user_role = normalize_role(user.role)
-        if not is_valid_role(user_role):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Unknown role: {user.role}"
-            )
-        # ادمین همیشه دسترسی دارد
-        if user_role == Role.ADMIN.value:
-            return user
-        if user_role not in self.allowed_roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access denied. Required roles: {self.allowed_roles}"
-            )
-        return user
-
-# تعریف سطوح دسترسی استاندارد
-allow_viewer = RoleChecker([Role.ADMIN.value, Role.MANAGER.value, Role.DCC.value, Role.USER.value, Role.VIEWER.value])  # فقط خواندن
-allow_editor = RoleChecker([Role.ADMIN.value, Role.MANAGER.value, Role.DCC.value, Role.USER.value])                      # ایجاد و ویرایش
-allow_admin = RoleChecker([Role.ADMIN.value])                                                                # حذف و مدیریت
 
 # Permission-based access control (matrix-driven)
 def _fallback_permissions_for_role(role: str) -> set[str]:
@@ -104,6 +77,8 @@ def _load_allowed_permissions(
     category: str | None = None,
 ) -> set[str]:
     category_key = normalize_permission_category(category) if category is not None else None
+    if category_key == "system":
+        return {"*"}
     if category_key:
         has_category_rows = (
             db.query(RoleCategoryPermission.id)
@@ -156,14 +131,15 @@ class PermissionChecker:
         self.permission = str(permission or "").strip()
 
     def __call__(self, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-        user_role = normalize_role(user.role)
-        user_category = resolve_user_permission_category(user)
+        access = resolve_effective_access(user)
+        user_role = access.effective_role
+        user_category = access.permission_category
         if not is_valid_role(user_role):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Unknown role: {user.role}",
+                detail=f"Unknown role: {user_role}",
             )
-        if user_role == Role.ADMIN.value:
+        if access.full_access:
             return user
         if not self.permission:
             raise HTTPException(
@@ -194,15 +170,37 @@ def has_permission(db: Session, role: str, permission: str) -> bool:
 
 
 def has_permission_for_user(db: Session, user: User, permission: str) -> bool:
-    role_key = normalize_role(getattr(user, "role", None))
+    access = resolve_effective_access(user)
+    role_key = access.effective_role
     if not is_valid_role(role_key):
         return False
-    if role_key == Role.ADMIN.value:
+    if access.full_access:
         return True
     if not str(permission or "").strip():
         return False
-    category = resolve_user_permission_category(user)
+    category = access.permission_category
     return _has_permission(db, role_key, permission, category=category)
+
+
+def bulk_check_permissions_for_user(
+    db: Session, user: User, permissions: list[str]
+) -> dict[str, bool]:
+    """Check multiple permissions in a single DB round-trip instead of one per permission."""
+    access = resolve_effective_access(user)
+    role_key = access.effective_role
+    if not is_valid_role(role_key):
+        return {perm: False for perm in permissions}
+    if access.full_access:
+        return {perm: True for perm in permissions}
+
+    category = access.permission_category
+    allowed = _load_allowed_permissions(db, role_key, category=category)
+
+    if "*" in allowed:
+        return {perm: True for perm in permissions}
+
+    return {perm: perm in allowed for perm in permissions}
+
 
 def _normalize_scope_values(values: Any) -> List[str]:
     if not isinstance(values, list):
@@ -221,7 +219,7 @@ def _default_scope_rules() -> Dict[str, Dict[str, List[str]]]:
             "projects": [],
             "disciplines": [],
         }
-        for role in ALL_ROLES
+        for role in MATRIX_ROLES
     }
 
 
@@ -269,7 +267,7 @@ def _load_scope_rules(
         if role_key in rules:
             rules[role_key]["disciplines"].append(str(discipline_code or "").strip().upper())
 
-    for role in ALL_ROLES:
+    for role in MATRIX_ROLES:
         rules[role]["projects"] = sorted(set(rules[role]["projects"]))
         rules[role]["disciplines"] = sorted(set(rules[role]["disciplines"]))
     return rules
@@ -307,8 +305,9 @@ def _effective_scope_values(role_values: List[str], user_values: List[str]) -> t
 
 
 def get_user_scope_filters(db: Session, user: User) -> Dict[str, Any]:
-    role = normalize_role(user.role)
-    if role == Role.ADMIN.value:
+    access = resolve_effective_access(user)
+    role = access.effective_role
+    if access.full_access:
         return {
             "projects": [],
             "disciplines": [],
@@ -316,7 +315,7 @@ def get_user_scope_filters(db: Session, user: User) -> Dict[str, Any]:
             "disciplines_restricted": False,
         }
 
-    category = resolve_user_permission_category(user)
+    category = access.permission_category
     role_scope = _load_scope_rules(db, category=category).get(role, {})
     user_scope = _load_user_scope_rules(db).get(str(user.id), {})
     projects, projects_restricted = _effective_scope_values(
@@ -342,8 +341,7 @@ def enforce_scope_access(
     project_code: str | None = None,
     discipline_code: str | None = None,
 ) -> None:
-    role = normalize_role(user.role)
-    if role == Role.ADMIN.value:
+    if resolve_effective_access(user).full_access:
         return
 
     filters = get_user_scope_filters(db, user)
@@ -370,8 +368,7 @@ def apply_scope_query_filters(
     project_column=None,
     discipline_column=None,
 ):
-    role = normalize_role(user.role)
-    if role == Role.ADMIN.value:
+    if resolve_effective_access(user).full_access:
         return query
 
     filters = get_user_scope_filters(db, user)
@@ -383,11 +380,11 @@ def apply_scope_query_filters(
 
 
 def get_user_accessible_organization_ids(db: Session, user: User) -> List[int]:
-    role = normalize_role(getattr(user, "role", None))
-    if role == Role.ADMIN.value:
+    access = resolve_effective_access(user)
+    if access.full_access:
         return []
 
-    category = resolve_user_permission_category(user)
+    category = access.permission_category
     if not is_contractor_category(category):
         return []
 
@@ -437,8 +434,7 @@ def enforce_organization_access(
     *,
     organization_id: int | None,
 ) -> None:
-    role = normalize_role(getattr(user, "role", None))
-    if role == Role.ADMIN.value:
+    if resolve_effective_access(user).full_access:
         return
 
     allowed_org_ids = get_user_accessible_organization_ids(db, user)

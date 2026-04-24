@@ -47,7 +47,7 @@ def export_archive_manifest_rows(
         .options(joinedload(ArchiveFile.document_revision).joinedload(DocumentRevision.document))
         .join(ArchiveFile.document_revision)
         .join(DocumentRevision.document)
-        .filter(ArchiveFile.deleted_at.is_(None))
+        .filter(ArchiveFile.deleted_at.is_(None), MdrDocument.deleted_at.is_(None))
         .order_by(MdrDocument.doc_number.asc(), DocumentRevision.revision.asc(), ArchiveFile.id.asc())
     )
     project = str(project_code or "").strip().upper()

@@ -98,3 +98,57 @@ export async function seedAuthToken(
 export function bearerHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
+
+export async function waitForAppIdle(page: Page, timeout = 15_000): Promise<void> {
+  await page
+    .locator("#global-loader")
+    .waitFor({ state: "hidden", timeout })
+    .catch(() => undefined);
+}
+
+export async function navigateToView(
+  page: Page,
+  viewId: string,
+  fallbackNavSelector?: string
+): Promise<void> {
+  await page.waitForLoadState("domcontentloaded");
+  await waitForAppIdle(page, 5_000);
+  await page
+    .waitForFunction(() => Boolean((window as any).authManager?.user?.role), null, {
+      timeout: 10_000,
+    })
+    .catch(() => undefined);
+
+  const hasRuntimeNavigator = await page
+    .waitForFunction(() => typeof (window as any).navigateTo === "function", null, {
+      timeout: 10_000,
+    })
+    .then(() => true)
+    .catch(() => false);
+
+  if (hasRuntimeNavigator) {
+    const navigated = await page
+      .evaluate(async (targetViewId) => {
+        await (window as any).navigateTo(targetViewId);
+        return true;
+      }, viewId)
+      .catch(() => false);
+    if (navigated) {
+      await waitForAppIdle(page);
+      const targetVisible = await page
+        .locator(`#${viewId}`)
+        .waitFor({ state: "visible", timeout: 2_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (targetVisible) return;
+    }
+  }
+
+  if (fallbackNavSelector) {
+    await page.locator(fallbackNavSelector).first().click();
+  } else {
+    throw new Error(`No runtime navigator available for ${viewId}`);
+  }
+
+  await waitForAppIdle(page);
+}

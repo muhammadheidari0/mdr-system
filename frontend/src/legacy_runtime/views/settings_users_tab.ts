@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 import { formatShamsiDate } from "../../lib/persian_datetime";
 let currentDeleteUserId = null;
 let usersCache = new Map();
@@ -34,6 +34,7 @@ const accessState = {
   userScope: {},
   currentUserId: null,
   currentUserRole: '',
+  currentIsSystemAdmin: false,
   currentCategory: 'consultant',
 };
 const accessTags = {
@@ -126,7 +127,6 @@ async function updateUserActiveStateBulk(userId, isActive) {
   }
   const payload = {
     full_name: user.full_name || null,
-    role: String(user.role || 'user').toLowerCase(),
     organization_id: user.organization_id ? Number(user.organization_id) : null,
     organization_role: String(user.organization_role || 'viewer').toLowerCase(),
     is_active: !!isActive,
@@ -362,13 +362,13 @@ async function fetchUsersWithTimeout(url, options = {}, timeoutMs = USERS_PAGE_R
 
 function roleLabel(role) {
   const map = {
-    admin: 'Ù…Ø¯ÛŒØ± Ø³ÛŒØ³ØªÙ…',
-    manager: 'Ø³Ø±Ù¾Ø±Ø³Øª',
-    dcc: 'Ú©Ù†ØªØ±Ù„ Ù…Ø¯Ø§Ø±Ú© (DCC)',
-    user: 'Ú©Ø§Ø±Ø¨Ø± Ø¹Ø§Ø¯ÛŒ',
-    viewer: 'Ù…Ø´Ø§Ù‡Ø¯Ù‡â€ŒÚ¯Ø±',
+    admin: 'مدیر سیستم',
+    manager: 'سرپرست',
+    dcc: 'کنترل مدارک (DCC)',
+    user: 'کاربر عادی',
+    viewer: 'مشاهده‌گر',
   };
-  return map[String(role || '').toLowerCase()] || 'Ù†Ø§Ù…Ø´Ø®Øµ';
+  return map[String(role || '').toLowerCase()] || 'نامشخص';
 }
 
 function roleClass(role) {
@@ -378,38 +378,47 @@ function roleClass(role) {
 
 function organizationTypeLabel(value) {
   const map = {
-    system: 'Ø³ÛŒØ³ØªÙ…',
-    employer: 'Ú©Ø§Ø±ÙØ±Ù…Ø§',
-    consultant: 'Ù…Ø´Ø§ÙˆØ±',
-    contractor: 'Ù¾ÛŒÙ…Ø§Ù†Ú©Ø§Ø±',
+    system: 'سیستم',
+    employer: 'کارفرما',
+    consultant: 'مشاور',
+    contractor: 'پیمانکار',
     dcc: 'DCC',
   };
   const key = String(value || '').trim().toLowerCase();
-  return map[key] || 'Ù†Ø§Ù…Ø´Ø®Øµ';
+  return map[key] || 'نامشخص';
+}
+
+function organizationTypeClass(value) {
+  const key = String(value || '').trim().toLowerCase();
+  if (['system', 'employer', 'consultant', 'contractor', 'dcc'].includes(key)) {
+    return `org-${key}`;
+  }
+  return 'org-unknown';
 }
 
 function normalizePermissionCategory(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'contractor') return 'contractor';
   if (raw === 'dcc') return 'dcc';
-  if (raw === 'system') return 'system';
   if (raw === 'employer') return 'employer';
   return 'consultant';
 }
 
 function organizationRoleLabel(value) {
   const map = {
-    admin: 'Ù…Ø¯ÛŒØ± Ø³Ø§Ø²Ù…Ø§Ù†',
-    dcc: 'Ú©Ù†ØªØ±Ù„ Ù…Ø¯Ø§Ø±Ú©',
-    viewer: 'Ù…Ø´Ø§Ù‡Ø¯Ù‡â€ŒÚ¯Ø±',
+    admin: 'مدیر سیستم',
+    manager: 'سرپرست',
+    dcc: 'کنترل مدارک',
+    user: 'کاربر عادی',
+    viewer: 'مشاهده‌گر',
   };
   const key = String(value || '').trim().toLowerCase();
-  return map[key] || 'Ù…Ø´Ø§Ù‡Ø¯Ù‡â€ŒÚ¯Ø±';
+  return map[key] || 'نامشخص';
 }
 
 function organizationRoleClass(value) {
   const key = String(value || '').trim().toLowerCase();
-  return ['admin', 'dcc', 'viewer'].includes(key) ? key : 'viewer';
+  return ['admin', 'manager', 'dcc', 'user', 'viewer'].includes(key) ? key : 'viewer';
 }
 
 function normalizeOrgId(value) {
@@ -471,6 +480,43 @@ function renderUserOrganizationOptions(selectedId = '') {
     selectEl.value = normalizedSelected;
   } else {
     selectEl.value = '';
+  }
+}
+
+function findOrganizationById(organizationId = '') {
+  const id = normalizeOrgId(organizationId);
+  if (!id) return null;
+  return (organizationsState.items || []).find((org) => normalizeOrgId(org && org.id) === id) || null;
+}
+
+function syncUserOrganizationRoleField(preferredRole = '') {
+  const orgSelect = document.getElementById('userOrganization');
+  const roleSelect = document.getElementById('userOrganizationRole');
+  const hint = document.getElementById('userOrganizationRoleHint');
+  if (!roleSelect) return;
+
+  const org = findOrganizationById(orgSelect ? orgSelect.value : '');
+  const orgType = String(org && org.org_type || '').trim().toLowerCase();
+  const isSystem = orgType === 'system';
+  const allowedRoles = isSystem
+    ? ['admin']
+    : ['manager', 'dcc', 'user', 'viewer'];
+  const normalizedPreferred = String(preferredRole || '').trim().toLowerCase();
+  const selectedRole = allowedRoles.includes(normalizedPreferred)
+    ? normalizedPreferred
+    : allowedRoles[0];
+
+  roleSelect.innerHTML = allowedRoles.map((value) => {
+    const label = organizationRoleLabel(value);
+    return `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`;
+  }).join('');
+  roleSelect.value = selectedRole;
+  roleSelect.disabled = isSystem;
+
+  if (hint) {
+    hint.textContent = isSystem
+      ? 'برای سازمان System نقش به‌صورت خودکار مدیر سیستم است.'
+      : 'نقش موثر از ترکیب نوع سازمان و نقش در سازمان محاسبه می‌شود.';
   }
 }
 
@@ -540,7 +586,7 @@ function toggleUserActionMenu(event, userId) {
 }
 
 function getUserScopeStatus(user, fallbackScope = { projects: [], disciplines: [] }) {
-  const role = String((user && user.role) || '').toLowerCase();
+  const isSystemAdmin = Boolean(user && user.is_system_admin);
   const summary = user && typeof user.scope_summary === 'object' && user.scope_summary
     ? user.scope_summary
     : null;
@@ -555,26 +601,26 @@ function getUserScopeStatus(user, fallbackScope = { projects: [], disciplines: [
     : Boolean(fallbackProjects > 0 || fallbackDisciplines > 0);
 
   let status = summary ? String(summary.status || '').toLowerCase() : '';
-  if (!status) status = role === 'admin' ? 'admin' : (hasCustomScope ? 'restricted' : 'full');
+  if (!status) status = isSystemAdmin ? 'admin' : (hasCustomScope ? 'restricted' : 'full');
 
   if (status === 'admin') {
     return {
       key: 'admin',
-      badge: 'Ø§Ø¯Ù…ÛŒÙ† Ú©Ø§Ù…Ù„',
-      detail: 'Ø¯Ø³ØªØ±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ø³ÛŒØ³ØªÙ…ÛŒ',
+      badge: 'مدیر سیستم',
+      detail: 'دسترسی کامل',
     };
   }
   if (status === 'restricted') {
     return {
       key: 'restricted',
-      badge: 'Ù…Ø­Ø¯ÙˆØ¯',
-      detail: `${projectsCount} Ù¾Ø±ÙˆÚ˜Ù‡ØŒ ${disciplinesCount} Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†`,
+      badge: 'محدود',
+      detail: `${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`,
     };
   }
   return {
     key: 'full',
-    badge: 'Ø¨Ø¯ÙˆÙ† Ù…Ø­Ø¯ÙˆØ¯ÛŒØª',
-    detail: 'Ø¨Ø¯ÙˆÙ† Ù…Ø­Ø¯ÙˆØ¯ÛŒØª Ù¾Ø±ÙˆÚ˜Ù‡/Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†',
+    badge: 'کامل',
+    detail: 'بدون محدودیت پروژه/دیسیپلین',
   };
 }
 
@@ -718,6 +764,11 @@ function bindUsersToolbar() {
   if (orgFilter) orgFilter.addEventListener('change', () => loadUsers({ resetPage: true }));
   if (pageSizeEl) pageSizeEl.addEventListener('change', () => loadUsers({ resetPage: true }));
   bindUsersModalEvents();
+  const userOrganizationEl = document.getElementById('userOrganization');
+  if (userOrganizationEl && userOrganizationEl.dataset.orgRoleBound !== '1') {
+    userOrganizationEl.addEventListener('change', () => syncUserOrganizationRoleField(''));
+    userOrganizationEl.dataset.orgRoleBound = '1';
+  }
 
   if (!usersState.actionsBound) {
     document.addEventListener('click', (event) => {
@@ -930,13 +981,14 @@ async function loadUsers(options = {}) {
 
     closeAllUserActionMenus();
     tbody.innerHTML = users.map((user) => {
-      const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+      const isSystemAdmin = Boolean(user && user.is_system_admin);
+      const effectiveRole = String((user && (user.effective_role || user.role)) || '').toLowerCase();
       const organization = user && typeof user.organization === 'object' ? user.organization : null;
       const organizationName = organization ? (organization.name || organization.code || '-') : '-';
       const organizationMeta = organization
         ? [organization.code || '-', organizationTypeLabel(organization.org_type)].filter(Boolean).join(' - ')
         : '-';
-      const organizationRole = organizationRoleLabel(user.organization_role);
+      const organizationType = organizationTypeLabel(user.organization_type || organization?.org_type);
       const userScope = scopeMap[String(user.id)] || { projects: [], disciplines: [] };
       const scopeStatus = getUserScopeStatus(user, userScope);
       const actionMenuId = `usersActionMenu-${user.id}`;
@@ -945,14 +997,14 @@ async function loadUsers(options = {}) {
           <td>${user.id}</td>
           <td>${escapeHtml(user.email)}</td>
           <td>${escapeHtml(user.full_name || '-')}</td>
-          <td><span class="role-badge ${roleClass(user.role)}">${roleLabel(user.role)}</span></td>
+          <td><span class="role-badge ${roleClass(effectiveRole)}">${roleLabel(effectiveRole)}</span></td>
           <td>
             <div class="scope-status-cell">
               <span class="scope-badge full">${escapeHtml(organizationName)}</span>
               <span class="scope-detail">${escapeHtml(organizationMeta)}</span>
             </div>
           </td>
-          <td><span class="role-badge ${organizationRoleClass(user.organization_role)}">${escapeHtml(organizationRole)}</span></td>
+          <td><span class="role-badge ${organizationTypeClass(user.organization_type || organization?.org_type)}">${escapeHtml(organizationType)}</span></td>
           <td><span class="status-badge ${user.is_active ? 'active' : 'inactive'}">${user.is_active ? 'ÙØ¹Ø§Ù„' : 'ØºÛŒØ±ÙØ¹Ø§Ù„'}</span></td>
           <td>
             <div class="scope-status-cell">
@@ -975,7 +1027,7 @@ async function loadUsers(options = {}) {
                 <span class="material-icons-round">more_vert</span>
               </button>
               <div class="users-kebab-menu" id="${actionMenuId}" role="menu">
-                <button type="button" class="users-kebab-item" data-users-action="open-user-access-modal" data-user-id="${user.id}" ${isAdmin ? 'disabled' : ''}>
+                <button type="button" class="users-kebab-item" data-users-action="open-user-access-modal" data-user-id="${user.id}" ${isSystemAdmin ? 'disabled' : ''}>
                   <span class="material-icons-round">vpn_key</span>
                   Ù…Ø¯ÛŒØ±ÛŒØª Ø¯Ø³ØªØ±Ø³ÛŒ
                 </button>
@@ -1024,7 +1076,7 @@ async function openCreateUserModal() {
   document.getElementById('passwordLabel').textContent = 'Ø±Ù…Ø² Ø¹Ø¨ÙˆØ± *';
   document.getElementById('passwordHelp').textContent = 'Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø± Ø¬Ø¯ÛŒØ¯ Ø±Ù…Ø² Ø¹Ø¨ÙˆØ± Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª';
   renderUserOrganizationOptions('');
-  document.getElementById('userOrganizationRole').value = 'viewer';
+  syncUserOrganizationRoleField('viewer');
   document.getElementById('userActive').checked = true;
   openUsersModal('userModal', '#userEmail');
 }
@@ -1047,11 +1099,9 @@ async function editUser(userId) {
   document.getElementById('userEmail').value = user.email || '';
   document.getElementById('userEmail').disabled = true;
   document.getElementById('userFullName').value = user.full_name || '';
-  document.getElementById('userRole').value = user.role || 'user';
   renderUserOrganizationOptions(user.organization_id);
-  const orgRoleEl = document.getElementById('userOrganizationRole');
   const orgRoleValue = String(user.organization_role || 'viewer').toLowerCase();
-  orgRoleEl.value = ['admin', 'dcc', 'viewer'].includes(orgRoleValue) ? orgRoleValue : 'viewer';
+  syncUserOrganizationRoleField(orgRoleValue);
   document.getElementById('userActive').checked = !!user.is_active;
   document.getElementById('userPassword').value = '';
   document.getElementById('userPassword').required = false;
@@ -1075,7 +1125,6 @@ async function saveUser() {
   const email = document.getElementById('userEmail').value;
   const fullName = document.getElementById('userFullName').value;
   const password = document.getElementById('userPassword').value;
-  const role = document.getElementById('userRole').value;
   const organizationId = normalizeOrgId(document.getElementById('userOrganization').value);
   const organizationRole = String(document.getElementById('userOrganizationRole').value || 'viewer').trim().toLowerCase();
   const isActive = document.getElementById('userActive').checked;
@@ -1092,7 +1141,6 @@ async function saveUser() {
     const body = userId
       ? {
         full_name: fullName,
-        role: role,
         organization_id: organizationId ? Number(organizationId) : null,
         organization_role: organizationRole || 'viewer',
         is_active: isActive,
@@ -1101,7 +1149,6 @@ async function saveUser() {
         email: email,
         password: password,
         full_name: fullName,
-        role: role,
         organization_id: organizationId ? Number(organizationId) : null,
         organization_role: organizationRole || 'viewer',
         is_active: isActive,
@@ -1317,11 +1364,12 @@ function updateAccessSummary(user) {
   const summary = document.getElementById('userAccessSummary');
   if (!summary || !user) return;
   const org = user && typeof user.organization === 'object' ? user.organization : null;
-  const category = normalizePermissionCategory(org ? org.org_type : null);
+  const category = normalizePermissionCategory(user.permission_category || (org ? org.org_type : null));
+  const effectiveRole = String((user.effective_role || user.role) || '').toLowerCase();
   summary.innerHTML = `
     <div><strong>Ú©Ø§Ø±Ø¨Ø±:</strong> ${escapeHtml(user.full_name || user.email || '-')}</div>
     <div><strong>Ø§ÛŒÙ…ÛŒÙ„:</strong> ${escapeHtml(user.email || '-')}</div>
-    <div><strong>Ù†Ù‚Ø´:</strong> ${escapeHtml(roleLabel(user.role))}</div>
+    <div><strong>Ù†Ù‚Ø´ Ù…ÙˆØ«Ø±:</strong> ${escapeHtml(roleLabel(effectiveRole))}</div>
     <div><strong>Ø¯Ø³ØªÙ‡ Ø¯Ø³ØªØ±Ø³ÛŒ:</strong> ${escapeHtml(organizationTypeLabel(category))}</div>
     <div><strong>ÙˆØ¶Ø¹ÛŒØª:</strong> ${user.is_active ? 'ÙØ¹Ø§Ù„' : 'ØºÛŒØ±ÙØ¹Ø§Ù„'}</div>
   `;
@@ -1579,9 +1627,10 @@ async function openUserAccessModal(userId) {
   }
 
   accessState.currentUserId = String(userId);
-  accessState.currentUserRole = String(user.role || '');
+  accessState.currentUserRole = String((user && (user.effective_role || user.role)) || '');
+  accessState.currentIsSystemAdmin = Boolean(user && user.is_system_admin);
   accessState.currentCategory = normalizePermissionCategory(
-    user && user.organization ? user.organization.org_type : null,
+    user && (user.permission_category || (user.organization ? user.organization.org_type : null)),
   );
   updateAccessSummary(user);
   initAccessTagInputs();
@@ -1593,7 +1642,7 @@ async function openUserAccessModal(userId) {
   if (modal) openUsersModal('userAccessModal', '#accessProjectsInput');
 
   const adminNote = document.getElementById('accessAdminNote');
-  const isAdmin = String(user.role || '').toLowerCase() === 'admin';
+  const isAdmin = Boolean(accessState.currentIsSystemAdmin);
   if (adminNote) adminNote.style.display = isAdmin ? 'block' : 'none';
   setAccessInputsDisabled(isAdmin);
 
@@ -1649,7 +1698,7 @@ async function saveUserAccessScope() {
     accessNotify('error', 'Ø§Ø¨ØªØ¯Ø§ Ø®Ø·Ø§ÛŒ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ Ù…Ù†Ø§Ø¨Ø¹ Ø±Ø§ Ø¨Ø±Ø·Ø±Ù Ú©Ù†ÛŒØ¯.');
     return;
   }
-  if (String(accessState.currentUserRole || '').toLowerCase() === 'admin') {
+  if (accessState.currentIsSystemAdmin) {
     accessNotify('info', 'Ø§Ø¯Ù…ÛŒÙ† Ø¯Ø³ØªØ±Ø³ÛŒ Ú©Ø§Ù…Ù„ Ø¯Ø§Ø±Ø¯ Ùˆ Ù…Ø­Ø¯ÙˆØ¯ÛŒØª Ø¨Ø±Ø§ÛŒ Ø§Ùˆ Ø°Ø®ÛŒØ±Ù‡ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯');
     return;
   }
@@ -1715,3 +1764,6 @@ function initSettingsUsers(forceReload = false) {
 
 window.loadUsers = loadUsers;
 window.initSettingsUsers = initSettingsUsers;
+
+
+

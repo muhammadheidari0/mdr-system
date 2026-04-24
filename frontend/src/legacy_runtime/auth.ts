@@ -81,23 +81,25 @@ class AuthManager {
         // Ã˜Â¨Ã™â€¡Ã¢â‚¬Å’Ã˜Â±Ã™Ë†Ã˜Â²Ã˜Â±Ã˜Â³Ã˜Â§Ã™â€ Ã›Å’ Ã™â€ Ã™â€šÃ˜Â´ ÃšÂ©Ã˜Â§Ã˜Â±Ã˜Â¨Ã˜Â±
         const userRoleElement = document.querySelector('.user-info-header .role');
         if (this.user && userRoleElement) {
-            userRoleElement.textContent = this.getRoleLabel(this.user.role);
+            const effectiveRole = this.user.effective_role || this.user.role;
+            userRoleElement.textContent = this.getRoleLabel(effectiveRole);
         }
     }
 
     getRoleLabel(role) {
         const key = String(role || '').toLowerCase();
-        if (key === 'admin') return 'Ã™â€¦Ã˜Â¯Ã›Å’Ã˜Â± Ã˜Â§Ã˜Â±Ã˜Â´Ã˜Â¯';
-        if (key === 'manager') return 'Ã˜Â³Ã˜Â±Ã™Â¾Ã˜Â±Ã˜Â³Ã˜Âª';
-        if (key === 'viewer') return 'Ã™â€¦Ã˜Â´Ã˜Â§Ã™â€¡Ã˜Â¯Ã™â€¡Ã¢â‚¬Å’ÃšÂ¯Ã˜Â±';
-        return 'ÃšÂ©Ã˜Â§Ã˜Â±Ã˜Â¨Ã˜Â±';
+        if (key === 'admin') return 'مدیر سیستم';
+        if (key === 'manager') return 'سرپرست';
+        if (key === 'dcc') return 'کنترل مدارک';
+        if (key === 'viewer') return 'مشاهده‌گر';
+        return 'کاربر';
     }
 
     showAdminMenuIfAdmin() {
         const adminOnlyItems = document.querySelectorAll('.admin-only');
         if (!adminOnlyItems.length) return;
 
-        const isAdmin = this.user && String(this.user.role || '').toLowerCase() === 'admin';
+        const isAdmin = Boolean(this.user && this.user.is_system_admin === true);
         adminOnlyItems.forEach((el) => {
             el.style.display = isAdmin ? '' : 'none';
         });
@@ -161,7 +163,7 @@ class AuthManager {
     }
 
     isAdmin() {
-        return this.user && String(this.user.role || '').toLowerCase() === 'admin';
+        return Boolean(this.user && this.user.is_system_admin === true);
     }
 
     getToken() {

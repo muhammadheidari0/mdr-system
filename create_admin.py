@@ -21,7 +21,7 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 from app.core.security import MAX_BCRYPT_PASSWORD_BYTES, get_password_hash  # noqa: E402
-from app.db.models import User  # noqa: E402
+from app.db.models import Organization, User  # noqa: E402
 from app.db.session import engine  # noqa: E402
 
 
@@ -49,6 +49,19 @@ def create_or_update_admin() -> None:
 
     print(f"Starting admin sync for: {email}")
     with Session(engine) as db:
+        system_root = db.query(Organization).filter(Organization.code == "SYSTEM_ROOT").first()
+        if not system_root:
+            system_root = db.query(Organization).filter(Organization.org_type == "system").first()
+        if not system_root:
+            system_root = Organization(
+                code="SYSTEM_ROOT",
+                name="System Root",
+                org_type="system",
+                is_active=True,
+            )
+            db.add(system_root)
+            db.flush()
+
         user = db.query(User).filter(User.email == email).first()
         hashed = get_password_hash(password)
 
@@ -57,6 +70,8 @@ def create_or_update_admin() -> None:
             user.full_name = full_name or user.full_name
             user.is_active = True
             user.role = "admin"
+            user.organization_id = system_root.id
+            user.organization_role = "admin"
             action = "updated"
         else:
             user = User(
@@ -64,6 +79,8 @@ def create_or_update_admin() -> None:
                 hashed_password=hashed,
                 full_name=full_name,
                 role="admin",
+                organization_id=system_root.id,
+                organization_role="admin",
                 is_active=True,
             )
             db.add(user)

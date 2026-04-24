@@ -73,7 +73,8 @@ async function loadUserProfileData() {
             user: "کاربر",
             viewer: "مشاهده‌گر",
         };
-        const roleLabel = roleMap[String(user.role || "").toLowerCase()] || "کاربر";
+        const effectiveRole = String(user.effective_role || user.role || "").toLowerCase();
+        const roleLabel = roleMap[effectiveRole] || "کاربر";
         const activeLabel = user.is_active ? "فعال" : "غیرفعال";
 
         document.getElementById("profile-email").value = user.email || "-";

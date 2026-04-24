@@ -20,8 +20,7 @@ from app.api.dependencies import (
     get_db,
     require_permission,
 )
-from app.core.organizations import OrganizationType, resolve_user_permission_category
-from app.core.roles import Role, normalize_role
+from app.core.organizations import OrganizationType
 from app.db.models import (
     Discipline,
     Organization,
@@ -30,13 +29,17 @@ from app.db.models import (
     SiteLogActivityRow,
     SiteLogAttachment,
     SiteLogComment,
+    SiteLogEquipmentCatalog,
     SiteLogEquipmentRow,
+    SiteLogEquipmentStatusCatalog,
     SiteLogManpowerRow,
+    SiteLogRoleCatalog,
     SiteLogSequence,
     SiteLogStatusLog,
     SiteLogWorkflowStatus,
     User as DbUser,
 )
+from app.services.access_control import resolve_effective_access
 from app.services.folder_service import safe_name
 from app.services.storage import StorageManager
 
@@ -120,11 +123,11 @@ def _normalize_file_kind(value: str | None) -> str:
 
 
 def _is_admin(user: User) -> bool:
-    return normalize_role(getattr(user, "role", None)) == Role.ADMIN.value
+    return bool(resolve_effective_access(user).is_system_admin)
 
 
 def _category(user: User) -> str:
-    return str(resolve_user_permission_category(user) or "").strip().lower()
+    return str(resolve_effective_access(user).permission_category or "").strip().lower()
 
 
 def _require_contractor_flow(user: User) -> None:
@@ -607,6 +610,9 @@ def catalog(db: Session = Depends(get_db), user: User = Depends(require_permissi
     disciplines = apply_scope_query_filters(db.query(Discipline), db, user, project_column=None, discipline_column=Discipline.code).order_by(Discipline.code.asc()).all()
     orgs = apply_organization_query_filters(db.query(Organization).filter(Organization.is_active == True), db, user, organization_column=Organization.id).order_by(Organization.name.asc()).all()
     statuses = db.query(SiteLogWorkflowStatus).filter(SiteLogWorkflowStatus.is_active == True).order_by(SiteLogWorkflowStatus.sort_order.asc(), SiteLogWorkflowStatus.code.asc()).all()
+    role_catalog = db.query(SiteLogRoleCatalog).filter(SiteLogRoleCatalog.is_active == True).order_by(SiteLogRoleCatalog.sort_order.asc(), SiteLogRoleCatalog.code.asc()).all()
+    equipment_catalog = db.query(SiteLogEquipmentCatalog).filter(SiteLogEquipmentCatalog.is_active == True).order_by(SiteLogEquipmentCatalog.sort_order.asc(), SiteLogEquipmentCatalog.code.asc()).all()
+    equipment_status_catalog = db.query(SiteLogEquipmentStatusCatalog).filter(SiteLogEquipmentStatusCatalog.is_active == True).order_by(SiteLogEquipmentStatusCatalog.sort_order.asc(), SiteLogEquipmentStatusCatalog.code.asc()).all()
     return {
         "ok": True,
         "log_types": [{"code": "DAILY", "label": "Daily Report"}, {"code": "WEEKLY", "label": "Weekly Report"}, {"code": "SAFETY_INCIDENT", "label": "Safety Incident"}],
@@ -615,6 +621,9 @@ def catalog(db: Session = Depends(get_db), user: User = Depends(require_permissi
         "projects": [{"code": x.code, "name": x.name_e or x.name_p or x.code} for x in projects],
         "disciplines": [{"code": x.code, "name": x.name_e or x.name_p or x.code} for x in disciplines],
         "organizations": [{"id": x.id, "name": x.name, "org_type": x.org_type} for x in orgs],
+        "role_catalog": [{"code": x.code, "label": x.label} for x in role_catalog],
+        "equipment_catalog": [{"code": x.code, "label": x.label} for x in equipment_catalog],
+        "equipment_status_catalog": [{"code": x.code, "label": x.label} for x in equipment_status_catalog],
     }
 
 

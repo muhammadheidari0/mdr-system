@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from app.api.dependencies import User, allow_admin, get_db
+from app.api.dependencies import User, get_db, require_permission
 # ✅ مدل‌های جدید (MdrCategory, Block) اضافه شدند
 from app.db.models import (
     Project, 
@@ -21,7 +21,7 @@ from app.db.models import (
     Block
 )
 
-router = APIRouter(prefix="/lookup", tags=["Lookup"])
+router = APIRouter(prefix="/lookup", tags=["Lookup"], dependencies=[Depends(require_permission("lookup:read"))])
 
 
 # ------------------------------------------------------------
@@ -111,7 +111,7 @@ def upsert_project(
     is_active: bool = True,
     docnum_template: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("lookup:manage")),
 ):
     code = _norm(code)
     if not code:
@@ -158,7 +158,7 @@ def upsert_phase(
     name_e: str,
     name_p: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("lookup:manage")),
 ):
     ph_code = _upper(ph_code)
     if not ph_code:
@@ -191,7 +191,7 @@ def upsert_discipline(
     name_e: str,
     name_p: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("lookup:manage")),
 ):
     dcode = _upper(code)
     disc = db.query(Discipline).filter(Discipline.code == dcode).first()
@@ -238,7 +238,7 @@ def upsert_package(
     package_code: Optional[str] = None,
     name_p: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("lookup:manage")),
 ):
     dcode = _upper(discipline_code)
     raw_pcode = _upper(package_code)
@@ -290,7 +290,7 @@ def upsert_level(
     name_e: Optional[str] = None,
     name_p: Optional[str] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(allow_admin),
+    user: User = Depends(require_permission("lookup:manage")),
 ):
     code = _norm(code)
     lvl = db.query(Level).filter(Level.code == code).first()
@@ -332,25 +332,36 @@ def list_blocks(project_code: Optional[str] = None, db: Session = Depends(get_db
 
 
 # ------------------------------------------------------------
-# Dictionary Endpoint (Updated)
+# Dictionary Endpoint (Updated) – with in-process TTL cache
 # ------------------------------------------------------------
+import time as _time
+
+_dict_cache: dict[str, Any] = {"data": None, "expires": 0.0}
+_DICT_TTL_SECONDS = 300  # 5 minutes
+
+
 @router.get("/dictionary")
 def dictionary(db: Session = Depends(get_db)):
     """
     همه اطلاعات پایه را یکجا برمی‌گرداند.
     لیست‌های MDR و Block اکنون از دیتابیس خوانده می‌شوند.
+    نتایج به مدت ۵ دقیقه در حافظه کش می‌شوند.
     """
-    return ok({
+    now = _time.monotonic()
+    if _dict_cache["data"] is not None and now < _dict_cache["expires"]:
+        return _dict_cache["data"]
+
+    result = ok({
         "projects": [
-            {"code": r.code, "project_name": r.name_e or r.name_p} 
+            {"code": r.code, "project_name": r.name_e or r.name_p}
             for r in db.query(Project).filter(Project.is_active == True).all()
         ],
         "phases": [
-            {"ph_code": r.ph_code, "name_e": r.name_e, "name_p": r.name_p} 
+            {"ph_code": r.ph_code, "name_e": r.name_e, "name_p": r.name_p}
             for r in db.query(Phase).all()
         ],
         "disciplines": [
-            {"code": r.code, "name_e": r.name_e, "name_p": r.name_p} 
+            {"code": r.code, "name_e": r.name_e, "name_p": r.name_p}
             for r in db.query(Discipline).all()
         ],
         "packages": [
@@ -363,15 +374,13 @@ def dictionary(db: Session = Depends(get_db)):
             for r in db.query(Package).all()
         ],
         "levels": [
-            {"code": r.code, "name_e": r.name_e, "name_p": r.name_p} 
+            {"code": r.code, "name_e": r.name_e, "name_p": r.name_p}
             for r in db.query(Level).order_by(Level.sort_order).all()
         ],
-        # ✅ دریافت دینامیک بلاک‌ها
         "blocks": [
             {"code": r.code, "name_e": r.name_e, "project_code": r.project_code}
             for r in db.query(Block).filter(Block.is_active == True).all()
         ],
-        # ✅ دریافت دینامیک دسته‌های MDR
         "mdr_categories": [
             {"code": r.code, "name": r.name_e, "letter": r.code, "name_p": r.name_p}
             for r in db.query(MdrCategory).filter(MdrCategory.is_active == True).order_by(MdrCategory.sort_order).all()
@@ -388,3 +397,7 @@ def dictionary(db: Session = Depends(get_db)):
             for r in db.query(Organization).filter(Organization.is_active == True).all()
         ],
     })
+
+    _dict_cache["data"] = result
+    _dict_cache["expires"] = now + _DICT_TTL_SECONDS
+    return result

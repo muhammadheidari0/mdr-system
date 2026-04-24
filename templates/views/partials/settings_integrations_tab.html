@@ -10,14 +10,52 @@
       </div>
 
       <div class="general-form-grid storage-integrations-grid storage-integrations-mirror-grid">
-        <div id="storageMirrorProviderWrap">
-          <label class="form-label-sm">Active Mirror Provider</label>
-          <select id="storageMirrorProviderSelect" class="form-input">
-            <option value="none">None (disable mirror queue)</option>
-            <option value="google_drive">Google Drive</option>
-            <option value="nextcloud">Nextcloud</option>
+        <div id="storagePrimaryProviderWrap">
+          <label class="form-label-sm">استورج اصلی</label>
+          <select id="storagePrimaryProviderSelect" class="form-input">
+            <option value="local">محلی / UNC</option>
+            <option value="nextcloud">نکست‌کلاد Mount شده</option>
           </select>
-          <div class="form-help">Only one provider is active for mirror jobs at a time.</div>
+          <div id="storagePrimaryProviderHint" class="form-help">محل ذخیره اصلی فایل‌ها را تعیین می‌کند. در حالت نکست‌کلاد، مسیر MDR و مکاتبات باید زیر Local Mount Root باشند.</div>
+        </div>
+        <div id="storageMirrorProviderWrap">
+          <label class="form-label-sm">میرور فعال</label>
+          <select id="storageMirrorProviderSelect" class="form-input">
+            <option value="none">بدون میرور</option>
+            <option value="google_drive">گوگل‌درایو</option>
+            <option value="nextcloud">نکست‌کلاد</option>
+          </select>
+          <div class="form-help">در هر لحظه فقط یک provider برای jobهای میرور فعال است.</div>
+        </div>
+      </div>
+
+      <div id="storagePrimaryStatusCard" class="storage-primary-status-card" aria-live="polite">
+        <div class="storage-primary-status-head">
+          <div class="storage-primary-status-title">وضعیت نهایی ذخیره‌سازی</div>
+          <div id="storagePrimaryStatusBadge" class="storage-primary-status-badge">در حال بررسی...</div>
+        </div>
+        <div id="storagePrimaryStatusMessage" class="storage-primary-status-message">-</div>
+        <div class="storage-primary-status-grid">
+          <div class="storage-primary-status-item">
+            <div class="storage-primary-status-label">مسیر مدارک مهندسی</div>
+            <div id="storagePrimaryStatusMdrValue" class="storage-primary-status-value">-</div>
+            <div id="storagePrimaryStatusMdrMeta" class="storage-primary-status-meta">-</div>
+          </div>
+          <div class="storage-primary-status-item">
+            <div class="storage-primary-status-label">مسیر مکاتبات</div>
+            <div id="storagePrimaryStatusCorrValue" class="storage-primary-status-value">-</div>
+            <div id="storagePrimaryStatusCorrMeta" class="storage-primary-status-meta">-</div>
+          </div>
+          <div class="storage-primary-status-item">
+            <div class="storage-primary-status-label">ریشه Mount نکست‌کلاد</div>
+            <div id="storagePrimaryStatusMountValue" class="storage-primary-status-value">-</div>
+            <div id="storagePrimaryStatusMountMeta" class="storage-primary-status-meta">-</div>
+          </div>
+          <div class="storage-primary-status-item">
+            <div class="storage-primary-status-label">وضعیت میرور</div>
+            <div id="storagePrimaryStatusMirrorValue" class="storage-primary-status-value">-</div>
+            <div id="storagePrimaryStatusMirrorMeta" class="storage-primary-status-meta">-</div>
+          </div>
         </div>
       </div>
 
@@ -260,7 +298,7 @@
               <div id="storageNextcloudRootPathWrap">
                 <label class="form-label-sm">Root Path</label>
                 <input id="storageNextcloudRootPathInput" class="form-input" placeholder="/mdr">
-                <div class="form-help">Remote root path in Nextcloud (WebDAV).</div>
+                <div class="form-help">Shared remote root in Nextcloud (WebDAV). Archive and Correspondence folders are created under this root automatically.</div>
               </div>
 
               <div id="storageNextcloudLocalMountRootWrap">

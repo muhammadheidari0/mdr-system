@@ -13,6 +13,12 @@
     "e2e": "playwright test",
     "e2e:smoke": "playwright test tests/e2e/app_smoke.spec.ts",
     "e2e:critical": "playwright test tests/e2e/critical_flows.spec.ts",
+    "e2e:site-log-catalogs": "playwright test tests/e2e/site_log_catalogs.spec.ts",
+    "e2e:document-detail": "playwright test tests/e2e/document_detail_flows.spec.ts tests/e2e/app_smoke.spec.ts tests/e2e/critical_flows.spec.ts",
+    "test:site-log-catalogs:api": "node tools/run_python.mjs -m pytest -q tests/test_site_log_catalogs_api.py tests/test_permission_route_audit.py",
+    "regression:site-log-catalogs": "npm run build && npm run test:site-log-catalogs:api && npm run e2e:site-log-catalogs",
+    "test:document-detail:api": "node tools/run_python.mjs -m pytest -q tests/test_document_detail_api.py tests/test_ui_smoke.py tests/test_site_cache.py tests/test_edms_manifest_export.py tests/test_access_matrix_smoke.py",
+    "regression:document-detail": "npm run build && npm run test:document-detail:api && npm run e2e:document-detail",
     "gen:openapi": "node tools/run_python.mjs tools/export_openapi.py --out frontend/openapi.json",
     "gen:types": "openapi-typescript frontend/openapi.json --output frontend/src/types/api.generated.ts",
     "gen:api": "npm run gen:openapi && npm run gen:types"

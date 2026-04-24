@@ -12,6 +12,7 @@ from app.api.dependencies import (
     require_permission,
 )
 from app.db.models import ArchiveFile, DocumentRevision, MdrDocument
+from app.services.access_control import resolve_effective_access
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -41,7 +42,7 @@ def get_dashboard_stats(
         "review": stats.review or 0,
         "approved": stats.approved or 0,
         "transmittal": stats.as_built or 0,
-        "user_role": current_user.role,
+        "user_role": resolve_effective_access(current_user).effective_role,
     }
 
 

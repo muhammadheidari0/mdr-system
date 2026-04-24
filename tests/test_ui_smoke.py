@@ -22,6 +22,8 @@ def test_ui_smoke_public_pages_load() -> None:
     home = client.get("/")
     assert home.status_code == 200, home.text
     assert 'id="view-dashboard"' in home.text
+    assert 'id="view-document-detail"' in home.text
+    assert 'data-lazy-view="document-detail"' in home.text
 
     login = client.get("/login")
     assert login.status_code == 200, login.text
@@ -37,6 +39,7 @@ def test_ui_smoke_whitelisted_partials_load() -> None:
     expected_markers = {
         "dashboard": 'id="view-dashboard"',
         "edms": 'id="view-edms"',
+        "document-detail": 'id="view-document-detail"',
         "reports": 'id="view-reports"',
         "contractor": 'id="view-contractor"',
         "consultant": 'id="view-consultant"',
@@ -122,6 +125,7 @@ def test_ui_smoke_priority_a_templates_have_no_inline_scripts_or_handlers() -> N
     template_paths = [
         base_dir / "templates" / "base.html",
         base_dir / "templates" / "views" / "archive.html",
+        base_dir / "templates" / "views" / "document_detail.html",
         base_dir / "templates" / "views" / "partials" / "settings_users_tab.html",
         base_dir / "templates" / "views" / "profile_settings.html",
         base_dir / "templates" / "components" / "doc_search.html",
