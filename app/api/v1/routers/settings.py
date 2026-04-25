@@ -498,19 +498,29 @@ def _path_under_storage_root(path_value: str, root_value: str) -> bool:
     return StorageManager._path_is_under_root_value(raw_path, raw_root)
 
 
+def _path_under_nextcloud_root(path_value: str, root_value: str) -> bool:
+    raw_path = _norm(path_value)
+    raw_root = _norm(root_value)
+    if not raw_path or not raw_root:
+        return False
+    return StorageManager._is_under_remote_root(raw_path, raw_root)
+
+
 def _storage_primary_runtime_payload(
     db: Session | None,
     integrations: Dict[str, Any],
 ) -> Dict[str, Any]:
     selected_provider = resolve_primary_storage_provider(integrations)
     nextcloud_runtime = resolve_nextcloud_runtime(integrations)
+    mode = _norm(nextcloud_runtime.get("mode")).lower() or "mount"
     mount_root = _norm(nextcloud_runtime.get("local_mount_root_effective"))
+    root_path = _norm(nextcloud_runtime.get("root_path")) or "/"
     nextcloud_ready = bool(
         nextcloud_runtime.get("enabled")
         and _norm(nextcloud_runtime.get("base_url"))
         and _norm(nextcloud_runtime.get("username"))
         and _norm(nextcloud_runtime.get("app_password"))
-        and mount_root
+        and (root_path if mode == "webdav" else mount_root)
     )
     mdr_path = _kv_get_value(db, STORAGE_PATH_MDR_KEY, DEFAULT_MDR_STORAGE_PATH) if db else ""
     corr_path = _kv_get_value(
@@ -518,34 +528,54 @@ def _storage_primary_runtime_payload(
         STORAGE_PATH_CORRESPONDENCE_KEY,
         DEFAULT_CORRESPONDENCE_STORAGE_PATH,
     ) if db else ""
-    mdr_on_mount = bool(db and mount_root and _path_under_storage_root(mdr_path, mount_root))
-    corr_on_mount = bool(db and mount_root and _path_under_storage_root(corr_path, mount_root))
+    if mode == "webdav":
+        mdr_on_target = bool(db and root_path and _path_under_nextcloud_root(mdr_path, root_path))
+        corr_on_target = bool(db and root_path and _path_under_nextcloud_root(corr_path, root_path))
+    else:
+        mdr_on_target = bool(db and mount_root and _path_under_storage_root(mdr_path, mount_root))
+        corr_on_target = bool(db and mount_root and _path_under_storage_root(corr_path, mount_root))
 
     effective_provider = "local"
     status = "local_active"
     status_message = "Primary storage is local filesystem / UNC path."
     if selected_provider == "nextcloud":
-        if nextcloud_ready and mdr_on_mount and corr_on_mount:
+        if nextcloud_ready and mdr_on_target and corr_on_target:
             effective_provider = "nextcloud"
             status = "ready"
-            status_message = "Primary storage is Nextcloud via mounted local/UNC path."
+            status_message = (
+                "Primary storage is Nextcloud via direct WebDAV API."
+                if mode == "webdav"
+                else "Primary storage is Nextcloud via mounted local/UNC path."
+            )
         elif not nextcloud_ready:
             status = "misconfigured"
-            status_message = "Nextcloud primary storage needs enabled integration, credentials, and Local Mount Root."
+            status_message = (
+                "Nextcloud primary storage needs enabled integration, credentials, and Root Path in WebDAV mode."
+                if mode == "webdav"
+                else "Nextcloud primary storage needs enabled integration, credentials, and Local Mount Root."
+            )
         else:
             status = "paths_pending"
-            status_message = "Move MDR and Correspondence paths under the Nextcloud Local Mount Root to activate primary storage."
+            status_message = (
+                "Move MDR and Correspondence paths under the Nextcloud Root Path to activate WebDAV primary storage."
+                if mode == "webdav"
+                else "Move MDR and Correspondence paths under the Nextcloud Local Mount Root to activate primary storage."
+            )
 
     return {
         "provider": selected_provider,
         "effective_provider": effective_provider,
         "status": status,
         "status_message": status_message,
+        "nextcloud_mode": mode,
         "nextcloud_ready": nextcloud_ready,
+        "nextcloud_root_path": root_path,
         "local_mount_root_effective": mount_root,
         "local_mount_root_source": str(nextcloud_runtime.get("local_mount_root_source") or "none"),
-        "mdr_path_under_mount": mdr_on_mount,
-        "correspondence_path_under_mount": corr_on_mount,
+        "mdr_path_under_mount": mdr_on_target if mode != "webdav" else False,
+        "correspondence_path_under_mount": corr_on_target if mode != "webdav" else False,
+        "mdr_path_under_root": mdr_on_target if mode == "webdav" else False,
+        "correspondence_path_under_root": corr_on_target if mode == "webdav" else False,
     }
 
 
@@ -2233,18 +2263,30 @@ def save_storage_paths(
 ):
     mdr_storage_path = _norm(payload.mdr_storage_path)
     correspondence_storage_path = _norm(payload.correspondence_storage_path)
+    integrations = get_storage_integrations(db)
+    primary_provider = resolve_primary_storage_provider(integrations)
+    nextcloud_runtime = resolve_nextcloud_runtime(integrations)
+    use_nextcloud_webdav = (
+        primary_provider == "nextcloud"
+        and bool(nextcloud_runtime.get("mode_is_webdav"))
+    )
+    remote_root = _norm(nextcloud_runtime.get("root_path")) or "/"
     errors: list[dict[str, str]] = []
     normalized_mdr, mdr_errors = StorageManager.validate_storage_path(
         mdr_storage_path,
         field="mdr_storage_path",
         network_username=payload.network_username,
         network_password=payload.network_password,
+        allow_remote_webdav_path=use_nextcloud_webdav,
+        remote_root_value=remote_root if use_nextcloud_webdav else None,
     )
     normalized_corr, corr_errors = StorageManager.validate_storage_path(
         correspondence_storage_path,
         field="correspondence_storage_path",
         network_username=payload.network_username,
         network_password=payload.network_password,
+        allow_remote_webdav_path=use_nextcloud_webdav,
+        remote_root_value=remote_root if use_nextcloud_webdav else None,
     )
     errors.extend(mdr_errors)
     errors.extend(corr_errors)
@@ -2358,6 +2400,33 @@ def save_storage_integrations_settings(
     if isinstance(nextcloud_incoming, dict):
         if "app_password" in nextcloud_incoming and not str(nextcloud_incoming.get("app_password") or "").strip():
             nextcloud_incoming["app_password"] = str((before.get("nextcloud") or {}).get("app_password") or "")
+
+        # CRITICAL: Warn if root_path is changing and WebDAV files exist
+        if "root_path" in nextcloud_incoming:
+            old_root = str((before.get("nextcloud") or {}).get("root_path") or "").strip()
+            new_root = str(nextcloud_incoming.get("root_path") or "").strip()
+
+            if old_root and new_root and old_root != new_root:
+                # Check if any WebDAV files exist
+                webdav_count = (
+                    db.query(ArchiveFile)
+                    .filter(ArchiveFile.stored_path.like("webdav://%"))
+                    .count()
+                )
+
+                if webdav_count > 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Cannot change Nextcloud Root Path from '{old_root}' to '{new_root}' "
+                            f"because {webdav_count} WebDAV file(s) exist in the database. "
+                            "Changing the root path will break access to existing files. "
+                            "If you must change it, you need to: "
+                            "1) Backup your database, "
+                            "2) Run a migration script to update stored_path for all WebDAV files, "
+                            "3) Move files on Nextcloud to match the new structure."
+                        ),
+                    )
 
     merged = dict(before)
     for key in ("primary", "mirror", "google_drive", "openproject", "nextcloud", "local_cache"):
