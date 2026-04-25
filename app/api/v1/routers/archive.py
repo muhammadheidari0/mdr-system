@@ -6,7 +6,7 @@ import os
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -38,6 +38,9 @@ from app.db.models import (
     Project,
 )
 from app.services import archive_service, docnum_service, mdr_service
+from app.services.nextcloud_adapter import NextcloudAdapter
+from app.services.storage_policy import get_storage_integrations
+from app.services.storage_sync import resolve_nextcloud_runtime
 from app.services.openproject_status import (
     ENTITY_ARCHIVE_FILE,
     default_openproject_sync_status,
@@ -1092,6 +1095,41 @@ async def revision_history(
     }
 
 
+def _download_from_webdav(db: Session, file_record: ArchiveFile, stored_path: str) -> StreamingResponse:
+    """Stream file from Nextcloud WebDAV."""
+    integrations = get_storage_integrations(db)
+    runtime = resolve_nextcloud_runtime(integrations)
+
+    if not runtime.get("enabled") or runtime.get("mode") != "webdav":
+        raise HTTPException(status_code=503, detail="WebDAV storage not configured.")
+
+    adapter = NextcloudAdapter(
+        base_url=str(runtime.get("base_url") or ""),
+        username=str(runtime.get("username") or ""),
+        app_password=str(runtime.get("app_password") or ""),
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+
+    # Strip "webdav://" prefix
+    remote_path = stored_path.replace("webdav://", "")
+
+    # Check if file exists
+    if not adapter.file_exists(remote_path):
+        raise HTTPException(status_code=404, detail="File not found on Nextcloud.")
+
+    # Stream response
+    return StreamingResponse(
+        adapter.download_file_stream(remote_path),
+        media_type=file_record.mime_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{file_record.original_name}"'
+        },
+    )
+
+
 @router.get("/download/{file_id}")
 async def download_file(
     file_id: int,
@@ -1099,8 +1137,10 @@ async def download_file(
     user: User = Depends(require_permission("archive:read")),
 ):
     file_record = db.query(ArchiveFile).filter(ArchiveFile.id == file_id, ArchiveFile.deleted_at.is_(None)).first()
-    if not file_record or not os.path.exists(file_record.stored_path):
-        raise HTTPException(status_code=404, detail="???? ???? ???.")
+    if not file_record:
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    # Access control
     if file_record.document_revision and file_record.document_revision.document:
         doc = file_record.document_revision.document
         enforce_scope_access(
@@ -1110,8 +1150,18 @@ async def download_file(
             discipline_code=doc.discipline_code,
         )
 
+    stored_path = str(file_record.stored_path or "").strip()
+
+    # WebDAV download
+    if stored_path.startswith("webdav://"):
+        return _download_from_webdav(db, file_record, stored_path)
+
+    # Local filesystem download
+    if not os.path.exists(stored_path):
+        raise HTTPException(status_code=404, detail="File not found on disk.")
+
     return FileResponse(
-        path=file_record.stored_path,
+        path=stored_path,
         filename=file_record.original_name,
         media_type=file_record.mime_type,
     )

@@ -1115,20 +1115,6 @@ def save_upload_file(
     if doc.package:
         pkg_name = doc.package.name_e or doc.package.name_p or doc.package_code
 
-    target_folder = storage.get_mdr_path(
-        project_code=doc.project_code,
-        project_name=proj_name,
-        mdr_folder_name=mdr_folder,
-        phase_name=phase_name,
-        phase_code=doc.phase_code or phase_name,
-        disc_name=disc_name,
-        disc_code=disc_code,
-        pkg_name=pkg_name,
-        pkg_code=pkg_code,
-        package_name=pkg_name,
-        file_kind=normalized_kind,
-    )
-
     _, file_extension = os.path.splitext(file.filename)
     raw_title = doc.doc_title_e or doc.subject or "Untitled"
     safe_title = folder_service.safe_name(raw_title)
@@ -1137,12 +1123,37 @@ def save_upload_file(
 
     clean_name = f"{doc.doc_number}_{safe_title}_Rev{revision_code}{file_extension}"
 
-    saved = storage.save_upload_secure(
-        file=file,
-        destination_folder=target_folder,
-        new_name=clean_name,
-        file_kind=normalized_kind,
-    )
+    # Check if WebDAV mode
+    if storage._is_webdav_primary_mode():
+        # WebDAV mode: build remote path and upload directly
+        pkg_folder = f"{pkg_code} - {pkg_name}"
+        remote_path = f"/{proj_name}/{mdr_folder}/{phase_name}/{disc_code}/{pkg_folder}/{normalized_kind}/{clean_name}"
+        saved = storage.save_upload_to_webdav(
+            file=file,
+            remote_relative_path=remote_path,
+            file_kind=normalized_kind,
+        )
+    else:
+        # Mount/local mode: use existing logic
+        target_folder = storage.get_mdr_path(
+            project_code=doc.project_code,
+            project_name=proj_name,
+            mdr_folder_name=mdr_folder,
+            phase_name=phase_name,
+            phase_code=doc.phase_code or phase_name,
+            disc_name=disc_name,
+            disc_code=disc_code,
+            pkg_name=pkg_name,
+            pkg_code=pkg_code,
+            package_name=pkg_name,
+            file_kind=normalized_kind,
+        )
+        saved = storage.save_upload_secure(
+            file=file,
+            destination_folder=target_folder,
+            new_name=clean_name,
+            file_kind=normalized_kind,
+        )
 
     rev.file_path = saved.stored_path
     rev.file_name = clean_name
@@ -1161,7 +1172,7 @@ def save_upload_file(
         validation_status=saved.validation_status,
         sha256=saved.sha256,
         size_bytes=saved.size_bytes,
-        storage_backend=storage.resolve_storage_backend_for_path(saved.stored_path),
+        storage_backend="nextcloud" if saved.stored_path.startswith("webdav://") else storage.resolve_storage_backend_for_path(saved.stored_path),
         gdrive_file_id=None,
         mirror_provider=mirror_provider or None,
         mirror_remote_id=None,

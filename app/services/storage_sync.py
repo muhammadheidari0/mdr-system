@@ -131,8 +131,15 @@ def resolve_nextcloud_runtime(integrations: dict[str, Any]) -> dict[str, Any]:
     elif str(nextcloud_cfg.get("username") or "").strip() and str(nextcloud_cfg.get("app_password") or "").strip():
         credential_source = "settings"
 
+    mode = str(nextcloud_cfg.get("mode") or "").strip().lower()
+    if mode not in {"mount", "webdav"}:
+        mode = "mount"
+
     return {
         "enabled": bool(nextcloud_cfg.get("enabled")),
+        "mode": mode,
+        "mode_is_webdav": mode == "webdav",
+        "mode_is_mount": mode == "mount",
         "base_url": base_url,
         "username": username,
         "app_password": app_password,
@@ -217,7 +224,17 @@ def _row_uses_nextcloud_primary_storage(
         )
     elif entity_type == ENTITY_COMM_ITEM_ATTACHMENT:
         row = db.query(ItemAttachment).filter(ItemAttachment.id == int(entity_id)).first()
-    return bool(row and str(getattr(row, "storage_backend", "") or "").strip().lower() == "nextcloud")
+
+    if not row:
+        return False
+
+    # Check if stored_path uses WebDAV prefix
+    stored_path = str(getattr(row, "stored_path", "") or "").strip()
+    if stored_path.startswith("webdav://"):
+        return True
+
+    # Fallback: check storage_backend column
+    return bool(str(getattr(row, "storage_backend", "") or "").strip().lower() == "nextcloud")
 
 
 def _resolve_default_work_package_id(

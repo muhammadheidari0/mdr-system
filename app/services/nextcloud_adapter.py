@@ -270,3 +270,89 @@ class NextcloudAdapter:
             "remote_url": remote_url,
             "file_name": file_name,
         }
+
+    def upload_file_from_stream(
+        self,
+        *,
+        file_stream,
+        remote_relative_path: str,
+    ) -> dict[str, str]:
+        """Upload file from stream (for FastAPI UploadFile objects)."""
+        remote = str(remote_relative_path or "").strip().replace("\\", "/").lstrip("/")
+        if not remote:
+            raise RuntimeError("remote_relative_path is required for Nextcloud upload.")
+        segments = [part for part in remote.split("/") if part]
+        if not segments:
+            raise RuntimeError("remote_relative_path is invalid for Nextcloud upload.")
+
+        folder_segments = segments[:-1]
+        file_name = segments[-1]
+        if folder_segments:
+            self.ensure_path("/".join(folder_segments))
+
+        root_url = self.build_webdav_root_url().rstrip("/")
+        encoded_segments = "/".join(quote(part, safe="") for part in segments)
+        remote_url = f"{root_url}/{encoded_segments}"
+
+        response = self._request("PUT", remote_url, data=file_stream)
+        if int(response.status_code or 0) >= 400:
+            detail = self._response_error_detail(response)
+            message = f"Nextcloud upload failed: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
+        return {
+            "remote_id": remote,
+            "remote_url": remote_url,
+            "file_name": file_name,
+        }
+
+    def download_file_stream(self, remote_relative_path: str):
+        """Stream file in chunks for large files (generator)."""
+        url = self._url_for_relative_path(remote_relative_path)
+        response = self._request("GET", url, stream=True)
+        if int(response.status_code or 0) >= 400:
+            detail = self._response_error_detail(response)
+            message = f"Nextcloud download failed: HTTP {response.status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
+        for chunk in response.iter_content(chunk_size=8192):
+            if chunk:
+                yield chunk
+
+    def file_exists(self, remote_relative_path: str) -> bool:
+        """Check if file exists via PROPFIND."""
+        url = self._url_for_relative_path(remote_relative_path)
+        try:
+            response = self._request("PROPFIND", url, headers={"Depth": "0"})
+            return int(response.status_code or 0) in {200, 207}
+        except Exception:
+            return False
+
+    def get_file_size(self, remote_relative_path: str) -> int:
+        """Get file size via PROPFIND getcontentlength."""
+        url = self._url_for_relative_path(remote_relative_path)
+        try:
+            response = self._request(
+                "PROPFIND",
+                url,
+                headers={"Depth": "0", "Content-Type": "application/xml; charset=utf-8"},
+                data='<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/></d:prop></d:propfind>',
+            )
+            if int(response.status_code or 0) >= 400:
+                return 0
+            root = ET.fromstring(response.text)
+            size_el = root.find(".//{DAV:}getcontentlength")
+            return int(size_el.text) if size_el is not None else 0
+        except Exception:
+            return 0
+
+    def delete_file(self, remote_relative_path: str) -> bool:
+        """Delete file via DELETE."""
+        url = self._url_for_relative_path(remote_relative_path)
+        try:
+            response = self._request("DELETE", url)
+            return int(response.status_code or 0) in {200, 204}
+        except Exception:
+            return False

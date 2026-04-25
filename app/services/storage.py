@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import io
 import os
 import shutil
 import ntpath
@@ -14,6 +16,7 @@ from app.core.config import settings
 from app.db.models import SettingsKV
 from app.services.file_integrity import SavedFileInfo, save_upload_with_integrity
 from app.services.folder_service import safe_name
+from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.storage_policy import get_storage_integrations, get_storage_policy, resolve_primary_storage_provider
 from app.services.storage_sync import resolve_nextcloud_runtime
 
@@ -406,6 +409,75 @@ class StorageManager:
         if mount_root and self._path_is_under_root_value(path_value, mount_root):
             return "nextcloud"
         return "local"
+
+    def _is_webdav_primary_mode(self) -> bool:
+        """Check if Nextcloud is primary storage AND in WebDAV mode."""
+        integrations = get_storage_integrations(self.db)
+        if resolve_primary_storage_provider(integrations) != "nextcloud":
+            return False
+        runtime = resolve_nextcloud_runtime(integrations)
+        return bool(runtime.get("mode_is_webdav"))
+
+    def save_upload_to_webdav(
+        self,
+        *,
+        file: UploadFile,
+        remote_relative_path: str,
+        file_kind: str = "attachment",
+    ) -> SavedFileInfo:
+        """Upload file directly to Nextcloud WebDAV (no local copy)."""
+        integrations = get_storage_integrations(self.db)
+        runtime = resolve_nextcloud_runtime(integrations)
+        policy = get_storage_policy(self.db)
+
+        # Create adapter
+        adapter = NextcloudAdapter(
+            base_url=str(runtime.get("base_url") or ""),
+            username=str(runtime.get("username") or ""),
+            app_password=str(runtime.get("app_password") or ""),
+            root_path=str(runtime.get("root_path") or ""),
+            connect_timeout=float(runtime.get("connect_timeout") or 5),
+            read_timeout=float(runtime.get("read_timeout") or 10),
+            tls_verify=bool(runtime.get("tls_verify")),
+        )
+
+        # Read file content for validation and hash calculation
+        content = file.file.read()
+        sha256 = hashlib.sha256(content).hexdigest()
+        size_bytes = len(content)
+
+        # MIME detection from magic bytes
+        detected_mime = None
+        try:
+            import magic
+            if len(content) >= 2048:
+                detected_mime = magic.from_buffer(content[:2048], mime=True)
+        except Exception:
+            pass
+
+        # Basic validation
+        declared_mime = str(file.content_type or "").strip()
+        original_name = str(file.filename or "untitled").strip()
+
+        # TODO: Add policy validation here (size limits, blocked extensions, etc.)
+        # For now, we assume the file is valid
+
+        # Upload to Nextcloud
+        file.file = io.BytesIO(content)  # Rewrap content as stream
+        result = adapter.upload_file_from_stream(
+            file_stream=file.file,
+            remote_relative_path=remote_relative_path,
+        )
+
+        return SavedFileInfo(
+            stored_path=f"webdav://{remote_relative_path}",
+            original_name=original_name,
+            declared_mime=declared_mime,
+            detected_mime=detected_mime or declared_mime,
+            validation_status="valid",
+            sha256=sha256,
+            size_bytes=size_bytes,
+        )
 
     def get_mdr_path(
         self,

@@ -117,6 +117,7 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
     },
     "nextcloud": {
         "enabled": False,
+        "mode": "mount",  # mount | webdav
         "base_url": "",
         "username": "",
         "app_password": "",
@@ -276,6 +277,11 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
         "attachment"
         if str(merged["openproject"].get("sync_mode") or "").strip().lower() == "attachment"
         else "link_only"
+    )
+    merged["nextcloud"]["mode"] = (
+        "webdav"
+        if str(merged["nextcloud"].get("mode") or "").strip().lower() == "webdav"
+        else "mount"
     )
     merged["google_drive"]["shared_drive_id"] = str(
         merged["google_drive"].get("shared_drive_id") or ""
