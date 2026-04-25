@@ -334,6 +334,25 @@ function openDrawer(moduleKey: string, tabKey: string): void {
   document.body.classList.add("ci-drawer-open");
 }
 
+function closeRowMenus(): void {
+  document.querySelectorAll("[data-ci-row-menu].is-open").forEach((menuEl) => {
+    menuEl.classList.remove("is-open");
+    const trigger = menuEl.querySelector("[data-ci-action='toggle-row-menu']");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleRowMenu(triggerEl: HTMLElement | null): void {
+  const menuEl = triggerEl?.closest?.("[data-ci-row-menu]");
+  if (!(menuEl instanceof HTMLElement)) return;
+  const shouldOpen = !menuEl.classList.contains("is-open");
+  closeRowMenus();
+  if (shouldOpen) {
+    menuEl.classList.add("is-open");
+    triggerEl?.setAttribute("aria-expanded", "true");
+  }
+}
+
 function closeDrawer(moduleKey: string, tabKey: string, force = false): boolean {
   const key = keyOf(moduleKey, tabKey);
   if (!force && drawerDirtyByKey[key]) {
@@ -577,99 +596,483 @@ function triggerDownload(content: Blob, fileName: string): void {
   window.URL.revokeObjectURL(url);
 }
 
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  const textValue = String(value || "").trim();
+  if (!textValue) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(textValue);
+      return true;
+    }
+  } catch {
+    // fallback below
+  }
+  try {
+    const input = document.createElement("textarea");
+    input.value = textValue;
+    input.setAttribute("readonly", "true");
+    input.style.position = "fixed";
+    input.style.opacity = "0";
+    document.body.appendChild(input);
+    input.select();
+    const ok = document.execCommand("copy");
+    input.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function buildRfiPrintHtml(item: Record<string, unknown>, cache: Record<string, unknown>): string {
   const rfi = asRecord(item.rfi);
   const drawingRefs = asStringArray(rfi.drawing_refs).join("، ");
+  const specRefs = asStringArray(rfi.spec_refs).join("، ");
   const projectName = findProjectName(cache, item.project_code);
   const disciplineLabel = findDisciplineLabel(cache, item.discipline_code);
   const companyName = findOrganizationName(cache, item.organization_id);
   const issueDate = formatShamsiDate(item.created_at);
   const answeredDate = formatShamsiDate(rfi.answered_at);
+  const printTime = formatShamsiDate(new Date());
+  const statusLabel = String(item.status_code || "DRAFT");
+
   return `
 <!doctype html>
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <title>RFI Print - ${stateBridge.esc(textOrDash(item.item_no))}</title>
+  <title>چاپ فرم RFI - ${stateBridge.esc(textOrDash(item.item_no))}</title>
   <style>
-    @page { size: A4; margin: 10mm; }
-    body { font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 12px; color: #0f172a; margin: 0; }
-    .sheet { border: 1px solid #0f172a; padding: 12px; }
-    .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
-    .box { border: 1px solid #334155; padding: 6px; min-height: 28px; }
-    .title { text-align: center; font-weight: 700; font-size: 16px; margin-bottom: 8px; }
-    .section-title { background: #e2e8f0; padding: 4px 6px; font-weight: 700; border: 1px solid #cbd5e1; margin-top: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-    td, th { border: 1px solid #334155; padding: 6px; vertical-align: top; }
-    .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
-    .check-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
-    .check-item { border: 1px solid #334155; padding: 6px; text-align: center; }
-    .check-box { display: inline-block; width: 11px; height: 11px; border: 1px solid #334155; margin-left: 6px; vertical-align: middle; }
-    .disclaimer { margin-top: 10px; border: 1px solid #334155; padding: 8px; line-height: 1.8; }
-    .signature { margin-top: 10px; }
-    .signature td { height: 56px; }
+    @page { size: A4; margin: 7mm 7mm 10mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 10px; color: #111827; background: #ffffff; }
+    .sheet {
+      position: relative;
+      min-height: calc(297mm - 17mm);
+      padding: 3px 3px 8px;
+      border: 1.8px solid #111827;
+      display: flex;
+      flex-direction: column;
+    }
+    .sheet-main { display: flex; flex-direction: column; min-height: 100%; flex: 1; }
+    .content-stack {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    .sheet-bottom { margin-top: 3px; }
+    .letterhead {
+      display: grid;
+      grid-template-columns: 112px 1fr 112px;
+      gap: 4px;
+      align-items: center;
+      border: 1.5px solid #111827;
+      padding: 3px 5px;
+      margin-bottom: 3px;
+    }
+    .brand-mark {
+      width: 26px;
+      height: 26px;
+      border-radius: 7px;
+      border: 1.5px solid #1d4ed8;
+      color: #1d4ed8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 7.8px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+      justify-self: end;
+    }
+    .letterhead-title { text-align: center; }
+    .letterhead-title h1 { margin: 0; font-size: 12px; font-weight: 800; line-height: 1.05; }
+    .letterhead-title p { margin: 1px 0 0; font-size: 6.8px; color: #374151; }
+    .letterhead-side {
+      font-size: 7.2px;
+      line-height: 1.35;
+      display: grid;
+      gap: 1px;
+    }
+    .letterhead-side div {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      border-bottom: 1px solid #d1d5db;
+      padding-bottom: 1px;
+    }
+    .letterhead-side div:last-child { border-bottom: 0; padding-bottom: 0; }
+    .letterhead-side strong { white-space: nowrap; }
+    .form-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 3px;
+    }
+    .form-table td {
+      border: 1.2px solid #111827;
+      padding: 2px 4px;
+      vertical-align: top;
+      text-align: right;
+    }
+    .form-table.compact td { padding: 2px 3px; }
+    .cell-label {
+      display: inline-block;
+      font-size: 7px;
+      font-weight: 700;
+      color: #111827;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+    .cell-value {
+      font-size: 7.9px;
+      line-height: 1.35;
+      color: #111827;
+      word-break: break-word;
+    }
+    .cell-value.block { display: block; min-height: 11px; }
+    .muted {
+      color: #4b5563;
+      font-size: 6.9px;
+    }
+    .ref-strip {
+      border: 1.2px solid #111827;
+      padding: 2px 5px;
+      margin-bottom: 3px;
+      font-size: 7px;
+      line-height: 1.5;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+    }
+    .ref-strip strong { color: #111827; }
+    .section-box {
+      border: 1.2px solid #111827;
+      margin-bottom: 3px;
+    }
+    .section-box.question-section,
+    .section-box.proposal-section,
+    .section-box.answer-section {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .section-box.question-section { flex: 1.35; }
+    .section-box.proposal-section { flex: 1.2; }
+    .section-box.answer-section { flex: 0.6; margin-bottom: 0; }
+    .section-box.answer-section {
+      min-height: 0;
+    }
+    .section-title {
+      background: #ffffff;
+      padding: 2px 5px;
+      font-weight: 800;
+      font-size: 8.6px;
+      border-bottom: 1.2px solid #111827;
+    }
+    .section-content {
+      padding: 4px 6px;
+      line-height: 1.55;
+      font-size: 8.8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 38px;
+    }
+    .section-content.subject-box { min-height: 26px; }
+    .section-content.question-box { min-height: 210px; }
+    .section-content.proposal-box { min-height: 195px; }
+    .section-content.answer-box { min-height: 54px; }
+    .question-section .section-content.question-box { flex: 1; min-height: 210px; }
+    .proposal-section .section-content.proposal-box { flex: 1; min-height: 195px; }
+    .answer-section .section-content.answer-box { flex: 1; min-height: 54px; }
+    .lined-box {
+      background-image: linear-gradient(to bottom, transparent 0, transparent 21px, rgba(17,24,39,0.08) 22px);
+      background-size: 100% 22px;
+    }
+    .response-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 4px;
+      align-items: center;
+      padding: 3px 6px 4px;
+    }
+    .response-choices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      font-size: 7.8px;
+      font-weight: 700;
+    }
+    .response-choice {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+    }
+    .check-box {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border: 1.2px solid #334155;
+      vertical-align: middle;
+    }
+    .disclaimer-note {
+      background: #fefce8;
+      border: 1.2px solid #ca8a04;
+      padding: 3px 5px;
+      margin: 3px;
+      font-size: 7.3px;
+      line-height: 1.45;
+      color: #713f12;
+    }
+    .print-section { margin-bottom: 3px; break-inside: auto; }
+    .print-section-head { margin-bottom: 2px; }
+    .print-section-head h3 { margin: 0; font-size: 8.4px; font-weight: 800; }
+    .print-section-head p { margin: 0; font-size: 6.8px; color: #4b5563; }
+    .signature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 3px;
+      margin-top: 2px;
+    }
+    .signature-card {
+      border: 1.2px solid #111827;
+      min-height: 56px;
+      padding: 3px 5px;
+      break-inside: avoid;
+      position: relative;
+    }
+    .signature-card h4 { margin: 0 0 2px; font-size: 7.5px; }
+    .signature-card .name { font-weight: 700; min-height: 11px; line-height: 1.2; font-size: 7.5px; }
+    .signature-card .date { color: #4b5563; margin-top: 2px; font-size: 6.8px; }
+    .signature-card .line { margin-top: 10px; border-top: 1px dashed #64748b; padding-top: 2px; font-size: 6.8px; color: #64748b; }
+    .logo-stamp-placeholder {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 24px;
+      height: 24px;
+      border: 1px dashed #cbd5e1;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 5.5px;
+      color: #cbd5e1;
+      background: #f8fafc;
+    }
+    .print-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7px;
+      color: #475569;
+      border-top: 1px solid #9ca3af;
+      padding-top: 1px;
+      background: #ffffff;
+    }
+    .print-page-number::after { content: counter(page); }
   </style>
 </head>
 <body>
   <div class="sheet">
-    <div class="title">فرم درخواست اطلاعات فنی (RFI)</div>
-    <div class="top-grid">
-      <div class="box"><strong>نام پروژه:</strong> ${escHtml(projectName)}</div>
-      <div class="box"><strong>شماره:</strong> ${escHtml(item.item_no)}</div>
-      <div class="box"><strong>کد پروژه:</strong> ${escHtml(item.project_code)}</div>
-      <div class="box"><strong>تاریخ صدور:</strong> ${escHtml(issueDate)}</div>
-    </div>
+    <div class="sheet-main">
+    <header class="letterhead">
+      <div class="letterhead-side">
+        <div><strong>پروژه</strong><span>${escHtml(projectName)}</span></div>
+        <div><strong>شرکت</strong><span>${escHtml(companyName)}</span></div>
+        <div><strong>رشته</strong><span>${escHtml(disciplineLabel)}</span></div>
+      </div>
+      <div class="letterhead-title">
+        <h1>درخواست اطلاعات فنی (RFI)</h1>
+        <p>نسخه رسمی برای ثبت، بررسی، پاسخ و بایگانی</p>
+      </div>
+      <div class="letterhead-side">
+        <div><strong>شماره</strong><span>${escHtml(textOrDash(item.item_no))}</span></div>
+        <div><strong>تاریخ</strong><span>${escHtml(issueDate)}</span></div>
+        <div><strong>وضعیت</strong><span>${escHtml(statusLabel)}</span></div>
+      </div>
+    </header>
 
-    <div class="section-title">اطلاعات درخواست‌کننده</div>
-    <table>
+    <table class="form-table compact">
       <tr>
-        <td><strong>صادرکننده</strong><br>${escHtml(item.created_by_name)}</td>
-        <td><strong>شرکت</strong><br>${escHtml(companyName)}</td>
-        <td><strong>مخاطب</strong><br>${escHtml(item.recipient_org_name)}</td>
-        <td><strong>رشته</strong><br>${escHtml(disciplineLabel)}</td>
+        <td style="width:16.5%;">
+          <span class="cell-label">تاریخ صدور:</span>
+          <span class="cell-value">${escHtml(issueDate)}</span>
+        </td>
+        <td style="width:16.5%;">
+          <span class="cell-label">شماره مدرک:</span>
+          <span class="cell-value">${escHtml(textOrDash(item.item_no))}</span>
+        </td>
+        <td style="width:34%;">
+          <span class="cell-label">عنوان مدرک:</span>
+          <span class="cell-value">${escHtml(textOrDash(item.title))}</span>
+        </td>
+        <td style="width:16.5%;">
+          <span class="cell-label">کارفرما:</span>
+          <span class="cell-value">${escHtml(companyName)}</span>
+        </td>
+        <td style="width:16.5%;">
+          <span class="cell-label">کد پروژه:</span>
+          <span class="cell-value">${escHtml(textOrDash(item.project_code))}</span>
+        </td>
       </tr>
     </table>
 
-    <div class="section-title">اطلاعات مرجع</div>
-    <table>
+    <table class="form-table compact">
       <tr>
-        <td><strong>کد مدرک مرجع</strong><br>${escHtml(drawingRefs)}</td>
-        <td><strong>شماره شیت</strong><br>-</td>
-        <td><strong>REV</strong><br>-</td>
-        <td><strong>بلوک/طبقه</strong><br>${escHtml(item.zone)} / -</td>
+        <td style="width:21%;">
+          <span class="cell-label">درخواست‌کننده:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.created_by_name))}</span>
+        </td>
+        <td style="width:21%;">
+          <span class="cell-label">شرکت / واحد:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.sender_org_name || companyName))}</span>
+        </td>
+        <td style="width:18%;">
+          <span class="cell-label">سمت:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.created_by_title || "-"))}</span>
+        </td>
+        <td style="width:20%;">
+          <span class="cell-label">مخاطب:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.recipient_org_name))}</span>
+        </td>
+        <td style="width:20%;">
+          <span class="cell-label">پیوست:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.attachment_count))}</span>
+        </td>
+      </tr>
+      <tr>
+        <td>
+          <span class="cell-label">شماره تماس:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.created_by_phone || "-"))}</span>
+        </td>
+        <td>
+          <span class="cell-label">ایمیل:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.created_by_email || "-"))}</span>
+        </td>
+        <td>
+          <span class="cell-label">رشته:</span>
+          <span class="cell-value block">${escHtml(disciplineLabel)}</span>
+        </td>
+        <td colspan="2">
+          <span class="cell-label">وضعیت / اولویت:</span>
+          <span class="cell-value block">${escHtml(statusLabel)} / ${escHtml(textOrDash(item.priority_code || item.priority))}</span>
+        </td>
       </tr>
     </table>
 
-    <div class="section-title">موضوع</div>
-    <div class="box">${escHtml(item.title)}</div>
-
-    <div class="section-title">شرح موضوع</div>
-    <div class="box">${escHtml(rfi.question_text || item.short_description)}</div>
-
-    <div class="section-title">طرح پیشنهاد</div>
-    <div class="box">${escHtml(rfi.proposed_solution)}</div>
-
-    <div class="section-title">پاسخ</div>
-    <div class="box">${escHtml(rfi.answer_text)}</div>
-    <div class="check-grid">
-      <div class="check-item"><span class="check-box"></span>تایید</div>
-      <div class="check-item"><span class="check-box"></span>اصلاح</div>
-      <div class="check-item"><span class="check-box"></span>مردود</div>
-    </div>
-    <div style="margin-top:6px;"><strong>تاریخ پاسخ:</strong> ${escHtml(answeredDate)}</div>
-
-    <div class="disclaimer">
-      هدف از این فرم صرفاً رفع ابهامات فنی و پاسخ به سوالات جاری است. در صورت وجود هرگونه اثر مالی یا زمانی، اجرای عملیات منوط به اخذ تایید کتبی کارفرما پیش از اجرا خواهد بود.
-    </div>
-
-    <table class="signature">
+    <table class="form-table compact">
       <tr>
-        <td><strong>1- درخواست‌کننده</strong><br><br>نام و نام خانوادگی:<br><br>تاریخ:<br><br>مهر و امضا:</td>
-        <td><strong>2- پاسخ‌دهنده</strong><br><br>نام و نام خانوادگی:<br><br>تاریخ:<br><br>مهر و امضا:</td>
-        <td><strong>3- کارفرما</strong><br><br>نام و نام خانوادگی:<br><br>تاریخ:<br><br>مهر و امضا:</td>
+        <td style="width:28%;">
+          <span class="cell-label">شماره نقشه مرجع:</span>
+          <span class="cell-value block">${escHtml(drawingRefs || "------------")}</span>
+        </td>
+        <td style="width:18%;">
+          <span class="cell-label">بلوک:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.block || item.zone || "-"))}</span>
+        </td>
+        <td style="width:18%;">
+          <span class="cell-label">طبقه:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.level_code || "-"))}</span>
+        </td>
+        <td style="width:18%;">
+          <span class="cell-label">پکیج:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.package_code || "-"))}</span>
+        </td>
+        <td style="width:18%;">
+          <span class="cell-label">مرجع مرتبط:</span>
+          <span class="cell-value block">${escHtml(textOrDash(item.reference_no || item.related_item_no || specRefs || "-"))}</span>
+        </td>
       </tr>
     </table>
+
+    <section class="section-box">
+      <div class="section-title">موضوع</div>
+      <div class="section-content subject-box">${escHtml(textOrDash(item.title))}</div>
+    </section>
+
+    <div class="content-stack">
+      <section class="section-box question-section">
+        <div class="section-title">شرح موضوع و سوال فنی</div>
+        <div class="section-content question-box lined-box">${escHtml(textOrDash(rfi.question_text || item.short_description))}</div>
+      </section>
+
+      <section class="section-box proposal-section">
+        <div class="section-title">طرح پیشنهادی</div>
+        <div class="section-content proposal-box lined-box">${escHtml(textOrDash(rfi.proposed_solution))}</div>
+      </section>
+
+      <section class="section-box answer-section">
+        <div class="section-title">پاسخ و نتیجه بررسی</div>
+        <div class="section-content answer-box lined-box">${escHtml(textOrDash(rfi.answer_text))}</div>
+        <div class="response-row">
+          <div class="response-choices">
+            <span class="response-choice"><span class="check-box"></span>تایید</span>
+            <span class="response-choice"><span class="check-box"></span>اصلاح</span>
+            <span class="response-choice"><span class="check-box"></span>مردود</span>
+          </div>
+          <div style="font-size: 7.6px;"><strong>تاریخ پاسخ:</strong> ${escHtml(answeredDate)}</div>
+        </div>
+      </section>
+    </div>
+
+    <div class="sheet-bottom">
+    <section class="section-box">
+      <div class="section-title">توضیح</div>
+      <div class="disclaimer-note">
+        هدف از این فرم صرفاً رفع ابهامات فنی و پاسخ به سوالات جاری پروژه است.
+        در صورت وجود هرگونه اثر مالی، زمانی یا تغییر در محدوده کار، اجرای عملیات منوط به اخذ تایید کتبی کارفرما پیش از اجرا خواهد بود.
+      </div>
+    </section>
+
+    <section class="print-section">
+      <div class="print-section-head">
+        <h3>ثبت / ارسال / تایید</h3>
+        <p>این بخش برای امضا، مهر و بایگانی نسخه چاپی است</p>
+      </div>
+      <div class="signature-grid">
+        <div class="signature-card">
+          <div class="logo-stamp-placeholder">لوگو</div>
+          <h4>1. درخواست‌کننده</h4>
+          <div class="name">${escHtml(textOrDash(item.created_by_name))}</div>
+          <div class="date">تاریخ: ${escHtml(issueDate)}</div>
+          <div class="line">مهر / امضا</div>
+        </div>
+        <div class="signature-card">
+          <div class="logo-stamp-placeholder">لوگو</div>
+          <h4>2. پاسخ‌دهنده</h4>
+          <div class="name">${escHtml(textOrDash(item.recipient_org_name))}</div>
+          <div class="date">تاریخ: ${escHtml(answeredDate)}</div>
+          <div class="line">مهر / امضا</div>
+        </div>
+        <div class="signature-card">
+          <div class="logo-stamp-placeholder">مهر</div>
+          <h4>3. کارفرما</h4>
+          <div class="name">-</div>
+          <div class="date">تاریخ: -</div>
+          <div class="line">مهر / امضا</div>
+        </div>
+      </div>
+    </section>
+    </div>
+    </div>
   </div>
+
+  <div class="print-footer">
+    <span>EDMS RFI Form</span>
+    <span>تاریخ چاپ: ${escHtml(printTime)}</span>
+    <span>صفحه <span class="print-page-number"></span></span>
+  </div>
+
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () { window.print(); }, 250);
+    });
+  </script>
 </body>
 </html>
 `;
@@ -696,13 +1099,6 @@ function typeSectionsHtml(key: string, defaultTechSubtype: string): string {
   return `
     <div data-ci-type="RFI" class="ci-type-section">
       <div class="ci-type-section-title">RFI</div>
-      <label class="ci-rfi-toggle">
-        <input id="ci-form-rfi-as-ncr-${key}" type="checkbox">
-        عدم انطباق اجرا با نقشه (ثبت به صورت NCR)
-      </label>
-      <div id="ci-form-rfi-as-ncr-note-${key}" class="ci-rfi-toggle-note" hidden>
-        در این حالت آیتم با نوع NCR ذخیره می‌شود و در جدول درخواست‌ها نمایش داده خواهد شد.
-      </div>
       <div class="module-crud-form-grid">
         <div class="module-crud-form-field span-2" data-ci-field="rfi_question">
           <label>متن سوال</label>
@@ -712,14 +1108,6 @@ function typeSectionsHtml(key: string, defaultTechSubtype: string): string {
         <div class="module-crud-form-field span-2">
           <label>پیشنهاد فنی</label>
           <textarea id="ci-form-rfi-proposed-${key}" class="module-crud-textarea" placeholder="پیشنهاد فنی"></textarea>
-        </div>
-        <div class="module-crud-form-field">
-          <label>ارجاع نقشه‌ها</label>
-          <input id="ci-form-rfi-drawing-refs-${key}" class="module-crud-input" placeholder="با کاما جدا کنید">
-        </div>
-        <div class="module-crud-form-field">
-          <label>ارجاع Spec</label>
-          <input id="ci-form-rfi-spec-refs-${key}" class="module-crud-input" placeholder="با کاما جدا کنید">
         </div>
         <div class="module-crud-form-field span-2" data-ci-field="rfi_answer">
           <label>متن پاسخ</label>
@@ -886,6 +1274,7 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
           <header class="ci-drawer-header">
             <div class="ci-drawer-header-main">
               <div id="ci-drawer-title-${key}" class="ci-drawer-title">فرم درخواست</div>
+              ${formModeSwitchHtml(key)}
               <div id="ci-drawer-meta-${key}" class="ci-drawer-meta">
                 <span id="ci-form-type-badge-${key}" class="ci-form-badge ci-form-type-badge is-${normalize(defaults.itemType)}">${stateBridge.esc(defaults.itemType)}</span>
                 <span id="ci-form-status-badge-${key}" class="ci-form-badge ci-form-status-badge" hidden></span>
@@ -966,8 +1355,16 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
                 </button>
                 <div id="ci-section-body-refs-${key}" class="ci-form-section-body" hidden>
                   <div class="module-crud-form-grid">
+                    <div class="module-crud-form-field" data-ci-type="RFI" style="display:none;">
+                      <label>ارجاع نقشه‌ها</label>
+                      <input id="ci-form-rfi-drawing-refs-${key}" class="module-crud-input" placeholder="با کاما جدا کنید">
+                    </div>
+                    <div class="module-crud-form-field" data-ci-type="RFI" style="display:none;">
+                      <label>ارجاع Spec</label>
+                      <input id="ci-form-rfi-spec-refs-${key}" class="module-crud-input" placeholder="با کاما جدا کنید">
+                    </div>
                     <div class="module-crud-form-field">
-                      <label>بند Spec</label>
+                      <label>بند Spec عمومی</label>
                       <input id="ci-form-spec-clause-${key}" class="module-crud-input" placeholder="بند Spec">
                     </div>
                     <div class="module-crud-form-field">
@@ -1011,7 +1408,7 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
               </div>
             </div>
 
-            <div id="ci-detail-wrap-${key}" class="archive-card" style="display:none;padding:12px;"></div>
+            <div id="ci-detail-wrap-${key}" class="archive-card ci-detail-wrap" style="display:none;"></div>
           </div>
         </aside>
       </div>
@@ -1093,26 +1490,39 @@ function applyTypeVisibility(moduleKey: string, tabKey: string): void {
   const itemId = Number(valueOf(`ci-form-id-${key}`) || 0);
   const createMode = itemId <= 0;
   const rfiAsNcr = createMode && defaultTabType === "RFI" && checkedOf(`ci-form-rfi-as-ncr-${key}`);
-  const itemType = upper(valueOf(`ci-form-item-type-${key}`) || defaultTabType);
-  const effectiveType = rfiAsNcr ? "NCR" : itemType;
   const rfiAsNcrInput = asInput(getElement(`ci-form-rfi-as-ncr-${key}`));
   const rfiAsNcrNote = getElement(`ci-form-rfi-as-ncr-note-${key}`);
+  const modeSwitch = getElement(`ci-drawer-mode-switch-${key}`);
+  const rfiModeBtn = getElement(`ci-form-mode-rfi-${key}`);
+  const ncrModeBtn = getElement(`ci-form-mode-ncr-${key}`);
+  const canToggleMode = createMode && defaultTabType === "RFI";
   if (rfiAsNcrInput) rfiAsNcrInput.disabled = !(createMode && defaultTabType === "RFI");
   if (rfiAsNcrNote instanceof HTMLElement) {
     rfiAsNcrNote.hidden = !rfiAsNcr;
   }
+  if (modeSwitch instanceof HTMLElement) {
+    modeSwitch.hidden = !canToggleMode;
+  }
+  if (rfiModeBtn instanceof HTMLButtonElement) {
+    rfiModeBtn.disabled = !canToggleMode;
+    rfiModeBtn.classList.toggle("active", !rfiAsNcr);
+    rfiModeBtn.setAttribute("aria-pressed", !rfiAsNcr ? "true" : "false");
+  }
+  if (ncrModeBtn instanceof HTMLButtonElement) {
+    ncrModeBtn.disabled = !canToggleMode;
+    ncrModeBtn.classList.toggle("active", rfiAsNcr);
+    ncrModeBtn.setAttribute("aria-pressed", rfiAsNcr ? "true" : "false");
+  }
   if (createMode && defaultTabType === "RFI") {
     setValue(`ci-form-item-type-${key}`, rfiAsNcr ? "NCR" : "RFI");
   }
+  const itemType = upper(valueOf(`ci-form-item-type-${key}`) || defaultTabType);
+  const effectiveType = rfiAsNcr ? "NCR" : itemType;
   populateStatusOptions(moduleKey, tabKey, effectiveType);
   const card = getElement(`ci-form-wrap-${key}`)?.closest(".comm-items-card") as HTMLElement | null;
   if (!card) return;
   card.querySelectorAll<HTMLElement>("[data-ci-type]").forEach((el) => {
     const sectionType = upper(el.dataset.ciType);
-    if (rfiAsNcr && sectionType === "RFI") {
-      el.style.display = "block";
-      return;
-    }
     el.style.display = sectionType === effectiveType ? "block" : "none";
   });
   updateFormHeaderMeta(moduleKey, tabKey);
@@ -1374,9 +1784,9 @@ async function loadTab(moduleKey: string, tabKey: string, deps: CommItemsUiDeps,
 }
 function detailTabHtml(key: string): string {
   return `
-    <div class="edms-tabs" style="margin-top:12px;">
+    <div class="ci-detail-tabs edms-tabs">
       <button type="button" class="edms-tab-btn active" data-ci-action="detail-tab" data-ci-detail-tab="summary" data-ci-key="${key}">خلاصه</button>
-      <button type="button" class="edms-tab-btn" data-ci-action="detail-tab" data-ci-detail-tab="timeline" data-ci-key="${key}">تایم‌لاین</button>
+      <button type="button" class="edms-tab-btn" data-ci-action="detail-tab" data-ci-detail-tab="timeline" data-ci-key="${key}">گردش</button>
       <button type="button" class="edms-tab-btn" data-ci-action="detail-tab" data-ci-detail-tab="comments" data-ci-key="${key}">کامنت‌ها</button>
       <button type="button" class="edms-tab-btn" data-ci-action="detail-tab" data-ci-detail-tab="attachments" data-ci-key="${key}">پیوست‌ها</button>
       <button type="button" class="edms-tab-btn" data-ci-action="detail-tab" data-ci-detail-tab="relations" data-ci-key="${key}">روابط</button>
@@ -1389,52 +1799,241 @@ function detailTabHtml(key: string): string {
   `;
 }
 
+function formModeSwitchHtml(key: string): string {
+  return `
+    <div id="ci-drawer-mode-switch-${key}" class="ci-drawer-mode-switch" hidden>
+      <input id="ci-form-rfi-as-ncr-${key}" type="checkbox" hidden>
+      <button type="button" id="ci-form-mode-rfi-${key}" class="ci-rfi-mode-btn active" data-ci-action="set-rfi-mode" data-ci-key="${key}" aria-pressed="true">
+        <span>RFI</span>
+      </button>
+      <button type="button" id="ci-form-mode-ncr-${key}" class="ci-rfi-mode-btn" data-ci-action="set-ncr-mode" data-ci-key="${key}" aria-pressed="false">
+        <span>NCR</span>
+      </button>
+    </div>
+  `;
+}
+
+function detailValue(value: unknown): string {
+  return escHtml(textOrDash(value));
+}
+
+function detailMetaCard(label: string, value: unknown, tone = "neutral"): string {
+  return `
+    <div class="ci-detail-stat ci-detail-stat-${tone}">
+      <span class="ci-detail-stat-label">${stateBridge.esc(label)}</span>
+      <strong class="ci-detail-stat-value">${detailValue(value)}</strong>
+    </div>
+  `;
+}
+
+function detailInfoItem(label: string, value: unknown): string {
+  return `
+    <div class="ci-detail-info-item">
+      <span class="ci-detail-info-label">${stateBridge.esc(label)}</span>
+      <strong class="ci-detail-info-value">${detailValue(value)}</strong>
+    </div>
+  `;
+}
+
+function detailNarrativeSection(title: string, body: unknown, emphasis = false): string {
+  return `
+    <section class="ci-detail-section${emphasis ? " is-emphasis" : ""}">
+      <div class="ci-detail-section-head">
+        <h4>${stateBridge.esc(title)}</h4>
+      </div>
+      <div class="ci-detail-section-body">${detailValue(body)}</div>
+    </section>
+  `;
+}
+
+function buildSpecificDetailSections(item: Record<string, unknown>, itemType: string): string {
+  const rfi = asRecord(item.rfi);
+  const ncr = asRecord(item.ncr);
+  const tech = asRecord(item.tech);
+  if (itemType === "RFI") {
+    return [
+      detailNarrativeSection("شرح موضوع و سوال فنی", rfi.question_text || item.short_description, true),
+      detailNarrativeSection("پیشنهاد / راهکار درخواست‌کننده", rfi.proposed_solution),
+      detailNarrativeSection("پاسخ و نتیجه بررسی", rfi.answer_text),
+    ].join("");
+  }
+  if (itemType === "NCR") {
+    return [
+      detailNarrativeSection("شرح عدم انطباق", ncr.nonconformance_text || item.short_description, true),
+      detailNarrativeSection("اقدام فوری", ncr.containment_action),
+      detailNarrativeSection("روش اصلاح", ncr.rectification_method),
+      detailNarrativeSection("یادداشت تایید", ncr.verification_note),
+    ].join("");
+  }
+  return [
+    detailNarrativeSection("شرح / خلاصه", item.short_description || tech.review_note || item.title, true),
+    detailNarrativeSection("نتیجه بررسی", tech.review_result_code),
+    detailNarrativeSection("یادداشت بررسی", tech.review_note),
+  ].join("");
+}
+
 function renderSummaryTab(moduleKey: string, tabKey: string, item: Record<string, unknown>, canEdit: boolean): void {
   const key = keyOf(moduleKey, tabKey);
   const host = getElement(`ci-detail-summary-${key}`);
   if (!(host instanceof HTMLElement)) return;
   const transitions = workflowBridge.nextStatuses(item.item_type, item.status_code, transitionMap as any) || [];
-  const transitionOptions = transitions.map((r: Record<string, unknown>) => `<option value="${stateBridge.esc(r.to_status_code || "")}">${stateBridge.esc(r.to_status_code || "")}</option>`).join("");
-  const relationTypeOptions = asArray(catalogCache?.relation_types).map((x) => `<option value="${stateBridge.esc(x)}">${stateBridge.esc(x)}</option>`).join("");
+  const transitionOptions = transitions.length
+    ? transitions.map((r: Record<string, unknown>) => `<option value="${stateBridge.esc(r.to_status_code || "")}">${stateBridge.esc(r.to_status_code || "")}</option>`).join("")
+    : '<option value="">انتقالی در دسترس نیست</option>';
+  const relationTypeOptions = asArray(catalogCache?.relation_types).length
+    ? asArray(catalogCache?.relation_types).map((x) => `<option value="${stateBridge.esc(x)}">${stateBridge.esc(x)}</option>`).join("")
+    : '<option value="">رابطه‌ای تعریف نشده</option>';
   const itemType = upper(item.item_type || itemTypeForTab(moduleKey, tabKey));
   selectedItemTypeByKey[key] = itemType;
+  const rfi = asRecord(item.rfi);
+  const ncr = asRecord(item.ncr);
+  const tech = asRecord(item.tech);
+  const projectName = findProjectName(catalogCache || {}, item.project_code);
+  const disciplineName = findDisciplineLabel(catalogCache || {}, item.discipline_code);
+  const ownerOrgName = textOrDash(item.sender_org_name || findOrganizationName(catalogCache || {}, item.organization_id));
+  const recipientOrgName = textOrDash(item.recipient_org_name);
+  const createdAt = formatShamsiDate(item.created_at);
+  const dueDate = formatShamsiDate(item.response_due_date);
+  const answeredAt = formatShamsiDate(rfi.answered_at || ncr.verified_at || tech.meeting_date);
+  const aging = Number(item.aging_days || 0);
+  const title = textOrDash(item.title);
+  const subtitle = textOrDash(item.short_description || rfi.question_text || ncr.nonconformance_text || tech.review_note);
+  const references = [
+    text(rfi.drawing_refs && asArray(rfi.drawing_refs).map((row) => text(row)).filter(Boolean).join("، ")),
+    text(rfi.spec_refs && asArray(rfi.spec_refs).map((row) => text(row)).filter(Boolean).join("، ")),
+    text(item.contract_clause_ref),
+    text(item.spec_clause_ref),
+    text(item.reference_no),
+  ].filter(Boolean).join(" | ");
 
   const uploads = ["REFERENCE", "RESPONSE", "GENERAL"]
     .map((scope) => {
       const slot = attachmentSlotFor(itemType, scope);
       return `
-        <div class="archive-card" style="padding:8px;">
-          <div style="font-weight:600;">${scope}</div>
-          <div style="font-size:0.8rem;color:#64748b;">slot: ${stateBridge.esc(slot)}</div>
-          <input id="ci-detail-file-${scope}-${key}" type="file" class="module-crud-input" style="margin-top:6px;" ${canEdit ? "" : "disabled"}>
-          <input id="ci-detail-file-note-${scope}-${key}" class="module-crud-input" placeholder="note" style="margin-top:6px;" ${canEdit ? "" : "disabled"}>
-          ${canEdit ? `<button type="button" class="btn btn-secondary" data-ci-action="upload-attachment" data-ci-scope="${scope}" style="margin-top:6px;">Upload</button>` : ""}
+        <div class="ci-detail-inline-card">
+          <div class="ci-detail-inline-head">
+            <strong>${stateBridge.esc(scope === "REFERENCE" ? "پیوست ارجاع" : scope === "RESPONSE" ? "پیوست پاسخ" : "پیوست عمومی")}</strong>
+            <span>${stateBridge.esc(slot)}</span>
+          </div>
+          <input id="ci-detail-file-${scope}-${key}" type="file" class="module-crud-input" ${canEdit ? "" : "disabled"}>
+          <input id="ci-detail-file-note-${scope}-${key}" class="module-crud-input" placeholder="یادداشت فایل" ${canEdit ? "" : "disabled"}>
+          ${canEdit ? `<button type="button" class="btn btn-secondary" data-ci-action="upload-attachment" data-ci-scope="${scope}">آپلود</button>` : ""}
         </div>
       `;
     })
     .join("");
 
   host.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div class="archive-card" style="padding:10px;">
-        <div><strong>${stateBridge.esc(item.item_no || "-")}</strong></div>
-        <div style="margin-top:6px;">${stateBridge.esc(item.title || "-")}</div>
-        <div style="font-size:0.85rem;color:#64748b;">${stateBridge.esc(item.item_type || "-")} · ${stateBridge.esc(item.status_code || "-")}</div>
-        ${itemType === "RFI" ? '<button type="button" class="btn btn-secondary" data-ci-action="print-rfi-form" style="margin-top:8px;">پرینت فرم RFI</button>' : ""}
-      </div>
-      <div class="archive-card" style="padding:10px;">
-        <div style="font-weight:600;">Transition</div>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-          <select id="ci-detail-transition-status-${key}" class="module-crud-select">${transitionOptions}</select>
-          <input id="ci-detail-transition-note-${key}" class="module-crud-input" placeholder="note">
-          ${canEdit ? '<button type="button" class="btn btn-primary" data-ci-action="transition-item">Apply</button>' : ""}
+    <div class="ci-detail-shell">
+      <section class="ci-detail-hero">
+        <div class="ci-detail-hero-main">
+          <div class="ci-detail-kicker">${stateBridge.esc(itemType)} / ${stateBridge.esc(moduleKey)} / ${stateBridge.esc(tabKey)}</div>
+          <div class="ci-detail-hero-head">
+            <div>
+              <h3>${stateBridge.esc(textOrDash(item.item_no))}</h3>
+              <p>${stateBridge.esc(title)}</p>
+            </div>
+            <div class="ci-detail-badges">
+              <span class="module-crud-status is-${stateBridge.statusClass(item.item_type)}">${stateBridge.esc(itemType)}</span>
+              <span class="module-crud-status is-${stateBridge.statusClass(item.status_code)}">${stateBridge.esc(textOrDash(item.status_code))}</span>
+              <span class="module-crud-priority is-${normalize(item.priority || "normal")}">${stateBridge.esc(textOrDash(item.priority))}</span>
+            </div>
+          </div>
+          <div class="ci-detail-subtitle">${stateBridge.esc(subtitle)}</div>
+          <div class="ci-detail-stats">
+            ${detailMetaCard("پروژه", projectName, "info")}
+            ${detailMetaCard("رشته", disciplineName)}
+            ${detailMetaCard("سررسید", dueDate, item.is_overdue ? "warn" : "neutral")}
+            ${detailMetaCard("سن آیتم", aging > 0 ? `${aging} روز` : "-", aging > 0 ? "warn" : "neutral")}
+          </div>
+        </div>
+        <div class="ci-detail-hero-side">
+          <div class="ci-detail-side-block">
+            <div class="ci-detail-side-label">صادرکننده</div>
+            <div class="ci-detail-side-value">${stateBridge.esc(textOrDash(item.created_by_name))}</div>
+          </div>
+          <div class="ci-detail-side-block">
+            <div class="ci-detail-side-label">سازمان / واحد</div>
+            <div class="ci-detail-side-value">${stateBridge.esc(ownerOrgName)}</div>
+          </div>
+          <div class="ci-detail-side-block">
+            <div class="ci-detail-side-label">مخاطب</div>
+            <div class="ci-detail-side-value">${stateBridge.esc(recipientOrgName)}</div>
+          </div>
+          <div class="ci-detail-side-block">
+            <div class="ci-detail-side-label">تاریخ ثبت</div>
+            <div class="ci-detail-side-value">${stateBridge.esc(createdAt)}</div>
+          </div>
+          ${itemType === "RFI" ? '<button type="button" class="btn btn-secondary ci-detail-print-btn" data-ci-action="print-rfi-form">پرینت فرم RFI</button>' : ""}
+        </div>
+      </section>
+
+      <div class="ci-detail-grid">
+        <div class="ci-detail-main">
+          <section class="ci-detail-section">
+            <div class="ci-detail-section-head">
+              <h4>اطلاعات پایه</h4>
+            </div>
+            <div class="ci-detail-info-grid">
+              ${detailInfoItem("عنوان", title)}
+              ${detailInfoItem("شرح کوتاه", item.short_description)}
+              ${detailInfoItem("شماره مرجع", item.reference_no || item.related_item_no)}
+              ${detailInfoItem("Clause قرارداد", item.contract_clause_ref)}
+              ${detailInfoItem("Clause Spec", item.spec_clause_ref)}
+              ${detailInfoItem("WBS / Activity", [text(item.wbs_code), text(item.activity_code)].filter(Boolean).join(" / "))}
+              ${detailInfoItem("تاریخ پاسخ / تایید", answeredAt)}
+              ${detailInfoItem("ارجاعات", references || "-")}
+            </div>
+          </section>
+
+          <div class="ci-detail-narratives">
+            ${buildSpecificDetailSections(item, itemType)}
+          </div>
+        </div>
+
+        <aside class="ci-detail-sidebar">
+          <section class="ci-detail-section ci-detail-action-card">
+            <div class="ci-detail-section-head">
+              <h4>تغییر وضعیت</h4>
+            </div>
+            <div class="ci-detail-action-stack">
+              <select id="ci-detail-transition-status-${key}" class="module-crud-select">${transitionOptions}</select>
+              <input id="ci-detail-transition-note-${key}" class="module-crud-input" placeholder="یادداشت تغییر وضعیت">
+              ${canEdit ? '<button type="button" class="btn btn-primary" data-ci-action="transition-item">اعمال وضعیت</button>' : ""}
+            </div>
+          </section>
+
+          <section class="ci-detail-section ci-detail-action-card">
+            <div class="ci-detail-section-head">
+              <h4>ثبت کامنت</h4>
+            </div>
+            <div class="ci-detail-action-stack">
+              <textarea id="ci-detail-comment-${key}" class="module-crud-textarea" placeholder="یادداشت یا توضیح جدید"></textarea>
+              ${canEdit ? '<button type="button" class="btn btn-secondary" data-ci-action="add-comment">افزودن کامنت</button>' : ""}
+            </div>
+          </section>
+
+          <section class="ci-detail-section ci-detail-action-card">
+            <div class="ci-detail-section-head">
+              <h4>پیوست سریع</h4>
+            </div>
+            <div class="ci-detail-upload-stack">
+              ${uploads}
+            </div>
+          </section>
+
+          <section class="ci-detail-section ci-detail-action-card">
+            <div class="ci-detail-section-head">
+              <h4>ایجاد رابطه</h4>
+            </div>
+            <div class="ci-detail-action-stack">
+              <input id="ci-detail-rel-to-${key}" class="module-crud-input" type="number" min="1" placeholder="شناسه آیتم مقصد">
+              <select id="ci-detail-rel-type-${key}" class="module-crud-select">${relationTypeOptions}</select>
+              ${canEdit ? '<button type="button" class="btn btn-secondary" data-ci-action="add-relation">افزودن رابطه</button>' : ""}
+            </div>
+          </section>
         </div>
       </div>
-    </div>
-    <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
-      <div><h5 style="margin:0 0 6px 0;">Comments</h5><textarea id="ci-detail-comment-${key}" class="module-crud-textarea" placeholder="Add comment"></textarea>${canEdit ? '<button type="button" class="btn btn-secondary" data-ci-action="add-comment" style="margin-top:6px;">Add</button>' : ""}</div>
-      <div><h5 style="margin:0 0 6px 0;">Attachments</h5>${uploads}</div>
-      <div><h5 style="margin:0 0 6px 0;">Relations</h5><input id="ci-detail-rel-to-${key}" class="module-crud-input" type="number" min="1" placeholder="to_item_id"><select id="ci-detail-rel-type-${key}" class="module-crud-select" style="margin-top:6px;">${relationTypeOptions}</select>${canEdit ? '<button type="button" class="btn btn-secondary" data-ci-action="add-relation" style="margin-top:6px;">Add</button>' : ""}</div>
     </div>
   `;
 }
@@ -1460,15 +2059,30 @@ async function openDetail(moduleKey: string, tabKey: string, itemId: number, dep
   const body = await dataBridge.get(itemId, { fetch: deps.fetch });
   const item = asRecord(body.data);
   const id = Number(item.id || itemId || 0);
+  const itemType = upper(item.item_type || itemTypeForTab(moduleKey, tabKey));
   selectedItemByKey[key] = id;
-  selectedItemTypeByKey[key] = upper(item.item_type || itemTypeForTab(moduleKey, tabKey));
+  selectedItemTypeByKey[key] = itemType;
   showDetailMode(moduleKey, tabKey);
-  setDrawerTitle(moduleKey, tabKey, `Item ${String(item.item_no || id)}`);
+  setDrawerTitle(moduleKey, tabKey, `جزئیات ${itemType} ${String(item.item_no || id)}`);
   openDrawer(moduleKey, tabKey);
   markDrawerDirty(moduleKey, tabKey, false);
   wrap.innerHTML = detailTabHtml(key);
   renderSummaryTab(moduleKey, tabKey, item, deps.canEdit());
   await loadDetailData(moduleKey, tabKey, id, deps);
+}
+
+async function openQuickTransition(moduleKey: string, tabKey: string, itemId: number, deps: CommItemsUiDeps): Promise<void> {
+  await openDetail(moduleKey, tabKey, itemId, deps);
+  const key = keyOf(moduleKey, tabKey);
+  const statusSelect = asSelect(getElement(`ci-detail-transition-status-${key}`));
+  if (statusSelect) {
+    statusSelect.focus();
+    try {
+      statusSelect.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch {
+      // no-op
+    }
+  }
 }
 
 function switchDetailTab(key: string, tab: string): void {
@@ -1745,7 +2359,10 @@ function bindActions(depsResolver: () => CommItemsUiDeps): void {
   document.addEventListener("click", async (event) => {
     const target = event.target as HTMLElement | null;
     const actionEl = target?.closest("[data-ci-action]") as HTMLElement | null;
-    if (!actionEl) return;
+    if (!actionEl) {
+      if (!target?.closest?.("[data-ci-row-menu]")) closeRowMenus();
+      return;
+    }
     const action = normalize(actionEl.dataset.ciAction);
     const deps = depsResolver();
     if (!deps) return;
@@ -1760,6 +2377,13 @@ function bindActions(depsResolver: () => CommItemsUiDeps): void {
     const context = contextFromAction(actionEl);
     if (!context) return;
 
+    if (action === "toggle-row-menu") {
+      toggleRowMenu(actionEl);
+      return;
+    }
+
+    closeRowMenus();
+
     if (action === "drawer-close") {
       closeDrawer(context.moduleKey, context.tabKey);
       return;
@@ -1767,6 +2391,21 @@ function bindActions(depsResolver: () => CommItemsUiDeps): void {
     if (action === "filter-type") {
       selectedTypeFilterByKey[context.key] = upper(actionEl.dataset.ciTypeFilter || "");
       renderBoardRows(context.moduleKey, context.tabKey, deps);
+      return;
+    }
+    if (action === "set-rfi-mode" || action === "set-ncr-mode") {
+      const toggle = asInput(getElement(`ci-form-rfi-as-ncr-${context.key}`));
+      if (toggle) toggle.checked = action === "set-ncr-mode";
+      applyTypeVisibility(context.moduleKey, context.tabKey);
+      markDrawerDirty(context.moduleKey, context.tabKey, true);
+      return;
+    }
+    if (action === "revert-rfi-mode") {
+      const toggle = asInput(getElement(`ci-form-rfi-as-ncr-${context.key}`));
+      if (toggle) toggle.checked = false;
+      applyTypeVisibility(context.moduleKey, context.tabKey);
+      markDrawerDirty(context.moduleKey, context.tabKey, true);
+      deps.showToast("فرم به حالت RFI برگشت.", "success");
       return;
     }
     if (action === "toggle-section") {
@@ -1781,6 +2420,12 @@ function bindActions(depsResolver: () => CommItemsUiDeps): void {
     if (action === "save-form") return void (await saveForm(context.moduleKey, context.tabKey, deps));
     if (action === "open-edit") { const id = Number(actionEl.dataset.ciId || 0); if (id > 0) await openEdit(context.moduleKey, context.tabKey, id, deps); return; }
     if (action === "open-detail") { const id = Number(actionEl.dataset.ciId || 0); if (id > 0) await openDetail(context.moduleKey, context.tabKey, id, deps); return; }
+    if (action === "quick-transition") { const id = Number(actionEl.dataset.ciId || 0); if (id > 0) await openQuickTransition(context.moduleKey, context.tabKey, id, deps); return; }
+    if (action === "copy-item-no") {
+      const ok = await copyTextToClipboard(String(actionEl.dataset.ciItemNo || ""));
+      deps.showToast(ok ? "شماره آیتم کپی شد." : "کپی شماره آیتم انجام نشد.", ok ? "success" : "error");
+      return;
+    }
     if (action === "print-rfi-form") return void (await printRfiForm(context.moduleKey, context.tabKey, deps, Number(actionEl.dataset.ciId || 0)));
     if (action === "transition-item") return void (await doTransition(context.moduleKey, context.tabKey, deps));
     if (action === "add-comment") return void (await addComment(context.moduleKey, context.tabKey, deps));

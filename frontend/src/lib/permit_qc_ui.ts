@@ -61,6 +61,24 @@ function getElement(id: string): HTMLElement | null {
   }
 }
 
+function closePermitRowMenus(exceptMenu: HTMLElement | null = null): void {
+  document.querySelectorAll<HTMLElement>(".archive-row-menu.is-open[data-pqc-row-menu]").forEach((menu) => {
+    if (exceptMenu && menu === exceptMenu) return;
+    menu.classList.remove("is-open");
+    const trigger = menu.querySelector<HTMLElement>("[data-pqc-action='toggle-row-menu']");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  });
+}
+
+function togglePermitRowMenu(triggerEl: HTMLElement): void {
+  const menu = triggerEl.closest<HTMLElement>("[data-pqc-row-menu]");
+  if (!(menu instanceof HTMLElement)) return;
+  const willOpen = !menu.classList.contains("is-open");
+  closePermitRowMenus(menu);
+  menu.classList.toggle("is-open", willOpen);
+  triggerEl.setAttribute("aria-expanded", willOpen ? "true" : "false");
+}
+
 function inputValue(id: string): string {
   const el = getElement(id);
   if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
@@ -108,26 +126,26 @@ function renderModuleShell(moduleKey: string): void {
         <div class="module-panel-header">
           <h3 class="archive-title">
             <span class="material-icons-round">verified</span>
-            Permit + QC
+            پرمیت + کنترل کیفیت
           </h3>
-          <p class="archive-subtitle">Create, submit and review permit records with station/check snapshots.</p>
+          <p class="archive-subtitle">ثبت، ارسال و بررسی پرمیت‌ها به‌همراه ایستگاه‌ها و آیتم‌های کنترلی.</p>
         </div>
 
         <div class="module-crud-toolbar">
           <div class="module-crud-toolbar-left">
             <button type="button" class="btn btn-primary" data-pqc-action="open-create" data-pqc-module="${key}">
-              <span class="material-icons-round">add</span>New Permit
+              <span class="material-icons-round">add</span>پرمیت جدید
             </button>
-            <button type="button" class="btn-archive-icon" data-pqc-action="refresh" data-pqc-module="${key}" title="Refresh">
+            <button type="button" class="btn-archive-icon" data-pqc-action="refresh" data-pqc-module="${key}" title="به‌روزرسانی">
               <span class="material-icons-round">refresh</span>
             </button>
-            <span id="pqc-loading-${key}" class="permit-qc-loading" style="display:none;">Loading...</span>
+            <span id="pqc-loading-${key}" class="permit-qc-loading" style="display:none;">در حال بارگذاری...</span>
           </div>
           <div class="module-crud-toolbar-right">
             <select id="pqc-filter-status-${key}" class="module-crud-select"></select>
-            <input id="pqc-filter-project-${key}" class="module-crud-input" type="text" placeholder="Project code">
-            <input id="pqc-filter-discipline-${key}" class="module-crud-input" type="text" placeholder="Discipline code">
-            <input id="pqc-filter-permit-${key}" class="module-crud-input" type="text" placeholder="Permit no">
+            <input id="pqc-filter-project-${key}" class="module-crud-input" type="text" placeholder="کد پروژه">
+            <input id="pqc-filter-discipline-${key}" class="module-crud-input" type="text" placeholder="کد دیسیپلین">
+            <input id="pqc-filter-permit-${key}" class="module-crud-input" type="text" placeholder="شماره پرمیت">
           </div>
         </div>
 
@@ -136,15 +154,15 @@ function renderModuleShell(moduleKey: string): void {
             <thead>
               <tr>
                 <th style="width:58px;">#</th>
-                <th style="width:180px;">Permit No</th>
-                <th>Title</th>
-                <th style="width:120px;">Project</th>
-                <th style="width:120px;">Discipline</th>
-                <th style="width:140px;">Status</th>
-                <th style="width:130px;">Date</th>
-                <th style="width:120px;">Progress</th>
-                <th style="width:160px;">Updated</th>
-                <th style="width:260px;">Actions</th>
+                <th style="width:180px;">شماره پرمیت</th>
+                <th>عنوان</th>
+                <th style="width:120px;">پروژه</th>
+                <th style="width:120px;">دیسیپلین</th>
+                <th style="width:140px;">وضعیت</th>
+                <th style="width:130px;">تاریخ</th>
+                <th style="width:120px;">پیشرفت</th>
+                <th style="width:160px;">آخرین بروزرسانی</th>
+                <th style="width:260px;">عملیات</th>
               </tr>
             </thead>
             <tbody id="pqc-list-body-${key}"></tbody>
@@ -153,42 +171,42 @@ function renderModuleShell(moduleKey: string): void {
 
         <div id="pqc-drawer-${key}" class="permit-qc-drawer" hidden>
           <div class="permit-qc-drawer-header">
-            <strong id="pqc-drawer-title-${key}">Permit</strong>
+            <strong id="pqc-drawer-title-${key}">پرمیت</strong>
             <div class="permit-qc-drawer-actions">
-              <button type="button" class="btn btn-secondary" data-pqc-action="close-drawer" data-pqc-module="${key}">Close</button>
-              <button type="button" class="btn btn-primary" data-pqc-action="save-form" data-pqc-module="${key}">Save</button>
+              <button type="button" class="btn btn-secondary" data-pqc-action="close-drawer" data-pqc-module="${key}">بستن</button>
+              <button type="button" class="btn btn-primary" data-pqc-action="save-form" data-pqc-module="${key}">ذخیره</button>
             </div>
           </div>
 
           <input id="pqc-form-id-${key}" type="hidden" value="">
           <div class="permit-qc-form-grid">
-            <input id="pqc-form-no-${key}" class="module-crud-input" placeholder="Permit No">
-            <input id="pqc-form-title-${key}" class="module-crud-input" placeholder="Title">
-            <input id="pqc-form-project-${key}" class="module-crud-input" placeholder="Project code">
-            <input id="pqc-form-discipline-${key}" class="module-crud-input" placeholder="Discipline code">
+            <input id="pqc-form-no-${key}" class="module-crud-input" placeholder="شماره پرمیت">
+            <input id="pqc-form-title-${key}" class="module-crud-input" placeholder="عنوان">
+            <input id="pqc-form-project-${key}" class="module-crud-input" placeholder="کد پروژه">
+            <input id="pqc-form-discipline-${key}" class="module-crud-input" placeholder="کد دیسیپلین">
             <input id="pqc-form-date-${key}" class="module-crud-input" type="date">
-            <input id="pqc-form-template-id-${key}" class="module-crud-input" type="number" min="1" placeholder="Template ID (optional)">
-            <input id="pqc-form-consultant-org-${key}" class="module-crud-input" type="number" min="1" placeholder="Consultant Org ID (optional)">
-            <input id="pqc-form-wall-${key}" class="module-crud-input" placeholder="Wall name">
-            <input id="pqc-form-floor-${key}" class="module-crud-input" placeholder="Floor label">
-            <input id="pqc-form-elev-start-${key}" class="module-crud-input" placeholder="Elevation start">
-            <input id="pqc-form-elev-end-${key}" class="module-crud-input" placeholder="Elevation end">
-            <textarea id="pqc-form-description-${key}" class="module-crud-textarea" placeholder="Description"></textarea>
+            <input id="pqc-form-template-id-${key}" class="module-crud-input" type="number" min="1" placeholder="شناسه الگو (اختیاری)">
+            <input id="pqc-form-consultant-org-${key}" class="module-crud-input" type="number" min="1" placeholder="شناسه سازمان مشاور (اختیاری)">
+            <input id="pqc-form-wall-${key}" class="module-crud-input" placeholder="نام دیوار">
+            <input id="pqc-form-floor-${key}" class="module-crud-input" placeholder="طبقه">
+            <input id="pqc-form-elev-start-${key}" class="module-crud-input" placeholder="تراز شروع">
+            <input id="pqc-form-elev-end-${key}" class="module-crud-input" placeholder="تراز پایان">
+            <textarea id="pqc-form-description-${key}" class="module-crud-textarea" placeholder="شرح"></textarea>
           </div>
 
           <div class="permit-qc-detail-grid">
             <div>
-              <h4>Stations</h4>
+              <h4>ایستگاه‌های کنترل</h4>
               <div id="pqc-stations-${key}" class="permit-qc-stations"></div>
             </div>
             <div>
-              <h4>Attachments</h4>
+              <h4>پیوست‌ها</h4>
               <div class="permit-qc-attachment-upload">
                 <input id="pqc-attachment-file-${key}" type="file">
-                <button type="button" class="btn btn-secondary" data-pqc-action="upload-attachment" data-pqc-module="${key}">Upload</button>
+                <button type="button" class="btn btn-secondary" data-pqc-action="upload-attachment" data-pqc-module="${key}">بارگذاری</button>
               </div>
               <div id="pqc-attachments-${key}" class="permit-qc-attachments"></div>
-              <h4>Timeline</h4>
+              <h4>گردش وضعیت</h4>
               <div id="pqc-timeline-${key}" class="permit-qc-timeline"></div>
             </div>
           </div>
@@ -238,7 +256,7 @@ function renderAttachments(moduleKey: string, rows: Record<string, unknown>[]): 
   const host = getElement(`pqc-attachments-${keyOf(moduleKey)}`);
   if (!(host instanceof HTMLElement)) return;
   if (!rows.length) {
-    host.innerHTML = `<div class="permit-qc-empty">No attachments.</div>`;
+    host.innerHTML = `<div class="permit-qc-empty">پیوستی ثبت نشده است.</div>`;
     return;
   }
   host.innerHTML = rows
@@ -248,7 +266,7 @@ function renderAttachments(moduleKey: string, rows: Record<string, unknown>[]): 
       return `
         <div class="permit-qc-attachment-row">
           <a href="/api/v1/permit-qc/attachments/${id}/download?module_key=${module}" target="_blank" rel="noopener">${stateBridge.esc(row.file_name || "-")}</a>
-          <button type="button" class="btn-archive-icon" data-pqc-action="delete-attachment" data-pqc-module="${module}" data-pqc-attachment-id="${id}">Delete</button>
+          <button type="button" class="btn-archive-icon" data-pqc-action="delete-attachment" data-pqc-module="${module}" data-pqc-attachment-id="${id}">حذف</button>
         </div>
       `;
     })
@@ -383,62 +401,62 @@ function renderTemplateSettingsRoot(): void {
     <div class="permit-qc-template-shell">
       <div class="module-crud-toolbar">
         <div class="module-crud-toolbar-left">
-          <button type="button" class="btn btn-primary" data-pqc-template-action="save-template">Save Template</button>
-          <button type="button" class="btn btn-secondary" data-pqc-template-action="activate-template">Activate</button>
-          <button type="button" class="btn-archive-icon" data-pqc-template-action="refresh" title="Refresh">
+          <button type="button" class="btn btn-primary" data-pqc-template-action="save-template">ذخیره الگو</button>
+          <button type="button" class="btn btn-secondary" data-pqc-template-action="activate-template">اعمال وضعیت</button>
+          <button type="button" class="btn-archive-icon" data-pqc-template-action="refresh" title="به‌روزرسانی">
             <span class="material-icons-round">refresh</span>
           </button>
         </div>
         <div class="module-crud-toolbar-right">
-          <input id="pqc-template-id" class="module-crud-input" type="number" min="1" placeholder="Template ID">
-          <input id="pqc-template-code" class="module-crud-input" placeholder="Code">
-          <input id="pqc-template-name" class="module-crud-input" placeholder="Name">
-          <input id="pqc-template-description" class="module-crud-input" placeholder="Description (optional)">
-          <input id="pqc-template-project" class="module-crud-input" placeholder="Project code (optional)">
-          <input id="pqc-template-discipline" class="module-crud-input" placeholder="Discipline code (optional)">
-          <label class="permit-qc-inline-check"><input id="pqc-template-active" type="checkbox" checked> Active</label>
-          <label class="permit-qc-inline-check"><input id="pqc-template-default" type="checkbox"> Default</label>
+          <input id="pqc-template-id" class="module-crud-input" type="number" min="1" placeholder="شناسه الگو">
+          <input id="pqc-template-code" class="module-crud-input" placeholder="کد الگو">
+          <input id="pqc-template-name" class="module-crud-input" placeholder="نام الگو">
+          <input id="pqc-template-description" class="module-crud-input" placeholder="شرح (اختیاری)">
+          <input id="pqc-template-project" class="module-crud-input" placeholder="کد پروژه (اختیاری)">
+          <input id="pqc-template-discipline" class="module-crud-input" placeholder="کد دیسیپلین (اختیاری)">
+          <label class="permit-qc-inline-check"><input id="pqc-template-active" type="checkbox" checked> فعال</label>
+          <label class="permit-qc-inline-check"><input id="pqc-template-default" type="checkbox"> پیش‌فرض</label>
         </div>
       </div>
 
       <div class="permit-qc-template-editor-grid">
         <div class="permit-qc-template-editor-card">
-          <h4>Template Station</h4>
+          <h4>ایستگاه الگو</h4>
           <div class="permit-qc-template-form-grid">
-            <input id="pqc-station-id" class="module-crud-input" type="number" min="1" placeholder="Station ID (edit)">
-            <input id="pqc-station-template-id" class="module-crud-input" type="number" min="1" placeholder="Template ID">
-            <input id="pqc-station-key" class="module-crud-input" placeholder="Station key">
-            <input id="pqc-station-label" class="module-crud-input" placeholder="Station label">
-            <input id="pqc-station-org-id" class="module-crud-input" type="number" min="1" placeholder="Organization ID (optional)">
-            <input id="pqc-station-sort" class="module-crud-input" type="number" value="0" placeholder="Sort order">
-            <label class="permit-qc-inline-check"><input id="pqc-station-required" type="checkbox" checked> Required</label>
-            <label class="permit-qc-inline-check"><input id="pqc-station-active" type="checkbox" checked> Active</label>
+            <input id="pqc-station-id" class="module-crud-input" type="number" min="1" placeholder="شناسه ایستگاه (برای ویرایش)">
+            <input id="pqc-station-template-id" class="module-crud-input" type="number" min="1" placeholder="شناسه الگو">
+            <input id="pqc-station-key" class="module-crud-input" placeholder="کلید ایستگاه">
+            <input id="pqc-station-label" class="module-crud-input" placeholder="عنوان ایستگاه">
+            <input id="pqc-station-org-id" class="module-crud-input" type="number" min="1" placeholder="شناسه سازمان (اختیاری)">
+            <input id="pqc-station-sort" class="module-crud-input" type="number" value="0" placeholder="ترتیب نمایش">
+            <label class="permit-qc-inline-check"><input id="pqc-station-required" type="checkbox" checked> اجباری</label>
+            <label class="permit-qc-inline-check"><input id="pqc-station-active" type="checkbox" checked> فعال</label>
           </div>
           <div class="module-crud-form-actions">
-            <button type="button" class="btn btn-secondary" data-pqc-template-action="save-station">Save Station</button>
+            <button type="button" class="btn btn-secondary" data-pqc-template-action="save-station">ذخیره ایستگاه</button>
           </div>
         </div>
 
         <div class="permit-qc-template-editor-card">
-          <h4>Template Check Item</h4>
+          <h4>آیتم کنترل الگو</h4>
           <div class="permit-qc-template-form-grid">
-            <input id="pqc-check-id" class="module-crud-input" type="number" min="1" placeholder="Check ID (edit)">
-            <input id="pqc-check-template-id" class="module-crud-input" type="number" min="1" placeholder="Template ID">
-            <input id="pqc-check-station-id" class="module-crud-input" type="number" min="1" placeholder="Station ID">
-            <input id="pqc-check-code" class="module-crud-input" placeholder="Check code">
-            <input id="pqc-check-label" class="module-crud-input" placeholder="Check label">
+            <input id="pqc-check-id" class="module-crud-input" type="number" min="1" placeholder="شناسه کنترل (برای ویرایش)">
+            <input id="pqc-check-template-id" class="module-crud-input" type="number" min="1" placeholder="شناسه الگو">
+            <input id="pqc-check-station-id" class="module-crud-input" type="number" min="1" placeholder="شناسه ایستگاه">
+            <input id="pqc-check-code" class="module-crud-input" placeholder="کد کنترل">
+            <input id="pqc-check-label" class="module-crud-input" placeholder="عنوان کنترل">
             <select id="pqc-check-type" class="module-crud-select">
-              <option value="BOOLEAN">BOOLEAN</option>
-              <option value="TEXT">TEXT</option>
-              <option value="NUMBER">NUMBER</option>
-              <option value="DATE">DATE</option>
+              <option value="BOOLEAN">بولی</option>
+              <option value="TEXT">متنی</option>
+              <option value="NUMBER">عددی</option>
+              <option value="DATE">تاریخ</option>
             </select>
-            <input id="pqc-check-sort" class="module-crud-input" type="number" value="0" placeholder="Sort order">
-            <label class="permit-qc-inline-check"><input id="pqc-check-required" type="checkbox" checked> Required</label>
-            <label class="permit-qc-inline-check"><input id="pqc-check-active" type="checkbox" checked> Active</label>
+            <input id="pqc-check-sort" class="module-crud-input" type="number" value="0" placeholder="ترتیب نمایش">
+            <label class="permit-qc-inline-check"><input id="pqc-check-required" type="checkbox" checked> اجباری</label>
+            <label class="permit-qc-inline-check"><input id="pqc-check-active" type="checkbox" checked> فعال</label>
           </div>
           <div class="module-crud-form-actions">
-            <button type="button" class="btn btn-secondary" data-pqc-template-action="save-check">Save Check</button>
+            <button type="button" class="btn btn-secondary" data-pqc-template-action="save-check">ذخیره کنترل</button>
           </div>
         </div>
       </div>
@@ -576,7 +594,7 @@ function bindTemplateSettingsActions(): void {
 
     if (action === "activate-template") {
       const idValue = Number(inputValue("pqc-template-id") || TEMPLATE_STATE.selectedTemplateId || 0);
-      if (idValue <= 0) throw new Error("Template ID is required.");
+      if (idValue <= 0) throw new Error("شناسه الگو الزامی است.");
       await dataBridge.activateTemplate(
         idValue,
         {
@@ -596,7 +614,7 @@ function bindTemplateSettingsActions(): void {
           TEMPLATE_STATE.selectedTemplateId ||
           0
       );
-      if (templateId <= 0) throw new Error("Template ID is required for station.");
+      if (templateId <= 0) throw new Error("برای ایستگاه، شناسه الگو الزامی است.");
       const payload: Record<string, unknown> = {
         station_key: inputValue("pqc-station-key"),
         station_label: inputValue("pqc-station-label"),
@@ -620,9 +638,9 @@ function bindTemplateSettingsActions(): void {
           TEMPLATE_STATE.selectedTemplateId ||
           0
       );
-      if (templateId <= 0) throw new Error("Template ID is required for check.");
+      if (templateId <= 0) throw new Error("برای کنترل، شناسه الگو الزامی است.");
       const stationId = Number(inputValue("pqc-check-station-id") || TEMPLATE_STATE.selectedStationId || 0);
-      if (stationId <= 0) throw new Error("Station ID is required for check.");
+      if (stationId <= 0) throw new Error("برای کنترل، شناسه ایستگاه الزامی است.");
       const payload: Record<string, unknown> = {
         station_id: stationId,
         check_code: inputValue("pqc-check-code"),
@@ -664,7 +682,10 @@ function bindActions(): void {
 
   document.addEventListener("click", async (event) => {
     const actionEl = event?.target?.closest?.("[data-pqc-action]");
-    if (!actionEl) return;
+    if (!actionEl) {
+      closePermitRowMenus();
+      return;
+    }
     event.preventDefault();
     const moduleKey = moduleFromActionElement(actionEl);
     if (!moduleKey) return;
@@ -677,10 +698,17 @@ function bindActions(): void {
       cache: (window as any).CACHE || {},
     };
     const action = normalize(actionEl.getAttribute("data-pqc-action"));
+    if (action !== "toggle-row-menu") {
+      closePermitRowMenus();
+    }
     const state = ensureState(moduleKey);
     const permitId = Number(actionEl.getAttribute("data-pqc-id") || 0);
 
     try {
+      if (action === "toggle-row-menu") {
+        togglePermitRowMenu(actionEl as HTMLElement);
+        return;
+      }
       if (action === "refresh") {
         await loadList(moduleKey, deps);
         return;
@@ -735,7 +763,7 @@ function bindActions(): void {
       }
       if (action === "cancel") {
         if (permitId <= 0) return;
-        const note = window.prompt("Cancel note (optional)", "") || "";
+        const note = window.prompt("یادداشت لغو (اختیاری)", "") || "";
         await dataBridge.cancel(permitId, note, deps);
         await loadList(moduleKey, deps);
         return;
@@ -745,7 +773,7 @@ function bindActions(): void {
         const reviewAction = normalize(actionEl.getAttribute("data-pqc-review-action"));
         const currentPermit = Number(state.selectedPermitId || 0);
         if (currentPermit <= 0 || stationId <= 0) return;
-        const note = window.prompt("Review note", reviewAction === "approve" ? "" : "Required") || "";
+        const note = window.prompt("یادداشت بررسی", reviewAction === "approve" ? "" : "الزامی") || "";
         const payload = formBridge.buildReviewPayload({
           station_id: stationId,
           action: reviewAction,
@@ -778,7 +806,7 @@ function bindActions(): void {
         await openDetail(moduleKey, currentPermit, deps);
       }
     } catch (error) {
-      deps.showToast(String((error as any)?.message || "Permit action failed"), "error");
+      deps.showToast(String((error as any)?.message || "عملیات پرمیت ناموفق بود."), "error");
     }
   });
 

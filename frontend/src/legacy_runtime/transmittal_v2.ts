@@ -48,7 +48,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     function summarizeBulkErrors(items = []) {
         if (!Array.isArray(items) || !items.length) return "";
         const head = items.slice(0, 3).join(" | ");
-        return items.length > 3 ? `${head} | +${items.length - 3} more` : head;
+        return items.length > 3 ? `${head} | +${items.length - 3} مورد دیگر` : head;
     }
 
     function parseBulkTransmittalIds(selectedKeys = []) {
@@ -72,16 +72,33 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         return status === "draft" || status === "issued";
     }
 
+    function normalizeTransmittalStatus(value) {
+        const raw = String(value || "").trim().toLowerCase();
+        if (!raw) return "draft";
+        if (raw === "پیش‌نویس") return "draft";
+        if (raw === "صادر شده") return "issued";
+        if (raw === "باطل") return "void";
+        return raw;
+    }
+
+    function formatStatusLabel(value) {
+        const status = normalizeTransmittalStatus(value);
+        if (status === "draft") return "پیش‌نویس";
+        if (status === "issued") return "صادر شده";
+        if (status === "void") return "باطل";
+        return String(value || "-");
+    }
+
     async function runTransmittalBulkAction(actionId, selectedKeys) {
         const ids = parseBulkTransmittalIds(selectedKeys);
         if (!ids.length) {
-            notify("warning", "No transmittal selected.");
+            notify("warning", "هیچ ترنسمیتالی انتخاب نشده است.");
             return;
         }
 
         const selectedRows = selectedTransmittalRows(ids);
         if (!selectedRows.length) {
-            notify("warning", "Selected transmittals are no longer available.");
+            notify("warning", "ترنسمیتال‌های انتخاب‌شده دیگر در دسترس نیستند.");
             return;
         }
 
@@ -93,7 +110,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         if (actionId === TR2_BULK_ACTION_ISSUE) {
             operation = "issued";
             targetRows = selectedRows.filter((item) => isDraftTransmittal(item));
-            confirmMessage = `Issue ${targetRows.length} selected draft transmittal(s)?`;
+            confirmMessage = `آیا ${targetRows.length} ترنسمیتال پیش‌نویس انتخاب‌شده صادر شود؟`;
             task = async (row) => {
                 const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
                 await mutationBridge.issue(String(row.id), { fetch: getTransmittalFetchFn() });
@@ -105,10 +122,10 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             if (reasonInput === null) return;
             const reason = reasonInput.trim();
             if (!reason) {
-                notify("error", "Void reason is required.");
+                notify("error", "ثبت دلیل ابطال الزامی است.");
                 return;
             }
-            confirmMessage = `Void ${targetRows.length} selected transmittal(s)?`;
+            confirmMessage = `آیا ${targetRows.length} ترنسمیتال انتخاب‌شده باطل شود؟`;
             task = async (row) => {
                 const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
                 await mutationBridge.voidItem(String(row.id), reason, { fetch: getTransmittalFetchFn() });
@@ -116,11 +133,11 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         }
 
         if (!task) {
-            notify("warning", "Unknown bulk action.");
+            notify("warning", "عملیات گروهی ناشناخته است.");
             return;
         }
         if (!targetRows.length) {
-            notify("warning", "No eligible transmittal for this operation.");
+            notify("warning", "هیچ ترنسمیتال واجد شرایطی برای این عملیات وجود ندارد.");
             return;
         }
         if (!window.confirm(confirmMessage)) return;
@@ -133,15 +150,15 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 success += 1;
             } catch (error) {
                 const label = String(row?.transmittal_no || row?.id || "-");
-                failures.push(`${label}: ${error?.message || "Request failed"}`);
+                failures.push(`${label}: ${error?.message || "درخواست ناموفق بود"}`);
             }
         }
 
         if (success > 0) {
-            notify("success", `${success} transmittal(s) ${operation}.`);
+            notify("success", operation === "issued" ? `${success} ترنسمیتال صادر شد.` : `${success} ترنسمیتال باطل شد.`);
         }
         if (failures.length > 0) {
-            notify("warning", `${failures.length} operation(s) failed. ${summarizeBulkErrors(failures)}`);
+            notify("warning", `${failures.length} عملیات ناموفق بود. ${summarizeBulkErrors(failures)}`);
         }
 
         const bulk = transmittalBulkBridge();
@@ -161,8 +178,8 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         bulk.register({
             tableId: "tr2ListTable",
             actions: [
-                { id: TR2_BULK_ACTION_ISSUE, label: "Issue selected drafts" },
-                { id: TR2_BULK_ACTION_VOID, label: "Void selected transmittals" },
+                { id: TR2_BULK_ACTION_ISSUE, label: "صدور پیش‌نویس‌های انتخاب‌شده" },
+                { id: TR2_BULK_ACTION_VOID, label: "ابطال ترنسمیتال‌های انتخاب‌شده" },
             ],
             getRowKey(row) {
                 return row && row.dataset ? row.dataset.bulkKey : "";
@@ -181,7 +198,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
 
     function requireBridge(bridge, name) {
         if (!bridge || typeof bridge !== "object") {
-            throw new Error(`${name} bridge unavailable.`);
+            throw new Error(`ماژول ${name} در دسترس نیست.`);
         }
         return bridge;
     }
@@ -215,7 +232,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     }
 
     function currentHeaderStatus() {
-        return String(document.getElementById("tr2-edit-status")?.textContent || "draft").trim().toLowerCase();
+        return normalizeTransmittalStatus(document.getElementById("tr2-edit-status")?.textContent || "draft");
     }
 
     function setEditBanner(id = null, status = "draft") {
@@ -224,10 +241,10 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         if (!el || !idEl) return;
         if (id) {
             idEl.textContent = id;
-            el.textContent = status;
+            el.textContent = formatStatusLabel(status);
         } else {
-            idEl.textContent = "NEW";
-            el.textContent = "draft";
+            idEl.textContent = "جدید";
+            el.textContent = formatStatusLabel("draft");
         }
     }
 
@@ -257,6 +274,29 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     function renderSelectedDocs() {
         const tbody = document.getElementById("tr2-docs-body");
         if (!tbody) return;
+        if (Array.isArray(state.selectedDocs)) {
+            if (!state.selectedDocs.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">هنوز مدرکی اضافه نشده است</td></tr>';
+                return;
+            }
+            tbody.innerHTML = state.selectedDocs.map((d, idx) => `
+                <tr>
+                    <td>${escapeHtml(d.document_code)}</td>
+                    <td><input class="form-input" style="max-width:90px" value="${escapeHtml(d.revision)}" data-tr2-action="doc-field-change" data-index="${idx}" data-field="revision"></td>
+                    <td>
+                        <select class="form-input" data-tr2-action="doc-field-change" data-index="${idx}" data-field="status">
+                            <option value="IFA" ${d.status === "IFA" ? "selected" : ""}>IFA</option>
+                            <option value="IFC" ${d.status === "IFC" ? "selected" : ""}>IFC</option>
+                            <option value="IFI" ${d.status === "IFI" ? "selected" : ""}>IFI</option>
+                        </select>
+                    </td>
+                    <td class="center-text"><input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy"></td>
+                    <td class="center-text"><input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy"></td>
+                    <td><button class="btn-archive-icon" type="button" data-tr2-action="doc-remove" data-index="${idx}">حذف</button></td>
+                </tr>
+            `).join("");
+            return;
+        }
         if (!state.selectedDocs.length) {
             tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">Ù‡Ù†ÙˆØ² Ø¢ÛŒØªÙ…ÛŒ Ø§Ø¶Ø§ÙÙ‡ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª</td></tr>';
             return;
@@ -280,17 +320,17 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     }
 
     function renderStatusCell(item) {
-        const status = String(item?.status || "draft").trim().toLowerCase();
-        const statusLabel = status.toUpperCase();
-        if (status !== "void") {
+        const normalizedStatus = normalizeTransmittalStatus(item?.status);
+        const statusLabel = formatStatusLabel(normalizedStatus);
+        if (normalizedStatus !== "void") {
             return escapeHtml(statusLabel);
         }
 
         const tooltipParts = [];
-        if (item?.void_reason) tooltipParts.push(`Reason: ${item.void_reason}`);
-        if (item?.voided_by) tooltipParts.push(`By: ${item.voided_by}`);
-        if (item?.voided_at) tooltipParts.push(`At: ${formatShamsiDateTime(item.voided_at)}`);
-        const tooltip = tooltipParts.join(" | ") || "VOID";
+        if (item?.void_reason) tooltipParts.push(`دلیل: ${item.void_reason}`);
+        if (item?.voided_by) tooltipParts.push(`توسط: ${item.voided_by}`);
+        if (item?.voided_at) tooltipParts.push(`تاریخ: ${formatShamsiDateTime(item.voided_at)}`);
+        const tooltip = tooltipParts.join(" | ") || "باطل";
         return `<span title="${escapeHtml(tooltip)}" style="cursor: help;">${escapeHtml(statusLabel)}</span>`;
     }
 
@@ -299,7 +339,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         if (!tbody) return;
         state.searchDocs = Array.isArray(items) ? items : [];
         if (!items.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="center-text muted">Ù…Ø¯Ø±Ú©ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="center-text muted">مدرکی یافت نشد</td></tr>';
             return;
         }
 
@@ -315,7 +355,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     <td>${escapeHtml(item.status || "-")}</td>
                     <td>
                         <button class="btn-archive-icon" type="button" ${disabled ? "disabled" : ""} data-tr2-action="doc-add" data-doc-number="${escapeHtml(docNumber)}">
-                            ${disabled ? "Ø§ÙØ²ÙˆØ¯Ù‡ Ø´Ø¯Ù‡" : "Ø§ÙØ²ÙˆØ¯Ù†"}
+                            ${disabled ? "افزوده شده" : "افزودن"}
                         </button>
                     </td>
                 </tr>
@@ -338,6 +378,12 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             }).join("");
         }
         if (disciplineEl) {
+            disciplineEl.innerHTML = `<option value="">همه دیسیپلین‌ها</option>` + disciplines.map((d) => {
+                const code = (d.code || "").toUpperCase();
+                const label = `${code} - ${d.name || code}`;
+                return `<option value="${escapeHtml(code)}">${escapeHtml(label)}</option>`;
+            }).join("");
+            return;
             disciplineEl.innerHTML = `<option value="">Ù‡Ù…Ù‡ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§</option>` + disciplines.map((d) => {
                 const code = (d.code || "").toUpperCase();
                 const label = `${code} - ${d.name || code}`;
@@ -374,6 +420,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         if (tbody) {
             tbody.innerHTML = '<tr><td colspan="6" class="center-text muted" style="padding: 26px;">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</td></tr>';
         }
+        if (tbody) {
+            tbody.innerHTML = '<tr><td colspan="6" class="center-text muted" style="padding: 26px;">در حال بارگذاری...</td></tr>';
+        }
         try {
             const dataBridge = requireBridge(TS_TRANSMITTAL_DATA, "Transmittal data");
             const [items] = await Promise.all([
@@ -382,6 +431,39 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             ]);
             state.listItems = Array.isArray(items) ? items : [];
             if (!tbody) return;
+            if (Array.isArray(items)) {
+                if (!items.length) {
+                    state.listItems = [];
+                    tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">ترنسمیتالی یافت نشد</td></tr>';
+                    return;
+                }
+                tbody.innerHTML = items.map((t) => `
+                    <tr data-bulk-key="${escapeHtml(String(t.id || '').trim())}" data-transmittal-id="${escapeHtml(String(t.id || '').trim())}" data-transmittal-status="${escapeHtml(normalizeTransmittalStatus(t.status))}">
+                        <td style="font-family: monospace; font-weight: 700;">${escapeHtml(t.transmittal_no || t.id)}</td>
+                        <td>${escapeHtml(t.subject || "-")}</td>
+                        <td>${escapeHtml(t.doc_count)}</td>
+                        <td>${renderStatusCell(t)}</td>
+                        <td>${formatShamsiDate(t.created_at)}</td>
+                        <td>
+                            <div class="archive-row-menu" data-tr2-row-menu>
+                                <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="عملیات" data-tr2-action="toggle-row-menu" aria-expanded="false">
+                                    <span class="material-icons-round">more_vert</span>
+                                </button>
+                                <div class="archive-row-menu-dropdown">
+                                    <button class="archive-row-menu-item" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(t.id)}">
+                                        <span class="material-icons-round">picture_as_pdf</span>
+                                        <span>دانلود PDF</span>
+                                    </button>
+                                    ${normalizeTransmittalStatus(t.status) === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">edit</span><span>ویرایش</span></button>` : ""}
+                                    ${normalizeTransmittalStatus(t.status) === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">send</span><span>ارسال</span></button>` : ""}
+                                    ${canVoidTransmittal(t) ? `<button class="archive-row-menu-item" type="button" data-tr2-action="void-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">cancel</span><span>ابطال</span></button>` : ""}
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `).join("");
+                return;
+            }
             if (!Array.isArray(items) || !items.length) {
                 state.listItems = [];
                 tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯</td></tr>';
@@ -395,10 +477,20 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     <td>${renderStatusCell(t)}</td>
                     <td>${formatShamsiDate(t.created_at)}</td>
                     <td>
-                        <button class="btn-archive-icon" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(t.id)}">PDF</button>
-                        ${t.status === "draft" ? `<button class="btn-archive-icon" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(t.id)}">Edit</button>` : ""}
-                        ${t.status === "draft" ? `<button class="btn-archive-icon" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(t.id)}">Issue</button>` : ""}
-                        ${t.status === "draft" || t.status === "issued" ? `<button class="btn-archive-icon" type="button" data-tr2-action="void-item" data-id="${escapeHtml(t.id)}">Void</button>` : ""}
+                        <div class="archive-row-menu" data-tr2-row-menu>
+                            <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="عملیات" data-tr2-action="toggle-row-menu" aria-expanded="false">
+                                <span class="material-icons-round">more_vert</span>
+                            </button>
+                            <div class="archive-row-menu-dropdown">
+                                <button class="archive-row-menu-item" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(t.id)}">
+                                    <span class="material-icons-round">picture_as_pdf</span>
+                                    <span>PDF</span>
+                                </button>
+                                ${t.status === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">edit</span><span>ویرایش</span></button>` : ""}
+                                ${t.status === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">send</span><span>ارسال</span></button>` : ""}
+                                ${t.status === "draft" || t.status === "issued" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="void-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">cancel</span><span>ابطال</span></button>` : ""}
+                            </div>
+                        </div>
                     </td>
                 </tr>
             `).join("");

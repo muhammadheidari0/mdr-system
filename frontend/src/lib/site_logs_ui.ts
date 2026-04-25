@@ -117,6 +117,24 @@ function getElement(id: string): HTMLElement | null {
   }
 }
 
+function closeSiteLogRowMenus(exceptMenu: HTMLElement | null = null): void {
+  document.querySelectorAll<HTMLElement>(".archive-row-menu.is-open[data-sl-row-menu]").forEach((menu) => {
+    if (exceptMenu && menu === exceptMenu) return;
+    menu.classList.remove("is-open");
+    const trigger = menu.querySelector<HTMLElement>("[data-sl-action='toggle-row-menu']");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleSiteLogRowMenu(triggerEl: HTMLElement): void {
+  const menu = triggerEl.closest<HTMLElement>("[data-sl-row-menu]");
+  if (!(menu instanceof HTMLElement)) return;
+  const willOpen = !menu.classList.contains("is-open");
+  closeSiteLogRowMenus(menu);
+  menu.classList.toggle("is-open", willOpen);
+  triggerEl.setAttribute("aria-expanded", willOpen ? "true" : "false");
+}
+
 function getValue(id: string): string {
   const el = getElement(id);
   if (el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
@@ -1652,11 +1670,21 @@ function bindActions(deps: SiteLogsUiDeps): void {
 
   document.addEventListener("click", (event) => {
     const actionEl = event.target && (event.target as HTMLElement).closest ? (event.target as HTMLElement).closest("[data-sl-action]") : null;
-    if (!(actionEl instanceof HTMLElement)) return;
+    if (!(actionEl instanceof HTMLElement)) {
+      closeSiteLogRowMenus();
+      return;
+    }
     const action = normalize(actionEl.dataset.slAction);
+    if (action !== "toggle-row-menu") {
+      closeSiteLogRowMenus();
+    }
     const context = contextFromElement(actionEl);
     if (!context) return;
 
+    if (action === "toggle-row-menu") {
+      toggleSiteLogRowMenu(actionEl);
+      return;
+    }
     if (action === "open-form") {
       void openCreateDrawer(context.moduleKey, context.tabKey, deps);
       return;

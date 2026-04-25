@@ -167,8 +167,8 @@ def upgrade() -> None:
     op.execute("""
     CREATE OR REPLACE VIEW v_bi_transmittal_summary AS
     SELECT
-        t.id,
-        t.transmittal_no,
+        t.id AS transmittal_id,
+        t.id AS transmittal_no,
         t.project_code,
         p.name_e AS project_name,
         t.direction,
@@ -177,7 +177,7 @@ def upgrade() -> None:
         t.sender,
         t.receiver,
         t.lifecycle_status,
-        t.doc_count,
+        (SELECT COUNT(*) FROM transmittal_docs td WHERE td.transmittal_id = t.id) AS doc_count,
         t.created_by_name,
         t.created_at,
         t.voided_at,

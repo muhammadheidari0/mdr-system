@@ -74,10 +74,36 @@ function renderRows(
           <td>${Number(row.activity_count || 0)}</td>
           <td>${esc(row.organization_name || "-")}</td>
           <td>
-            <div class="module-crud-actions">
-              ${canEditRow ? `<button type="button" class="btn-archive-icon" data-sl-action="open-edit" data-sl-id="${logId}">ویرایش</button>` : ""}
-              ${canVerifyRow ? `<button type="button" class="btn-archive-icon" data-sl-action="open-verify" data-sl-id="${logId}">تایید</button>` : ""}
-              <button type="button" class="btn-archive-icon" data-sl-action="open-detail" data-sl-id="${logId}">جزئیات</button>
+            <div class="archive-row-menu" data-sl-row-menu>
+              <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="عملیات" data-sl-action="toggle-row-menu" aria-expanded="false">
+                <span class="material-icons-round">more_vert</span>
+              </button>
+              <div class="archive-row-menu-dropdown">
+                <button class="archive-row-menu-item" type="button" data-sl-action="open-detail" data-sl-id="${logId}">
+                  <span class="material-icons-round">visibility</span>
+                  <span>جزئیات</span>
+                </button>
+                ${
+                  canEditRow
+                    ? `
+                <button class="archive-row-menu-item" type="button" data-sl-action="open-edit" data-sl-id="${logId}">
+                  <span class="material-icons-round">edit</span>
+                  <span>ویرایش</span>
+                </button>
+                `
+                    : ""
+                }
+                ${
+                  canVerifyRow
+                    ? `
+                <button class="archive-row-menu-item" type="button" data-sl-action="open-verify" data-sl-id="${logId}">
+                  <span class="material-icons-round">task_alt</span>
+                  <span>تایید</span>
+                </button>
+                `
+                    : ""
+                }
+              </div>
             </div>
           </td>
         </tr>

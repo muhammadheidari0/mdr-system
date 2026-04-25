@@ -38,6 +38,24 @@ async function invoke(handler: () => Promise<void> | void): Promise<void> {
   await Promise.resolve(handler());
 }
 
+function closeTransmittalRowMenus(root: HTMLElement, exceptMenu: HTMLElement | null = null): void {
+  root.querySelectorAll<HTMLElement>(".archive-row-menu.is-open[data-tr2-row-menu]").forEach((menu) => {
+    if (exceptMenu && menu === exceptMenu) return;
+    menu.classList.remove("is-open");
+    const trigger = menu.querySelector<HTMLElement>("[data-tr2-action='toggle-row-menu']");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+  });
+}
+
+function toggleTransmittalRowMenu(root: HTMLElement, triggerEl: HTMLElement): void {
+  const menu = triggerEl.closest<HTMLElement>("[data-tr2-row-menu]");
+  if (!(menu instanceof HTMLElement)) return;
+  const willOpen = !menu.classList.contains("is-open");
+  closeTransmittalRowMenus(root, menu);
+  menu.classList.toggle("is-open", willOpen);
+  triggerEl.setAttribute("aria-expanded", willOpen ? "true" : "false");
+}
+
 function setMode(mode: string, deps: TransmittalModeDeps): boolean {
   const normalized = normalizeMode(mode);
   const listEl = deps.getElementById("tr2-list-mode");
@@ -57,11 +75,20 @@ function bindTemplateActions(root: HTMLElement | null, deps: TransmittalTemplate
   root.addEventListener("click", async (event) => {
     const target = event.target as HTMLElement | null;
     const actionEl = target?.closest("[data-tr2-action]") as HTMLElement | null;
-    if (!actionEl || !root.contains(actionEl)) return;
+    if (!actionEl || !root.contains(actionEl)) {
+      closeTransmittalRowMenus(root);
+      return;
+    }
     event.preventDefault();
 
     const action = String(actionEl.getAttribute("data-tr2-action") || "").trim().toLowerCase();
+    if (action !== "toggle-row-menu") {
+      closeTransmittalRowMenus(root);
+    }
     switch (action) {
+      case "toggle-row-menu":
+        toggleTransmittalRowMenu(root, actionEl);
+        break;
       case "refresh-list":
         await invoke(deps.refreshList);
         break;

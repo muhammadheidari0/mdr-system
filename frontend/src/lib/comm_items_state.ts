@@ -71,10 +71,34 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
           <td>${Number(row.aging_days || 0) > 0 ? Number(row.aging_days || 0) : "-"}</td>
           <td>${overdueBadge}</td>
           <td>
-            <div class="module-crud-actions">
-              ${canEdit ? `<button type="button" class="btn-archive-icon" data-ci-action="open-edit" data-ci-id="${itemId}">ویرایش</button>` : ""}
-              <button type="button" class="btn-archive-icon" data-ci-action="open-detail" data-ci-id="${itemId}">جزئیات</button>
-              ${isRfi ? `<button type="button" class="btn-archive-icon" data-ci-action="print-rfi-form" data-ci-id="${itemId}">پرینت</button>` : ""}
+            <div class="archive-row-menu" data-ci-row-menu>
+              <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="عملیات" data-ci-action="toggle-row-menu" aria-expanded="false">
+                <span class="material-icons-round" style="font-size:18px;">more_vert</span>
+              </button>
+              <div class="archive-row-menu-dropdown">
+                <button class="archive-row-menu-item" type="button" data-ci-action="open-detail" data-ci-id="${itemId}">
+                  <span class="material-icons-round">visibility</span>
+                  <span>جزئیات</span>
+                </button>
+                ${canEdit ? `
+                <button class="archive-row-menu-item" type="button" data-ci-action="open-edit" data-ci-id="${itemId}">
+                  <span class="material-icons-round">edit</span>
+                  <span>ویرایش</span>
+                </button>
+                <button class="archive-row-menu-item" type="button" data-ci-action="quick-transition" data-ci-id="${itemId}">
+                  <span class="material-icons-round">sync_alt</span>
+                  <span>تغییر وضعیت</span>
+                </button>` : ""}
+                <button class="archive-row-menu-item" type="button" data-ci-action="copy-item-no" data-ci-item-no="${esc(row.item_no || "-")}">
+                  <span class="material-icons-round">content_copy</span>
+                  <span>کپی شماره آیتم</span>
+                </button>
+                ${isRfi ? `
+                <button class="archive-row-menu-item" type="button" data-ci-action="print-rfi-form" data-ci-id="${itemId}">
+                  <span class="material-icons-round">print</span>
+                  <span>پرینت فرم RFI</span>
+                </button>` : ""}
+              </div>
             </div>
           </td>
         </tr>
@@ -145,15 +169,15 @@ function renderTimeline(host: HTMLElement | null, payload: Record<string, unknow
     : '<li style="color:#64748b;">Field audit موجود نیست.</li>';
 
   host.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div>
-        <h5 style="margin:0 0 8px 0;">Status Logs</h5>
-        <ul style="padding-inline-start:18px;line-height:1.7;">${statusHtml}</ul>
-      </div>
-      <div>
-        <h5 style="margin:0 0 8px 0;">Field Audits</h5>
-        <ul style="padding-inline-start:18px;line-height:1.7;">${auditHtml}</ul>
-      </div>
+    <div class="ci-detail-grid">
+      <section class="ci-detail-section">
+        <div class="ci-detail-section-head"><h4>تاریخچه وضعیت‌ها</h4></div>
+        <ul style="padding-inline-start:18px;line-height:1.9;margin:0;">${statusHtml}</ul>
+      </section>
+      <section class="ci-detail-section">
+        <div class="ci-detail-section-head"><h4>تغییرات فیلدها</h4></div>
+        <ul style="padding-inline-start:18px;line-height:1.9;margin:0;">${auditHtml}</ul>
+      </section>
     </div>
   `;
   return true;
@@ -162,13 +186,13 @@ function renderTimeline(host: HTMLElement | null, payload: Record<string, unknow
 function renderComments(host: HTMLElement | null, rows: Record<string, unknown>[]): boolean {
   if (!(host instanceof HTMLElement)) return false;
   if (!rows.length) {
-    host.innerHTML = '<div style="color:#64748b;">کامنتی ثبت نشده است.</div>';
+    host.innerHTML = '<div class="ci-detail-section"><div class="module-crud-empty">کامنتی ثبت نشده است.</div></div>';
     return true;
   }
   host.innerHTML = rows
     .map(
       (row) => `
-      <div class="archive-card" style="padding:10px 12px;margin-bottom:8px;">
+      <div class="ci-detail-section" style="margin-bottom:8px;">
         <div style="font-size:0.82rem;color:#64748b;">${esc(row.created_by_name || row.created_by_id || "-")} · ${esc(
         formatShamsiDateTime(row.created_at)
       )}</div>
@@ -198,9 +222,9 @@ function formatBytes(value: unknown): string {
 
 function scopeLabel(value: unknown): string {
   const normalized = normalize(value);
-  if (normalized === "REFERENCE") return "Reference";
-  if (normalized === "RESPONSE") return "Response";
-  if (normalized === "GENERAL") return "General";
+  if (normalized === "REFERENCE") return "ارجاع";
+  if (normalized === "RESPONSE") return "پاسخ";
+  if (normalized === "GENERAL") return "عمومی";
   return normalized || "General";
 }
 
@@ -235,7 +259,7 @@ function renderAttachments(host: HTMLElement | null, payload: Record<string, unk
   if (!(host instanceof HTMLElement)) return false;
   const rows = Array.isArray(payload.data) ? (payload.data as Record<string, unknown>[]) : [];
   if (!rows.length) {
-    host.innerHTML = '<div style="color:#64748b;">پیوستی ثبت نشده است.</div>';
+    host.innerHTML = '<div class="ci-detail-section"><div class="module-crud-empty">پیوستی ثبت نشده است.</div></div>';
     return true;
   }
   const grouped = asRecord(payload.grouped);
@@ -246,8 +270,8 @@ function renderAttachments(host: HTMLElement | null, payload: Record<string, unk
       const slots = Object.keys(slotMap);
       if (!slots.length) {
         return `
-          <div class="archive-card" style="padding:10px; margin-bottom:10px;">
-            <div style="font-weight:700; margin-bottom:6px;">${esc(scopeLabel(scope))}</div>
+          <div class="ci-detail-section" style="margin-bottom:10px;">
+            <div class="ci-detail-section-head"><h4>${esc(scopeLabel(scope))}</h4></div>
             <div style="color:#64748b;">پیوستی ثبت نشده است.</div>
           </div>
         `;
@@ -265,8 +289,8 @@ function renderAttachments(host: HTMLElement | null, payload: Record<string, unk
         })
         .join("");
       return `
-        <div class="archive-card" style="padding:10px; margin-bottom:10px;">
-          <div style="font-weight:700;">${esc(scopeLabel(scope))}</div>
+        <div class="ci-detail-section" style="margin-bottom:10px;">
+          <div class="ci-detail-section-head"><h4>${esc(scopeLabel(scope))}</h4></div>
           ${slotsHtml}
         </div>
       `;
@@ -299,9 +323,9 @@ function renderRelations(
   const incomingHtml = incoming.length ? incoming.map(toRow).join("") : '<div style="color:#64748b;">رابطه ورودی ندارد.</div>';
 
   host.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-      <div><h5 style="margin:0 0 8px 0;">Outgoing</h5>${outgoingHtml}</div>
-      <div><h5 style="margin:0 0 8px 0;">Incoming</h5>${incomingHtml}</div>
+    <div class="ci-detail-grid">
+      <section class="ci-detail-section"><div class="ci-detail-section-head"><h4>روابط خروجی</h4></div>${outgoingHtml}</section>
+      <section class="ci-detail-section"><div class="ci-detail-section-head"><h4>روابط ورودی</h4></div>${incomingHtml}</section>
     </div>
   `;
   return true;

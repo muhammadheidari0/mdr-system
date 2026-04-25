@@ -29,7 +29,7 @@ function asRows(value: unknown): Record<string, unknown>[] {
 function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], canEdit: boolean): boolean {
   if (!(body instanceof HTMLElement)) return false;
   if (!Array.isArray(rows) || !rows.length) {
-    body.innerHTML = `<tr><td colspan="10" class="center-text" style="padding:24px;color:#64748b;">No permits found.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="10" class="center-text" style="padding:24px;color:#64748b;">پرمیتی یافت نشد.</td></tr>`;
     return true;
   }
   body.innerHTML = rows
@@ -54,12 +54,36 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
           <td>${Number(row.required_station_approved || 0)}/${Number(row.required_station_total || 0)}</td>
           <td>${esc(formatShamsiDateTime(row.updated_at))}</td>
           <td>
-            <div class="module-crud-actions">
-              ${canEdit ? `<button type="button" class="btn-archive-icon" data-pqc-action="open-edit" data-pqc-id="${permitId}">Edit</button>` : ""}
-              <button type="button" class="btn-archive-icon" data-pqc-action="open-detail" data-pqc-id="${permitId}">Details</button>
-              ${allowSubmit ? `<button type="button" class="btn-archive-icon" data-pqc-action="submit" data-pqc-id="${permitId}">Submit</button>` : ""}
-              ${allowResubmit ? `<button type="button" class="btn-archive-icon" data-pqc-action="resubmit" data-pqc-id="${permitId}">Resubmit</button>` : ""}
-              ${allowCancel ? `<button type="button" class="btn-archive-icon" data-pqc-action="cancel" data-pqc-id="${permitId}">Cancel</button>` : ""}
+            <div class="archive-row-menu" data-pqc-row-menu>
+              <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="عملیات" data-pqc-action="toggle-row-menu" aria-expanded="false">
+                <span class="material-icons-round">more_vert</span>
+              </button>
+              <div class="archive-row-menu-dropdown">
+                <button class="archive-row-menu-item" type="button" data-pqc-action="open-detail" data-pqc-id="${permitId}">
+                  <span class="material-icons-round">visibility</span>
+                  <span>جزئیات</span>
+                </button>
+                ${
+                  canEdit
+                    ? `<button class="archive-row-menu-item" type="button" data-pqc-action="open-edit" data-pqc-id="${permitId}"><span class="material-icons-round">edit</span><span>ویرایش</span></button>`
+                    : ""
+                }
+                ${
+                  allowSubmit
+                    ? `<button class="archive-row-menu-item" type="button" data-pqc-action="submit" data-pqc-id="${permitId}"><span class="material-icons-round">send</span><span>ارسال</span></button>`
+                    : ""
+                }
+                ${
+                  allowResubmit
+                    ? `<button class="archive-row-menu-item" type="button" data-pqc-action="resubmit" data-pqc-id="${permitId}"><span class="material-icons-round">published_with_changes</span><span>ارسال مجدد</span></button>`
+                    : ""
+                }
+                ${
+                  allowCancel
+                    ? `<button class="archive-row-menu-item" type="button" data-pqc-action="cancel" data-pqc-id="${permitId}"><span class="material-icons-round">cancel</span><span>لغو</span></button>`
+                    : ""
+                }
+              </div>
             </div>
           </td>
         </tr>
@@ -80,7 +104,7 @@ function renderCheckValue(row: Record<string, unknown>): string {
 function renderStations(host: HTMLElement | null, stations: Record<string, unknown>[], canReview: boolean): boolean {
   if (!(host instanceof HTMLElement)) return false;
   if (!stations.length) {
-    host.innerHTML = `<div class="permit-qc-empty">No station snapshot.</div>`;
+    host.innerHTML = `<div class="permit-qc-empty">ایستگاه کنترلی ثبت نشده است.</div>`;
     return true;
   }
   host.innerHTML = stations
@@ -107,16 +131,16 @@ function renderStations(host: HTMLElement | null, stations: Record<string, unkno
             <span class="module-crud-status is-${statusClass(station.status_code)}">${esc(station.status_code || "-")}</span>
           </div>
           <div class="permit-qc-station-meta">
-            <span>Org: ${esc(station.organization_name || station.organization_id || "-")}</span>
-            <span>Reviewed: ${esc(formatShamsiDateTime(station.reviewed_at))}</span>
+            <span>سازمان: ${esc(station.organization_name || station.organization_id || "-")}</span>
+            <span>تاریخ بررسی: ${esc(formatShamsiDateTime(station.reviewed_at))}</span>
           </div>
           ${
             canReview
               ? `
             <div class="permit-qc-station-actions">
-              <button type="button" class="btn-archive-icon" data-pqc-action="review-station" data-pqc-station-id="${stationId}" data-pqc-review-action="approve">Approve</button>
-              <button type="button" class="btn-archive-icon" data-pqc-action="review-station" data-pqc-station-id="${stationId}" data-pqc-review-action="return">Return</button>
-              <button type="button" class="btn-archive-icon" data-pqc-action="review-station" data-pqc-station-id="${stationId}" data-pqc-review-action="reject">Reject</button>
+              <button type="button" class="btn-archive-icon" data-pqc-action="review-station" data-pqc-station-id="${stationId}" data-pqc-review-action="approve">تایید</button>
+              <button type="button" class="btn-archive-icon" data-pqc-action="review-station" data-pqc-station-id="${stationId}" data-pqc-review-action="return">عودت</button>
+              <button type="button" class="btn-archive-icon" data-pqc-action="review-station" data-pqc-station-id="${stationId}" data-pqc-review-action="reject">رد</button>
             </div>
             `
               : ""
@@ -125,14 +149,14 @@ function renderStations(host: HTMLElement | null, stations: Record<string, unkno
             <table class="archive-table">
               <thead>
                 <tr>
-                  <th>Code</th>
-                  <th>Check</th>
-                  <th>Type</th>
-                  <th>Value</th>
-                  <th>Note</th>
+                  <th>کد</th>
+                  <th>شرح کنترل</th>
+                  <th>نوع</th>
+                  <th>مقدار</th>
+                  <th>یادداشت</th>
                 </tr>
               </thead>
-              <tbody>${checkRows || `<tr><td colspan="5" class="text-center muted">No checks.</td></tr>`}</tbody>
+              <tbody>${checkRows || `<tr><td colspan="5" class="text-center muted">کنترلی ثبت نشده است.</td></tr>`}</tbody>
             </table>
           </div>
         </div>
@@ -145,7 +169,7 @@ function renderStations(host: HTMLElement | null, stations: Record<string, unkno
 function renderTimeline(host: HTMLElement | null, rows: Record<string, unknown>[]): boolean {
   if (!(host instanceof HTMLElement)) return false;
   if (!rows.length) {
-    host.innerHTML = `<div class="permit-qc-empty">No timeline records.</div>`;
+    host.innerHTML = `<div class="permit-qc-empty">گردش وضعیتی ثبت نشده است.</div>`;
     return true;
   }
   host.innerHTML = rows
@@ -168,7 +192,7 @@ function renderTimeline(host: HTMLElement | null, rows: Record<string, unknown>[
 function renderTemplates(host: HTMLElement | null, rows: Record<string, unknown>[]): boolean {
   if (!(host instanceof HTMLElement)) return false;
   if (!rows.length) {
-    host.innerHTML = `<div class="permit-qc-empty">No templates found.</div>`;
+    host.innerHTML = `<div class="permit-qc-empty">الگویی یافت نشد.</div>`;
     return true;
   }
   host.innerHTML = rows
@@ -199,18 +223,18 @@ function renderTemplates(host: HTMLElement | null, rows: Record<string, unknown>
           <div class="permit-qc-template-head">
             <strong>${esc(row.name || "-")}</strong>
             <div class="permit-qc-template-head-actions">
-              <button type="button" class="btn-archive-icon" data-pqc-template-select="${rowId}">Select</button>
-              <span class="module-crud-status is-${statusClass(row.is_active ? "active" : "inactive")}">${row.is_active ? "Active" : "Inactive"}</span>
+              <button type="button" class="btn-archive-icon" data-pqc-template-select="${rowId}">انتخاب</button>
+              <span class="module-crud-status is-${statusClass(row.is_active ? "active" : "inactive")}">${row.is_active ? "فعال" : "غیرفعال"}</span>
             </div>
           </div>
           <div class="permit-qc-template-meta">
-            <span>Code: ${esc(row.code || "-")}</span>
-            <span>Project: ${esc(row.project_code || "ALL")}</span>
-            <span>Discipline: ${esc(row.discipline_code || "ALL")}</span>
-            <span>Stations: ${stations}</span>
-            <span>Checks: ${checks}</span>
+            <span>کد: ${esc(row.code || "-")}</span>
+            <span>پروژه: ${esc(row.project_code || "همه")}</span>
+            <span>دیسیپلین: ${esc(row.discipline_code || "همه")}</span>
+            <span>ایستگاه‌ها: ${stations}</span>
+            <span>کنترل‌ها: ${checks}</span>
           </div>
-          <ul class="permit-qc-template-stations">${stationItems || `<li class="permit-qc-template-station-item">No stations.</li>`}</ul>
+          <ul class="permit-qc-template-stations">${stationItems || `<li class="permit-qc-template-station-item">ایستگاهی ثبت نشده است.</li>`}</ul>
         </div>
       `;
     })
