@@ -30,7 +30,11 @@ from app.services.document_activity_service import (
 )
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
-from app.services.storage_sync import enqueue_archive_mirror_job, resolve_mirror_enqueue_plan
+from app.services.storage_sync import (
+    enqueue_archive_mirror_job,
+    resolve_mirror_enqueue_plan,
+    resolve_nextcloud_runtime,
+)
 
 # ---------------------------------------------------------
 # 1. Helper: Calculate Next Revision
@@ -1125,12 +1129,24 @@ def save_upload_file(
 
     # Check if WebDAV mode
     if storage._is_webdav_primary_mode():
-        # WebDAV mode: build remote path and upload directly
+        # WebDAV mode: use mdr_storage_path as base and relativize to root
+        integrations = get_storage_integrations(db)
+        runtime = resolve_nextcloud_runtime(integrations)
+        root_path = str(runtime.get("root_path") or "")
+
+        # Get MDR base path from settings (e.g., "/ARCA-NTN/MDR")
+        mdr_base = storage.get_mdr_webdav_base()
+
+        # Build complete absolute path
         pkg_folder = f"{pkg_code} - {pkg_name}"
-        remote_path = f"/{proj_name}/{mdr_folder}/{phase_name}/{disc_code}/{pkg_folder}/{normalized_kind}/{clean_name}"
+        absolute_path = f"{mdr_base}/{phase_name}/{disc_code}/{pkg_folder}/{normalized_kind}/{clean_name}"
+
+        # Relativize to root (e.g., "/ARCA-NTN/MDR/..." → "/MDR/...")
+        relative_path = StorageManager.relativize_webdav_path(absolute_path, root_path)
+
         saved = storage.save_upload_to_webdav(
             file=file,
-            remote_relative_path=remote_path,
+            remote_relative_path=relative_path,
             file_kind=normalized_kind,
         )
     else:

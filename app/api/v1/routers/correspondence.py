@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
@@ -30,6 +30,7 @@ from app.db.models import (
     Project,
 )
 from app.services.folder_service import safe_name
+from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.openproject_status import (
     ENTITY_CORRESPONDENCE_ATTACHMENT,
     default_openproject_sync_status,
@@ -38,7 +39,11 @@ from app.services.openproject_status import (
 )
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
-from app.services.storage_sync import enqueue_correspondence_mirror_job, resolve_mirror_enqueue_plan
+from app.services.storage_sync import (
+    enqueue_correspondence_mirror_job,
+    resolve_mirror_enqueue_plan,
+    resolve_nextcloud_runtime,
+)
 
 router = APIRouter(prefix="/correspondence", tags=["Correspondence"])
 AUTO_REFERENCE_MAX_RETRIES = 8
@@ -421,6 +426,41 @@ def _unique_file_name(folder: Path, desired_name: str) -> str:
         counter += 1
 
 
+def _nextcloud_adapter_for_webdav(db: Session) -> NextcloudAdapter:
+    integrations = get_storage_integrations(db)
+    runtime = resolve_nextcloud_runtime(integrations)
+    if not runtime.get("enabled") or runtime.get("mode") != "webdav":
+        raise HTTPException(status_code=503, detail="WebDAV storage not configured.")
+    return NextcloudAdapter(
+        base_url=str(runtime.get("base_url") or ""),
+        username=str(runtime.get("username") or ""),
+        app_password=str(runtime.get("app_password") or ""),
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+
+
+def _unique_remote_file_name(db: Session, folder: str, desired_name: str) -> str:
+    candidate = safe_name(desired_name) or "file"
+    remote_folder = str(folder or "").strip().rstrip("/")
+    remote_path = f"{remote_folder}/{candidate}" if remote_folder else candidate
+    adapter = _nextcloud_adapter_for_webdav(db)
+    if not adapter.file_exists(remote_path):
+        return candidate
+
+    suffix = Path(candidate).suffix
+    stem = Path(candidate).stem or "file"
+    counter = 2
+    while True:
+        next_name = safe_name(f"{stem}_{counter:02d}{suffix}")
+        remote_path = f"{remote_folder}/{next_name}" if remote_folder else next_name
+        if not adapter.file_exists(remote_path):
+            return next_name
+        counter += 1
+
+
 def _next_corr_attachment_sequence(db: Session, correspondence_id: int) -> int:
     existing = (
         db.query(func.count(CorrespondenceAttachment.id))
@@ -441,6 +481,7 @@ def _corr_storage_file_name(
     file_kind: str,
     original_name: str,
     folder: Path,
+    storage_manager: StorageManager | None = None,
 ) -> str:
     safe_original = safe_name(original_name) or "file"
     original_path = Path(safe_original)
@@ -456,7 +497,51 @@ def _corr_storage_file_name(
         desired = f"{reference_no}_{stem}{suffix}"
     else:
         desired = f"{_next_corr_attachment_sequence(db, int(row.id or 0)):02d}_{safe_original}"
+    if storage_manager and storage_manager._is_webdav_primary_mode():
+        remote_folder = StorageManager._normalize_remote_path(str(folder))
+        return _unique_remote_file_name(db, remote_folder, desired)
     return _unique_file_name(folder, desired)
+
+
+def _download_webdav_attachment(
+    db: Session,
+    row: CorrespondenceAttachment,
+    *,
+    inline: bool = False,
+) -> StreamingResponse:
+    stored_path = str(row.stored_path or "").strip()
+    remote_path = stored_path.replace("webdav://", "", 1)
+    adapter = _nextcloud_adapter_for_webdav(db)
+    if not adapter.file_exists(remote_path):
+        raise HTTPException(status_code=404, detail="Attachment file not found")
+    filename = safe_name(row.file_name or f"attachment-{row.id}") or f"attachment-{row.id}"
+    media_type = _norm(row.mime_type or row.detected_mime) or "application/octet-stream"
+    disposition = "inline" if inline else "attachment"
+    return StreamingResponse(
+        adapter.download_file_stream(remote_path),
+        media_type=media_type,
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+    )
+
+
+def _delete_stored_attachment_file(db: Session, stored_path: str) -> None:
+    raw_path = str(stored_path or "").strip()
+    if not raw_path:
+        return
+    if raw_path.startswith("webdav://"):
+        try:
+            adapter = _nextcloud_adapter_for_webdav(db)
+            adapter.delete_file(raw_path.replace("webdav://", "", 1))
+        except Exception:
+            pass
+        return
+
+    file_path = Path(raw_path)
+    try:
+        if file_path.exists():
+            os.remove(file_path)
+    except Exception:
+        pass
 
 
 def _serialize_action(row: CorrespondenceAction) -> dict:
@@ -1137,6 +1222,8 @@ def preview_correspondence_attachment(
         raise HTTPException(status_code=404, detail="No previewable attachment found")
 
     file_path = Path(attachment.stored_path)
+    if str(attachment.stored_path or "").strip().startswith("webdav://"):
+        return _download_webdav_attachment(db, attachment, inline=True)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Attachment file not found")
 
@@ -1159,8 +1246,8 @@ def delete_correspondence(
     row = _load_correspondence_or_404(db, correspondence_id)
     _enforce_corr_scope(db, user, row)
 
-    file_paths = [
-        Path(attachment.stored_path)
+    stored_paths = [
+        str(attachment.stored_path)
         for attachment in list(row.attachments or [])
         if _norm(attachment.stored_path)
     ]
@@ -1173,12 +1260,8 @@ def delete_correspondence(
     db.delete(row)
     db.commit()
 
-    for file_path in file_paths:
-        try:
-            if file_path.exists():
-                os.remove(file_path)
-        except Exception:
-            pass
+    for stored_path in stored_paths:
+        _delete_stored_attachment_file(db, stored_path)
 
     return {"ok": True, "id": correspondence_id}
 
@@ -1334,22 +1417,65 @@ def upload_correspondence_attachment(
         linked_action_id = action.id
 
     original_name = safe_name(file.filename)
-    folder = _corr_storage_dir(db, corr, normalized_kind)
-    stored_name = _corr_storage_file_name(
-        db,
-        corr,
-        file_kind=normalized_kind,
-        original_name=original_name,
-        folder=folder,
-    )
     storage_manager = StorageManager(db)
-    saved = storage_manager.save_upload_secure(
-        file=file,
-        destination_folder=str(folder),
-        new_name=stored_name,
-        file_kind="attachment",
-    )
-    path_obj = Path(saved.stored_path)
+
+    if storage_manager._is_webdav_primary_mode():
+        # WebDAV mode: use correspondence_storage_path as base and relativize to root
+        integrations = get_storage_integrations(db)
+        runtime = resolve_nextcloud_runtime(integrations)
+        root_path = str(runtime.get("root_path") or "")
+
+        # Get correspondence base from settings (e.g., "/ARCA-NTN/Correspondence")
+        corr_base = storage_manager.get_correspondence_webdav_base()
+
+        # Build path structure (same as _corr_storage_dir but for WebDAV)
+        issuing = safe_name(corr.issuing_code or "GENERAL")
+        category = _corr_category_folder(corr)
+        direction = _corr_direction_folder(corr)
+        ref = safe_name(corr.reference_no or f"CORR-{corr.id}")
+        kind_folder = _correspondence_bucket_for_kind(normalized_kind)
+
+        # Generate unique filename for WebDAV
+        remote_folder = f"{corr_base}/{issuing}/{category}/{direction}/{ref}/{kind_folder}"
+        stored_name = _corr_storage_file_name(
+            db,
+            corr,
+            file_kind=normalized_kind,
+            original_name=original_name,
+            folder=Path(remote_folder),  # dummy Path for compatibility
+            storage_manager=storage_manager,
+        )
+
+        # Build complete absolute path
+        absolute_path = f"{remote_folder}/{stored_name}"
+
+        # Relativize to root (e.g., "/ARCA-NTN/Correspondence/..." → "/Correspondence/...")
+        relative_path = StorageManager.relativize_webdav_path(absolute_path, root_path)
+
+        saved = storage_manager.save_upload_to_webdav(
+            file=file,
+            remote_relative_path=relative_path,
+            file_kind="attachment",
+        )
+        stored_path = saved.stored_path
+    else:
+        # Mount/local mode: use existing logic
+        folder = _corr_storage_dir(db, corr, normalized_kind)
+        stored_name = _corr_storage_file_name(
+            db,
+            corr,
+            file_kind=normalized_kind,
+            original_name=original_name,
+            folder=folder,
+            storage_manager=storage_manager,
+        )
+        saved = storage_manager.save_upload_secure(
+            file=file,
+            destination_folder=str(folder),
+            new_name=stored_name,
+            file_kind="attachment",
+        )
+        stored_path = str(Path(saved.stored_path))
 
     integrations = get_storage_integrations(db)
     mirror_plan = resolve_mirror_enqueue_plan(integrations)
@@ -1360,7 +1486,7 @@ def upload_correspondence_attachment(
         correspondence_id=correspondence_id,
         action_id=linked_action_id,
         file_name=stored_name,
-        stored_path=str(path_obj),
+        stored_path=stored_path,
         file_kind=normalized_kind,
         mime_type=saved.declared_mime or _norm(file.content_type) or None,
         detected_mime=saved.detected_mime,
@@ -1408,6 +1534,8 @@ def download_correspondence_attachment(
     corr = _load_correspondence_or_404(db, row.correspondence_id)
     _enforce_corr_scope(db, user, corr)
 
+    if str(row.stored_path or "").strip().startswith("webdav://"):
+        return _download_webdav_attachment(db, row)
     file_path = Path(row.stored_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Attachment file not found")
@@ -1424,13 +1552,7 @@ def delete_correspondence_attachment(
     corr = _load_correspondence_or_404(db, row.correspondence_id)
     _enforce_corr_scope(db, user, corr)
 
-    file_path = Path(row.stored_path)
     db.delete(row)
     db.commit()
-
-    try:
-        if file_path.exists():
-            os.remove(file_path)
-    except Exception:
-        pass
+    _delete_stored_attachment_file(db, str(row.stored_path or ""))
     return {"ok": True}

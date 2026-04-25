@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -42,9 +42,14 @@ from app.db.models import (
     WorkflowTransition,
 )
 from app.services.folder_service import safe_name
+from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.storage import StorageManager
 from app.services.storage_policy import get_storage_integrations
-from app.services.storage_sync import enqueue_comm_item_mirror_job, resolve_mirror_enqueue_plan
+from app.services.storage_sync import (
+    enqueue_comm_item_mirror_job,
+    resolve_mirror_enqueue_plan,
+    resolve_nextcloud_runtime,
+)
 
 
 router = APIRouter(prefix="/comm-items", tags=["Communication Items"])
@@ -406,7 +411,8 @@ def _validate_business_rules(item: CommItem) -> None:
 
 
 def _item_storage_dir(db: Session, item: CommItem, file_kind: str, scope_code: str = "GENERAL") -> Path:
-    base = StorageManager(db).get_correspondence_base_path()
+    storage_manager = StorageManager(db)
+    base = storage_manager.get_correspondence_base_path()
     kind_folder = {
         "pdf": "PDF",
         "native": "Native",
@@ -419,8 +425,63 @@ def _item_storage_dir(db: Session, item: CommItem, file_kind: str, scope_code: s
     }.get(_upper(scope_code), "General")
     item_no = safe_name(item.item_no or f"ITEM-{item.id}")
     path = base / "comm_items" / item_no / scope_folder / kind_folder
-    path.mkdir(parents=True, exist_ok=True)
+    if not storage_manager._is_webdav_primary_mode():
+        path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _nextcloud_adapter_for_webdav(db: Session) -> NextcloudAdapter:
+    integrations = get_storage_integrations(db)
+    runtime = resolve_nextcloud_runtime(integrations)
+    if not runtime.get("enabled") or runtime.get("mode") != "webdav":
+        raise HTTPException(status_code=503, detail="WebDAV storage not configured.")
+    return NextcloudAdapter(
+        base_url=str(runtime.get("base_url") or ""),
+        username=str(runtime.get("username") or ""),
+        app_password=str(runtime.get("app_password") or ""),
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+
+
+def _download_webdav_attachment(
+    db: Session,
+    row: ItemAttachment,
+) -> StreamingResponse:
+    stored_path = str(row.stored_path or "").strip()
+    remote_path = stored_path.replace("webdav://", "", 1)
+    adapter = _nextcloud_adapter_for_webdav(db)
+    if not adapter.file_exists(remote_path):
+        raise HTTPException(status_code=404, detail="Attachment file not found")
+    filename = safe_name(row.file_name or f"attachment-{row.id}") or f"attachment-{row.id}"
+    media_type = _norm(row.mime_type or row.detected_mime) or "application/octet-stream"
+    return StreamingResponse(
+        adapter.download_file_stream(remote_path),
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _delete_stored_attachment_file(db: Session, stored_path: str) -> None:
+    raw_path = str(stored_path or "").strip()
+    if not raw_path:
+        return
+    if raw_path.startswith("webdav://"):
+        try:
+            adapter = _nextcloud_adapter_for_webdav(db)
+            adapter.delete_file(raw_path.replace("webdav://", "", 1))
+        except Exception:
+            pass
+        return
+
+    file_path = Path(raw_path)
+    try:
+        if file_path.exists():
+            os.remove(file_path)
+    except Exception:
+        pass
 
 
 TAB_RULES: dict[tuple[str, str], dict[str, Any]] = {
@@ -1944,14 +2005,52 @@ def upload_comm_item_attachment(
     now = datetime.utcnow()
     original_name = safe_name(file.filename)
     unique_name = safe_name(f"{now.strftime('%Y%m%d%H%M%S%f')}_{original_name}")
-    folder = _item_storage_dir(db, item, normalized_kind, normalized_scope_code)
     storage_manager = StorageManager(db)
-    saved = storage_manager.save_upload_secure(
-        file=file,
-        destination_folder=str(folder),
-        new_name=unique_name,
-        file_kind=normalized_kind,
-    )
+
+    if storage_manager._is_webdav_primary_mode():
+        # WebDAV mode: use correspondence_storage_path as base and relativize to root
+        integrations = get_storage_integrations(db)
+        runtime = resolve_nextcloud_runtime(integrations)
+        root_path = str(runtime.get("root_path") or "")
+
+        # Get correspondence base from settings (comm items stored under correspondence)
+        corr_base = storage_manager.get_correspondence_webdav_base()
+
+        # Build path structure (same as _item_storage_dir but for WebDAV)
+        kind_folder = {
+            "pdf": "PDF",
+            "native": "Native",
+            "attachment": "Attachment",
+        }.get(normalized_kind, "Attachment")
+        scope_folder = {
+            "GENERAL": "General",
+            "REFERENCE": "Reference",
+            "RESPONSE": "Response",
+        }.get(normalized_scope_code.upper(), "General")
+        item_no = safe_name(item.item_no or f"ITEM-{item.id}")
+
+        # Build complete absolute path
+        absolute_path = f"{corr_base}/comm_items/{item_no}/{scope_folder}/{kind_folder}/{unique_name}"
+
+        # Relativize to root (e.g., "/ARCA-NTN/Correspondence/..." → "/Correspondence/...")
+        relative_path = StorageManager.relativize_webdav_path(absolute_path, root_path)
+
+        saved = storage_manager.save_upload_to_webdav(
+            file=file,
+            remote_relative_path=relative_path,
+            file_kind=normalized_kind,
+        )
+        stored_path = saved.stored_path
+    else:
+        # Mount/local mode: use existing logic
+        folder = _item_storage_dir(db, item, normalized_kind, normalized_scope_code)
+        saved = storage_manager.save_upload_secure(
+            file=file,
+            destination_folder=str(folder),
+            new_name=unique_name,
+            file_kind=normalized_kind,
+        )
+        stored_path = str(Path(saved.stored_path))
 
     integrations = get_storage_integrations(db)
     mirror_plan = resolve_mirror_enqueue_plan(integrations)
@@ -1960,7 +2059,7 @@ def upload_comm_item_attachment(
     row = ItemAttachment(
         item_id=item_id,
         file_name=original_name,
-        stored_path=str(Path(saved.stored_path)),
+        stored_path=stored_path,
         file_kind=normalized_kind,
         scope_code=normalized_scope_code,
         slot_code=normalized_slot_code,
@@ -2002,6 +2101,8 @@ def download_comm_item_attachment(
     row = _load_attachment_or_404(db, attachment_id)
     item = _load_item_or_404(db, row.item_id)
     _enforce_item_scope(db, user, item)
+    if str(row.stored_path or "").strip().startswith("webdav://"):
+        return _download_webdav_attachment(db, row)
     file_path = Path(row.stored_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Attachment file not found")
@@ -2020,14 +2121,9 @@ def delete_comm_item_attachment(
     row = _load_attachment_or_404(db, attachment_id)
     if int(row.item_id or 0) != int(item_id):
         raise HTTPException(status_code=400, detail="Attachment does not belong to this item.")
-    file_path = Path(row.stored_path)
     db.delete(row)
     db.commit()
-    try:
-        if file_path.exists():
-            os.remove(file_path)
-    except Exception:
-        pass
+    _delete_stored_attachment_file(db, str(row.stored_path or ""))
     return {"ok": True}
 
 

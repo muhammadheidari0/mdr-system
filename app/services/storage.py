@@ -50,6 +50,22 @@ class StorageManager:
         return "://" in text
 
     @staticmethod
+    def _normalize_remote_path(value: str) -> str:
+        text = str(value or "").strip().replace("\\", "/")
+        parts = [part.strip() for part in text.split("/") if str(part or "").strip()]
+        if any(part in {".", ".."} for part in parts):
+            return ""
+        return f"/{'/'.join(parts)}" if parts else "/"
+
+    @classmethod
+    def _is_under_remote_root(cls, path_value: str, root_value: str) -> bool:
+        path_norm = cls._normalize_remote_path(path_value)
+        root_norm = cls._normalize_remote_path(root_value)
+        if not path_norm or not root_norm:
+            return False
+        return path_norm == root_norm or path_norm.startswith(f"{root_norm}/")
+
+    @staticmethod
     def _is_unc_path(value: str) -> bool:
         text = str(value or "").strip().replace("/", "\\")
         if not text.startswith("\\\\"):
@@ -233,6 +249,8 @@ class StorageManager:
         field: str,
         network_username: str | None = None,
         network_password: str | None = None,
+        allow_remote_webdav_path: bool = False,
+        remote_root_value: str | None = None,
     ) -> tuple[str, list[dict[str, str]]]:
         errors: list[dict[str, str]] = []
         raw = str(path_value or "").strip()
@@ -255,6 +273,31 @@ class StorageManager:
                 }
             )
             return "", errors
+
+        if allow_remote_webdav_path:
+            normalized_remote = cls._normalize_remote_path(raw)
+            if not normalized_remote:
+                errors.append(
+                    {
+                        "field": field,
+                        "code": "path_invalid",
+                        "message": "WebDAV path is invalid.",
+                    }
+                )
+                return "", errors
+
+            remote_root = str(remote_root_value or "").strip()
+            if remote_root and not cls._is_under_remote_root(normalized_remote, remote_root):
+                errors.append(
+                    {
+                        "field": field,
+                        "code": "path_outside_nextcloud_root",
+                        "message": f"Path must stay under Nextcloud Root Path: {cls._normalize_remote_path(remote_root)}",
+                    }
+                )
+                return "", errors
+
+            return normalized_remote, errors
 
         is_unc_path = cls._is_unc_path(raw)
         candidate = Path(raw).expanduser()
@@ -371,6 +414,55 @@ class StorageManager:
         )
         return self._resolve_path(raw)
 
+    def get_mdr_webdav_base(self) -> str:
+        """Get MDR base path normalized for WebDAV (absolute remote path)."""
+        raw = self._get_setting(self.MDR_STORAGE_KEY, self.DEFAULT_MDR_STORAGE_PATH)
+        return self._normalize_remote_path(raw)
+
+    def get_correspondence_webdav_base(self) -> str:
+        """Get Correspondence base path normalized for WebDAV (absolute remote path)."""
+        raw = self._get_setting(
+            self.CORRESPONDENCE_STORAGE_KEY,
+            self.DEFAULT_CORRESPONDENCE_STORAGE_PATH,
+        )
+        return self._normalize_remote_path(raw)
+
+    @classmethod
+    def relativize_webdav_path(cls, absolute_remote_path: str, root_path: str) -> str:
+        """
+        Convert absolute WebDAV path to relative path under root.
+
+        Example:
+            root: /ARCA-NTN
+            absolute: /ARCA-NTN/MDR/Phase1/file.pdf
+            returns: /MDR/Phase1/file.pdf
+
+        Raises ValueError if path is not under root.
+        """
+        abs_norm = cls._normalize_remote_path(absolute_remote_path)
+        root_norm = cls._normalize_remote_path(root_path)
+
+        if not abs_norm or not root_norm:
+            raise ValueError("Invalid path or root for relativization.")
+
+        # If root is "/", return absolute as-is
+        if root_norm == "/":
+            return abs_norm
+
+        # Check if path is under root
+        if abs_norm == root_norm:
+            return "/"
+
+        if not abs_norm.startswith(f"{root_norm}/"):
+            raise ValueError(
+                f"Path '{abs_norm}' is not under root '{root_norm}'. "
+                f"Cannot relativize path outside of WebDAV root."
+            )
+
+        # Remove root prefix
+        relative = abs_norm[len(root_norm):]
+        return relative if relative.startswith("/") else f"/{relative}"
+
     @classmethod
     def _path_is_under_root_value(cls, path_value: str, root_value: str) -> bool:
         raw_path = str(path_value or "").strip()
@@ -405,6 +497,11 @@ class StorageManager:
             return "local"
 
         runtime = resolve_nextcloud_runtime(integrations)
+        if bool(runtime.get("mode_is_webdav")):
+            root_path = str(runtime.get("root_path") or "").strip()
+            if root_path and self._is_under_remote_root(path_value, root_path):
+                return "nextcloud"
+            return "local"
         mount_root = str(runtime.get("local_mount_root_effective") or "").strip()
         if mount_root and self._path_is_under_root_value(path_value, mount_root):
             return "nextcloud"
@@ -471,12 +568,13 @@ class StorageManager:
 
         return SavedFileInfo(
             stored_path=f"webdav://{remote_relative_path}",
-            original_name=original_name,
-            declared_mime=declared_mime,
-            detected_mime=detected_mime or declared_mime,
-            validation_status="valid",
-            sha256=sha256,
             size_bytes=size_bytes,
+            sha256=sha256,
+            detected_mime=detected_mime or declared_mime,
+            declared_mime=declared_mime,
+            validation_status="valid",
+            original_name=original_name,
+            validation_notes="",
         )
 
     def get_mdr_path(
