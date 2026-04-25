@@ -1719,6 +1719,7 @@
         const openprojectSslHint = document.getElementById('storageOpenProjectSslManagedHint');
         const openprojectSslWarning = document.getElementById('storageOpenProjectSkipSslWarning');
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
@@ -1798,6 +1799,12 @@
             openprojectSslWarning.style.display = skipSslVerify ? 'flex' : 'none';
         }
         if (nextcloudEnabled) nextcloudEnabled.checked = Boolean(nextcloud.enabled);
+        if (nextcloudMode) {
+            const modeValue = ['mount', 'webdav'].includes(norm(nextcloud.mode).toLowerCase())
+                ? norm(nextcloud.mode).toLowerCase()
+                : 'mount';
+            nextcloudMode.value = modeValue;
+        }
         if (nextcloudBaseUrl) nextcloudBaseUrl.value = String(nextcloud.base_url || '');
         if (nextcloudUsername) nextcloudUsername.value = String(nextcloud.username || '');
         if (nextcloudAppPassword) nextcloudAppPassword.value = '';
@@ -1997,6 +2004,7 @@
         const gdriveSenderEmail = document.getElementById('storageGoogleSenderEmailInput');
         const gdriveCalendarId = document.getElementById('storageGoogleCalendarIdInput');
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
@@ -2014,6 +2022,7 @@
             || !openprojectToken
             || !openprojectSkipSsl
             || !nextcloudEnabled
+            || !nextcloudMode
             || !nextcloudBaseUrl
             || !nextcloudUsername
             || !nextcloudAppPassword
@@ -2033,8 +2042,12 @@
             openprojectPayload.skip_ssl_verify = Boolean(openprojectSkipSsl.checked);
         }
         const nextcloudSslForceActive = String(nextcloudSkipSsl.dataset.sslForceActive || '').toLowerCase() === 'true';
+        const nextcloudModeValue = ['mount', 'webdav'].includes(norm(nextcloudMode.value).toLowerCase())
+            ? norm(nextcloudMode.value).toLowerCase()
+            : 'mount';
         const nextcloudPayload = {
             enabled: Boolean(nextcloudEnabled.checked),
+            mode: nextcloudModeValue,
             base_url: norm(nextcloudBaseUrl.value),
             username: norm(nextcloudUsername.value),
             app_password: norm(nextcloudAppPassword.value),

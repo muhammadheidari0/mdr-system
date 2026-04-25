@@ -295,6 +295,18 @@
                 <input id="storageNextcloudUsernameInput" class="form-input" placeholder="nextcloud user">
               </div>
 
+              <div id="storageNextcloudModeWrap">
+                <label class="form-label-sm">Storage Mode</label>
+                <select id="storageNextcloudModeSelect" class="form-input">
+                  <option value="mount">Mount (via local/UNC path)</option>
+                  <option value="webdav">WebDAV (direct API - no mount needed)</option>
+                </select>
+                <div class="form-help">
+                  <strong>Mount:</strong> Files stored via local mount point or UNC path. Requires NEXTCLOUD_LOCAL_MOUNT_ROOT.<br>
+                  <strong>WebDAV:</strong> Files uploaded/downloaded directly via WebDAV API. No mount needed - uses Base URL, Username, and Root Path only.
+                </div>
+              </div>
+
               <div id="storageNextcloudRootPathWrap">
                 <label class="form-label-sm">Root Path</label>
                 <input id="storageNextcloudRootPathInput" class="form-input" placeholder="/mdr">
@@ -302,9 +314,9 @@
               </div>
 
               <div id="storageNextcloudLocalMountRootWrap">
-                <label class="form-label-sm">Local Mount Root</label>
+                <label class="form-label-sm">Local Mount Root <span id="storageNextcloudLocalMountRequiredBadge" class="general-settings-badge general-settings-badge-red" style="display:none;">Required for Mount mode</span></label>
                 <input id="storageNextcloudLocalMountRootInput" class="form-input" placeholder="/mnt/nextcloud or \\\\192.168.5.5\\share">
-                <div id="storageNextcloudLocalMountRootHint" class="form-help" data-base-text="Used by folder picker to map Nextcloud folders to local/UNC paths. ENV override: NEXTCLOUD_LOCAL_MOUNT_ROOT.">Used by folder picker to map Nextcloud folders to local/UNC paths. ENV override: NEXTCLOUD_LOCAL_MOUNT_ROOT.</div>
+                <div id="storageNextcloudLocalMountRootHint" class="form-help" data-base-text="Used by folder picker to map Nextcloud folders to local/UNC paths. ENV override: NEXTCLOUD_LOCAL_MOUNT_ROOT.">Used by folder picker to map Nextcloud folders to local/UNC paths. Required in Mount mode. Optional in WebDAV mode. ENV override: NEXTCLOUD_LOCAL_MOUNT_ROOT.</div>
               </div>
 
               <div id="storageNextcloudSslWrap" class="storage-openproject-ssl-wrap">
