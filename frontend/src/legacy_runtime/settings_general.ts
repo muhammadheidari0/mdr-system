@@ -1,7 +1,7 @@
 ﻿// @ts-nocheck
 (() => {
     const API_BASE = '/api/v1/settings';
-    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories', 'corr_tags'];
+    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories', 'corr_departments', 'corr_tags'];
 
     const STORE = {
         initialized: false,
@@ -36,6 +36,7 @@
             statuses: [],
             corr_issuing: [],
             corr_categories: [],
+            corr_departments: [],
             corr_tags: [],
             transmittal_parties: {
                 direction_options: [],
@@ -85,6 +86,7 @@
         statuses: { url: '/statuses', tbodyId: 'settingsStatusesRows', pagerId: 'statusesPager', colspan: 5 },
         corr_issuing: { url: '/correspondence-issuing', tbodyId: 'settingsCorrIssuingRows', pagerId: 'corrIssuingPager', colspan: 5 },
         corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
+        corr_departments: { url: '/correspondence-departments', tbodyId: 'settingsCorrDepartmentsRows', pagerId: 'corrDepartmentsPager', colspan: 5 },
         corr_tags: { url: '/correspondence-tags', tbodyId: 'settingsCorrTagsRows', pagerId: 'corrTagsPager', colspan: 4 },
     };
 
@@ -99,6 +101,7 @@
         statuses: 'settingsStatusesTable',
         corr_issuing: 'settingsCorrIssuingTable',
         corr_categories: 'settingsCorrCategoriesTable',
+        corr_departments: 'settingsCorrDepartmentsTable',
         corr_tags: 'settingsCorrTagsTable',
     };
 
@@ -204,6 +207,8 @@
             case 'corr_issuing':
                 return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''} ${row.project_code || ''}`;
             case 'corr_categories':
+                return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''}`;
+            case 'corr_departments':
                 return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''}`;
             case 'corr_tags':
                 return `${row.name || ''} ${row.color || ''}`;
@@ -415,6 +420,19 @@
                     `)}</td>
                 </tr>
             `).join('');
+        } else if (entity === 'corr_departments') {
+            html = info.rows.map((s) => `
+                <tr data-bulk-key="${esc(entityBulkKey('corr_departments', s))}">
+                    <td>${esc(s.code)}</td>
+                    <td>${esc(s.name_p || s.name_e || '-')}</td>
+                    <td>${boolBadge(Boolean(s.is_active))}</td>
+                    <td>${esc(s.sort_order ?? 0)}</td>
+                    <td>${rowActions(`
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-department" data-code="${esc(encoded(s.code))}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-department" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                    `)}</td>
+                </tr>
+            `).join('');
         } else if (entity === 'corr_tags') {
             html = info.rows.map((s) => `
                 <tr data-bulk-key="${esc(entityBulkKey('corr_tags', s))}">
@@ -576,6 +594,15 @@
                     reloadEntities: ['corr_categories'],
                     successText: 'correspondence category(ies) deactivated.',
                 };
+            case 'corr_departments':
+                return {
+                    id: 'general-bulk-corr-departments-deactivate',
+                    label: 'Deactivate selected correspondence departments',
+                    confirm: (count) => `Deactivate ${count} selected correspondence department(s)?`,
+                    endpoint: '/correspondence-departments/delete',
+                    reloadEntities: ['corr_departments'],
+                    successText: 'correspondence department(s) deactivated.',
+                };
             case 'corr_tags':
                 return {
                     id: 'general-bulk-corr-tags-delete',
@@ -618,6 +645,8 @@
             case 'corr_issuing':
                 return { code: norm(row?.code).toUpperCase(), hard_delete: false };
             case 'corr_categories':
+                return { code: norm(row?.code).toUpperCase(), hard_delete: false };
+            case 'corr_departments':
                 return { code: norm(row?.code).toUpperCase(), hard_delete: false };
             case 'corr_tags':
                 return { id: Number(row?.id || 0) };
@@ -869,6 +898,7 @@
             ['statuses', 'ÙˆØ¶Ø¹ÛŒØª'],
             ['issuing_entities', 'Ù…Ø±Ø¬Ø¹ ØµØ¯ÙˆØ±'],
             ['correspondence_categories', 'Ø¯Ø³ØªÙ‡ Ù…Ú©Ø§ØªØ¨Ø§Øª'],
+            ['correspondence_departments', 'بخش مکاتبات'],
         ];
         box.innerHTML = cards.map(([k, label]) => `
             <div class="general-overview-card">
@@ -5229,6 +5259,18 @@ in
                 case 'delete-corr-category':
                     window.deleteCorrespondenceCategorySetting(actionEl.dataset.code || '');
                     break;
+                case 'save-corr-department':
+                    window.saveCorrespondenceDepartmentSetting();
+                    break;
+                case 'reset-corr-department':
+                    window.resetCorrespondenceDepartmentForm();
+                    break;
+                case 'open-edit-corr-department':
+                    window.openEditCorrespondenceDepartmentByCode(actionEl.dataset.code || '');
+                    break;
+                case 'delete-corr-department':
+                    window.deleteCorrespondenceDepartmentSetting(actionEl.dataset.code || '');
+                    break;
                 case 'save-corr-tag':
                     window.saveCorrespondenceTagSetting();
                     break;
@@ -6137,6 +6179,53 @@ in
         if (!confirm(`Disable correspondence category ${code}?`)) return;
         try {
             await postAndReload('/correspondence-categories/delete', { code, hard_delete: false }, ['corr_categories'], 'Correspondence category disabled.');
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.saveCorrespondenceDepartmentSetting = async function saveCorrespondenceDepartmentSetting() {
+        try {
+            const payload = {
+                code: norm(document.getElementById('corrDepartmentCodeInput')?.value).toUpperCase(),
+                name_e: norm(document.getElementById('corrDepartmentNameEInput')?.value) || norm(document.getElementById('corrDepartmentNamePInput')?.value),
+                name_p: norm(document.getElementById('corrDepartmentNamePInput')?.value),
+                sort_order: Number(document.getElementById('corrDepartmentSortInput')?.value || 0),
+                is_active: Boolean(document.getElementById('corrDepartmentActiveInput')?.checked),
+            };
+            requireVal(payload.code, 'Department code');
+            requireVal(payload.name_e, 'Department name');
+            await postAndReload('/correspondence-departments/upsert', payload, ['corr_departments'], 'Correspondence department saved.');
+            window.resetCorrespondenceDepartmentForm();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+    window.resetCorrespondenceDepartmentForm = function resetCorrespondenceDepartmentForm() {
+        ['corrDepartmentCodeInput', 'corrDepartmentNameEInput', 'corrDepartmentNamePInput'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        const sortInput = document.getElementById('corrDepartmentSortInput');
+        if (sortInput) sortInput.value = '0';
+        const activeInput = document.getElementById('corrDepartmentActiveInput');
+        if (activeInput) activeInput.checked = true;
+    };
+    window.openEditCorrespondenceDepartmentByCode = function openEditCorrespondenceDepartmentByCode(c) {
+        const code = decoded(c);
+        const item = findBy('corr_departments', (x) => x.code === code);
+        if (!item) return;
+        document.getElementById('corrDepartmentCodeInput').value = item.code || '';
+        document.getElementById('corrDepartmentNameEInput').value = item.name_e || '';
+        document.getElementById('corrDepartmentNamePInput').value = item.name_p || '';
+        document.getElementById('corrDepartmentSortInput').value = item.sort_order ?? 0;
+        document.getElementById('corrDepartmentActiveInput').checked = Boolean(item.is_active);
+    };
+    window.deleteCorrespondenceDepartmentSetting = async function deleteCorrespondenceDepartmentSetting(c) {
+        const code = decoded(c);
+        if (!confirm(`Disable correspondence department ${code}?`)) return;
+        try {
+            await postAndReload('/correspondence-departments/delete', { code, hard_delete: false }, ['corr_departments'], 'Correspondence department disabled.');
         } catch (err) {
             tError(err.message);
         }

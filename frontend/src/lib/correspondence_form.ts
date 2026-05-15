@@ -14,6 +14,7 @@ export interface CorrespondenceFormValues {
   category_code: string;
   direction: "I" | "O";
   project_code: string;
+  department_code: string;
   tag_id: string;
   reference_no: string;
   subject: string;
@@ -30,6 +31,7 @@ export interface CorrespondenceFormInput {
   project_code?: unknown;
   issuing_code?: unknown;
   category_code?: unknown;
+  department_code?: unknown;
   tag_id?: unknown;
   direction?: unknown;
   reference_no?: unknown;
@@ -144,6 +146,7 @@ function createDefaultValues(today?: Date | string | null): CorrespondenceFormVa
     category_code: "",
     direction: "O",
     project_code: "",
+    department_code: "",
     tag_id: "",
     reference_no: "",
     subject: "",
@@ -163,6 +166,7 @@ function buildPayload(input: CorrespondenceFormInput): CorrespondenceSavePayload
     project_code: upperCode(input.project_code) || null,
     issuing_code: upperCode(input.issuing_code) || null,
     category_code: categoryCode || null,
+    department_code: upperCode(input.department_code) || null,
     tag_id: Number(String(input.tag_id ?? "").trim() || 0) || null,
     doc_type: categoryCode || null,
     direction: normalizeDirection(input.direction),
@@ -188,6 +192,7 @@ function normalizeEditValues(
     category_code: String(record.category_code ?? ""),
     direction: normalizeDirection(record.direction),
     project_code: String(record.project_code ?? ""),
+    department_code: String(record.department_code ?? ""),
     tag_id: String(record.tag_id ?? ""),
     reference_no: String(record.reference_no ?? ""),
     subject: String(record.subject ?? ""),

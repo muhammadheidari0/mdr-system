@@ -803,6 +803,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/correspondence-departments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Correspondence Departments Settings */
+        get: operations["list_correspondence_departments_settings_api_v1_settings_correspondence_departments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/correspondence-departments/upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upsert Correspondence Departments Settings */
+        post: operations["upsert_correspondence_departments_settings_api_v1_settings_correspondence_departments_upsert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/correspondence-departments/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Correspondence Departments Settings */
+        post: operations["delete_correspondence_departments_settings_api_v1_settings_correspondence_departments_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/correspondence-tags": {
         parameters: {
             query?: never;
@@ -3417,6 +3468,23 @@ export interface paths {
         };
         /** List Correspondence */
         get: operations["list_correspondence_api_v1_correspondence_list_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/correspondence/reports/table": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report Correspondence Table */
+        get: operations["report_correspondence_table_api_v1_correspondence_reports_table_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6284,6 +6352,8 @@ export interface components {
             issuing_code?: string | null;
             /** Category Code */
             category_code?: string | null;
+            /** Department Code */
+            department_code?: string | null;
             /** Discipline Code */
             discipline_code?: string | null;
             /** Tag Id */
@@ -6322,6 +6392,35 @@ export interface components {
             priority: string;
             /** Notes */
             notes?: string | null;
+        };
+        /** CorrespondenceDepartmentDeleteIn */
+        CorrespondenceDepartmentDeleteIn: {
+            /** Code */
+            code: string;
+            /**
+             * Hard Delete
+             * @default false
+             */
+            hard_delete: boolean;
+        };
+        /** CorrespondenceDepartmentIn */
+        CorrespondenceDepartmentIn: {
+            /** Code */
+            code: string;
+            /** Name E */
+            name_e: string;
+            /** Name P */
+            name_p?: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
+            /**
+             * Sort Order
+             * @default 0
+             */
+            sort_order: number;
         };
         /** CorrespondenceIssuingDeleteIn */
         CorrespondenceIssuingDeleteIn: {
@@ -6395,6 +6494,8 @@ export interface components {
             issuing_code?: string | null;
             /** Category Code */
             category_code?: string | null;
+            /** Department Code */
+            department_code?: string | null;
             /** Discipline Code */
             discipline_code?: string | null;
             /** Tag Id */
@@ -10014,6 +10115,92 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CorrespondenceCategoryDeleteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_correspondence_departments_settings_api_v1_settings_correspondence_departments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    upsert_correspondence_departments_settings_api_v1_settings_correspondence_departments_upsert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrespondenceDepartmentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_correspondence_departments_settings_api_v1_settings_correspondence_departments_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CorrespondenceDepartmentDeleteIn"];
             };
         };
         responses: {
@@ -15371,6 +15558,7 @@ export interface operations {
                 project_code?: string | null;
                 issuing_code?: string | null;
                 category_code?: string | null;
+                department_code?: string | null;
                 discipline_code?: string | null;
                 tag_id?: number | null;
                 doc_type?: string | null;
@@ -15378,6 +15566,47 @@ export interface operations {
                 status?: string | null;
                 date_from?: string | null;
                 date_to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_correspondence_table_api_v1_correspondence_reports_table_get: {
+        parameters: {
+            query?: {
+                project_code?: string | null;
+                department_code?: string | null;
+                discipline_code?: string | null;
+                status?: string | null;
+                status_code?: string | null;
+                date_from?: string | null;
+                date_to?: string | null;
+                date_start?: string | null;
+                date_end?: string | null;
+                search?: string | null;
+                limit?: number;
             };
             header?: never;
             path?: never;

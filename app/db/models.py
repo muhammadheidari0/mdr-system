@@ -251,6 +251,18 @@ class CorrespondenceCategory(Base):
 
     correspondences: Mapped[List["Correspondence"]] = relationship(back_populates="category")
 
+
+class CorrespondenceDepartment(Base):
+    __tablename__ = "correspondence_departments"
+
+    code: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name_e: Mapped[str] = mapped_column(String(255))
+    name_p: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    correspondences: Mapped[List["Correspondence"]] = relationship(back_populates="department")
+
 class Package(Base):
     __tablename__ = "packages"
     __table_args__ = (
@@ -794,6 +806,9 @@ class Correspondence(Base):
     category_code: Mapped[str] = mapped_column(
         String(20), ForeignKey("correspondence_categories.code", ondelete="RESTRICT"), index=True
     )
+    department_code: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("correspondence_departments.code", ondelete="SET NULL"), index=True
+    )
     discipline_code: Mapped[str | None] = mapped_column(
         String(20), ForeignKey("disciplines.code", ondelete="SET NULL"), index=True
     )
@@ -820,6 +835,7 @@ class Correspondence(Base):
     discipline: Mapped["Discipline"] = relationship(back_populates="correspondences")
     issuing_entity: Mapped["IssuingEntity"] = relationship(back_populates="correspondences")
     category: Mapped["CorrespondenceCategory"] = relationship(back_populates="correspondences")
+    department: Mapped[Optional["CorrespondenceDepartment"]] = relationship(back_populates="correspondences")
     created_by: Mapped[Optional["User"]] = relationship(back_populates="correspondences_created")
     actions: Mapped[List["CorrespondenceAction"]] = relationship(
         back_populates="correspondence", cascade="all, delete-orphan"

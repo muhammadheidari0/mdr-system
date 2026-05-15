@@ -8,6 +8,7 @@ export interface CorrespondenceListQuery {
   search?: string;
   issuing_code?: string;
   category_code?: string;
+  department_code?: string;
   tag_id?: string;
   direction?: string;
   status?: string;
@@ -74,6 +75,7 @@ async function loadList(
     "search",
     "issuing_code",
     "category_code",
+    "department_code",
     "tag_id",
     "direction",
     "status",

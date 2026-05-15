@@ -24,6 +24,7 @@ from app.db.models import (
     CorrespondenceAction,
     CorrespondenceAttachment,
     CorrespondenceCategory,
+    CorrespondenceDepartment,
     CorrespondenceExternalRelation,
     CorrespondenceTagAssignment,
     Discipline,
@@ -321,10 +322,21 @@ def _get_or_create_category(
     return row
 
 
+def _validate_department_code(db: Session, value: Optional[str]) -> Optional[str]:
+    code = _norm_upper(value)
+    if not code:
+        return None
+    row = db.query(CorrespondenceDepartment).filter(CorrespondenceDepartment.code == code).first()
+    if not row or not bool(row.is_active):
+        raise HTTPException(status_code=404, detail="Correspondence department not found")
+    return code
+
+
 class CorrespondenceCreateIn(BaseModel):
     project_code: Optional[str] = Field(default=None, max_length=50)
     issuing_code: Optional[str] = Field(default=None, max_length=20)
     category_code: Optional[str] = Field(default=None, max_length=20)
+    department_code: Optional[str] = Field(default=None, max_length=32)
     discipline_code: Optional[str] = Field(default=None, max_length=20)
     tag_id: Optional[int] = Field(default=None, ge=1)
     doc_type: str = Field(default="Letter", min_length=1, max_length=20)
@@ -344,6 +356,7 @@ class CorrespondenceUpdateIn(BaseModel):
     project_code: Optional[str] = Field(default=None, max_length=50)
     issuing_code: Optional[str] = Field(default=None, max_length=20)
     category_code: Optional[str] = Field(default=None, max_length=20)
+    department_code: Optional[str] = Field(default=None, max_length=32)
     discipline_code: Optional[str] = Field(default=None, max_length=20)
     tag_id: Optional[int] = Field(default=None, ge=1)
     doc_type: Optional[str] = Field(default=None, max_length=20)
@@ -632,6 +645,7 @@ def _load_correspondence_with_tags(db: Session, correspondence_id: int) -> Corre
         .options(
             selectinload(Correspondence.issuing_entity),
             selectinload(Correspondence.category),
+            selectinload(Correspondence.department),
             selectinload(Correspondence.tag_assignments).selectinload(CorrespondenceTagAssignment.tag),
         )
         .filter(Correspondence.id == int(correspondence_id))
@@ -1078,6 +1092,8 @@ def _serialize_correspondence(
         "issuing_name": getattr(getattr(row, "issuing_entity", None), "name_e", None),
         "category_code": row.category_code,
         "category_name": getattr(getattr(row, "category", None), "name_e", None),
+        "department_code": row.department_code,
+        "department_name": getattr(getattr(row, "department", None), "name_e", None),
         "discipline_code": row.discipline_code,
         "doc_type": row.doc_type,
         "direction": row.direction,
@@ -1155,6 +1171,12 @@ def get_correspondence_catalog(
         .order_by(CorrespondenceCategory.sort_order.asc(), CorrespondenceCategory.code.asc())
         .all()
     )
+    department_rows = (
+        db.query(CorrespondenceDepartment)
+        .filter(CorrespondenceDepartment.is_active.is_(True))
+        .order_by(CorrespondenceDepartment.sort_order.asc(), CorrespondenceDepartment.code.asc())
+        .all()
+    )
     project_rows = (
         db.query(Project)
         .filter(Project.is_active.is_(True))
@@ -1184,6 +1206,15 @@ def get_correspondence_catalog(
                 "is_active": bool(row.is_active),
             }
             for row in category_rows
+        ],
+        "departments": [
+            {
+                "code": row.code,
+                "name_e": row.name_e,
+                "name_p": row.name_p,
+                "is_active": bool(row.is_active),
+            }
+            for row in department_rows
         ],
         "projects": [
             {
@@ -1266,6 +1297,7 @@ def list_correspondence(
     project_code: Optional[str] = None,
     issuing_code: Optional[str] = None,
     category_code: Optional[str] = None,
+    department_code: Optional[str] = None,
     discipline_code: Optional[str] = None,
     tag_id: Optional[int] = None,
     doc_type: Optional[str] = None,
@@ -1286,6 +1318,7 @@ def list_correspondence(
     query = query.options(
         selectinload(Correspondence.issuing_entity),
         selectinload(Correspondence.category),
+        selectinload(Correspondence.department),
         selectinload(Correspondence.tag_assignments).selectinload(CorrespondenceTagAssignment.tag),
     )
 
@@ -1300,6 +1333,10 @@ def list_correspondence(
     ccode = _norm_upper(category_code)
     if ccode:
         query = query.filter(Correspondence.category_code == ccode)
+
+    dept_code = _norm_upper(department_code)
+    if dept_code:
+        query = query.filter(Correspondence.department_code == dept_code)
 
     dcode = _norm_upper(discipline_code)
     if dcode:
@@ -1369,6 +1406,7 @@ def list_correspondence(
 @router.get("/reports/table")
 def report_correspondence_table(
     project_code: Optional[str] = Query(default=None),
+    department_code: Optional[str] = Query(default=None),
     discipline_code: Optional[str] = Query(default=None),
     status: Optional[str] = Query(default=None),
     status_code: Optional[str] = Query(default=None),
@@ -1391,12 +1429,17 @@ def report_correspondence_table(
     query = query.options(
         selectinload(Correspondence.issuing_entity),
         selectinload(Correspondence.category),
+        selectinload(Correspondence.department),
         selectinload(Correspondence.tag_assignments).selectinload(CorrespondenceTagAssignment.tag),
     )
 
     pcode = _norm_upper(project_code)
     if pcode:
         query = query.filter(Correspondence.project_code == pcode)
+
+    dept_code = _norm_upper(department_code)
+    if dept_code:
+        query = query.filter(Correspondence.department_code == dept_code)
 
     dcode = _norm_upper(discipline_code)
     if dcode:
@@ -1542,6 +1585,8 @@ def create_correspondence(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
 
+    department_code = _validate_department_code(db, payload.department_code)
+
     discipline_code = _norm_upper(payload.discipline_code) or None
     if discipline_code:
         discipline = db.query(Discipline).filter(Discipline.code == discipline_code).first()
@@ -1561,6 +1606,7 @@ def create_correspondence(
         "project_code": project_code,
         "issuing_code": issuing_code,
         "category_code": category_code,
+        "department_code": department_code,
         "discipline_code": discipline_code,
         "doc_type": doc_type,
         "direction": direction,
@@ -1678,6 +1724,9 @@ def update_correspondence(
             raise HTTPException(status_code=400, detail="category_code cannot be empty")
         _get_or_create_category(db, category_code=category_code)
         row.category_code = category_code
+
+    if payload.department_code is not None:
+        row.department_code = _validate_department_code(db, payload.department_code)
 
     if payload.project_code is not None:
         project_code = _norm_upper(payload.project_code)

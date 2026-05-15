@@ -47,6 +47,9 @@
   <button type="button" class="general-settings-btn" data-general-domain="correspondence" data-general-tab="corr_categories" data-general-action="switch-page">
     <span class="material-icons-round">label</span> Ø¯Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù…Ú©Ø§ØªØ¨Ø§Øª
   </button>
+  <button type="button" class="general-settings-btn" data-general-domain="correspondence" data-general-tab="corr_departments" data-general-action="switch-page">
+    <span class="material-icons-round">corporate_fare</span> بخش‌های مکاتبات
+  </button>
   <button type="button" class="general-settings-btn" data-general-domain="correspondence" data-general-tab="corr_tags" data-general-action="switch-page">
     <span class="material-icons-round">sell</span> تگ‌های مکاتبات و بایگانی
   </button>
@@ -440,6 +443,45 @@
         </table>
       </div>
       <div id="corrCategoriesPager" class="general-pager"></div>
+    </div>
+  </div>
+</div>
+
+<div id="general-page-corr_departments" class="general-settings-page">
+  <div class="general-settings-grid">
+    <div class="general-settings-card">
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش بخش مکاتبات</h3>
+      <div class="general-settings-note general-settings-note-info">
+        <span class="material-icons-round">info</span>
+        <div>این لیست برای فیلد «بخش مرتبط» در فرم مکاتبات استفاده می‌شود؛ مثل طراحی، مالی یا نظارت.</div>
+      </div>
+      <div class="general-form-grid">
+        <input id="corrDepartmentCodeInput" class="form-input" placeholder="کد بخش (مثال: DESIGN)">
+        <input id="corrDepartmentNameEInput" class="form-input" placeholder="نام انگلیسی">
+        <input id="corrDepartmentNamePInput" class="form-input" placeholder="نام فارسی">
+        <input id="corrDepartmentSortInput" class="form-input" type="number" value="0" placeholder="ترتیب">
+        <label class="checkbox-label"><input id="corrDepartmentActiveInput" type="checkbox" checked><span class="checkmark"></span>فعال</label>
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-corr-department">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-corr-department">جدید</button>
+      </div>
+    </div>
+    <div class="general-settings-card">
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست بخش‌های مکاتبات</h3>
+      <div class="general-list-toolbar">
+        <input id="searchCorrDepartmentsInput" class="form-input general-search-input" placeholder="جست‌وجو در بخش‌های مکاتبات..." data-general-action="search-entity" data-entity="corr_departments">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="corr_departments">
+          <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
+        </select>
+      </div>
+      <div class="table-responsive">
+        <table class="archive-table" id="settingsCorrDepartmentsTable">
+          <thead><tr><th>کد</th><th>نام</th><th>فعال</th><th>ترتیب</th><th>عملیات</th></tr></thead>
+          <tbody id="settingsCorrDepartmentsRows"></tbody>
+        </table>
+      </div>
+      <div id="corrDepartmentsPager" class="general-pager"></div>
     </div>
   </div>
 </div>

@@ -176,6 +176,7 @@ def test_regression_correspondence_tables_exist() -> None:
         "correspondence_tag_assignments",
         "issuing_entities",
         "correspondence_categories",
+        "correspondence_departments",
     }
     if not required_tables.issubset(table_names):
         from app.db.session import init_db
@@ -214,6 +215,7 @@ def test_regression_correspondence_tables_exist() -> None:
         "project_code",
         "issuing_code",
         "category_code",
+        "department_code",
         "discipline_code",
         "doc_type",
         "direction",
@@ -264,15 +266,18 @@ def test_regression_correspondence_tables_exist() -> None:
 def test_regression_correspondence_tags_settings_and_runtime_flow(
     admin_headers: dict[str, str],
 ) -> None:
-    from app.db.models import Correspondence, CorrespondenceTagAssignment, DocumentTag, Project
+    from app.db.models import Correspondence, CorrespondenceDepartment, CorrespondenceTagAssignment, DocumentTag, Project
 
     project_code = f"CT{uuid.uuid4().hex[:6].upper()}"
     reference_no = f"{project_code}-CO-O-{uuid.uuid4().hex[:7].upper()}"
     subject = f"Regression tag flow {uuid.uuid4().hex[:6]}"
     tag_name = f"Regression Tag {uuid.uuid4().hex[:6]}"
     next_tag_name = f"Regression Tag {uuid.uuid4().hex[:6]}"
+    department_code = f"DEP{uuid.uuid4().hex[:5].upper()}"
+    next_department_code = f"DEP{uuid.uuid4().hex[:5].upper()}"
     correspondence_id: int | None = None
     tag_ids: list[int] = []
+    department_codes: list[str] = []
 
     with Session(engine) as db:
         project = db.query(Project).filter(Project.code == project_code).first()
@@ -301,6 +306,24 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
         assert second_tag_id > 0
         tag_ids.append(second_tag_id)
 
+        for code, name in (
+            (department_code, "Regression Design Department"),
+            (next_department_code, "Regression Finance Department"),
+        ):
+            create_department = client.post(
+                "/api/v1/settings/correspondence-departments/upsert",
+                json={"code": code, "name_e": name, "name_p": name, "is_active": True},
+                headers=admin_headers,
+            )
+            assert create_department.status_code == 200, create_department.text
+            department_codes.append(code)
+
+        settings_departments = client.get("/api/v1/settings/correspondence-departments", headers=admin_headers)
+        assert settings_departments.status_code == 200, settings_departments.text
+        settings_department_items = settings_departments.json().get("items") or []
+        assert any(item.get("code") == department_code for item in settings_department_items)
+        assert any(item.get("code") == next_department_code for item in settings_department_items)
+
         settings_tags = client.get("/api/v1/settings/correspondence-tags", headers=admin_headers)
         assert settings_tags.status_code == 200, settings_tags.text
         settings_items = settings_tags.json().get("items") or []
@@ -310,8 +333,11 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
         catalog_res = client.get("/api/v1/correspondence/catalog", headers=admin_headers)
         assert catalog_res.status_code == 200, catalog_res.text
         catalog_tags = catalog_res.json().get("tags") or []
+        catalog_departments = catalog_res.json().get("departments") or []
         assert any(int(item.get("id") or 0) == first_tag_id for item in catalog_tags)
         assert any(int(item.get("id") or 0) == second_tag_id for item in catalog_tags)
+        assert any(item.get("code") == department_code for item in catalog_departments)
+        assert any(item.get("code") == next_department_code for item in catalog_departments)
 
         create_corr = client.post(
             "/api/v1/correspondence/create",
@@ -319,6 +345,7 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
                 "project_code": project_code,
                 "issuing_code": project_code,
                 "category_code": "CO",
+                "department_code": department_code,
                 "doc_type": "Correspondence",
                 "direction": "O",
                 "reference_no": reference_no,
@@ -335,22 +362,24 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
         created_item = (create_corr.json().get("data") or {})
         correspondence_id = int(created_item.get("id") or 0)
         assert correspondence_id > 0
+        assert created_item.get("department_code") == department_code
         assert int(created_item.get("tag_id") or 0) == first_tag_id
         assert first_tag_id in [int(value) for value in (created_item.get("tag_ids") or [])]
 
         update_corr = client.put(
             f"/api/v1/correspondence/{correspondence_id}",
-            json={"tag_id": second_tag_id, "status": "Closed"},
+            json={"department_code": next_department_code, "tag_id": second_tag_id, "status": "Closed"},
             headers=admin_headers,
         )
         assert update_corr.status_code == 200, update_corr.text
         updated_item = (update_corr.json().get("data") or {})
         assert updated_item.get("status") == "Closed"
+        assert updated_item.get("department_code") == next_department_code
         assert int(updated_item.get("tag_id") or 0) == second_tag_id
         assert [int(value) for value in (updated_item.get("tag_ids") or [])] == [second_tag_id]
 
         list_res = client.get(
-            f"/api/v1/correspondence/list?project_code={project_code}&tag_id={second_tag_id}",
+            f"/api/v1/correspondence/list?project_code={project_code}&department_code={next_department_code}&tag_id={second_tag_id}",
             headers=admin_headers,
         )
         assert list_res.status_code == 200, list_res.text
@@ -360,6 +389,7 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
             None,
         )
         assert matched is not None
+        assert matched.get("department_code") == next_department_code
         assert int(matched.get("tag_id") or 0) == second_tag_id
     finally:
         with Session(engine) as db:
@@ -374,6 +404,10 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
                 db.query(DocumentTag).filter(DocumentTag.id.in_(tag_ids)).delete(
                     synchronize_session=False
                 )
+            if department_codes:
+                db.query(CorrespondenceDepartment).filter(
+                    CorrespondenceDepartment.code.in_(department_codes)
+                ).delete(synchronize_session=False)
             db.query(Project).filter(Project.code == project_code).delete(
                 synchronize_session=False
             )

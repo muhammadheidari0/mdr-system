@@ -39,6 +39,8 @@ export interface CorrespondenceUiBridge {
 const FILTER_IDS = [
   "corrIssuingFilter",
   "corrCategoryFilter",
+  "corrDepartmentFilter",
+  "corrTagFilter",
   "corrDirectionFilter",
   "corrStatusFilter",
   "corrDateFromFilter",

@@ -20,7 +20,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   const TS_CORRESPONDENCE_WORKFLOW = (APP_RUNTIME?.correspondenceWorkflow && typeof APP_RUNTIME.correspondenceWorkflow === "object")
     ? APP_RUNTIME.correspondenceWorkflow
     : null;
-  const S = { inited: false, bound: false, page: 1, size: 20, total: 0, items: [], loading: false, timer: null, suggestionsTimer: null, previewUrl: "", actions: [], atts: [], relations: [], cat: { issuing: [], categories: [], projects: [], tags: [] } };
+  const S = { inited: false, bound: false, page: 1, size: 20, total: 0, items: [], loading: false, timer: null, suggestionsTimer: null, previewUrl: "", actions: [], atts: [], relations: [], cat: { issuing: [], categories: [], departments: [], projects: [], tags: [] } };
   const q = (id) => document.getElementById(id);
   let shamsiDates = null;
   const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -130,11 +130,12 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     const bridge = requireBridge(TS_CORRESPONDENCE_DATA, "Correspondence data");
     const b = await bridge.loadCatalog({ fetch: getCorrFetchFn() });
     if (!b?.ok) throw new Error(b?.detail || "Catalog load failed.");
-    S.cat.issuing = b.issuing_entities || []; S.cat.categories = b.categories || []; S.cat.projects = b.projects || []; S.cat.tags = Array.isArray(b.tags) ? b.tags.map((row) => ({ code: String(row?.id || ""), name_e: row?.name || "", name_p: row?.name || "", color: row?.color || "" })) : [];
+    S.cat.issuing = b.issuing_entities || []; S.cat.categories = b.categories || []; S.cat.departments = b.departments || []; S.cat.projects = b.projects || []; S.cat.tags = Array.isArray(b.tags) ? b.tags.map((row) => ({ code: String(row?.id || ""), name_e: row?.name || "", name_p: row?.name || "", color: row?.color || "" })) : [];
     fillSelect("corrIssuingFilter", S.cat.issuing, "\u0647\u0645\u0647 \u0645\u0631\u0627\u062c\u0639 \u0635\u062f\u0648\u0631"); fillSelect("corrCategoryFilter", S.cat.categories, "\u0647\u0645\u0647 \u062f\u0633\u062a\u0647\u200c\u0647\u0627");
+    fillSelect("corrDepartmentFilter", S.cat.departments, "همه بخش‌ها");
     fillSelect("corrTagFilter", S.cat.tags, "همه تگ‌ها");
     fillSelect("corrIssuingInput", S.cat.issuing, "\u0627\u0646\u062a\u062e\u0627\u0628 \u0645\u0631\u062c\u0639 \u0635\u062f\u0648\u0631", false); fillSelect("corrCategoryInput", S.cat.categories, "\u0627\u0646\u062a\u062e\u0627\u0628 \u062f\u0633\u062a\u0647", false);
-    fillSelect("corrProjectInput", S.cat.projects, "\u0627\u062a\u0648\u0645\u0627\u062a\u06cc\u06a9 \u0627\u0632 \u0645\u0631\u062c\u0639 / \u0628\u062f\u0648\u0646 \u067e\u0631\u0648\u0698\u0647"); fillSelect("corrTagInput", S.cat.tags, "بدون تگ");
+    fillSelect("corrProjectInput", S.cat.projects, "\u0627\u062a\u0648\u0645\u0627\u062a\u06cc\u06a9 \u0627\u0632 \u0645\u0631\u062c\u0639 / \u0628\u062f\u0648\u0646 \u067e\u0631\u0648\u0698\u0647"); fillSelect("corrDepartmentInput", S.cat.departments, "بدون بخش"); fillSelect("corrTagInput", S.cat.tags, "بدون تگ");
     const tagWrap = q("corrTagInput")?.closest?.("div");
     const tagLabel = tagWrap?.querySelector?.("label");
     if (tagLabel) tagLabel.textContent = "تگ (اختیاری)";
@@ -150,7 +151,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     }
   }
   function filters() {
-    return { search: String(q("corrSearchInput")?.value || "").trim(), issuing_code: String(q("corrIssuingFilter")?.value || "").trim(), category_code: String(q("corrCategoryFilter")?.value || "").trim(), tag_id: String(q("corrTagFilter")?.value || "").trim(), direction: String(q("corrDirectionFilter")?.value || "").trim(), status: String(q("corrStatusFilter")?.value || "").trim(), date_from: String(q("corrDateFromFilter")?.value || "").trim(), date_to: String(q("corrDateToFilter")?.value || "").trim() };
+    return { search: String(q("corrSearchInput")?.value || "").trim(), issuing_code: String(q("corrIssuingFilter")?.value || "").trim(), category_code: String(q("corrCategoryFilter")?.value || "").trim(), department_code: String(q("corrDepartmentFilter")?.value || "").trim(), tag_id: String(q("corrTagFilter")?.value || "").trim(), direction: String(q("corrDirectionFilter")?.value || "").trim(), status: String(q("corrStatusFilter")?.value || "").trim(), date_from: String(q("corrDateFromFilter")?.value || "").trim(), date_to: String(q("corrDateToFilter")?.value || "").trim() };
   }
   async function loadSearchSuggestions() {
     const input = q("corrSearchInput");
@@ -233,7 +234,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     clearTimeout(S.timer);
     S.timer = setTimeout(() => corrApplyFilters(true), 350);
   }
-  function corrResetFilters() { ["corrSearchInput", "corrIssuingFilter", "corrCategoryFilter", "corrTagFilter", "corrDirectionFilter", "corrStatusFilter", "corrDateFromFilter", "corrDateToFilter"].forEach((id) => { const e = q(id); if (e) e.value = ""; }); syncShamsiInputs(); S.page = 1; loadList(); }
+  function corrResetFilters() { ["corrSearchInput", "corrIssuingFilter", "corrCategoryFilter", "corrDepartmentFilter", "corrTagFilter", "corrDirectionFilter", "corrStatusFilter", "corrDateFromFilter", "corrDateToFilter"].forEach((id) => { const e = q(id); if (e) e.value = ""; }); syncShamsiInputs(); S.page = 1; loadList(); }
   function corrPrevPage() { if (S.page <= 1 || S.loading) return; S.page -= 1; loadList(); }
   function corrNextPage() { if (S.loading) return; if (S.page * S.size >= S.total) return; S.page += 1; loadList(); }
   function corrChangePageSize(v) { S.size = Math.max(1, Number(v || 20)); S.page = 1; loadList(); }
@@ -745,6 +746,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     q("corrCategoryInput").value = String(v.category_code || "");
     q("corrDirectionInput").value = String(v.direction || "O");
     q("corrProjectInput").value = String(v.project_code || "");
+    q("corrDepartmentInput").value = String(v.department_code || "");
     q("corrTagInput").value = String(v.tag_id || "");
     q("corrReferenceInput").value = String(v.reference_no || "");
     q("corrSubjectInput").value = String(v.subject || "");
@@ -770,6 +772,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       project_code: q("corrProjectInput").value,
       issuing_code: q("corrIssuingInput").value,
       category_code: q("corrCategoryInput").value,
+      department_code: q("corrDepartmentInput").value,
       tag_id: q("corrTagInput").value,
       direction: q("corrDirectionInput").value,
       reference_no: q("corrReferenceInput").value,

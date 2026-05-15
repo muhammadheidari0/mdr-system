@@ -50,6 +50,9 @@
                 <select id="corrCategoryFilter" class="archive-filter-select">
                     <option value="">همه دسته‌ها</option>
                 </select>
+                <select id="corrDepartmentFilter" class="archive-filter-select">
+                    <option value="">همه بخش‌ها</option>
+                </select>
                 <select id="corrTagFilter" class="archive-filter-select">
                     <option value="">همه تگ‌ها</option>
                 </select>
@@ -92,6 +95,7 @@
                         <th>موضوع</th>
                         <th>مرجع صدور</th>
                         <th>دسته</th>
+                        <th>بخش مرتبط</th>
                         <th>تگ</th>
                         <th>جهت</th>
                         <th>تاریخ</th>
@@ -162,7 +166,7 @@
                     </div>
                 </div>
 
-                <div class="corr-form-grid corr-form-grid-2">
+                <div class="corr-form-grid corr-form-grid-3">
                     <div>
                         <label class="form-label-sm">پروژه (اختیاری)</label>
                         <select id="corrProjectInput" class="archive-search-input">
@@ -170,7 +174,13 @@
                         </select>
                     </div>
                     <div>
-                        <label class="form-label-sm">دیسیپلین (اختیاری)</label>
+                        <label class="form-label-sm">بخش مرتبط (اختیاری)</label>
+                        <select id="corrDepartmentInput" class="archive-search-input">
+                            <option value="">بدون بخش</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">تگ (اختیاری)</label>
                         <select id="corrTagInput" class="archive-search-input">
                             <option value="">بدون دیسیپلین</option>
                         </select>

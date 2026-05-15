@@ -44,7 +44,7 @@ from app.db.models import (
     SettingsAuditLog,
     PowerBiApiToken,
     ArchiveFile, Correspondence, CorrespondenceAction, CorrespondenceAttachment,
-    CorrespondenceCategory, DocumentTag, IssuingEntity,
+    CorrespondenceCategory, CorrespondenceDepartment, DocumentTag, IssuingEntity,
     WorkflowStatus, WorkflowTransition, TechSubtype, ReviewResult,
     SiteLogActivityCatalog, SiteLogRoleCatalog, SiteLogWorkSectionCatalog, SiteLogEquipmentCatalog, SiteLogMaterialCatalog, SiteLogEquipmentStatusCatalog,
     SiteLogAttachmentTypeCatalog, SiteLogIssueTypeCatalog, SiteLogShiftCatalog, SiteLogWeatherCatalog,
@@ -265,6 +265,19 @@ class CorrespondenceCategoryIn(BaseModel):
     sort_order: int = 0
 
 class CorrespondenceCategoryDeleteIn(BaseModel):
+    code: str
+    hard_delete: bool = False
+
+
+class CorrespondenceDepartmentIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=32)
+    name_e: str = Field(..., min_length=1, max_length=255)
+    name_p: Optional[str] = Field(default=None, max_length=255)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class CorrespondenceDepartmentDeleteIn(BaseModel):
     code: str
     hard_delete: bool = False
 
@@ -2143,6 +2156,7 @@ def overview(db: Session = Depends(get_db)):
             "correspondence_attachments": _count(db, CorrespondenceAttachment),
             "issuing_entities": _count(db, IssuingEntity),
             "correspondence_categories": _count(db, CorrespondenceCategory),
+            "correspondence_departments": _count(db, CorrespondenceDepartment),
         },
     }
 
@@ -3265,6 +3279,117 @@ def delete_correspondence_categories_settings(
     )
     db.commit()
     return {"ok": True, "message": "Correspondence category disabled", "code": code}
+
+
+def _serialize_correspondence_department(row: CorrespondenceDepartment) -> Dict[str, Any]:
+    return {
+        "code": row.code,
+        "name_e": row.name_e,
+        "name_p": row.name_p,
+        "is_active": bool(row.is_active),
+        "sort_order": int(row.sort_order or 0),
+    }
+
+
+@router.get("/correspondence-departments")
+def list_correspondence_departments_settings(db: Session = Depends(get_db)):
+    rows = (
+        db.query(CorrespondenceDepartment)
+        .order_by(CorrespondenceDepartment.sort_order.asc(), CorrespondenceDepartment.code.asc())
+        .all()
+    )
+    return {"ok": True, "items": [_serialize_correspondence_department(row) for row in rows]}
+
+
+@router.post("/correspondence-departments/upsert")
+def upsert_correspondence_departments_settings(
+    payload: CorrespondenceDepartmentIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    code = _upper(payload.code)
+    if not code:
+        raise HTTPException(status_code=400, detail="code is required")
+
+    name_e = _norm(payload.name_e) or _norm(payload.name_p)
+    if not name_e:
+        raise HTTPException(status_code=400, detail="name_e is required")
+
+    row = db.query(CorrespondenceDepartment).filter(CorrespondenceDepartment.code == code).first()
+    before = _as_dict(row, ["code", "name_e", "name_p", "is_active", "sort_order"])
+    if row:
+        row.name_e = name_e
+        row.name_p = _norm(payload.name_p) or None
+        row.is_active = bool(payload.is_active)
+        row.sort_order = int(payload.sort_order or 0)
+    else:
+        row = CorrespondenceDepartment(
+            code=code,
+            name_e=name_e,
+            name_p=_norm(payload.name_p) or None,
+            is_active=bool(payload.is_active),
+            sort_order=int(payload.sort_order or 0),
+        )
+        db.add(row)
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="correspondence_department.upsert",
+        target_type="correspondence_department",
+        target_key=code,
+        before=before,
+        after=_serialize_correspondence_department(row),
+    )
+    db.commit()
+    return {"ok": True, "message": "Correspondence department upserted", "code": code}
+
+
+@router.post("/correspondence-departments/delete")
+def delete_correspondence_departments_settings(
+    payload: CorrespondenceDepartmentDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    code = _upper(payload.code)
+    row = db.query(CorrespondenceDepartment).filter(CorrespondenceDepartment.code == code).first()
+    if not row:
+        return {"ok": True, "message": "Correspondence department not found (noop)"}
+
+    before = _serialize_correspondence_department(row)
+    if payload.hard_delete:
+        try:
+            _audit_log(
+                db,
+                actor=current_user,
+                action="correspondence_department.delete.hard",
+                target_type="correspondence_department",
+                target_key=code,
+                before=before,
+                after=None,
+            )
+            db.delete(row)
+            db.commit()
+            return {"ok": True, "message": "Correspondence department deleted", "code": code}
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=f"Correspondence department {code} is in use and cannot be hard deleted.",
+            )
+
+    row.is_active = False
+    _audit_log(
+        db,
+        actor=current_user,
+        action="correspondence_department.delete.soft",
+        target_type="correspondence_department",
+        target_key=code,
+        before=before,
+        after=_serialize_correspondence_department(row),
+    )
+    db.commit()
+    return {"ok": True, "message": "Correspondence department disabled", "code": code}
 
 
 def _serialize_correspondence_tag(row: DocumentTag) -> Dict[str, Any]:

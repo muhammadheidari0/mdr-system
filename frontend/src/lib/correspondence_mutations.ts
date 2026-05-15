@@ -15,6 +15,7 @@ export interface CorrespondenceSavePayload {
   project_code?: string | null;
   issuing_code?: string | null;
   category_code?: string | null;
+  department_code?: string | null;
   discipline_code?: string | null;
   tag_id?: number | null;
   doc_type?: string | null;

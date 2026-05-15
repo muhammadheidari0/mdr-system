@@ -19,6 +19,8 @@ export interface CorrespondenceListItem {
   issuing_code?: string | null;
   category_name?: string | null;
   category_code?: string | null;
+  department_name?: string | null;
+  department_code?: string | null;
   direction?: string | null;
   corr_date?: string | null;
   status?: string | null;
@@ -297,6 +299,7 @@ function renderRows(state: CorrespondenceRowsState, deps: CorrespondenceStateDep
       const subject = esc(item?.subject || "-");
       const issuing = esc(item?.issuing_name || item?.issuing_code || "-");
       const category = esc(item?.category_name || item?.category_code || "-");
+      const department = esc(item?.department_name || item?.department_code || "-");
       const tags = Array.isArray(item?.tags) ? item.tags : [];
       const tagHtml = tags.length
         ? tags
@@ -315,7 +318,7 @@ function renderRows(state: CorrespondenceRowsState, deps: CorrespondenceStateDep
       return `
       <tr>
         <td>${offset + index + 1}</td><td style="font-family:monospace;">${ref}</td><td>${subject}</td>
-        <td>${issuing}</td><td>${category}</td><td>${tagHtml}</td><td>${direction}</td>
+        <td>${issuing}</td><td>${category}</td><td>${department}</td><td>${tagHtml}</td><td>${direction}</td>
         <td>${corrDate}</td><td><span class="corr-status-badge ${statusClass(item?.status)}">${status}</span></td><td>${openActions}</td><td>${attachments}</td>
         <td class="corr-row-actions-cell">
           <div class="archive-row-menu corr-row-menu" data-corr-row-menu>
