@@ -345,6 +345,7 @@ class CorrespondenceCreateIn(BaseModel):
     subject: str = Field(..., min_length=1)
     sender: Optional[str] = Field(default=None, max_length=255)
     recipient: Optional[str] = Field(default=None)
+    cc_recipients: Optional[str] = Field(default=None, max_length=1000)
     corr_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     status: str = Field(default="Open", min_length=1, max_length=20)
@@ -365,6 +366,7 @@ class CorrespondenceUpdateIn(BaseModel):
     subject: Optional[str] = None
     sender: Optional[str] = Field(default=None, max_length=255)
     recipient: Optional[str] = None
+    cc_recipients: Optional[str] = Field(default=None, max_length=1000)
     corr_date: Optional[datetime] = None
     due_date: Optional[datetime] = None
     status: Optional[str] = Field(default=None, max_length=20)
@@ -1101,6 +1103,7 @@ def _serialize_correspondence(
         "subject": row.subject,
         "sender": row.sender,
         "recipient": row.recipient,
+        "cc_recipients": row.cc_recipients,
         "corr_date": row.corr_date.isoformat() if row.corr_date else None,
         "due_date": row.due_date.isoformat() if row.due_date else None,
         "status": row.status,
@@ -1369,6 +1372,7 @@ def list_correspondence(
                 Correspondence.subject.ilike(pattern),
                 Correspondence.sender.ilike(pattern),
                 Correspondence.recipient.ilike(pattern),
+                Correspondence.cc_recipients.ilike(pattern),
             )
         )
 
@@ -1458,6 +1462,7 @@ def report_correspondence_table(
                 Correspondence.subject.ilike(pattern),
                 Correspondence.sender.ilike(pattern),
                 Correspondence.recipient.ilike(pattern),
+                Correspondence.cc_recipients.ilike(pattern),
             )
         )
 
@@ -1536,6 +1541,7 @@ def suggest_correspondence(
                 Correspondence.subject.ilike(pattern),
                 Correspondence.sender.ilike(pattern),
                 Correspondence.recipient.ilike(pattern),
+                Correspondence.cc_recipients.ilike(pattern),
             )
         )
         .order_by(Correspondence.corr_date.desc(), Correspondence.id.desc())
@@ -1551,6 +1557,7 @@ def suggest_correspondence(
                 "subject": row.subject,
                 "sender": row.sender,
                 "recipient": row.recipient,
+                "cc_recipients": row.cc_recipients,
                 "status": row.status,
                 "corr_date": row.corr_date.isoformat() if row.corr_date else None,
             }
@@ -1617,6 +1624,7 @@ def create_correspondence(
         "subject": _norm(payload.subject),
         "sender": _norm(payload.sender) or None,
         "recipient": _norm(payload.recipient) or None,
+        "cc_recipients": _norm(payload.cc_recipients) or None,
         "corr_date": corr_date,
         "due_date": payload.due_date,
         "status": _norm(payload.status) or "Open",
@@ -1765,6 +1773,8 @@ def update_correspondence(
         row.sender = _norm(payload.sender) or None
     if payload.recipient is not None:
         row.recipient = _norm(payload.recipient) or None
+    if payload.cc_recipients is not None:
+        row.cc_recipients = _norm(payload.cc_recipients) or None
     if payload.corr_date is not None:
         row.corr_date = payload.corr_date
     if payload.due_date is not None:

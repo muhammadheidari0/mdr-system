@@ -826,6 +826,7 @@ class Correspondence(Base):
     subject: Mapped[str] = mapped_column(Text)
     sender: Mapped[str | None] = mapped_column(String(255))
     recipient: Mapped[str | None] = mapped_column(Text)
+    cc_recipients: Mapped[str | None] = mapped_column(Text)
     corr_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     due_date: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(20), default="Open", index=True)

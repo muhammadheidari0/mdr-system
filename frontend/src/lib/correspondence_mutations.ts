@@ -24,6 +24,7 @@ export interface CorrespondenceSavePayload {
   subject?: string;
   sender?: string | null;
   recipient?: string | null;
+  cc_recipients?: string | null;
   corr_date?: string | null;
   due_date?: string | null;
   status?: string;

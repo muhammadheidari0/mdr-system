@@ -22,6 +22,9 @@ export interface CorrespondenceListItem {
   department_name?: string | null;
   department_code?: string | null;
   direction?: string | null;
+  sender?: string | null;
+  recipient?: string | null;
+  cc_recipients?: string | null;
   corr_date?: string | null;
   status?: string | null;
   tag_id?: number | null;
@@ -164,6 +167,13 @@ function kindFa(kind: unknown): string {
   return "پیوست";
 }
 
+function compactCcRecipients(value: unknown): string {
+  return String(value || "")
+    .replace(/\s*[\r\n;]+\s*/g, "، ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function relationTargetFa(type: unknown): string {
   const normalized = String(type || "").toLowerCase();
   if (normalized === "document") return "مدرک";
@@ -297,6 +307,10 @@ function renderRows(state: CorrespondenceRowsState, deps: CorrespondenceStateDep
       const itemId = toNumber(item?.id, 0);
       const ref = esc(item?.reference_no || "-");
       const subject = esc(item?.subject || "-");
+      const ccRecipients = compactCcRecipients(item?.cc_recipients);
+      const ccHtml = ccRecipients
+        ? `<div title="${esc(ccRecipients)}" style="font-size:0.78rem;color:#64748b;margin-top:4px;max-width:380px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">رونوشت: ${esc(ccRecipients)}</div>`
+        : "";
       const issuing = esc(item?.issuing_name || item?.issuing_code || "-");
       const category = esc(item?.category_name || item?.category_code || "-");
       const department = esc(item?.department_name || item?.department_code || "-");
@@ -317,7 +331,7 @@ function renderRows(state: CorrespondenceRowsState, deps: CorrespondenceStateDep
       const attachments = toNumber(item?.attachments_count, 0);
       return `
       <tr>
-        <td>${offset + index + 1}</td><td style="font-family:monospace;">${ref}</td><td>${subject}</td>
+        <td>${offset + index + 1}</td><td style="font-family:monospace;">${ref}</td><td>${subject}${ccHtml}</td>
         <td>${issuing}</td><td>${category}</td><td>${department}</td><td>${tagHtml}</td><td>${direction}</td>
         <td>${corrDate}</td><td><span class="corr-status-badge ${statusClass(item?.status)}">${status}</span></td><td>${openActions}</td><td>${attachments}</td>
         <td class="corr-row-actions-cell">

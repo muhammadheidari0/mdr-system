@@ -766,6 +766,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     q("corrSubjectInput").value = String(v.subject || "");
     q("corrSenderInput").value = String(v.sender || "");
     q("corrRecipientInput").value = String(v.recipient || "");
+    q("corrCcRecipientsInput").value = String(v.cc_recipients || "");
     q("corrDateInput").value = String(v.corr_date || "");
     q("corrDueDateInput").value = String(v.due_date || "");
     q("corrStatusInput").value = String(v.status || "Open");
@@ -796,6 +797,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       subject: q("corrSubjectInput").value,
       sender: q("corrSenderInput").value,
       recipient: q("corrRecipientInput").value,
+      cc_recipients: q("corrCcRecipientsInput").value,
       corr_date: q("corrDateInput").value,
       due_date: q("corrDueDateInput").value,
       status: q("corrStatusInput").value,

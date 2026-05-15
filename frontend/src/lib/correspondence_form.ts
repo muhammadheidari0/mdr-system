@@ -20,6 +20,7 @@ export interface CorrespondenceFormValues {
   subject: string;
   sender: string;
   recipient: string;
+  cc_recipients: string;
   corr_date: string;
   due_date: string;
   status: string;
@@ -38,6 +39,7 @@ export interface CorrespondenceFormInput {
   subject?: unknown;
   sender?: unknown;
   recipient?: unknown;
+  cc_recipients?: unknown;
   corr_date?: unknown;
   due_date?: unknown;
   status?: unknown;
@@ -152,6 +154,7 @@ function createDefaultValues(today?: Date | string | null): CorrespondenceFormVa
     subject: "",
     sender: "",
     recipient: "",
+    cc_recipients: "",
     corr_date: toDateSeed(today),
     due_date: "",
     status: "Open",
@@ -174,6 +177,7 @@ function buildPayload(input: CorrespondenceFormInput): CorrespondenceSavePayload
     subject: trimString(input.subject),
     sender: trimString(input.sender) || null,
     recipient: trimString(input.recipient) || null,
+    cc_recipients: trimString(input.cc_recipients) || null,
     corr_date: toIsoDate(input.corr_date),
     due_date: toIsoDate(input.due_date),
     status: trimString(input.status) || "Open",
@@ -198,6 +202,7 @@ function normalizeEditValues(
     subject: String(record.subject ?? ""),
     sender: String(record.sender ?? ""),
     recipient: String(record.recipient ?? ""),
+    cc_recipients: String(record.cc_recipients ?? ""),
     corr_date: toInputDate(record.corr_date),
     due_date: toInputDate(record.due_date),
     status: trimString(record.status) || "Open",

@@ -98,12 +98,14 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
             "subject": "Typeahead relation correspondence",
             "sender": "DCC",
             "recipient": "Engineering",
+            "cc_recipients": "Design Team\nFinance Team",
             "status": "Open",
             "priority": "Normal",
         },
         headers=headers,
     )
     assert create_res.status_code == 200, create_res.text
+    assert (create_res.json().get("data") or {}).get("cc_recipients") == "Design Team\nFinance Team"
     correspondence_id = int((create_res.json().get("data") or {}).get("id") or 0)
     assert correspondence_id > 0
 
@@ -234,6 +236,18 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     suggestions = client.get(f"/api/v1/correspondence/suggestions?q={reference_no[:10]}", headers=headers)
     assert suggestions.status_code == 200, suggestions.text
     assert any(item.get("reference_no") == reference_no for item in suggestions.json().get("items") or [])
+
+    cc_search = client.get("/api/v1/correspondence/list?search=Finance%20Team", headers=headers)
+    assert cc_search.status_code == 200, cc_search.text
+    assert any(item.get("reference_no") == reference_no for item in cc_search.json().get("data") or [])
+
+    update_cc = client.put(
+        f"/api/v1/correspondence/{correspondence_id}",
+        json={"cc_recipients": "Procurement, QA"},
+        headers=headers,
+    )
+    assert update_cc.status_code == 200, update_cc.text
+    assert (update_cc.json().get("data") or {}).get("cc_recipients") == "Procurement, QA"
 
     document_id, doc_no, transmittal_no = _seed_document_and_transmittal(project_code, discipline_code)
     document_relation = client.post(

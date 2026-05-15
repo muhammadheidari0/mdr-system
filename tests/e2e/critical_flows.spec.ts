@@ -348,10 +348,12 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
         priority: "Normal",
         sender: "E2E Sender",
         recipient: "E2E Recipient",
+        cc_recipients: "E2E CC Design, E2E CC Finance",
       },
     });
     const createBody = await expectOkJson(createResponse, "correspondence create");
     expect(createBody?.ok).toBeTruthy();
+    expect(createBody?.data?.cc_recipients).toBe("E2E CC Design, E2E CC Finance");
     const correspondenceId = Number(createBody?.data?.id || 0);
     expect(correspondenceId).toBeGreaterThan(0);
 
@@ -541,6 +543,7 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
         await page.keyboard.press("Enter");
         const correspondenceRow = page.locator("#corrTableBody tr", { hasText: updatedSubject }).first();
         await expect(correspondenceRow).toBeVisible({ timeout: 15000 });
+        await expect(correspondenceRow).toContainText("E2E CC Design");
 
         await correspondenceRow.locator('[data-corr-action="toggle-row-menu"]').click();
         await correspondenceRow.locator('[data-corr-action="preview-correspondence"]').click();
@@ -553,6 +556,7 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
         await correspondenceRow.locator('[data-corr-action="toggle-row-menu"]').click();
         await correspondenceRow.locator('[data-corr-action="open-workflow"]').click();
         await expect(page.locator("#corrModal")).toBeVisible({ timeout: 15000 });
+        await expect(page.locator("#corrCcRecipientsInput")).toHaveValue("E2E CC Design, E2E CC Finance");
         const imageRow = page.locator("#corrAttachmentsBody tr", { hasText: "critical-e2e-image.png" }).first();
         await expect(imageRow).toBeVisible({ timeout: 15000 });
         await imageRow.locator('[data-corr-action="preview-attachment"]').click();
