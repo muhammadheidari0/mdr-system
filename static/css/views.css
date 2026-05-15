@@ -10725,12 +10725,59 @@ textarea.doc-form-control {
     background: #fff;
 }
 
+.doc-comments-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.doc-comment-filter-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #475569;
+    font-size: 0.8rem;
+    font-weight: 800;
+}
+
+.doc-comment-filter-wrap .doc-form-control {
+    min-width: 180px;
+    height: 38px;
+}
+
 .doc-comments-editor {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(210px, 260px);
     gap: 10px;
-    align-items: end;
+    align-items: stretch;
     margin-bottom: 14px;
+}
+
+.doc-comments-editor textarea {
+    min-height: 112px;
+    resize: vertical;
+}
+
+.doc-comments-editor-side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+    justify-content: flex-end;
+}
+
+.doc-comments-editor-side .doc-comment-filter-wrap {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.doc-comments-editor-side .doc-comment-filter-wrap .doc-form-control,
+.doc-comments-editor-side .doc-action-btn {
+    width: 100%;
 }
 
 .doc-comments-list,
@@ -10780,6 +10827,38 @@ textarea.doc-form-control {
     color: #475569;
 }
 
+.doc-comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.doc-comment-revision-badge,
+.doc-comment-edited-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    border-radius: 999px;
+    padding: 0 8px;
+    font-size: 0.73rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.doc-comment-revision-badge {
+    color: #075985;
+    background: #e0f2fe;
+    border: 1px solid #bae6fd;
+}
+
+.doc-comment-edited-badge {
+    color: #64748b;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
 .doc-comment-body {
     margin-top: 8px;
     color: #0f172a;
@@ -10797,6 +10876,68 @@ textarea.doc-form-control {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
+}
+
+.doc-comments-print-modal {
+    align-items: center;
+    justify-content: center;
+}
+
+.doc-comments-print-box {
+    width: min(1000px, calc(100vw - 32px));
+    max-width: 1000px;
+    height: min(86vh, 860px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.doc-comments-print-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.doc-comments-print-header h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.doc-comments-print-meta {
+    margin-top: 4px;
+    color: #64748b;
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.doc-comments-print-toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    padding: 10px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.doc-comments-print-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    background: #e5e7eb;
+}
+
+.doc-comments-print-frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #fff;
 }
 
 .doc-activity-item {
@@ -10980,6 +11121,11 @@ textarea.doc-form-control {
     .doc-relations-add,
     .doc-comments-editor {
         grid-template-columns: 1fr;
+    }
+
+    .doc-comments-toolbar {
+        align-items: stretch;
+        flex-direction: column;
     }
 }
 

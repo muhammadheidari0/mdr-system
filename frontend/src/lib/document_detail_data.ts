@@ -37,6 +37,20 @@ export async function requestBlob(url: string, init: RequestInit = {}) {
   return response.blob();
 }
 
+export async function requestText(url: string, init: RequestInit = {}) {
+  const fetchFn = (window as any).fetchWithAuth || window.fetch.bind(window);
+  const response = await fetchFn(url, init);
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = await response.json();
+      message = String(payload?.detail || payload?.message || message).trim();
+    } catch (_) {}
+    throw new Error(message);
+  }
+  return response.text();
+}
+
 export async function loadDocumentDetail(documentId: number) {
   return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}`);
 }
@@ -134,19 +148,45 @@ export async function loadDocumentActivity(documentId: number, skip = 0, limit =
   return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/activity?${qs.toString()}`);
 }
 
-export async function loadDocumentComments(documentId: number) {
-  return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/comments`);
+export async function loadDocumentComments(documentId: number, revisionId: number | null | undefined = undefined) {
+  const qs = new URLSearchParams();
+  if (revisionId !== undefined) {
+    qs.set("revision_id", String(Math.max(0, Number(revisionId || 0))));
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/comments${suffix}`);
 }
 
-export async function createDocumentComment(documentId: number, body: string, parentId: number | null = null) {
+export async function createDocumentComment(
+  documentId: number,
+  body: string,
+  parentId: number | null = null,
+  revisionId: number | null | undefined = undefined,
+) {
+  const payload: Record<string, unknown> = {
+    body: String(body || ""),
+    parent_id: parentId ?? null,
+  };
+  if (revisionId !== undefined) {
+    payload.revision_id = Number(revisionId || 0) || null;
+  }
   return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/comments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      body: String(body || ""),
-      parent_id: parentId ?? null,
-    }),
+    body: JSON.stringify(payload),
   });
+}
+
+export async function loadDocumentCommentsPrintPreview(
+  documentId: number,
+  revisionId: number | null | undefined = undefined,
+) {
+  const qs = new URLSearchParams();
+  if (revisionId !== undefined) {
+    qs.set("revision_id", String(Math.max(0, Number(revisionId || 0))));
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return requestText(`/api/v1/archive/documents/${Number(documentId || 0)}/comments/print-preview${suffix}`);
 }
 
 export async function updateDocumentComment(documentId: number, commentId: number, body: string) {

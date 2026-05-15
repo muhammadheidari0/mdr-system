@@ -932,6 +932,36 @@ def _latest_live_file(document: MdrDocument | None) -> ArchiveFile | None:
     return files[0]
 
 
+def _comment_revision_label(revision: DocumentRevision | None) -> str:
+    if not revision:
+        return "کل مدرک"
+    label = f"Rev {str(revision.revision or '').strip() or '-'}"
+    status = str(revision.status or "").strip()
+    return f"{label} | {status}" if status else label
+
+
+def _comment_payload(row: DocumentComment) -> dict[str, Any]:
+    revision = getattr(row, "revision", None)
+    return {
+        "id": int(row.id or 0),
+        "document_id": int(row.document_id or 0),
+        "parent_id": int(row.parent_id or 0) or None,
+        "revision_id": int(row.revision_id or 0) or None,
+        "revision": getattr(revision, "revision", None),
+        "revision_status": getattr(revision, "status", None),
+        "revision_label": _comment_revision_label(revision),
+        "author_id": int(row.author_id or 0) or None,
+        "author_name": row.author_name,
+        "author_email": row.author_email,
+        "body": None if row.deleted_at else row.body,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "deleted_at": row.deleted_at.isoformat() if row.deleted_at else None,
+        "is_deleted": bool(row.deleted_at),
+        "children": [],
+    }
+
+
 def _comment_payload_tree(rows: list[DocumentComment]) -> list[dict[str, Any]]:
     ordered = sorted(
         rows,
@@ -943,20 +973,7 @@ def _comment_payload_tree(rows: list[DocumentComment]) -> list[dict[str, Any]]:
     items: dict[int, dict[str, Any]] = {}
     roots: list[dict[str, Any]] = []
     for row in ordered:
-        payload = {
-            "id": int(row.id or 0),
-            "document_id": int(row.document_id or 0),
-            "parent_id": int(row.parent_id or 0) or None,
-            "author_id": int(row.author_id or 0) or None,
-            "author_name": row.author_name,
-            "author_email": row.author_email,
-            "body": None if row.deleted_at else row.body,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-            "deleted_at": row.deleted_at.isoformat() if row.deleted_at else None,
-            "is_deleted": bool(row.deleted_at),
-            "children": [],
-        }
+        payload = _comment_payload(row)
         items[payload["id"]] = payload
         parent_id = payload["parent_id"]
         if parent_id and parent_id in items:
@@ -994,7 +1011,7 @@ def get_document_detail(db: Session, document_id: int, user: Any) -> dict[str, A
             joinedload(MdrDocument.updated_by),
             joinedload(MdrDocument.deleted_by),
             joinedload(MdrDocument.revisions).joinedload(DocumentRevision.archive_files),
-            joinedload(MdrDocument.comments),
+            joinedload(MdrDocument.comments).joinedload(DocumentComment.revision),
             joinedload(MdrDocument.activities),
             joinedload(MdrDocument.outgoing_relations).joinedload(DocumentRelation.target_document),
             joinedload(MdrDocument.incoming_relations).joinedload(DocumentRelation.source_document),
@@ -1674,7 +1691,33 @@ def list_document_activity(db: Session, document_id: int, user: Any, skip: int =
     return {"ok": True, "total": total, "data": rows}
 
 
-def list_document_comments(db: Session, document_id: int, user: Any) -> list[DocumentComment]:
+def _resolve_document_comment_revision(
+    db: Session,
+    document_id: int,
+    revision_id: int | None,
+) -> DocumentRevision | None:
+    numeric_id = int(revision_id or 0)
+    if numeric_id <= 0:
+        return None
+    revision = (
+        db.query(DocumentRevision)
+        .filter(
+            DocumentRevision.id == numeric_id,
+            DocumentRevision.document_id == int(document_id),
+        )
+        .first()
+    )
+    if not revision:
+        raise HTTPException(status_code=404, detail="Revision not found for this document")
+    return revision
+
+
+def list_document_comments(
+    db: Session,
+    document_id: int,
+    user: Any,
+    revision_id: int | None = None,
+) -> list[DocumentComment]:
     document = db.query(MdrDocument).filter(MdrDocument.id == int(document_id)).first()
     if not document:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -1684,12 +1727,19 @@ def list_document_comments(db: Session, document_id: int, user: Any) -> list[Doc
         project_code=document.project_code,
         discipline_code=document.discipline_code,
     )
-    return (
+    query = (
         db.query(DocumentComment)
+        .options(joinedload(DocumentComment.revision))
         .filter(DocumentComment.document_id == int(document_id))
-        .order_by(DocumentComment.created_at.asc(), DocumentComment.id.asc())
-        .all()
     )
+    if revision_id is not None:
+        numeric_revision = int(revision_id or 0)
+        if numeric_revision <= 0:
+            query = query.filter(DocumentComment.revision_id.is_(None))
+        else:
+            _resolve_document_comment_revision(db, int(document_id), numeric_revision)
+            query = query.filter(DocumentComment.revision_id == numeric_revision)
+    return query.order_by(DocumentComment.created_at.asc(), DocumentComment.id.asc()).all()
 
 
 def create_document_comment(
@@ -1698,6 +1748,7 @@ def create_document_comment(
     body: str,
     user: Any,
     parent_id: int | None = None,
+    revision_id: int | None = None,
 ) -> DocumentComment:
     document = db.query(MdrDocument).filter(MdrDocument.id == int(document_id)).first()
     if not document:
@@ -1725,9 +1776,15 @@ def create_document_comment(
         )
         if not parent:
             raise HTTPException(status_code=404, detail="Parent comment not found")
+    revision = _resolve_document_comment_revision(db, int(document_id), revision_id)
+    if parent and revision_id is None:
+        revision = getattr(parent, "revision", None)
+        if revision is None and int(parent.revision_id or 0) > 0:
+            revision = _resolve_document_comment_revision(db, int(document_id), int(parent.revision_id or 0))
     row = DocumentComment(
         document_id=int(document_id),
         parent_id=int(parent_id) if parent else None,
+        revision_id=int(revision.id or 0) if revision else None,
         author_id=getattr(user, "id", None),
         author_name=getattr(user, "full_name", None) or getattr(user, "email", None),
         author_email=getattr(user, "email", None),
@@ -1742,7 +1799,11 @@ def create_document_comment(
         "comment_added",
         user,
         detail=f"comment:{int(row.id or 0)}",
-        after_data={"comment_id": int(row.id or 0), "parent_id": int(row.parent_id or 0) or None},
+        after_data={
+            "comment_id": int(row.id or 0),
+            "parent_id": int(row.parent_id or 0) or None,
+            "revision_id": int(row.revision_id or 0) or None,
+        },
     )
     db.commit()
     db.refresh(row)

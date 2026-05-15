@@ -2894,6 +2894,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/archive/documents/{document_id}/comments/print-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Print Document Comments */
+        get: operations["print_document_comments_api_v1_archive_documents__document_id__comments_print_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/archive/documents/{document_id}/comments/{comment_id}": {
         parameters: {
             query?: never;
@@ -6613,6 +6630,8 @@ export interface components {
             body: string;
             /** Parent Id */
             parent_id?: number | null;
+            /** Revision Id */
+            revision_id?: number | null;
         };
         /** DocumentCommentUpdateIn */
         DocumentCommentUpdateIn: {
@@ -14371,7 +14390,9 @@ export interface operations {
     };
     list_document_comments_api_v1_archive_documents__document_id__comments_get: {
         parameters: {
-            query?: never;
+            query?: {
+                revision_id?: number | null;
+            };
             header?: never;
             path: {
                 document_id: number;
@@ -14422,6 +14443,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    print_document_comments_api_v1_archive_documents__document_id__comments_print_preview_get: {
+        parameters: {
+            query?: {
+                revision_id?: number | null;
+            };
+            header?: never;
+            path: {
+                document_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /** @description Validation Error */

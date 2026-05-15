@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import html
 import json
 import os
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -372,6 +373,7 @@ class DocumentReclassifyIn(BaseModel):
 class DocumentCommentCreateIn(BaseModel):
     body: str
     parent_id: Optional[int] = None
+    revision_id: Optional[int] = None
 
 
 class DocumentCommentUpdateIn(BaseModel):
@@ -491,11 +493,24 @@ def _serialize_activity_payload(row: DocumentActivity) -> dict[str, Any]:
     }
 
 
+def _comment_revision_label(revision: DocumentRevision | None) -> str:
+    if not revision:
+        return "کل مدرک"
+    label = f"Rev {str(revision.revision or '').strip() or '-'}"
+    status = str(revision.status or "").strip()
+    return f"{label} | {status}" if status else label
+
+
 def _serialize_comment_payload(row: DocumentComment) -> dict[str, Any]:
+    revision = getattr(row, "revision", None)
     return {
         "id": int(row.id or 0),
         "document_id": int(row.document_id or 0),
         "parent_id": int(row.parent_id or 0) or None,
+        "revision_id": int(row.revision_id or 0) or None,
+        "revision": getattr(revision, "revision", None),
+        "revision_status": getattr(revision, "status", None),
+        "revision_label": _comment_revision_label(revision),
         "author_id": int(row.author_id or 0) or None,
         "author_name": row.author_name,
         "author_email": row.author_email,
@@ -527,6 +542,123 @@ def _build_comment_tree(rows: list[DocumentComment]) -> list[dict[str, Any]]:
         else:
             roots.append(payload)
     return roots
+
+
+def _print_comment_rows(rows: list[DocumentComment]) -> str:
+    visible_rows = [row for row in rows if not row.deleted_at]
+    if not visible_rows:
+        return '<div class="empty">کامنتی برای چاپ وجود ندارد.</div>'
+    items: list[str] = []
+    for index, row in enumerate(visible_rows, start=1):
+        author = html.escape(str(row.author_name or row.author_email or "کاربر نامشخص"))
+        created_at = html.escape(row.created_at.isoformat(sep=" ", timespec="minutes") if row.created_at else "-")
+        revision_label = html.escape(_comment_revision_label(getattr(row, "revision", None)))
+        body = html.escape(str(row.body or "")).replace("\n", "<br>")
+        parent_note = (
+            f'<span class="parent">پاسخ به کامنت #{int(row.parent_id or 0)}</span>'
+            if int(row.parent_id or 0) > 0
+            else ""
+        )
+        items.append(
+            f"""
+            <article class="comment">
+              <div class="comment-head">
+                <strong>#{index} - {author}</strong>
+                <span>{created_at}</span>
+              </div>
+              <div class="comment-meta"><span>{revision_label}</span>{parent_note}</div>
+              <p>{body}</p>
+            </article>
+            """
+        )
+    return "\n".join(items)
+
+
+def _document_comments_print_html(
+    *,
+    document: MdrDocument,
+    rows: list[DocumentComment],
+    revision_id: int | None,
+) -> str:
+    def esc_text(value: Any) -> str:
+        return html.escape(str(value or "-"))
+
+    selected_label = "همه کامنت‌ها"
+    selected_status = "-"
+    latest_revision = None
+    if document.revisions:
+        latest_revision = sorted(
+            document.revisions,
+            key=lambda row: (row.created_at or datetime.min, int(row.id or 0)),
+            reverse=True,
+        )[0]
+        selected_status = str(getattr(latest_revision, "status", "") or "-")
+    if revision_id is not None:
+        selected_label = "کل مدرک"
+        numeric_revision = int(revision_id or 0)
+        if numeric_revision > 0:
+            revision = next(
+                (
+                    row
+                    for row in (document.revisions or [])
+                    if int(row.id or 0) == numeric_revision
+                ),
+                None,
+            )
+            selected_label = _comment_revision_label(revision)
+            selected_status = str(getattr(revision, "status", "") or "-")
+
+    printed_at = datetime.utcnow().isoformat(sep=" ", timespec="minutes")
+    title = document.doc_title_e or document.doc_title_p or document.subject or document.doc_number
+    return f"""<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>Document Comments - {esc_text(document.doc_number)}</title>
+  <style>
+    @page {{ size: A4; margin: 14mm; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; color: #0f172a; font-family: Tahoma, Arial, sans-serif; font-size: 12px; line-height: 1.7; background: #fff; }}
+    .page {{ max-width: 190mm; margin: 0 auto; }}
+    header {{ border-bottom: 2px solid #0f6f9f; padding-bottom: 10px; margin-bottom: 14px; }}
+    h1 {{ margin: 0 0 6px; font-size: 18px; }}
+    .subtitle {{ color: #475569; font-size: 11px; }}
+    .meta {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; direction: ltr; text-align: left; }}
+    .meta div {{ border: 1px solid #dbe2ea; border-radius: 6px; padding: 6px 8px; min-height: 42px; }}
+    .meta span {{ display: block; color: #64748b; font-size: 10px; }}
+    .meta strong {{ display: block; color: #0f172a; font-size: 12px; overflow-wrap: anywhere; }}
+    .comment {{ border: 1px solid #dbe2ea; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; break-inside: avoid; }}
+    .comment-head {{ display: flex; justify-content: space-between; gap: 10px; direction: ltr; text-align: left; color: #334155; }}
+    .comment-meta {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0; color: #0369a1; font-weight: 700; }}
+    .comment-meta span {{ border: 1px solid #bae6fd; border-radius: 999px; background: #f0f9ff; padding: 1px 8px; }}
+    .comment p {{ margin: 0; white-space: normal; overflow-wrap: anywhere; }}
+    .empty {{ border: 1px dashed #cbd5e1; border-radius: 8px; padding: 24px; color: #64748b; text-align: center; }}
+    footer {{ margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 10px; display: flex; justify-content: space-between; direction: ltr; }}
+    @media print {{ body {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }} }}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <h1>گزارش کامنت‌های مدرک</h1>
+      <div class="subtitle">{esc_text(title)}</div>
+    </header>
+    <section class="meta">
+      <div><span>Document No.</span><strong>{esc_text(document.doc_number)}</strong></div>
+      <div><span>Project</span><strong>{esc_text(document.project_code)}</strong></div>
+      <div><span>Discipline</span><strong>{esc_text(document.discipline_code)}</strong></div>
+      <div><span>Revision Filter</span><strong>{esc_text(selected_label)}</strong></div>
+      <div><span>Status</span><strong>{esc_text(selected_status)}</strong></div>
+      <div><span>Printed At</span><strong>{html.escape(printed_at)} UTC</strong></div>
+    </section>
+    {_print_comment_rows(rows)}
+    <footer>
+      <span>Printed at: {html.escape(printed_at)} UTC</span>
+      <span>Comments: {len([row for row in rows if not row.deleted_at])}</span>
+    </footer>
+  </main>
+</body>
+</html>"""
 
 
 def _external_relation_target_label(entity_type: str) -> str:
@@ -1758,10 +1890,11 @@ async def list_document_activity(
 @router.get("/documents/{document_id}/comments")
 async def list_document_comments(
     document_id: int,
+    revision_id: Optional[int] = Query(default=None, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
 ):
-    rows = archive_service.list_document_comments(db, int(document_id), user)
+    rows = archive_service.list_document_comments(db, int(document_id), user, revision_id=revision_id)
     return {"ok": True, "items": _build_comment_tree(rows)}
 
 
@@ -1778,8 +1911,36 @@ async def create_document_comment(
         body=str(body.body or "").strip(),
         user=user,
         parent_id=body.parent_id,
+        revision_id=body.revision_id,
     )
     return {"ok": True, "item": _serialize_comment_payload(row)}
+
+
+@router.get("/documents/{document_id}/comments/print-preview", response_class=HTMLResponse)
+async def print_document_comments(
+    document_id: int,
+    revision_id: Optional[int] = Query(default=None, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    document = (
+        db.query(MdrDocument)
+        .options(joinedload(MdrDocument.revisions))
+        .filter(MdrDocument.id == int(document_id))
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    enforce_scope_access(
+        db,
+        user,
+        project_code=document.project_code,
+        discipline_code=document.discipline_code,
+    )
+    rows = archive_service.list_document_comments(db, int(document_id), user, revision_id=revision_id)
+    return HTMLResponse(
+        _document_comments_print_html(document=document, rows=rows, revision_id=revision_id)
+    )
 
 
 @router.put("/documents/{document_id}/comments/{comment_id}")

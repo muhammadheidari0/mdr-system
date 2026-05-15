@@ -1056,6 +1056,129 @@ def test_document_comments_permissions_and_tombstone_behavior() -> None:
         _save_permission_matrix(admin, "consultant", original_matrix)
 
 
+def test_document_comments_revision_filter_and_print_preview() -> None:
+    admin = _admin_headers()
+    document_id, doc_number = _register_document(admin, subject_prefix="CommentRevision")
+    _upload_file(
+        admin,
+        document_id=document_id,
+        filename="comment-revision.pdf",
+        content=b"%PDF-1.4\n%comment-revision\n",
+        mime_type="application/pdf",
+        revision="00",
+        status="IFA",
+    )
+    other_document_id, _ = _register_document(admin, subject_prefix="OtherCommentRevision")
+    _upload_file(
+        admin,
+        document_id=other_document_id,
+        filename="other-comment-revision.pdf",
+        content=b"%PDF-1.4\n%other-comment-revision\n",
+        mime_type="application/pdf",
+        revision="00",
+        status="IFA",
+    )
+
+    detail = client.get(f"/api/v1/archive/documents/{document_id}", headers=admin)
+    assert detail.status_code == 200, detail.text
+    revision_id = int(((detail.json().get("latest_revision") or {}).get("revision_id")) or 0)
+    assert revision_id > 0
+
+    other_detail = client.get(f"/api/v1/archive/documents/{other_document_id}", headers=admin)
+    assert other_detail.status_code == 200, other_detail.text
+    other_revision_id = int(((other_detail.json().get("latest_revision") or {}).get("revision_id")) or 0)
+    assert other_revision_id > 0 and other_revision_id != revision_id
+
+    general_comment = client.post(
+        f"/api/v1/archive/documents/{document_id}/comments",
+        json={"body": "Whole document note", "revision_id": None},
+        headers=admin,
+    )
+    assert general_comment.status_code == 200, general_comment.text
+    general_item = general_comment.json().get("item") or {}
+    general_id = int(general_item.get("id") or 0)
+    assert general_id > 0
+    assert general_item.get("revision_id") is None
+    assert general_item.get("revision_label")
+
+    revision_comment = client.post(
+        f"/api/v1/archive/documents/{document_id}/comments",
+        json={"body": "Revision scoped note", "revision_id": revision_id},
+        headers=admin,
+    )
+    assert revision_comment.status_code == 200, revision_comment.text
+    revision_item = revision_comment.json().get("item") or {}
+    revision_comment_id = int(revision_item.get("id") or 0)
+    assert revision_comment_id > 0
+    assert int(revision_item.get("revision_id") or 0) == revision_id
+    assert revision_item.get("revision") == "00"
+    assert "Rev 00" in str(revision_item.get("revision_label") or "")
+
+    reply_comment = client.post(
+        f"/api/v1/archive/documents/{document_id}/comments",
+        json={"body": "Revision reply", "parent_id": revision_comment_id},
+        headers=admin,
+    )
+    assert reply_comment.status_code == 200, reply_comment.text
+    reply_item = reply_comment.json().get("item") or {}
+    reply_id = int(reply_item.get("id") or 0)
+    assert reply_id > 0
+    assert int(reply_item.get("revision_id") or 0) == revision_id
+
+    invalid_revision = client.post(
+        f"/api/v1/archive/documents/{document_id}/comments",
+        json={"body": "Wrong document revision", "revision_id": other_revision_id},
+        headers=admin,
+    )
+    assert invalid_revision.status_code == 404, invalid_revision.text
+
+    revision_list = client.get(
+        f"/api/v1/archive/documents/{document_id}/comments?revision_id={revision_id}",
+        headers=admin,
+    )
+    assert revision_list.status_code == 200, revision_list.text
+    revision_by_id = _flatten_comment_ids(revision_list.json().get("items") or [])
+    assert revision_comment_id in revision_by_id
+    assert reply_id in revision_by_id
+    assert general_id not in revision_by_id
+
+    whole_document_list = client.get(
+        f"/api/v1/archive/documents/{document_id}/comments?revision_id=0",
+        headers=admin,
+    )
+    assert whole_document_list.status_code == 200, whole_document_list.text
+    whole_by_id = _flatten_comment_ids(whole_document_list.json().get("items") or [])
+    assert general_id in whole_by_id
+    assert revision_comment_id not in whole_by_id
+
+    print_preview = client.get(
+        f"/api/v1/archive/documents/{document_id}/comments/print-preview?revision_id={revision_id}",
+        headers=admin,
+    )
+    assert print_preview.status_code == 200, print_preview.text
+    assert "text/html" in str(print_preview.headers.get("content-type") or "")
+    assert doc_number in print_preview.text
+    assert "Rev 00" in print_preview.text
+    assert "Status" in print_preview.text
+    assert "Printed At" in print_preview.text
+    assert "Revision scoped note" in print_preview.text
+    assert "Whole document note" not in print_preview.text
+
+    delete_revision_comment = client.delete(
+        f"/api/v1/archive/documents/{document_id}/comments/{revision_comment_id}",
+        headers=admin,
+    )
+    assert delete_revision_comment.status_code == 200, delete_revision_comment.text
+
+    print_after_delete = client.get(
+        f"/api/v1/archive/documents/{document_id}/comments/print-preview?revision_id={revision_id}",
+        headers=admin,
+    )
+    assert print_after_delete.status_code == 200, print_after_delete.text
+    assert "Revision scoped note" not in print_after_delete.text
+    assert "Revision reply" in print_after_delete.text
+
+
 def test_document_relations_and_tags_with_duplicate_guards() -> None:
     admin = _admin_headers()
     source_document_id, _ = _register_document(admin, subject_prefix="RelSrc")

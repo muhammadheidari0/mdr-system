@@ -561,6 +561,7 @@ class DocumentComment(Base):
         Index("ix_doc_comments_document_id", "document_id"),
         Index("ix_doc_comments_parent_id", "parent_id"),
         Index("ix_doc_comments_created_at", "created_at"),
+        Index("ix_doc_comments_document_revision_created", "document_id", "revision_id", "created_at"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -569,6 +570,9 @@ class DocumentComment(Base):
     )
     parent_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("document_comments.id", ondelete="CASCADE"), nullable=True
+    )
+    revision_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("document_revisions.id", ondelete="SET NULL"), nullable=True
     )
     author_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -581,6 +585,7 @@ class DocumentComment(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     document: Mapped["MdrDocument"] = relationship("MdrDocument", back_populates="comments")
+    revision: Mapped[Optional["DocumentRevision"]] = relationship("DocumentRevision")
     parent: Mapped[Optional["DocumentComment"]] = relationship(
         "DocumentComment", remote_side="DocumentComment.id", uselist=False
     )

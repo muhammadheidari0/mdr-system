@@ -145,6 +145,60 @@ function revisionSupplementButtons(row: any, capabilities: any, isDeleted: boole
   return actions.length ? `<div class="doc-file-supplement-actions">${actions.join("")}</div>` : "";
 }
 
+function commentRevisionLabel(row: any): string {
+  const explicit = String(row?.revision_label || "").trim();
+  if (explicit) return explicit;
+  const revisionId = Number(row?.revision_id || 0);
+  if (!revisionId) return "کل مدرک";
+  const revision = String(row?.revision || "").trim() || "-";
+  const status = String(row?.revision_status || row?.status || "").trim();
+  return status ? `Rev ${revision} | ${status}` : `Rev ${revision}`;
+}
+
+function documentRevisionRows(detail: any): any[] {
+  return (Array.isArray(detail?.revisions) ? detail.revisions : []).filter(
+    (row: any) => Number(row?.revision_id || 0) > 0,
+  );
+}
+
+function commentRevisionSelectOptions(detail: any, selectedValue: unknown, includeAll = false): string {
+  const selected = String(selectedValue ?? "").trim();
+  const options: Array<{ value: string; label: string }> = includeAll ? [{ value: "", label: "همه" }] : [];
+  options.push({ value: "0", label: "کل مدرک" });
+  documentRevisionRows(detail).forEach((row: any) => {
+    options.push({ value: String(Number(row?.revision_id || 0)), label: commentRevisionLabel(row) });
+  });
+  return options
+    .map((option) => `<option value="${esc(option.value)}" ${option.value === selected ? "selected" : ""}>${esc(option.label)}</option>`)
+    .join("");
+}
+
+function defaultCommentRevisionValue(detail: any): string {
+  const latestId = Number(detail?.latest_revision?.revision_id || 0);
+  if (latestId > 0) return String(latestId);
+  const firstRevision = documentRevisionRows(detail)[0];
+  const firstRevisionId = Number(firstRevision?.revision_id || 0);
+  return firstRevisionId > 0 ? String(firstRevisionId) : "0";
+}
+
+function filterCommentNodes(nodes: any[], selectedValue: unknown): any[] {
+  const selected = String(selectedValue ?? "").trim();
+  if (!selected) return nodes;
+  const targetRevisionId = Number(selected || 0);
+  const output: any[] = [];
+  (Array.isArray(nodes) ? nodes : []).forEach((node: any) => {
+    const children = filterCommentNodes(Array.isArray(node?.children) ? node.children : [], selected);
+    const nodeRevisionId = Number(node?.revision_id || 0);
+    const matches = targetRevisionId <= 0 ? nodeRevisionId <= 0 : nodeRevisionId === targetRevisionId;
+    if (matches) {
+      output.push({ ...node, children });
+      return;
+    }
+    output.push(...children);
+  });
+  return output;
+}
+
 function statCard(icon: string, label: string, value: unknown, caption = ""): string {
   return `
     <div class="doc-stat-card">
@@ -223,6 +277,8 @@ function renderCommentNode(node: any, depth = 0): string {
   const margin = Math.min(Math.max(0, Number(depth || 0)) * 18, 54);
   const children = Array.isArray(node?.children) ? node.children : [];
   const author = String(node?.author_name || node?.author_email || "کاربر نامشخص").trim();
+  const revisionLabel = commentRevisionLabel(node);
+  const isEdited = !isDeleted && Boolean(node?.updated_at);
   const initials = author
     .split(/\s+/)
     .filter(Boolean)
@@ -237,8 +293,12 @@ function renderCommentNode(node: any, depth = 0): string {
         <div class="doc-comment-avatar">${esc(initials)}</div>
         <div class="doc-comment-content">
           <div class="doc-comment-head">
-            <strong>${esc(author)}</strong>
-            <span>${esc(fmtDate(node?.created_at))}</span>
+            <div class="doc-comment-meta">
+              <strong>${esc(author)}</strong>
+              <span>${esc(fmtDate(node?.created_at))}</span>
+              <span class="doc-comment-revision-badge">${esc(revisionLabel)}</span>
+              ${isEdited ? '<span class="doc-comment-edited-badge">ویرایش شده</span>' : ""}
+            </div>
           </div>
           <div class="doc-comment-body ${isDeleted ? "is-deleted" : ""}">${esc(bodyText)}</div>
           <div class="doc-comment-actions">
@@ -553,21 +613,43 @@ export function renderDocumentDetail(detail: any, state: any) {
   const commentsRoot = document.getElementById("docDetailPanelComments");
   if (commentsRoot) {
     const comments = Array.isArray(detail?.comments) ? detail.comments : [];
+    const selectedCommentFilter = String(state?.commentRevisionFilter ?? "").trim();
+    const filteredComments = filterCommentNodes(comments, selectedCommentFilter);
+    const composerRevisionValue = defaultCommentRevisionValue(detail);
     commentsRoot.innerHTML = `
       ${panelHeader("forum", "کامنت‌ها", "گفتگوهای مرتبط با همین مدرک را اینجا نگه دارید.")}
+      <div class="doc-comments-toolbar">
+        <label class="doc-comment-filter-wrap" for="docDetailCommentRevisionFilter">
+          <span>نمایش</span>
+          <select id="docDetailCommentRevisionFilter" class="doc-form-control" data-doc-comment-filter>
+            ${commentRevisionSelectOptions(detail, selectedCommentFilter, true)}
+          </select>
+        </label>
+        <button type="button" class="doc-action-btn" data-doc-detail-action="open-comments-print-preview">
+          <span class="material-icons-round">print</span> چاپ کامنت‌ها
+        </button>
+      </div>
       ${
         isDeleted
           ? '<div class="doc-readonly-note"><span class="material-icons-round">lock</span>این مدرک حذف شده و فقط خواندنی است.</div>'
           : `
         <div class="doc-comments-editor">
-          <textarea id="docDetailCommentInput" class="doc-form-control" rows="4" placeholder="متن کامنت را وارد کنید..."></textarea>
-          <button type="button" class="doc-action-btn doc-action-primary" data-doc-detail-action="add-comment">
-            <span class="material-icons-round">add_comment</span> ثبت کامنت
-          </button>
+          <textarea id="docDetailCommentInput" class="doc-form-control" rows="5" placeholder="متن کامنت را وارد کنید..."></textarea>
+          <div class="doc-comments-editor-side">
+            <label class="doc-comment-filter-wrap" for="docDetailCommentRevisionInput">
+              <span>مربوط به</span>
+              <select id="docDetailCommentRevisionInput" class="doc-form-control">
+                ${commentRevisionSelectOptions(detail, composerRevisionValue, false)}
+              </select>
+            </label>
+            <button type="button" class="doc-action-btn doc-action-primary" data-doc-detail-action="add-comment">
+              <span class="material-icons-round">add_comment</span> ثبت کامنت
+            </button>
+          </div>
         </div>`
       }
       <div class="doc-comments-list">
-        ${comments.length ? comments.map((node: any) => renderCommentNode(node, 0)).join("") : emptyState("chat_bubble_outline", "کامنتی ثبت نشده", "از فرم بالا گفتگو را شروع کنید.")}
+        ${filteredComments.length ? filteredComments.map((node: any) => renderCommentNode(node, 0)).join("") : emptyState("chat_bubble_outline", "کامنتی ثبت نشده", "برای این انتخاب هنوز کامنتی وجود ندارد.")}
       </div>
     `;
   }

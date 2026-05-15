@@ -12,6 +12,7 @@ import {
   fetchDocumentPreviewBlob,
   loadArchiveFilePublicShare,
   loadArchiveFormData,
+  loadDocumentCommentsPrintPreview,
   loadDocumentDetail,
   loadTagsCatalog,
   previewDocumentReclassification,
@@ -36,6 +37,8 @@ import { activateDocumentDetailTab, renderDocumentDetail } from "../../lib/docum
     tagCatalog: [],
     archiveFormData: null,
     previewObjectUrl: "",
+    commentsPrintObjectUrl: "",
+    commentRevisionFilter: "",
   };
 
   function notify(message: string, type = "info") {
@@ -65,6 +68,15 @@ import { activateDocumentDetailTab, renderDocumentDetail } from "../../lib/docum
         URL.revokeObjectURL(state.previewObjectUrl);
       } catch (_) {}
       state.previewObjectUrl = "";
+    }
+  }
+
+  function disposeCommentsPrintObjectUrl() {
+    if (state.commentsPrintObjectUrl) {
+      try {
+        URL.revokeObjectURL(state.commentsPrintObjectUrl);
+      } catch (_) {}
+      state.commentsPrintObjectUrl = "";
     }
   }
 
@@ -111,6 +123,24 @@ import { activateDocumentDetailTab, renderDocumentDetail } from "../../lib/docum
         return `<option value="${code}" ${code.toUpperCase() === String(selected || "").toUpperCase() ? "selected" : ""}>${code} - ${label}</option>`;
       })
       .join("");
+  }
+
+  function commentRevisionLabel(row: any): string {
+    if (!row) return "کل مدرک";
+    const revision = String(row?.revision || "-").trim() || "-";
+    const status = String(row?.status || row?.revision_status || "").trim();
+    return status ? `Rev ${revision} | ${status}` : `Rev ${revision}`;
+  }
+
+  function commentRevisionLabelFromValue(value: unknown, detail: any): string {
+    const raw = String(value ?? "").trim();
+    if (raw === "") return "همه کامنت‌ها";
+    if (raw === "0") return "کل مدرک";
+    const id = Number(raw || 0);
+    const row = (Array.isArray(detail?.revisions) ? detail.revisions : []).find(
+      (revision: any) => Number(revision?.revision_id || 0) === id,
+    );
+    return commentRevisionLabel(row);
   }
 
   async function ensureArchiveFormData() {
@@ -249,6 +279,82 @@ import { activateDocumentDetailTab, renderDocumentDetail } from "../../lib/docum
   function closePublicShareModal() {
     const overlay = document.getElementById("docPublicShareModal") as HTMLElement | null;
     if (overlay) overlay.style.display = "none";
+  }
+
+  function closeCommentsPrintPreview() {
+    const overlay = document.getElementById("docCommentsPrintModal") as HTMLElement | null;
+    if (overlay) overlay.style.display = "none";
+    disposeCommentsPrintObjectUrl();
+  }
+
+  function printCommentsPreview() {
+    const frame = document.querySelector("#docCommentsPrintBody iframe") as HTMLIFrameElement | null;
+    const frameWindow = frame?.contentWindow || null;
+    if (!frameWindow) {
+      notify("پیش‌نمایش چاپ هنوز آماده نیست.", "warning");
+      return;
+    }
+    frameWindow.focus();
+    frameWindow.print();
+  }
+
+  function openCommentsPrintPreviewWindow() {
+    if (!state.commentsPrintObjectUrl) {
+      notify("پیش‌نمایش چاپ هنوز آماده نیست.", "warning");
+      return;
+    }
+    window.open(state.commentsPrintObjectUrl, "_blank", "noopener,noreferrer");
+  }
+
+  function selectedCommentRevisionId(): number | null | undefined {
+    const raw = String(state.commentRevisionFilter ?? "").trim();
+    if (raw === "") return undefined;
+    const numeric = Number(raw || 0);
+    return Number.isFinite(numeric) ? Math.max(0, numeric) : undefined;
+  }
+
+  async function openCommentsPrintPreview() {
+    const docId = Number(state.documentId || 0);
+    if (!docId) return;
+    disposeCommentsPrintObjectUrl();
+    const htmlText = await loadDocumentCommentsPrintPreview(docId, selectedCommentRevisionId());
+    const blob = new Blob([htmlText], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    state.commentsPrintObjectUrl = url;
+    let overlay = document.getElementById("docCommentsPrintModal") as HTMLElement | null;
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "docCommentsPrintModal";
+      overlay.className = "am-modal-overlay doc-comments-print-modal";
+      (document.getElementById("view-document-detail") || document.body).appendChild(overlay);
+    }
+    const doc = state.detail?.document || {};
+    const filterLabel = commentRevisionLabelFromValue(state.commentRevisionFilter, state.detail);
+    overlay.innerHTML = `
+      <div class="am-modal-box doc-comments-print-box" role="dialog" aria-modal="true" aria-labelledby="doc-comments-print-title">
+        <div class="doc-comments-print-header">
+          <div>
+            <h3 id="doc-comments-print-title">پیش‌نمایش چاپ کامنت‌ها</h3>
+            <div class="doc-comments-print-meta">${escHtml(doc?.doc_number || "-")} | ${escHtml(filterLabel || "همه کامنت‌ها")}</div>
+          </div>
+          <button type="button" class="btn-archive-icon" data-doc-detail-action="close-comments-print-preview" aria-label="بستن">
+            <span class="material-icons-round">close</span>
+          </button>
+        </div>
+        <div class="doc-comments-print-toolbar">
+          <button type="button" class="btn btn-primary" data-doc-detail-action="print-comments-preview">
+            <span class="material-icons-round">print</span>چاپ / ذخیره PDF
+          </button>
+          <button type="button" class="btn btn-secondary" data-doc-detail-action="open-comments-print-preview-window">
+            <span class="material-icons-round">open_in_new</span>باز کردن
+          </button>
+        </div>
+        <div id="docCommentsPrintBody" class="doc-comments-print-body">
+          <iframe class="doc-comments-print-frame" src="${url}" title="پیش‌نمایش چاپ کامنت‌ها"></iframe>
+        </div>
+      </div>
+    `;
+    overlay.style.display = "flex";
   }
 
   function collectPublicSharePayload(regenerate = false) {
@@ -432,6 +538,11 @@ import { activateDocumentDetailTab, renderDocumentDetail } from "../../lib/docum
     if (!Number.isFinite(targetId) || targetId <= 0) {
       notify("شناسه سند برای نمایش جزئیات معتبر نیست.", "error");
       return;
+    }
+    const previousId = Number(state.documentId || 0);
+    if (previousId && previousId !== targetId) {
+      state.commentRevisionFilter = "";
+      disposeCommentsPrintObjectUrl();
     }
     state.documentId = targetId;
     const [payload, tagsCatalog] = await Promise.all([
@@ -653,14 +764,36 @@ import { activateDocumentDetailTab, renderDocumentDetail } from "../../lib/docum
       return;
     }
 
+    if (action === "open-comments-print-preview") {
+      await openCommentsPrintPreview();
+      return;
+    }
+
+    if (action === "close-comments-print-preview") {
+      closeCommentsPrintPreview();
+      return;
+    }
+
+    if (action === "print-comments-preview") {
+      printCommentsPreview();
+      return;
+    }
+
+    if (action === "open-comments-print-preview-window") {
+      openCommentsPrintPreviewWindow();
+      return;
+    }
+
     if (action === "add-comment") {
       const input = document.getElementById("docDetailCommentInput") as HTMLTextAreaElement | null;
+      const revisionInput = document.getElementById("docDetailCommentRevisionInput") as HTMLSelectElement | null;
       const body = String(input?.value || "").trim();
       if (!body) {
         notify("متن کامنت را وارد کنید.", "warning");
         return;
       }
-      await createDocumentComment(Number(state.documentId), body, null);
+      const revisionId = revisionInput ? Number(revisionInput.value || 0) : undefined;
+      await createDocumentComment(Number(state.documentId), body, null, revisionId);
       if (input) input.value = "";
       await loadAndRender(Number(state.documentId));
       return;
@@ -794,8 +927,16 @@ import { activateDocumentDetailTab, renderDocumentDetail } from "../../lib/docum
     });
 
     document.addEventListener("change", (event: Event) => {
-      const target = (event.target as HTMLElement | null)?.closest?.("[data-reclass-field]") as HTMLElement | null;
-      if (!target) return;
+      const source = event.target as HTMLElement | null;
+      if (!source) return;
+      const commentFilter = source.closest?.("[data-doc-comment-filter]") as HTMLSelectElement | null;
+      if (commentFilter && root.contains(commentFilter)) {
+        state.commentRevisionFilter = String(commentFilter.value || "");
+        rerender();
+        return;
+      }
+      const target = source.closest?.("[data-reclass-field]") as HTMLElement | null;
+      if (!target || !root.contains(target)) return;
       refreshReclassifyDependentOptions();
     });
   }

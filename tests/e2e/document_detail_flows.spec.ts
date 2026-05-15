@@ -355,9 +355,26 @@ test("document detail e2e: metadata, preview, comments, relations, tags, send an
 
     await page.locator('[data-doc-detail-tab="comments"]').click();
     const commentText = `E2E comment ${Date.now()}`;
+    const latestRevisionId = String(detailAfterUpdate?.latest_revision?.revision_id || "");
+    await expect(page.locator("#docDetailCommentRevisionInput")).toBeVisible();
+    await expect(page.locator("#docDetailCommentRevisionFilter")).toBeVisible();
+    if (latestRevisionId) {
+      await page.locator("#docDetailCommentRevisionInput").selectOption(latestRevisionId);
+    }
     await page.locator("#docDetailCommentInput").fill(commentText);
     await page.locator('[data-doc-detail-action="add-comment"]').click();
     await expect(page.locator("#docDetailPanelComments")).toContainText(commentText);
+    await expect(page.locator("#docDetailPanelComments .doc-comment-revision-badge").first()).toContainText("Rev 00");
+    if (latestRevisionId) {
+      await page.locator("#docDetailCommentRevisionFilter").selectOption(latestRevisionId);
+      await expect(page.locator("#docDetailPanelComments")).toContainText(commentText);
+    }
+    await page.locator('[data-doc-detail-action="open-comments-print-preview"]').click();
+    const commentsPrintModal = page.locator("#docCommentsPrintModal");
+    await expect(commentsPrintModal).toBeVisible({ timeout: 15_000 });
+    await expect(commentsPrintModal.locator(".doc-comments-print-frame")).toBeVisible({ timeout: 15_000 });
+    await commentsPrintModal.locator('[data-doc-detail-action="close-comments-print-preview"]').click();
+    await expect(commentsPrintModal).toBeHidden({ timeout: 15_000 });
 
     const replyText = `E2E reply ${Date.now()}`;
     page.once("dialog", async (dialog) => {
