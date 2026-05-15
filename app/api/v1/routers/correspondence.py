@@ -616,7 +616,7 @@ def _serialize_attachment(
         "file_kind": _attachment_kind(row.file_kind),
         "mime_type": row.mime_type,
         "detected_mime": row.detected_mime,
-        "preview_supported": _attachment_preview_supported(row),
+        "preview_supported": _attachment_direct_preview_supported(row),
         "validation_status": row.validation_status,
         "sha256": row.sha256,
         "size_bytes": row.size_bytes,
@@ -719,6 +719,14 @@ def _attachment_preview_supported(row: CorrespondenceAttachment | None) -> bool:
     if not row or row.deleted_at is not None:
         return False
     return bool(_attachment_preview_media_type(row))
+
+
+def _attachment_direct_preview_supported(row: CorrespondenceAttachment | None) -> bool:
+    if not row or row.deleted_at is not None:
+        return False
+    if _attachment_kind(row.file_kind) == "original":
+        return False
+    return _attachment_preview_supported(row)
 
 
 def _attachment_sort_key(row: CorrespondenceAttachment) -> tuple[str, int]:
@@ -2444,7 +2452,7 @@ def preview_correspondence_attachment_by_id(
     row = _load_attachment_or_404(db, attachment_id)
     corr = _load_correspondence_or_404(db, row.correspondence_id)
     _enforce_corr_scope(db, user, corr)
-    if not _attachment_preview_supported(row):
+    if not _attachment_direct_preview_supported(row):
         raise HTTPException(status_code=415, detail=PREVIEW_UNSUPPORTED_DETAIL)
     if str(row.stored_path or "").strip().startswith("webdav://"):
         return _download_webdav_attachment(db, row, inline=True)

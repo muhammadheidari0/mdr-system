@@ -437,6 +437,7 @@ function renderAttachments(
     .map((attachment) => {
       const attachmentId = toNumber(attachment?.id, 0);
       const fileName = esc(attachment?.file_name || "-");
+      const normalizedKind = String(attachment?.file_kind || "").toLowerCase();
       const fileKind = esc(kindFa(attachment?.file_kind));
       const related = actionsById.get(toNumber(attachment?.action_id, 0));
       const relatedTitle = esc(related?.title || "-");
@@ -451,9 +452,10 @@ function renderAttachments(
       const pinClass = isPinned
         ? "btn-archive-icon archive-pin-btn is-pinned"
         : "btn-archive-icon archive-pin-btn";
-      const previewButton = attachment?.preview_supported
+      const canPreview = Boolean(attachment?.preview_supported) && normalizedKind !== "original" && normalizedKind !== "inside";
+      const previewButton = canPreview
         ? `<button class="btn-archive-icon" type="button" data-corr-action="preview-attachment" data-attachment-id="${attachmentId}" title="پیش‌نمایش"><span class="material-icons-round">visibility</span></button>`
-        : `<button class="btn-archive-icon" type="button" data-corr-action="preview-unsupported" title="پیش‌نمایش فقط برای PDF و تصویر پشتیبانی می‌شود"><span class="material-icons-round">visibility_off</span></button>`;
+        : `<button class="btn-archive-icon" type="button" data-corr-action="preview-unsupported" title="${normalizedKind === "original" || normalizedKind === "inside" ? "فایل قابل ویرایش فقط دانلود می‌شود" : "پیش‌نمایش فقط برای PDF و تصویر پشتیبانی می‌شود"}"><span class="material-icons-round">visibility_off</span></button>`;
       return `<tr><td>${fileName}</td><td>${fileKind}</td><td>${relatedTitle}</td><td>${syncHtml}</td><td>${uploadedAt}</td><td><button class="${pinClass}" type="button" data-corr-action="toggle-attachment-pin" data-attachment-id="${attachmentId}" data-pinned="${isPinned ? "1" : "0"}"><span class="material-icons-round">${pinIcon}</span></button></td><td><div class="corr-row-actions">${previewButton}<button class="btn-archive-icon" type="button" data-corr-action="download-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">download</span></button><button class="btn-archive-icon" type="button" data-corr-action="delete-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">delete</span></button></div></td></tr>`;
     })
     .join("");

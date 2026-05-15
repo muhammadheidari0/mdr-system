@@ -438,11 +438,17 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
       const editableUploadBody = await expectOkJson(editableUploadResponse, "correspondence editable upload");
       editableAttachmentId = Number(editableUploadBody?.data?.id || 0);
       expect(editableAttachmentId).toBeGreaterThan(0);
+      expect(editableUploadBody?.data?.preview_supported).toBe(false);
       const previewWithEditableOnly = await request.get(
         `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/preview`,
         { headers }
       );
       expect(previewWithEditableOnly.status(), "correspondence preview should not fall back to editable file").toBe(404);
+      const editableDirectPreview = await request.get(
+        `${resolvedBaseUrl}/api/v1/correspondence/attachments/${editableAttachmentId}/preview`,
+        { headers }
+      );
+      expect(editableDirectPreview.status(), "editable file should be download-only").toBe(415);
 
       const letterUploadResponse = await request.post(
         `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments/upload`,
@@ -558,6 +564,10 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
         await expect(page.locator("#corrModal")).toBeVisible({ timeout: 15000 });
         await expect(page.locator("#corrCcRecipientsInput")).toHaveValue("E2E CC Design, E2E CC Finance");
         await expect(page.locator('#corrRelationTypeInput option[value="attachment"]')).toHaveText("پیوست");
+        const editableRow = page.locator("#corrAttachmentsBody tr", { hasText: "critical-e2e-editable" }).first();
+        await expect(editableRow).toBeVisible({ timeout: 15000 });
+        await expect(editableRow.locator('[data-corr-action="preview-attachment"]')).toHaveCount(0);
+        await expect(editableRow.locator('[data-corr-action="preview-unsupported"]')).toBeVisible();
         const imageRow = page.locator("#corrAttachmentsBody tr", { hasText: "critical-e2e-image.png" }).first();
         await expect(imageRow).toBeVisible({ timeout: 15000 });
         await imageRow.locator('[data-corr-action="preview-attachment"]').click();

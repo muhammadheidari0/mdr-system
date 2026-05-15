@@ -154,6 +154,7 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     assert original_res.status_code == 200, original_res.text
     original_id = int((original_res.json().get("data") or {}).get("id") or 0)
     assert original_id > 0
+    assert (original_res.json().get("data") or {}).get("preview_supported") is False
 
     preview_with_original_only = client.get(f"/api/v1/correspondence/{correspondence_id}/preview", headers=headers)
     assert preview_with_original_only.status_code == 404, preview_with_original_only.text
@@ -202,9 +203,8 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     assert b"attachment-preview" in attachment_preview.content
 
     original_preview = client.get(f"/api/v1/correspondence/attachments/{original_id}/preview", headers=headers)
-    assert original_preview.status_code == 200, original_preview.text
-    assert "inline" in original_preview.headers.get("content-disposition", "").lower()
-    assert b"editable-preview" in original_preview.content
+    assert original_preview.status_code == 415, original_preview.text
+    assert b"editable-preview" not in original_preview.content
 
     image_attachment_preview = client.get(
         f"/api/v1/correspondence/attachments/{image_attachment_id}/preview",
