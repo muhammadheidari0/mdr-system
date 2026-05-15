@@ -16,9 +16,20 @@ from app.db.models import (
 )
 from app.services.document_activity_service import log_document_activity
 
+TAG_SCOPE_DOCUMENT = "document"
+TAG_SCOPE_CORRESPONDENCE = "correspondence"
+TAG_SCOPES = {TAG_SCOPE_DOCUMENT, TAG_SCOPE_CORRESPONDENCE}
+
 
 def normalize_tag_name(name: str | None) -> str:
     return " ".join(str(name or "").strip().split())
+
+
+def normalize_tag_scope(scope: str | None) -> str:
+    value = str(scope or TAG_SCOPE_DOCUMENT).strip().lower()
+    if value not in TAG_SCOPES:
+        raise HTTPException(status_code=400, detail="Invalid tag scope")
+    return value
 
 
 def normalize_tag_color(color: str | None) -> str | None:
@@ -28,23 +39,37 @@ def normalize_tag_color(color: str | None) -> str | None:
     return value
 
 
-def list_tags(db: Session) -> list[DocumentTag]:
-    return db.query(DocumentTag).order_by(DocumentTag.name.asc(), DocumentTag.id.asc()).all()
+def list_tags(db: Session, *, scope: str | None = TAG_SCOPE_DOCUMENT) -> list[DocumentTag]:
+    query = db.query(DocumentTag)
+    if scope is not None:
+        query = query.filter(DocumentTag.scope == normalize_tag_scope(scope))
+    return query.order_by(DocumentTag.name.asc(), DocumentTag.id.asc()).all()
 
 
-def get_tag_or_404(db: Session, tag_id: int) -> DocumentTag:
-    row = db.query(DocumentTag).filter(DocumentTag.id == int(tag_id)).first()
+def get_tag_or_404(db: Session, tag_id: int, *, scope: str | None = None) -> DocumentTag:
+    query = db.query(DocumentTag).filter(DocumentTag.id == int(tag_id))
+    if scope is not None:
+        query = query.filter(DocumentTag.scope == normalize_tag_scope(scope))
+    row = query.first()
     if not row:
         raise HTTPException(status_code=404, detail="Tag not found")
     return row
 
 
-def create_tag(db: Session, name: str, color: str | None, user: Any | None = None) -> DocumentTag:
+def create_tag(
+    db: Session,
+    name: str,
+    color: str | None,
+    user: Any | None = None,
+    *,
+    scope: str | None = TAG_SCOPE_DOCUMENT,
+) -> DocumentTag:
     del user
+    tag_scope = normalize_tag_scope(scope)
     normalized_name = normalize_tag_name(name)
     if not normalized_name:
         raise HTTPException(status_code=400, detail="Tag name is required")
-    for row in db.query(DocumentTag).order_by(DocumentTag.id.asc()).all():
+    for row in db.query(DocumentTag).filter(DocumentTag.scope == tag_scope).order_by(DocumentTag.id.asc()).all():
         if normalize_tag_name(row.name).lower() == normalized_name.lower():
             if color is not None and not str(row.color or "").strip():
                 row.color = normalize_tag_color(color)
@@ -52,6 +77,7 @@ def create_tag(db: Session, name: str, color: str | None, user: Any | None = Non
                 db.refresh(row)
             return row
     row = DocumentTag(
+        scope=tag_scope,
         name=normalized_name,
         color=normalize_tag_color(color),
         created_at=datetime.utcnow(),
@@ -68,12 +94,20 @@ def update_tag(
     *,
     name: str,
     color: str | None,
+    scope: str | None = None,
 ) -> DocumentTag:
-    row = get_tag_or_404(db, tag_id)
+    tag_scope = normalize_tag_scope(scope) if scope is not None else None
+    row = get_tag_or_404(db, tag_id, scope=tag_scope)
     normalized_name = normalize_tag_name(name)
     if not normalized_name:
         raise HTTPException(status_code=400, detail="Tag name is required")
-    for other in db.query(DocumentTag).order_by(DocumentTag.id.asc()).all():
+    uniqueness_scope = tag_scope or normalize_tag_scope(getattr(row, "scope", None))
+    for other in (
+        db.query(DocumentTag)
+        .filter(DocumentTag.scope == uniqueness_scope)
+        .order_by(DocumentTag.id.asc())
+        .all()
+    ):
         if int(other.id or 0) == int(row.id or 0):
             continue
         if normalize_tag_name(other.name).lower() == normalized_name.lower():
@@ -85,8 +119,8 @@ def update_tag(
     return row
 
 
-def delete_tag(db: Session, tag_id: int) -> None:
-    row = get_tag_or_404(db, tag_id)
+def delete_tag(db: Session, tag_id: int, *, scope: str | None = None) -> None:
+    row = get_tag_or_404(db, tag_id, scope=scope)
     db.delete(row)
     db.commit()
 
@@ -116,10 +150,11 @@ def resolve_tag(
     tag_name: str | None = None,
     color: str | None = None,
     user: Any | None = None,
+    scope: str | None = TAG_SCOPE_DOCUMENT,
 ) -> DocumentTag:
     if tag_id:
-        return get_tag_or_404(db, int(tag_id))
-    return create_tag(db, str(tag_name or ""), color, user)
+        return get_tag_or_404(db, int(tag_id), scope=scope)
+    return create_tag(db, str(tag_name or ""), color, user, scope=scope)
 
 
 def assign_tag_to_document(
@@ -142,7 +177,14 @@ def assign_tag_to_document(
     )
     if document.deleted_at:
         raise HTTPException(status_code=409, detail="Deleted document is read-only")
-    target_tag = resolve_tag(db, tag_id=tag_id, tag_name=tag_name, color=color, user=user)
+    target_tag = resolve_tag(
+        db,
+        tag_id=tag_id,
+        tag_name=tag_name,
+        color=color,
+        user=user,
+        scope=TAG_SCOPE_DOCUMENT,
+    )
     existing = (
         db.query(DocumentTagAssignment)
         .filter(
@@ -243,7 +285,14 @@ def replace_correspondence_tags(
         }
     )
     if desired_ids:
-        tags = db.query(DocumentTag).filter(DocumentTag.id.in_(desired_ids)).all()
+        tags = (
+            db.query(DocumentTag)
+            .filter(
+                DocumentTag.id.in_(desired_ids),
+                DocumentTag.scope == TAG_SCOPE_CORRESPONDENCE,
+            )
+            .all()
+        )
         found_ids = sorted({int(row.id or 0) for row in tags})
         if found_ids != desired_ids:
             raise HTTPException(status_code=404, detail="One or more selected tags were not found")

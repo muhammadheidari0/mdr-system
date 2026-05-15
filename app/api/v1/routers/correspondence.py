@@ -1048,6 +1048,7 @@ def _serialize_tag_payload(row: DocumentTag | None) -> dict[str, Any]:
         }
     return {
         "id": int(getattr(row, "id", 0) or 0),
+        "scope": getattr(row, "scope", None) or "correspondence",
         "name": getattr(row, "name", None),
         "color": getattr(row, "color", None),
     }
@@ -1065,6 +1066,7 @@ def _serialize_correspondence_tag_assignments(
         payload.append(
             {
                 "id": tag_id,
+                "scope": getattr(tag, "scope", None) or "correspondence",
                 "name": getattr(tag, "name", None),
                 "color": getattr(tag, "color", None),
             }
@@ -1184,7 +1186,7 @@ def get_correspondence_catalog(
         .all()
     )
     discipline_rows = db.query(Discipline).order_by(Discipline.code.asc()).all()
-    tag_rows = tag_service.list_tags(db)
+    tag_rows = tag_service.list_tags(db, scope=tag_service.TAG_SCOPE_CORRESPONDENCE)
 
     return {
         "ok": True,
@@ -1594,7 +1596,11 @@ def create_correspondence(
             raise HTTPException(status_code=404, detail="Discipline not found")
     tag_ids = [int(payload.tag_id)] if int(payload.tag_id or 0) > 0 else []
     if tag_ids:
-        tag_service.get_tag_or_404(db, tag_ids[0])
+        tag_service.get_tag_or_404(
+            db,
+            tag_ids[0],
+            scope=tag_service.TAG_SCOPE_CORRESPONDENCE,
+        )
 
     enforce_scope_access(db, user, project_code=project_code)
 
@@ -1775,7 +1781,11 @@ def update_correspondence(
     if "tag_id" in payload_fields:
         next_tag_ids = [int(payload.tag_id)] if int(payload.tag_id or 0) > 0 else []
         if next_tag_ids:
-            tag_service.get_tag_or_404(db, next_tag_ids[0])
+            tag_service.get_tag_or_404(
+                db,
+                next_tag_ids[0],
+                scope=tag_service.TAG_SCOPE_CORRESPONDENCE,
+            )
         tag_service.replace_correspondence_tags(
             db,
             row,

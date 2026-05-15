@@ -174,6 +174,7 @@ def test_regression_correspondence_tables_exist() -> None:
         "correspondence_actions",
         "correspondence_attachments",
         "correspondence_tag_assignments",
+        "document_tags",
         "issuing_entities",
         "correspondence_categories",
         "correspondence_departments",
@@ -195,6 +196,7 @@ def test_regression_correspondence_tables_exist() -> None:
     tag_assignment_columns = {
         str(col["name"]) for col in inspector.get_columns("correspondence_tag_assignments")
     }
+    tag_columns = {str(col["name"]) for col in inspector.get_columns("document_tags")}
     corr_indexes = {str(idx["name"]): bool(idx.get("unique", False)) for idx in inspector.get_indexes("correspondences")}
     corr_uniques = {
         str(item.get("name"))
@@ -251,6 +253,8 @@ def test_regression_correspondence_tables_exist() -> None:
         "assigned_at",
     ):
         assert required in tag_assignment_columns
+    for required in ("id", "scope", "name", "color", "created_at"):
+        assert required in tag_columns
     assert (
         "uq_correspondences_reference_no" in corr_indexes
         or "uq_correspondences_reference_no" in corr_uniques
@@ -275,8 +279,10 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
     next_tag_name = f"Regression Tag {uuid.uuid4().hex[:6]}"
     department_code = f"DEP{uuid.uuid4().hex[:5].upper()}"
     next_department_code = f"DEP{uuid.uuid4().hex[:5].upper()}"
+    document_tag_name = f"Regression Document Tag {uuid.uuid4().hex[:6]}"
     correspondence_id: int | None = None
     tag_ids: list[int] = []
+    document_tag_ids: list[int] = []
     department_codes: list[str] = []
 
     with Session(engine) as db:
@@ -306,6 +312,16 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
         assert second_tag_id > 0
         tag_ids.append(second_tag_id)
 
+        create_document_tag = client.post(
+            "/api/v1/settings/document-tags/upsert",
+            json={"name": document_tag_name, "color": "#7C3AED"},
+            headers=admin_headers,
+        )
+        assert create_document_tag.status_code == 200, create_document_tag.text
+        document_tag_id = int(create_document_tag.json().get("id") or 0)
+        assert document_tag_id > 0
+        document_tag_ids.append(document_tag_id)
+
         for code, name in (
             (department_code, "Regression Design Department"),
             (next_department_code, "Regression Finance Department"),
@@ -329,6 +345,13 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
         settings_items = settings_tags.json().get("items") or []
         assert any(int(item.get("id") or 0) == first_tag_id for item in settings_items)
         assert any(int(item.get("id") or 0) == second_tag_id for item in settings_items)
+        assert all(int(item.get("id") or 0) != document_tag_id for item in settings_items)
+
+        document_tags = client.get("/api/v1/settings/document-tags", headers=admin_headers)
+        assert document_tags.status_code == 200, document_tags.text
+        document_tag_items = document_tags.json().get("items") or []
+        assert any(int(item.get("id") or 0) == document_tag_id for item in document_tag_items)
+        assert all(int(item.get("id") or 0) != first_tag_id for item in document_tag_items)
 
         catalog_res = client.get("/api/v1/correspondence/catalog", headers=admin_headers)
         assert catalog_res.status_code == 200, catalog_res.text
@@ -336,8 +359,15 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
         catalog_departments = catalog_res.json().get("departments") or []
         assert any(int(item.get("id") or 0) == first_tag_id for item in catalog_tags)
         assert any(int(item.get("id") or 0) == second_tag_id for item in catalog_tags)
+        assert all(int(item.get("id") or 0) != document_tag_id for item in catalog_tags)
         assert any(item.get("code") == department_code for item in catalog_departments)
         assert any(item.get("code") == next_department_code for item in catalog_departments)
+
+        archive_tags = client.get("/api/v1/archive/tags", headers=admin_headers)
+        assert archive_tags.status_code == 200, archive_tags.text
+        archive_tag_items = archive_tags.json().get("items") or []
+        assert any(int(item.get("id") or 0) == document_tag_id for item in archive_tag_items)
+        assert all(int(item.get("id") or 0) != first_tag_id for item in archive_tag_items)
 
         create_corr = client.post(
             "/api/v1/correspondence/create",
@@ -402,6 +432,10 @@ def test_regression_correspondence_tags_settings_and_runtime_flow(
                 )
             if tag_ids:
                 db.query(DocumentTag).filter(DocumentTag.id.in_(tag_ids)).delete(
+                    synchronize_session=False
+                )
+            if document_tag_ids:
+                db.query(DocumentTag).filter(DocumentTag.id.in_(document_tag_ids)).delete(
                     synchronize_session=False
                 )
             if department_codes:

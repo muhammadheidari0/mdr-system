@@ -692,11 +692,14 @@ class DocumentExternalRelation(Base):
 class DocumentTag(Base):
     __tablename__ = "document_tags"
     __table_args__ = (
+        UniqueConstraint("scope", "name", name="uq_document_tags_scope_name"),
         Index("ix_doc_tags_name", "name"),
+        Index("ix_doc_tags_scope_name", "scope", "name"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    scope: Mapped[str] = mapped_column(String(32), default="document", index=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
     color: Mapped[str | None] = mapped_column(String(7))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     assignments: Mapped[List["DocumentTagAssignment"]] = relationship(

@@ -854,6 +854,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/document-tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Document Tags Settings */
+        get: operations["list_document_tags_settings_api_v1_settings_document_tags_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/document-tags/upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upsert Document Tag Settings */
+        post: operations["upsert_document_tag_settings_api_v1_settings_document_tags_upsert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/document-tags/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Document Tag Settings */
+        post: operations["delete_document_tag_settings_api_v1_settings_document_tags_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/correspondence-tags": {
         parameters: {
             query?: never;
@@ -6654,6 +6705,20 @@ export interface components {
             /** Color */
             color?: string | null;
         };
+        /** DocumentTagSettingDeleteIn */
+        DocumentTagSettingDeleteIn: {
+            /** Id */
+            id: number;
+        };
+        /** DocumentTagSettingIn */
+        DocumentTagSettingIn: {
+            /** Id */
+            id?: number | null;
+            /** Name */
+            name: string;
+            /** Color */
+            color?: string | null;
+        };
         /** EligibleDocumentResponse */
         EligibleDocumentResponse: {
             /** Doc Number */
@@ -10201,6 +10266,92 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CorrespondenceDepartmentDeleteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_document_tags_settings_api_v1_settings_document_tags_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    upsert_document_tag_settings_api_v1_settings_document_tags_upsert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentTagSettingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_tag_settings_api_v1_settings_document_tags_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentTagSettingDeleteIn"];
             };
         };
         responses: {

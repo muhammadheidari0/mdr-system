@@ -282,6 +282,16 @@ class CorrespondenceDepartmentDeleteIn(BaseModel):
     hard_delete: bool = False
 
 
+class DocumentTagSettingIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    name: str = Field(..., min_length=1, max_length=64)
+    color: Optional[str] = Field(default=None, max_length=16)
+
+
+class DocumentTagSettingDeleteIn(BaseModel):
+    id: int = Field(..., ge=1)
+
+
 class CorrespondenceTagIn(BaseModel):
     id: Optional[int] = Field(default=None, ge=1)
     name: str = Field(..., min_length=1, max_length=64)
@@ -2157,6 +2167,14 @@ def overview(db: Session = Depends(get_db)):
             "issuing_entities": _count(db, IssuingEntity),
             "correspondence_categories": _count(db, CorrespondenceCategory),
             "correspondence_departments": _count(db, CorrespondenceDepartment),
+            "document_tags": db.query(func.count(DocumentTag.id))
+            .filter(DocumentTag.scope == tag_service.TAG_SCOPE_DOCUMENT)
+            .scalar()
+            or 0,
+            "correspondence_tags": db.query(func.count(DocumentTag.id))
+            .filter(DocumentTag.scope == tag_service.TAG_SCOPE_CORRESPONDENCE)
+            .scalar()
+            or 0,
         },
     }
 
@@ -3392,19 +3410,124 @@ def delete_correspondence_departments_settings(
     return {"ok": True, "message": "Correspondence department disabled", "code": code}
 
 
-def _serialize_correspondence_tag(row: DocumentTag) -> Dict[str, Any]:
+def _serialize_tag_setting(row: DocumentTag) -> Dict[str, Any]:
     return {
         "id": int(row.id or 0),
+        "scope": getattr(row, "scope", None) or tag_service.TAG_SCOPE_DOCUMENT,
         "name": row.name,
         "color": row.color,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 
 
+def _upsert_tag_setting(
+    *,
+    payload: DocumentTagSettingIn | CorrespondenceTagIn,
+    scope: str,
+    target_type: str,
+    action_prefix: str,
+    db: Session,
+    current_user: DbUser,
+) -> DocumentTag:
+    if payload.id:
+        row = tag_service.update_tag(
+            db,
+            int(payload.id),
+            name=payload.name,
+            color=payload.color,
+            scope=scope,
+        )
+        action = f"{action_prefix}.update"
+    else:
+        row = tag_service.create_tag(
+            db,
+            name=payload.name,
+            color=payload.color,
+            user=current_user,
+            scope=scope,
+        )
+        action = f"{action_prefix}.create"
+    _audit_log(
+        db,
+        actor=current_user,
+        action=action,
+        target_type=target_type,
+        target_key=str(int(row.id or 0)),
+        before=None,
+        after=_serialize_tag_setting(row),
+    )
+    db.commit()
+    return row
+
+
+def _delete_tag_setting(
+    *,
+    tag_id: int,
+    scope: str,
+    target_type: str,
+    action: str,
+    db: Session,
+    current_user: DbUser,
+) -> None:
+    row = tag_service.get_tag_or_404(db, int(tag_id), scope=scope)
+    before = _serialize_tag_setting(row)
+    tag_service.delete_tag(db, int(tag_id), scope=scope)
+    _audit_log(
+        db,
+        actor=current_user,
+        action=action,
+        target_type=target_type,
+        target_key=str(int(tag_id)),
+        before=before,
+        after=None,
+    )
+    db.commit()
+
+
+@router.get("/document-tags")
+def list_document_tags_settings(db: Session = Depends(get_db)):
+    rows = tag_service.list_tags(db, scope=tag_service.TAG_SCOPE_DOCUMENT)
+    return {"ok": True, "items": [_serialize_tag_setting(row) for row in rows]}
+
+
+@router.post("/document-tags/upsert")
+def upsert_document_tag_settings(
+    payload: DocumentTagSettingIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    row = _upsert_tag_setting(
+        payload=payload,
+        scope=tag_service.TAG_SCOPE_DOCUMENT,
+        target_type="document_tag",
+        action_prefix="document_tag",
+        db=db,
+        current_user=current_user,
+    )
+    return {"ok": True, "message": "Document tag upserted", "id": int(row.id or 0)}
+
+
+@router.post("/document-tags/delete")
+def delete_document_tag_settings(
+    payload: DocumentTagSettingDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    _delete_tag_setting(
+        tag_id=int(payload.id),
+        scope=tag_service.TAG_SCOPE_DOCUMENT,
+        target_type="document_tag",
+        action="document_tag.delete",
+        db=db,
+        current_user=current_user,
+    )
+    return {"ok": True, "message": "Document tag deleted", "id": int(payload.id)}
+
+
 @router.get("/correspondence-tags")
 def list_correspondence_tags_settings(db: Session = Depends(get_db)):
-    rows = tag_service.list_tags(db)
-    return {"ok": True, "items": [_serialize_correspondence_tag(row) for row in rows]}
+    rows = tag_service.list_tags(db, scope=tag_service.TAG_SCOPE_CORRESPONDENCE)
+    return {"ok": True, "items": [_serialize_tag_setting(row) for row in rows]}
 
 
 @router.post("/correspondence-tags/upsert")
@@ -3413,32 +3536,14 @@ def upsert_correspondence_tag_settings(
     db: Session = Depends(get_db),
     current_user: DbUser = Depends(require_permission("settings:update")),
 ):
-    if payload.id:
-        row = tag_service.update_tag(
-            db,
-            int(payload.id),
-            name=payload.name,
-            color=payload.color,
-        )
-        action = "correspondence_tag.update"
-    else:
-        row = tag_service.create_tag(
-            db,
-            name=payload.name,
-            color=payload.color,
-            user=current_user,
-        )
-        action = "correspondence_tag.create"
-    _audit_log(
-        db,
-        actor=current_user,
-        action=action,
+    row = _upsert_tag_setting(
+        payload=payload,
+        scope=tag_service.TAG_SCOPE_CORRESPONDENCE,
         target_type="correspondence_tag",
-        target_key=str(int(row.id or 0)),
-        before=None,
-        after=_serialize_correspondence_tag(row),
+        action_prefix="correspondence_tag",
+        db=db,
+        current_user=current_user,
     )
-    db.commit()
     return {"ok": True, "message": "Correspondence tag upserted", "id": int(row.id or 0)}
 
 
@@ -3448,19 +3553,14 @@ def delete_correspondence_tag_settings(
     db: Session = Depends(get_db),
     current_user: DbUser = Depends(require_permission("settings:update")),
 ):
-    row = tag_service.get_tag_or_404(db, int(payload.id))
-    before = _serialize_correspondence_tag(row)
-    tag_service.delete_tag(db, int(payload.id))
-    _audit_log(
-        db,
-        actor=current_user,
-        action="correspondence_tag.delete",
+    _delete_tag_setting(
+        tag_id=int(payload.id),
+        scope=tag_service.TAG_SCOPE_CORRESPONDENCE,
         target_type="correspondence_tag",
-        target_key=str(int(payload.id)),
-        before=before,
-        after=None,
+        action="correspondence_tag.delete",
+        db=db,
+        current_user=current_user,
     )
-    db.commit()
     return {"ok": True, "message": "Correspondence tag deleted", "id": int(payload.id)}
 
 

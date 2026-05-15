@@ -2271,17 +2271,32 @@ def delete_document_relation(db: Session, document_id: int, relation_id: int | s
 
 
 def list_tags(db: Session) -> list[DocumentTag]:
-    return db.query(DocumentTag).order_by(DocumentTag.name.asc(), DocumentTag.id.asc()).all()
+    return (
+        db.query(DocumentTag)
+        .filter(DocumentTag.scope == "document")
+        .order_by(DocumentTag.name.asc(), DocumentTag.id.asc())
+        .all()
+    )
 
 
 def create_tag(db: Session, name: str, color: str | None, user: Any) -> DocumentTag:
     normalized_name = _normalize_tag_name(name)
     if not normalized_name:
         raise HTTPException(status_code=400, detail="Tag name is required")
-    for row in db.query(DocumentTag).order_by(DocumentTag.id.asc()).all():
+    for row in (
+        db.query(DocumentTag)
+        .filter(DocumentTag.scope == "document")
+        .order_by(DocumentTag.id.asc())
+        .all()
+    ):
         if _normalize_tag_name(row.name).lower() == normalized_name.lower():
             return row
-    row = DocumentTag(name=normalized_name, color=str(color or "").strip() or None, created_at=datetime.utcnow())
+    row = DocumentTag(
+        scope="document",
+        name=normalized_name,
+        color=str(color or "").strip() or None,
+        created_at=datetime.utcnow(),
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -2327,7 +2342,11 @@ def assign_tag_to_document(
         raise HTTPException(status_code=409, detail="Deleted document is read-only")
     target_tag: DocumentTag | None = None
     if tag_id:
-        target_tag = db.query(DocumentTag).filter(DocumentTag.id == int(tag_id)).first()
+        target_tag = (
+            db.query(DocumentTag)
+            .filter(DocumentTag.id == int(tag_id), DocumentTag.scope == "document")
+            .first()
+        )
     if not target_tag:
         target_tag = create_tag(db, str(tag_name or ""), color, user)
     existing = (

@@ -314,7 +314,7 @@ test("document detail e2e: metadata, preview, comments, relations, tags, send an
     const targetDoc = await seedDocumentWithPdf(request, resolvedBaseUrl, headers, seedContext, "DocDetailTarget");
     const tagName = `e2e-tag-${randomCode(4).toLowerCase()}`;
     const createTagBody = await expectOkJson(
-      await request.post(`${resolvedBaseUrl}/api/v1/settings/correspondence-tags/upsert`, {
+      await request.post(`${resolvedBaseUrl}/api/v1/settings/document-tags/upsert`, {
         headers: {
           ...headers,
           "Content-Type": "application/json",
@@ -324,7 +324,7 @@ test("document detail e2e: metadata, preview, comments, relations, tags, send an
           color: "#22AA88",
         },
       }),
-      "settings correspondence-tags upsert"
+      "settings document-tags upsert"
     );
     const tagId = Number(createTagBody?.id || 0);
     expect(tagId, "document detail tag id").toBeGreaterThan(0);

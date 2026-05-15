@@ -1,7 +1,7 @@
 ﻿// @ts-nocheck
 (() => {
     const API_BASE = '/api/v1/settings';
-    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories', 'corr_departments', 'corr_tags'];
+    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'doc_tags', 'corr_issuing', 'corr_categories', 'corr_departments', 'corr_tags'];
 
     const STORE = {
         initialized: false,
@@ -34,6 +34,7 @@
             blocks: [],
             levels: [],
             statuses: [],
+            doc_tags: [],
             corr_issuing: [],
             corr_categories: [],
             corr_departments: [],
@@ -84,6 +85,7 @@
         blocks: { url: '/blocks', tbodyId: 'settingsBlocksRows', pagerId: 'blocksPager', colspan: 5 },
         levels: { url: '/levels', tbodyId: 'settingsLevelsRows', pagerId: 'levelsPager', colspan: 5 },
         statuses: { url: '/statuses', tbodyId: 'settingsStatusesRows', pagerId: 'statusesPager', colspan: 5 },
+        doc_tags: { url: '/document-tags', tbodyId: 'settingsDocTagsRows', pagerId: 'docTagsPager', colspan: 4 },
         corr_issuing: { url: '/correspondence-issuing', tbodyId: 'settingsCorrIssuingRows', pagerId: 'corrIssuingPager', colspan: 5 },
         corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
         corr_departments: { url: '/correspondence-departments', tbodyId: 'settingsCorrDepartmentsRows', pagerId: 'corrDepartmentsPager', colspan: 5 },
@@ -99,6 +101,7 @@
         blocks: 'settingsBlocksTable',
         levels: 'settingsLevelsTable',
         statuses: 'settingsStatusesTable',
+        doc_tags: 'settingsDocTagsTable',
         corr_issuing: 'settingsCorrIssuingTable',
         corr_categories: 'settingsCorrCategoriesTable',
         corr_departments: 'settingsCorrDepartmentsTable',
@@ -204,6 +207,8 @@
                 return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''}`;
             case 'statuses':
                 return `${row.code || ''} ${row.name || ''} ${row.description || ''}`;
+            case 'doc_tags':
+                return `${row.name || ''} ${row.color || ''}`;
             case 'corr_issuing':
                 return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''} ${row.project_code || ''}`;
             case 'corr_categories':
@@ -268,7 +273,7 @@
         if (entity === 'blocks') {
             return `${norm(row.project_code).toUpperCase()}::${norm(row.code).toUpperCase()}`;
         }
-        if (entity === 'corr_tags') return String(Number(row.id || 0));
+        if (entity === 'doc_tags' || entity === 'corr_tags') return String(Number(row.id || 0));
         return norm(row.code).toUpperCase();
     }
 
@@ -277,7 +282,7 @@
         if (entity === 'phases') return norm(row.ph_code) || '-';
         if (entity === 'packages') return `${norm(row.discipline_code)}/${norm(row.package_code)}`;
         if (entity === 'blocks') return `${norm(row.project_code)}/${norm(row.code)}`;
-        if (entity === 'corr_tags') return norm(row.name) || `#${Number(row.id || 0)}`;
+        if (entity === 'doc_tags' || entity === 'corr_tags') return norm(row.name) || `#${Number(row.id || 0)}`;
         return norm(row.code) || '-';
     }
 
@@ -430,6 +435,18 @@
                     <td>${rowActions(`
                         <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-department" data-code="${esc(encoded(s.code))}">ویرایش</button>
                         <button class="btn-archive-icon" type="button" data-general-action="delete-corr-department" data-code="${esc(encoded(s.code))}">غیرفعال</button>
+                    `)}</td>
+                </tr>
+            `).join('');
+        } else if (entity === 'doc_tags') {
+            html = info.rows.map((s) => `
+                <tr data-bulk-key="${esc(entityBulkKey('doc_tags', s))}">
+                    <td>${esc(s.name || '-')}</td>
+                    <td><span class="doc-tag-chip" style="--tag-color:${esc(s.color || '#2563eb')}"><span class="doc-tag-dot"></span><span>${esc(s.color || '#2563eb')}</span></span></td>
+                    <td>${esc(s.created_at || '-')}</td>
+                    <td>${rowActions(`
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-doc-tag" data-tag-id="${Number(s.id || 0)}">ویرایش</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-doc-tag" data-tag-id="${Number(s.id || 0)}">حذف</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -603,6 +620,15 @@
                     reloadEntities: ['corr_departments'],
                     successText: 'correspondence department(s) deactivated.',
                 };
+            case 'doc_tags':
+                return {
+                    id: 'general-bulk-doc-tags-delete',
+                    label: 'Delete selected engineering document tags',
+                    confirm: (count) => `Delete ${count} selected engineering document tag(s)?`,
+                    endpoint: '/document-tags/delete',
+                    reloadEntities: ['doc_tags'],
+                    successText: 'engineering document tag(s) deleted.',
+                };
             case 'corr_tags':
                 return {
                     id: 'general-bulk-corr-tags-delete',
@@ -648,6 +674,8 @@
                 return { code: norm(row?.code).toUpperCase(), hard_delete: false };
             case 'corr_departments':
                 return { code: norm(row?.code).toUpperCase(), hard_delete: false };
+            case 'doc_tags':
+                return { id: Number(row?.id || 0) };
             case 'corr_tags':
                 return { id: Number(row?.id || 0) };
             default:
@@ -896,9 +924,11 @@
             ['blocks', 'Ø¨Ù„ÙˆÚ©'],
             ['levels', 'Ø³Ø·Ø­'],
             ['statuses', 'ÙˆØ¶Ø¹ÛŒØª'],
+            ['document_tags', 'تگ مدارک'],
             ['issuing_entities', 'Ù…Ø±Ø¬Ø¹ ØµØ¯ÙˆØ±'],
             ['correspondence_categories', 'Ø¯Ø³ØªÙ‡ Ù…Ú©Ø§ØªØ¨Ø§Øª'],
             ['correspondence_departments', 'بخش مکاتبات'],
+            ['correspondence_tags', 'تگ مکاتبات'],
         ];
         box.innerHTML = cards.map(([k, label]) => `
             <div class="general-overview-card">
@@ -5271,6 +5301,18 @@ in
                 case 'delete-corr-department':
                     window.deleteCorrespondenceDepartmentSetting(actionEl.dataset.code || '');
                     break;
+                case 'save-doc-tag':
+                    window.saveDocumentTagSetting();
+                    break;
+                case 'reset-doc-tag':
+                    window.resetDocumentTagForm();
+                    break;
+                case 'open-edit-doc-tag':
+                    window.openEditDocumentTagById(actionEl.dataset.tagId || '');
+                    break;
+                case 'delete-doc-tag':
+                    window.deleteDocumentTagSetting(actionEl.dataset.tagId || '');
+                    break;
                 case 'save-corr-tag':
                     window.saveCorrespondenceTagSetting();
                     break;
@@ -6226,6 +6268,44 @@ in
         if (!confirm(`Disable correspondence department ${code}?`)) return;
         try {
             await postAndReload('/correspondence-departments/delete', { code, hard_delete: false }, ['corr_departments'], 'Correspondence department disabled.');
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.resetDocumentTagForm = function resetDocumentTagForm() {
+        document.getElementById('docTagIdInput').value = '';
+        document.getElementById('docTagNameInput').value = '';
+        document.getElementById('docTagColorInput').value = '#2563eb';
+    };
+    window.saveDocumentTagSetting = async function saveDocumentTagSetting() {
+        try {
+            const payload = {
+                id: Number(document.getElementById('docTagIdInput')?.value || 0) || null,
+                name: norm(document.getElementById('docTagNameInput')?.value),
+                color: norm(document.getElementById('docTagColorInput')?.value) || null,
+            };
+            requireVal(payload.name, 'Tag name');
+            await postAndReload('/document-tags/upsert', payload, ['doc_tags'], 'Document tag saved.');
+            window.resetDocumentTagForm();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+    window.openEditDocumentTagById = function openEditDocumentTagById(tagId) {
+        const id = Number(tagId || 0);
+        const item = findBy('doc_tags', (x) => Number(x.id || 0) === id);
+        if (!item) return;
+        document.getElementById('docTagIdInput').value = String(Number(item.id || 0) || '');
+        document.getElementById('docTagNameInput').value = item.name || '';
+        document.getElementById('docTagColorInput').value = item.color || '#2563eb';
+    };
+    window.deleteDocumentTagSetting = async function deleteDocumentTagSetting(tagId) {
+        const id = Number(tagId || 0);
+        if (!id) return;
+        if (!confirm('Delete selected document tag?')) return;
+        try {
+            await postAndReload('/document-tags/delete', { id }, ['doc_tags'], 'Document tag deleted.');
         } catch (err) {
             tError(err.message);
         }

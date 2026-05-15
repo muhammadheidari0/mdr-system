@@ -1139,6 +1139,7 @@ def test_document_relations_and_tags_with_duplicate_guards() -> None:
         assert create_tag.status_code == 200, create_tag.text
         tag_id = int((create_tag.json().get("tag") or {}).get("id") or 0)
         assert tag_id > 0
+        assert (create_tag.json().get("tag") or {}).get("scope") == "document"
 
         reused_tag = client.post(
             "/api/v1/archive/tags",
@@ -1147,6 +1148,7 @@ def test_document_relations_and_tags_with_duplicate_guards() -> None:
         )
         assert reused_tag.status_code == 200, reused_tag.text
         assert int((reused_tag.json().get("tag") or {}).get("id") or 0) == tag_id
+        assert (reused_tag.json().get("tag") or {}).get("scope") == "document"
 
         assign_tag = client.post(
             f"/api/v1/archive/documents/{source_document_id}/tags",

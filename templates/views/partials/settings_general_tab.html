@@ -41,6 +41,9 @@
   <button type="button" class="general-settings-btn" data-general-domain="mdr" data-general-tab="statuses" data-general-action="switch-page">
     <span class="material-icons-round">flag</span> ÙˆØ¶Ø¹ÛŒØªâ€ŒÙ‡Ø§
   </button>
+  <button type="button" class="general-settings-btn" data-general-domain="mdr" data-general-tab="doc_tags" data-general-action="switch-page">
+    <span class="material-icons-round">sell</span> تگ‌های مدارک مهندسی
+  </button>
   <button type="button" class="general-settings-btn" data-general-domain="correspondence" data-general-tab="corr_issuing" data-general-action="switch-page">
     <span class="material-icons-round">account_tree</span> Ù…Ø±Ø§Ø¬Ø¹ ØµØ¯ÙˆØ±
   </button>
@@ -51,7 +54,7 @@
     <span class="material-icons-round">corporate_fare</span> بخش‌های مکاتبات
   </button>
   <button type="button" class="general-settings-btn" data-general-domain="correspondence" data-general-tab="corr_tags" data-general-action="switch-page">
-    <span class="material-icons-round">sell</span> تگ‌های مکاتبات و بایگانی
+    <span class="material-icons-round">sell</span> تگ‌های مکاتبات
   </button>
   <button type="button" class="general-settings-btn" data-general-domain="transmittal" data-general-tab="transmittal_config" data-general-action="switch-page">
     <span class="material-icons-round">settings</span> ØªÙ†Ø¸ÛŒÙ…Ø§Øª ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„
@@ -376,6 +379,43 @@
   </div>
 </div>
 
+<div id="general-page-doc_tags" class="general-settings-page">
+  <div class="general-settings-grid">
+    <div class="general-settings-card">
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش تگ مدرک مهندسی</h3>
+      <div class="general-settings-note general-settings-note-info">
+        <span class="material-icons-round">info</span>
+        <div>این تگ‌ها فقط در جزئیات مدارک مهندسی و آرشیو مدارک نمایش داده می‌شوند.</div>
+      </div>
+      <input id="docTagIdInput" type="hidden">
+      <div class="general-form-grid">
+        <input id="docTagNameInput" class="form-input" placeholder="نام تگ">
+        <input id="docTagColorInput" class="form-input" type="color" value="#2563eb" aria-label="رنگ تگ">
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-doc-tag">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-doc-tag">جدید</button>
+      </div>
+    </div>
+    <div class="general-settings-card">
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست تگ‌های مدارک</h3>
+      <div class="general-list-toolbar">
+        <input id="searchDocTagsInput" class="form-input general-search-input" placeholder="جست‌وجو در تگ‌های مدارک..." data-general-action="search-entity" data-entity="doc_tags">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="doc_tags">
+          <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
+        </select>
+      </div>
+      <div class="table-responsive">
+        <table class="archive-table" id="settingsDocTagsTable">
+          <thead><tr><th>نام</th><th>رنگ</th><th>ایجاد</th><th>عملیات</th></tr></thead>
+          <tbody id="settingsDocTagsRows"></tbody>
+        </table>
+      </div>
+      <div id="docTagsPager" class="general-pager"></div>
+    </div>
+  </div>
+</div>
+
 <div id="general-page-corr_issuing" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
@@ -489,10 +529,10 @@
 <div id="general-page-corr_tags" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
-      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> تگ‌های مشترک مکاتبات و بایگانی</h3>
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> افزودن / ویرایش تگ مکاتبات</h3>
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">info</span>
-        <div>این تگ‌ها در فرم مکاتبات و جزئیات بایگانی به‌صورت منوی کشویی استفاده می‌شوند.</div>
+        <div>این تگ‌ها فقط در فرم و لیست مکاتبات استفاده می‌شوند.</div>
       </div>
       <input id="corrTagIdInput" type="hidden">
       <div class="general-form-grid">

@@ -618,6 +618,7 @@ def _serialize_relation_payload(row: DocumentRelation | DocumentExternalRelation
 def _serialize_tag_payload(row: DocumentTag) -> dict[str, Any]:
     return {
         "id": int(row.id or 0),
+        "scope": getattr(row, "scope", None) or "document",
         "name": row.name,
         "color": row.color,
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -634,6 +635,7 @@ def _serialize_tag_assignment_payload(row: DocumentTagAssignment) -> dict[str, A
         "assigned_at": row.assigned_at.isoformat() if row.assigned_at else None,
         "tag": {
             "id": int(getattr(tag, "id", 0) or 0),
+            "scope": getattr(tag, "scope", None) or "document",
             "name": getattr(tag, "name", None),
             "color": getattr(tag, "color", None),
         },
@@ -1879,7 +1881,7 @@ async def list_tags(
     user: User = Depends(require_permission("archive:read")),
 ):
     del user
-    rows = tag_service.list_tags(db)
+    rows = tag_service.list_tags(db, scope=tag_service.TAG_SCOPE_DOCUMENT)
     return {"ok": True, "items": [_serialize_tag_payload(row) for row in rows]}
 
 
@@ -1889,7 +1891,13 @@ async def create_tag(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("documents:tag_manage")),
 ):
-    row = tag_service.create_tag(db, name=body.name, color=body.color, user=user)
+    row = tag_service.create_tag(
+        db,
+        name=body.name,
+        color=body.color,
+        user=user,
+        scope=tag_service.TAG_SCOPE_DOCUMENT,
+    )
     return {"ok": True, "tag": _serialize_tag_payload(row)}
 
 
