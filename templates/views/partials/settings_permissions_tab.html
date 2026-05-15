@@ -1,86 +1,152 @@
-<div class="archive-card" id="settingsPermissionsTabRoot">
-  <div class="archive-header">
-    <div class="header-content">
-      <h2 class="archive-title">
-        <span class="material-icons-round" style="margin-left: 8px;">shield</span>
-        ماتریس سطح دسترسی
-      </h2>
-      <p class="archive-subtitle">
-        نقش‌ها را بر اساس مجوزهای ماژولی مدیریت کنید. کاربران سازمان System همیشه دسترسی کامل دارند و در ماتریس مدیریت نمی‌شوند.
-      </p>
-    </div>
-    <div class="header-actions">
-      <button class="btn-secondary" type="button" data-permissions-action="init-permissions-settings" data-force="true">
-        <span class="material-icons-round">refresh</span>
-        بازخوانی
-      </button>
-    </div>
-  </div>
-
-  <div class="archive-content">
-    <div class="form-help" style="margin-bottom: 10px;">
-      مدیریت Scope پروژه/دیسپلین از بخش کاربران انجام می‌شود.
-    </div>
-
-    <div id="permissionsCategoryTabs" class="edms-tab-buttons" style="margin-bottom: 12px;">
-      <button type="button" class="edms-tab-btn active" data-permissions-category="consultant" data-permissions-action="switch-permissions-category">
-        <span class="material-icons-round">fact_check</span>
-        مشاور
-      </button>
-      <button type="button" class="edms-tab-btn" data-permissions-category="contractor" data-permissions-action="switch-permissions-category">
-        <span class="material-icons-round">construction</span>
-        پیمانکار
-      </button>
-      <button type="button" class="edms-tab-btn" data-permissions-category="employer" data-permissions-action="switch-permissions-category">
-        <span class="material-icons-round">domain</span>
-        کارفرما
-      </button>
-      <button type="button" class="edms-tab-btn" data-permissions-category="dcc" data-permissions-action="switch-permissions-category">
-        <span class="material-icons-round">badge</span>
-        DCC
-      </button>
-    </div>
-
-    <div class="permissions-toolbar permissions-toolbar-minimal">
-      <div class="permissions-toolbar-filters">
-        <div class="permissions-toolbar-item">
-          <label class="form-label-sm" for="permissionsSearchInput">جستجوی مجوز</label>
-          <input id="permissionsSearchInput" class="form-input permissions-filter-input" type="text" placeholder="مثال: transmittal یا issue">
+<div id="settingsPermissionsTabRoot" class="settings-permissions-shell permissions-workbench-shell">
+  <div class="archive-shell permissions-workbench">
+    <header class="permissions-workbench-header">
+      <div class="permissions-workbench-heading">
+        <div>
+          <h3>مدیریت دسترسی</h3>
+          <p class="muted">
+            تنظیم دسترسی چهار رکن اصلی سامانه با نمای ساده برای مدیریت روزمره و نمای حرفه‌ای برای کنترل دقیق.
+          </p>
         </div>
-        <div class="permissions-toolbar-item">
-          <label class="form-label-sm" for="permissionsResourceFilter">فیلتر منبع</label>
-          <select id="permissionsResourceFilter" class="form-input permissions-filter-input">
-            <option value="">همه منابع</option>
-          </select>
+        <div class="permissions-workbench-status">
+          <span id="permissionsCurrentCategoryBadge" class="permissions-workbench-chip is-context">دسته فعال: مشاور</span>
+          <span id="permissionsDirtyBadge" class="permissions-workbench-chip is-muted">بدون تغییر</span>
+          <span id="permissionsLastSavedBadge" class="permissions-workbench-chip is-muted">آخرین ذخیره: -</span>
         </div>
       </div>
 
-      <div class="permissions-toolbar-actions">
-        <button class="btn-archive-icon" type="button" data-permissions-action="expand-all-permission-groups" title="باز کردن همه گروه‌ها">
-          <span class="material-icons-round">unfold_more</span>
-        </button>
-        <button class="btn-archive-icon" type="button" data-permissions-action="collapse-all-permission-groups" title="بستن همه گروه‌ها">
-          <span class="material-icons-round">unfold_less</span>
-        </button>
-        <button class="btn-archive-icon" type="button" data-permissions-action="reset-permission-filters" title="پاکسازی فیلترها">
-          <span class="material-icons-round">filter_alt_off</span>
-        </button>
-        <button class="btn-primary" type="button" data-permissions-action="save-permissions-matrix">
-          <span class="material-icons-round">save</span>
-          ذخیره تغییرات
-        </button>
+      <div class="permissions-workbench-toolbar">
+        <div id="permissionsCategoryTabs" class="permissions-category-switcher" role="tablist" aria-label="Permission Categories">
+          <button type="button" class="archive-filter-tab active" data-permissions-action="switch-category" data-permissions-category="consultant" aria-pressed="true">مشاور</button>
+          <button type="button" class="archive-filter-tab" data-permissions-action="switch-category" data-permissions-category="contractor" aria-pressed="false">پیمانکار</button>
+          <button type="button" class="archive-filter-tab" data-permissions-action="switch-category" data-permissions-category="employer" aria-pressed="false">کارفرما</button>
+          <button type="button" class="archive-filter-tab" data-permissions-action="switch-category" data-permissions-category="dcc" aria-pressed="false">DCC</button>
+        </div>
+
+        <div class="permissions-toolbar-actions">
+          <button type="button" class="btn-secondary" data-permissions-action="reload-current">بازخوانی</button>
+          <button type="button" class="btn-secondary" data-permissions-action="reset-current">بازگردانی تغییرات</button>
+          <button type="button" class="btn-primary" data-permissions-action="save-current">ذخیره</button>
+        </div>
       </div>
+
+      <details class="permissions-primer-collapsible">
+        <summary>راهنما: تفاوت هاب، ماژول و مجوز دامنه</summary>
+        <div class="permissions-primer-grid">
+          <article class="permissions-primer-card">
+            <div class="permissions-primer-title">سطح هاب</div>
+            <code class="permissions-primer-code">hub_*:read</code>
+            <p class="permissions-primer-text">فقط هاب کلی مثل EDMS، پیمانکار یا مشاور را در ناوبری visible می‌کند.</p>
+          </article>
+          <article class="permissions-primer-card">
+            <div class="permissions-primer-title">سطح ماژول</div>
+            <code class="permissions-primer-code">module_*:read</code>
+            <p class="permissions-primer-text">ظاهر شدن تب را کنترل می‌کند، اما به‌تنهایی برای fetch و استفاده واقعی کافی نیست.</p>
+          </article>
+          <article class="permissions-primer-card">
+            <div class="permissions-primer-title">سطح دامنه</div>
+            <code class="permissions-primer-code">site_logs:read / comm_items:read / permit_qc:read</code>
+            <p class="permissions-primer-text">خواندن واقعی داده‌های هر ماژول را کنترل می‌کند و مبنای visible بودن نهایی تب است.</p>
+          </article>
+          <article class="permissions-primer-card">
+            <div class="permissions-primer-title">نمایش مؤثر</div>
+            <code class="permissions-primer-code">hub + module + domain</code>
+            <p class="permissions-primer-text">اگر یکی از این سه سطح بسته باشد، تب نباید visible یا init شود.</p>
+          </article>
+        </div>
+      </details>
+    </header>
+
+    <div id="permissionsSubtabs" class="permissions-subtabs" role="tablist" aria-label="Permissions Workspace Tabs">
+      <button type="button" class="permissions-subtab active" data-permissions-action="switch-subtab" data-subtab="overview" aria-selected="true">خلاصه نقش‌ها</button>
+      <button type="button" class="permissions-subtab" data-permissions-action="switch-subtab" data-subtab="expert" aria-selected="false">ماتریس حرفه‌ای</button>
+      <button type="button" class="permissions-subtab" data-permissions-action="switch-subtab" data-subtab="scope" aria-selected="false">Scope پروژه/دیسیپلین</button>
+      <button type="button" class="permissions-subtab" data-permissions-action="switch-subtab" data-subtab="effective" aria-selected="false">بررسی دسترسی مؤثر</button>
     </div>
 
-    <div class="table-container permissions-table-wrap">
-      <table class="archive-table permissions-matrix-table" id="permissionsMatrixTable" data-bulk-enabled="false">
-        <thead id="permissionsMatrixHead"></thead>
-        <tbody id="permissionsMatrixBody">
-          <tr>
-            <td class="center-text muted" colspan="6" style="padding: 36px;">در حال بارگذاری ماتریس دسترسی...</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <section id="permissionsPanelOverview" class="permissions-panel active" role="tabpanel" aria-hidden="false">
+      <div id="permissionsOverviewContent" class="permissions-overview-content"></div>
+    </section>
+
+    <section id="permissionsPanelExpert" class="permissions-panel" role="tabpanel" aria-hidden="true">
+      <div class="permissions-toolbar">
+        <div class="permissions-toolbar-filters">
+          <div class="permissions-toolbar-item">
+            <label for="permissionsSearchInput" class="form-label-sm">جست‌وجو</label>
+            <input id="permissionsSearchInput" type="search" class="form-input permissions-filter-input" placeholder="عنوان فارسی، کد، بخش یا نوع مجوز">
+          </div>
+          <div class="permissions-toolbar-item">
+            <label for="permissionsTypeFilter" class="form-label-sm">نوع</label>
+            <select id="permissionsTypeFilter" class="form-input">
+              <option value="">همه</option>
+              <option value="hub">Hub</option>
+              <option value="module">Module</option>
+              <option value="domain">Domain</option>
+              <option value="action">Action</option>
+            </select>
+          </div>
+          <div class="permissions-toolbar-item">
+            <label for="permissionsSectionFilter" class="form-label-sm">حوزه</label>
+            <select id="permissionsSectionFilter" class="form-input">
+              <option value="">همه</option>
+            </select>
+          </div>
+        </div>
+        <div class="permissions-toolbar-actions">
+          <label class="permissions-toggle-inline"><input id="permissionsShowChangedOnly" type="checkbox"> فقط تفاوت با baseline</label>
+          <label class="permissions-toggle-inline"><input id="permissionsShowActiveOnly" type="checkbox"> فقط مجوزهای فعال</label>
+          <button type="button" class="btn-secondary" data-permissions-action="expand-expert">باز کردن همه</button>
+          <button type="button" class="btn-secondary" data-permissions-action="collapse-expert">بستن همه</button>
+          <button type="button" class="btn-secondary" data-permissions-action="clear-expert-filters">حذف فیلترها</button>
+        </div>
+      </div>
+
+      <div class="permissions-table-wrap">
+        <table id="permissionsMatrixTable" class="permissions-matrix-table">
+          <thead id="permissionsMatrixHead"></thead>
+          <tbody id="permissionsMatrixBody">
+            <tr>
+              <td class="center-text muted" colspan="6" style="padding: 36px;">در حال بارگذاری ماتریس حرفه‌ای...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="permissionsPanelScope" class="permissions-panel" role="tabpanel" aria-hidden="true">
+      <div id="permissionsScopeContent" class="permissions-scope-content"></div>
+    </section>
+
+    <section id="permissionsPanelEffective" class="permissions-panel" role="tabpanel" aria-hidden="true">
+      <div class="permissions-audit-panel">
+        <div class="permissions-audit-toolbar">
+          <div class="permissions-audit-search">
+            <label for="permissionsAuditUserSearch" class="form-label-sm">جست‌وجوی کاربر</label>
+            <input
+              id="permissionsAuditUserSearch"
+              type="search"
+              class="form-input permissions-filter-input"
+              placeholder="نام، ایمیل، سازمان یا نقش مؤثر"
+              autocomplete="off"
+            >
+            <div id="permissionsAuditUserResults" class="permissions-audit-results"></div>
+          </div>
+          <div id="permissionsAuditHint" class="permissions-audit-hint">
+            یک کاربر را انتخاب کنید تا هاب‌ها، تب‌ها، Scope و هشدارهای ناوبری او نمایش داده شود.
+          </div>
+        </div>
+        <div id="permissionsEffectiveAccessPanel" class="permissions-effective-panel">
+          <div class="permissions-effective-empty">
+            <span class="material-icons-round">shield</span>
+            <strong>هنوز کاربری انتخاب نشده است</strong>
+            <p>پس از انتخاب کاربر، خلاصه دسترسی مؤثر و وضعیت نهایی UI در همین بخش نمایش داده می‌شود.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="permissions-workbench-footer">
+      <span id="permissionsFooterStatus" class="permissions-footer-status">بدون تغییر</span>
+    </footer>
   </div>
 </div>

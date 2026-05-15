@@ -42,6 +42,7 @@ function statusLabel(value: unknown): string {
   const code = normalize(value);
   if (code === "DRAFT") return "پیش‌نویس";
   if (code === "SUBMITTED") return "ارسال‌شده";
+  if (code === "RETURNED") return "برگشت‌شده";
   if (code === "VERIFIED") return "تاییدشده";
   return code || "-";
 }
@@ -60,7 +61,7 @@ function renderRows(
     .map((row, index) => {
       const logId = Number(row.id || 0);
       const status = normalize(row.status_code);
-      const canEditRow = options.canEdit && status === "DRAFT";
+      const canEditRow = options.canEdit && ["DRAFT", "RETURNED"].includes(status);
       const canVerifyRow = options.canVerify && status === "SUBMITTED";
       return `
         <tr>
@@ -129,7 +130,7 @@ function renderStats(moduleKey: string, rows: Record<string, unknown>[], total: 
         overdue: "contractor-stat-overdue",
       };
 
-  const open = rows.filter((row) => ["DRAFT", "SUBMITTED"].includes(normalize(row.status_code))).length;
+  const open = rows.filter((row) => ["DRAFT", "RETURNED", "SUBMITTED"].includes(normalize(row.status_code))).length;
   const waiting = rows.filter((row) => normalize(row.status_code) === "SUBMITTED").length;
   const overdue = 0;
 
@@ -182,13 +183,16 @@ function sectionLabel(code: string): string {
   if (normalized === "MANPOWER") return "نفرات";
   if (normalized === "EQUIPMENT") return "تجهیزات";
   if (normalized === "ACTIVITY") return "فعالیت‌ها";
+  if (normalized === "MATERIAL") return "مصالح";
+  if (normalized === "ISSUE") return "موانع / ریسک‌ها";
+  if (normalized === "REPORT_ATTACHMENT") return "پیوست‌های گزارش";
   return normalized || "-";
 }
 
 function renderAttachments(host: HTMLElement | null, payload: Record<string, unknown>): boolean {
   if (!(host instanceof HTMLElement)) return false;
   const grouped = asRecord(payload.grouped);
-  const sections = ["GENERAL", "MANPOWER", "EQUIPMENT", "ACTIVITY"];
+  const sections = ["GENERAL", "MANPOWER", "EQUIPMENT", "ACTIVITY", "MATERIAL", "ISSUE", "REPORT_ATTACHMENT"];
   const html = sections
     .map((section) => {
       const rows = asArray(grouped[section]);

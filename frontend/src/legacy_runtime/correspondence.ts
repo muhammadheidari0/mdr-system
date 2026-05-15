@@ -20,7 +20,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   const TS_CORRESPONDENCE_WORKFLOW = (APP_RUNTIME?.correspondenceWorkflow && typeof APP_RUNTIME.correspondenceWorkflow === "object")
     ? APP_RUNTIME.correspondenceWorkflow
     : null;
-  const S = { inited: false, bound: false, page: 1, size: 20, total: 0, items: [], loading: false, timer: null, actions: [], atts: [], cat: { issuing: [], categories: [], projects: [], disciplines: [] } };
+  const S = { inited: false, bound: false, page: 1, size: 20, total: 0, items: [], loading: false, timer: null, suggestionsTimer: null, previewUrl: "", actions: [], atts: [], relations: [], cat: { issuing: [], categories: [], projects: [], tags: [] } };
   const q = (id) => document.getElementById(id);
   let shamsiDates = null;
   const esc = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -130,10 +130,14 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     const bridge = requireBridge(TS_CORRESPONDENCE_DATA, "Correspondence data");
     const b = await bridge.loadCatalog({ fetch: getCorrFetchFn() });
     if (!b?.ok) throw new Error(b?.detail || "Catalog load failed.");
-    S.cat.issuing = b.issuing_entities || []; S.cat.categories = b.categories || []; S.cat.projects = b.projects || []; S.cat.disciplines = b.disciplines || [];
+    S.cat.issuing = b.issuing_entities || []; S.cat.categories = b.categories || []; S.cat.projects = b.projects || []; S.cat.tags = Array.isArray(b.tags) ? b.tags.map((row) => ({ code: String(row?.id || ""), name_e: row?.name || "", name_p: row?.name || "", color: row?.color || "" })) : [];
     fillSelect("corrIssuingFilter", S.cat.issuing, "\u0647\u0645\u0647 \u0645\u0631\u0627\u062c\u0639 \u0635\u062f\u0648\u0631"); fillSelect("corrCategoryFilter", S.cat.categories, "\u0647\u0645\u0647 \u062f\u0633\u062a\u0647\u200c\u0647\u0627");
+    fillSelect("corrTagFilter", S.cat.tags, "همه تگ‌ها");
     fillSelect("corrIssuingInput", S.cat.issuing, "\u0627\u0646\u062a\u062e\u0627\u0628 \u0645\u0631\u062c\u0639 \u0635\u062f\u0648\u0631", false); fillSelect("corrCategoryInput", S.cat.categories, "\u0627\u0646\u062a\u062e\u0627\u0628 \u062f\u0633\u062a\u0647", false);
-    fillSelect("corrProjectInput", S.cat.projects, "\u0627\u062a\u0648\u0645\u0627\u062a\u06cc\u06a9 \u0627\u0632 \u0645\u0631\u062c\u0639 / \u0628\u062f\u0648\u0646 \u067e\u0631\u0648\u0698\u0647"); fillSelect("corrDisciplineInput", S.cat.disciplines, "\u0628\u062f\u0648\u0646 \u062f\u06cc\u0633\u06cc\u067e\u0644\u06cc\u0646");
+    fillSelect("corrProjectInput", S.cat.projects, "\u0627\u062a\u0648\u0645\u0627\u062a\u06cc\u06a9 \u0627\u0632 \u0645\u0631\u062c\u0639 / \u0628\u062f\u0648\u0646 \u067e\u0631\u0648\u0698\u0647"); fillSelect("corrTagInput", S.cat.tags, "بدون تگ");
+    const tagWrap = q("corrTagInput")?.closest?.("div");
+    const tagLabel = tagWrap?.querySelector?.("label");
+    if (tagLabel) tagLabel.textContent = "تگ (اختیاری)";
   }
   async function loadDashboard() {
     try {
@@ -146,7 +150,32 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     }
   }
   function filters() {
-    return { search: String(q("corrSearchInput")?.value || "").trim(), issuing_code: String(q("corrIssuingFilter")?.value || "").trim(), category_code: String(q("corrCategoryFilter")?.value || "").trim(), direction: String(q("corrDirectionFilter")?.value || "").trim(), status: String(q("corrStatusFilter")?.value || "").trim(), date_from: String(q("corrDateFromFilter")?.value || "").trim(), date_to: String(q("corrDateToFilter")?.value || "").trim() };
+    return { search: String(q("corrSearchInput")?.value || "").trim(), issuing_code: String(q("corrIssuingFilter")?.value || "").trim(), category_code: String(q("corrCategoryFilter")?.value || "").trim(), tag_id: String(q("corrTagFilter")?.value || "").trim(), direction: String(q("corrDirectionFilter")?.value || "").trim(), status: String(q("corrStatusFilter")?.value || "").trim(), date_from: String(q("corrDateFromFilter")?.value || "").trim(), date_to: String(q("corrDateToFilter")?.value || "").trim() };
+  }
+  async function loadSearchSuggestions() {
+    const input = q("corrSearchInput");
+    const list = q("corrSearchSuggestions");
+    if (!(input instanceof HTMLInputElement) || !(list instanceof HTMLDataListElement)) return;
+    const value = String(input.value || "").trim();
+    if (value.length < 2) {
+      list.innerHTML = "";
+      return;
+    }
+    try {
+      const bridge = requireBridge(TS_CORRESPONDENCE_DATA, "Correspondence data");
+      const body = await bridge.loadSuggestions(value, { fetch: getCorrFetchFn() });
+      const items = Array.isArray(body?.items) ? body.items : [];
+      list.innerHTML = items
+        .map((item) => {
+          const ref = esc(item?.reference_no || "");
+          if (!ref) return "";
+          const subject = esc(item?.subject || "");
+          return `<option value="${ref}" label="${subject}"></option>`;
+        })
+        .join("");
+    } catch (error) {
+      console.error("Correspondence suggestions failed", error);
+    }
   }
   function renderPager() {
     const bridge = requireBridge(TS_CORRESPONDENCE_STATE, "Correspondence state");
@@ -198,8 +227,13 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     finally { S.loading = false; q("corrLoader").style.display = "none"; renderPager(); }
   }
   function corrApplyFilters(reset = true) { if (reset) S.page = 1; loadList(); }
-  function corrDebouncedSearch() { clearTimeout(S.timer); S.timer = setTimeout(() => corrApplyFilters(true), 350); }
-  function corrResetFilters() { ["corrSearchInput", "corrIssuingFilter", "corrCategoryFilter", "corrDirectionFilter", "corrStatusFilter", "corrDateFromFilter", "corrDateToFilter"].forEach((id) => { const e = q(id); if (e) e.value = ""; }); syncShamsiInputs(); S.page = 1; loadList(); }
+  function corrDebouncedSearch() {
+    clearTimeout(S.suggestionsTimer);
+    S.suggestionsTimer = setTimeout(() => loadSearchSuggestions(), 150);
+    clearTimeout(S.timer);
+    S.timer = setTimeout(() => corrApplyFilters(true), 350);
+  }
+  function corrResetFilters() { ["corrSearchInput", "corrIssuingFilter", "corrCategoryFilter", "corrTagFilter", "corrDirectionFilter", "corrStatusFilter", "corrDateFromFilter", "corrDateToFilter"].forEach((id) => { const e = q(id); if (e) e.value = ""; }); syncShamsiInputs(); S.page = 1; loadList(); }
   function corrPrevPage() { if (S.page <= 1 || S.loading) return; S.page -= 1; loadList(); }
   function corrNextPage() { if (S.loading) return; if (S.page * S.size >= S.total) return; S.page += 1; loadList(); }
   function corrChangePageSize(v) { S.size = Math.max(1, Number(v || 20)); S.page = 1; loadList(); }
@@ -439,6 +473,34 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       renderAtts();
     }
   }
+  function renderRelations() {
+    const bridge = requireBridge(TS_CORRESPONDENCE_STATE, "Correspondence state");
+    bridge.renderRelations(
+      Array.isArray(S.relations) ? S.relations : [],
+      { getElementById: q }
+    );
+  }
+  async function loadRelations(id) {
+    if (!id) { S.relations = []; renderRelations(); return; }
+    try {
+      if (!TS_CORRESPONDENCE_WORKFLOW?.loadRelations) {
+        throw new Error("Load relations bridge unavailable.");
+      }
+      const body = await TS_CORRESPONDENCE_WORKFLOW.loadRelations(Number(id), { fetch: getCorrFetchFn() });
+      if (!body?.ok) {
+        err(body?.detail || "خطا در دریافت ارتباطات.");
+        S.relations = [];
+        renderRelations();
+        return;
+      }
+      S.relations = Array.isArray(body.data) ? body.data : [];
+      renderRelations();
+    } catch (error) {
+      err(error?.message || "خطا در دریافت ارتباطات.");
+      S.relations = [];
+      renderRelations();
+    }
+  }
   async function corrToggleAttachmentPin(id, isPinned) {
     const attachmentId = Number(id || 0);
     if (!attachmentId) return;
@@ -509,21 +571,63 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       err(error?.message || "خطا در دانلود");
     }
   }
+  function corrPreviewUnsupportedMessage() {
+    return "پیش‌نمایش فقط برای PDF و فایل‌های تصویری پشتیبانی می‌شود. برای این فایل از دانلود استفاده کنید.";
+  }
+  function corrPreviewType(result, fallbackName = "") {
+    const rawType = String(result?.contentType || result?.blob?.type || "").split(";")[0].trim().toLowerCase();
+    if (rawType === "application/pdf" || rawType === "application/x-pdf") return "pdf";
+    if (rawType.startsWith("image/")) return "image";
+    const name = String(result?.fileName || fallbackName || "").toLowerCase();
+    if (name.endsWith(".pdf")) return "pdf";
+    if (/\.(png|jpe?g|gif|webp|bmp)$/.test(name)) return "image";
+    return "";
+  }
+  function corrClosePreview() {
+    const modal = q("corrPreviewModal");
+    const body = q("corrPreviewBody");
+    const download = q("corrPreviewDownload");
+    if (modal) {
+      modal.style.display = "none";
+      modal.setAttribute("aria-hidden", "true");
+    }
+    if (body) body.innerHTML = "";
+    if (download) {
+      download.removeAttribute("href");
+      download.removeAttribute("download");
+    }
+    if (S.previewUrl) {
+      URL.revokeObjectURL(S.previewUrl);
+      S.previewUrl = "";
+    }
+  }
   function corrOpenBlobPreview(result, fallbackName = "preview") {
     if (!result?.blob) return err("فایلی برای پیش‌نمایش دریافت نشد.");
+    const previewType = corrPreviewType(result, fallbackName);
+    if (!previewType) return warn(corrPreviewUnsupportedMessage());
+    corrClosePreview();
     const url = URL.createObjectURL(result.blob);
-    const opened = window.open(url, "_blank", "noopener");
-    if (!opened) {
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.download = String(result?.fileName || fallbackName || "preview");
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+    S.previewUrl = url;
+    const modal = q("corrPreviewModal");
+    const title = q("corrPreviewTitle");
+    const body = q("corrPreviewBody");
+    const download = q("corrPreviewDownload");
+    const fileName = String(result?.fileName || fallbackName || "preview").trim() || "preview";
+    if (!modal || !body) {
+      URL.revokeObjectURL(url);
+      S.previewUrl = "";
+      return err("پنجره پیش‌نمایش در صفحه پیدا نشد.");
     }
-    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (title) title.textContent = `پیش‌نمایش: ${fileName}`;
+    if (download) {
+      download.href = url;
+      download.download = fileName;
+    }
+    body.innerHTML = previewType === "pdf"
+      ? `<iframe class="corr-preview-frame" src="${url}" title="${esc(fileName)}"></iframe>`
+      : `<img class="corr-preview-image" src="${url}" alt="${esc(fileName)}">`;
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
   }
   async function corrPreviewCorrespondence(id) {
     try {
@@ -534,6 +638,64 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       corrOpenBlobPreview(result, `correspondence-${id}`);
     } catch (error) {
       err(error?.message || "پیش‌نمایش برای این مکاتبه در دسترس نیست.");
+    }
+  }
+  async function corrPreviewAttachment(id) {
+    try {
+      if (!TS_CORRESPONDENCE_WORKFLOW?.previewAttachment) {
+        throw new Error("Attachment preview bridge unavailable.");
+      }
+      const result = await TS_CORRESPONDENCE_WORKFLOW.previewAttachment(Number(id), { fetch: getCorrFetchFn() });
+      corrOpenBlobPreview(result, `attachment-${id}`);
+    } catch (error) {
+      err(error?.message || "پیش‌نمایش برای این فایل در دسترس نیست.");
+    }
+  }
+  function corrPreviewUnsupported() {
+    warn(corrPreviewUnsupportedMessage());
+  }
+  async function corrSubmitRelation() {
+    const id = curId();
+    if (!id) return warn("ابتدا مکاتبه را ذخیره کنید.");
+    const targetCode = String(q("corrRelationTargetCodeInput")?.value || "").trim();
+    if (!targetCode) return warn("کد مقصد ارتباط را وارد کنید.");
+    try {
+      if (!TS_CORRESPONDENCE_WORKFLOW?.createRelation) {
+        throw new Error("Relation bridge unavailable.");
+      }
+      const body = await TS_CORRESPONDENCE_WORKFLOW.createRelation(
+        Number(id),
+        {
+          target_entity_type: String(q("corrRelationTargetTypeInput")?.value || "document"),
+          target_code: targetCode,
+          relation_type: String(q("corrRelationTypeInput")?.value || "related"),
+          notes: String(q("corrRelationNotesInput")?.value || "").trim() || null,
+        },
+        { fetch: getCorrFetchFn() }
+      );
+      if (!body?.ok) return err(body?.detail || "خطا در ثبت ارتباط.");
+      q("corrRelationTargetCodeInput").value = "";
+      q("corrRelationNotesInput").value = "";
+      info("ارتباط ثبت شد.");
+      await loadRelations(id);
+    } catch (error) {
+      err(error?.message || "خطا در ثبت ارتباط.");
+    }
+  }
+  async function corrDeleteRelation(relationId) {
+    const id = curId();
+    if (!id || !relationId) return;
+    if (!confirm("ارتباط حذف شود؟")) return;
+    try {
+      if (!TS_CORRESPONDENCE_WORKFLOW?.deleteRelation) {
+        throw new Error("Delete relation bridge unavailable.");
+      }
+      const body = await TS_CORRESPONDENCE_WORKFLOW.deleteRelation(Number(id), String(relationId), { fetch: getCorrFetchFn() });
+      if (!body?.ok) return err(body?.detail || "خطا در حذف ارتباط.");
+      info("ارتباط حذف شد.");
+      await loadRelations(id);
+    } catch (error) {
+      err(error?.message || "خطا در حذف ارتباط.");
     }
   }
   async function corrDeleteCorrespondence(id) {
@@ -583,7 +745,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     q("corrCategoryInput").value = String(v.category_code || "");
     q("corrDirectionInput").value = String(v.direction || "O");
     q("corrProjectInput").value = String(v.project_code || "");
-    q("corrDisciplineInput").value = String(v.discipline_code || "");
+    q("corrTagInput").value = String(v.tag_id || "");
     q("corrReferenceInput").value = String(v.reference_no || "");
     q("corrSubjectInput").value = String(v.subject || "");
     q("corrSenderInput").value = String(v.sender || "");
@@ -601,14 +763,14 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     applyFormValues(formBridge.createDefaultValues());
     if (!q("corrIssuingInput").value && q("corrIssuingInput").options.length) q("corrIssuingInput").selectedIndex = 0;
     if (!q("corrCategoryInput").value && q("corrCategoryInput").options.length) q("corrCategoryInput").selectedIndex = 0;
-    S.actions = []; S.atts = []; clearActionEditor(); q("corrActionsBody").innerHTML = `<tr><td colspan="5" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; q("corrAttachmentsBody").innerHTML = `<tr><td colspan="7" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; fillActionOptions(); corrUpdateReferencePreview();
+    S.actions = []; S.atts = []; S.relations = []; clearActionEditor(); q("corrActionsBody").innerHTML = `<tr><td colspan="5" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; q("corrAttachmentsBody").innerHTML = `<tr><td colspan="7" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; q("corrRelationsBody").innerHTML = `<tr><td colspan="6" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; fillActionOptions(); corrUpdateReferencePreview();
   }
   function payloadForm() {
     const input = {
       project_code: q("corrProjectInput").value,
       issuing_code: q("corrIssuingInput").value,
       category_code: q("corrCategoryInput").value,
-      discipline_code: q("corrDisciplineInput").value,
+      tag_id: q("corrTagInput").value,
       direction: q("corrDirectionInput").value,
       reference_no: q("corrReferenceInput").value,
       subject: q("corrSubjectInput").value,
@@ -634,7 +796,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       }
       const b = await TS_CORRESPONDENCE_WORKFLOW.saveCorrespondence(Number(id), p, { fetch: getCorrFetchFn() });
       if (!b?.ok) return err(b?.detail || "خطا در ذخیره مکاتبه");
-      const sid = Number(b.data?.id || 0); if (sid) { q("corrIdInput").value = String(sid); q("corrModalTitle").innerText = "ویرایش مکاتبه"; await loadActions(sid); await loadAtts(sid); }
+      const sid = Number(b.data?.id || 0); if (sid) { q("corrIdInput").value = String(sid); q("corrModalTitle").innerText = "ویرایش مکاتبه"; await loadActions(sid); await loadAtts(sid); await loadRelations(sid); }
       info(id > 0 ? "مکاتبه ویرایش شد." : "مکاتبه ثبت شد. حالا اقدام و فایل ثبت کنید."); await loadDashboard(); await loadList();
     } catch (error) {
       err(error?.message || "خطا در ذخیره مکاتبه");
@@ -646,10 +808,10 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     q("corrModalTitle").innerText = "ویرایش مکاتبه";
     const formBridge = requireBridge(TS_CORRESPONDENCE_FORM, "Correspondence form");
     applyFormValues(formBridge.normalizeEditValues(x));
-    clearActionEditor(); corrUpdateReferencePreview(); q("corrModal").style.display = "flex"; await loadActions(Number(x.id)); await loadAtts(Number(x.id));
+    clearActionEditor(); corrUpdateReferencePreview(); q("corrModal").style.display = "flex"; await loadActions(Number(x.id)); await loadAtts(Number(x.id)); await loadRelations(Number(x.id));
   }
   async function corrOpenWorkflow(id) { if (TS_CORRESPONDENCE_WORKFLOW?.openWorkflow) return TS_CORRESPONDENCE_WORKFLOW.openWorkflow(Number(id), { openEdit: (corrId) => corrOpenEdit(corrId), scrollToActions: () => q("corrActionsSection")?.scrollIntoView({ behavior: "smooth", block: "start" }) }); await corrOpenEdit(id); q("corrActionsSection")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
-  function corrCloseModal() { q("corrModal").style.display = "none"; }
+  function corrCloseModal() { corrClosePreview(); q("corrModal").style.display = "none"; }
 
   function bindEvents() {
     if (S.bound) return;
@@ -675,8 +837,13 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
       openEdit: (id) => corrOpenEdit(id),
       openWorkflow: (id) => corrOpenWorkflow(id),
       previewCorrespondence: (id) => corrPreviewCorrespondence(id),
+      previewAttachment: (id) => corrPreviewAttachment(id),
+      previewUnsupported: () => corrPreviewUnsupported(),
+      closePreview: () => corrClosePreview(),
       deleteCorrespondence: (id) => corrDeleteCorrespondence(id),
       copyRef: (value) => corrCopyRef(value),
+      submitRelation: () => corrSubmitRelation(),
+      deleteRelation: (id) => corrDeleteRelation(id),
       editAction: (id) => corrEditAction(id),
       deleteAction: (id) => corrDeleteAction(id),
       downloadAttachment: (id) => corrDownloadAttachment(id),
@@ -699,7 +866,7 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     await loadList();
   }
   window.initCorrespondenceView = init; window.corrOpenCreate = corrOpenCreate; window.corrOpenEdit = corrOpenEdit; window.corrOpenWorkflow = corrOpenWorkflow; window.corrCloseModal = corrCloseModal; window.corrSave = corrSave;
-  window.corrDebouncedSearch = corrDebouncedSearch; window.corrApplyFilters = corrApplyFilters; window.corrResetFilters = corrResetFilters; window.corrPrevPage = corrPrevPage; window.corrNextPage = corrNextPage; window.corrChangePageSize = corrChangePageSize; window.corrRefresh = corrRefresh; window.corrUpdateReferencePreview = corrUpdateReferencePreview; window.corrSubmitAction = corrSubmitAction; window.corrClearActionEditor = clearActionEditor; window.corrUploadAttachment = corrUploadAttachment; window.corrPreviewCorrespondence = corrPreviewCorrespondence; window.corrDeleteCorrespondence = corrDeleteCorrespondence; window.corrCopyRef = corrCopyRef; window.corrEditAction = corrEditAction; window.corrDeleteAction = corrDeleteAction; window.corrToggleActionClosed = corrToggleActionClosed; window.corrDownloadAttachment = corrDownloadAttachment; window.corrDeleteAttachment = corrDeleteAttachment;
+  window.corrDebouncedSearch = corrDebouncedSearch; window.corrApplyFilters = corrApplyFilters; window.corrResetFilters = corrResetFilters; window.corrPrevPage = corrPrevPage; window.corrNextPage = corrNextPage; window.corrChangePageSize = corrChangePageSize; window.corrRefresh = corrRefresh; window.corrUpdateReferencePreview = corrUpdateReferencePreview; window.corrSubmitAction = corrSubmitAction; window.corrClearActionEditor = clearActionEditor; window.corrUploadAttachment = corrUploadAttachment; window.corrPreviewCorrespondence = corrPreviewCorrespondence; window.corrPreviewAttachment = corrPreviewAttachment; window.corrPreviewUnsupported = corrPreviewUnsupported; window.corrClosePreview = corrClosePreview; window.corrSubmitRelation = corrSubmitRelation; window.corrDeleteRelation = corrDeleteRelation; window.corrDeleteCorrespondence = corrDeleteCorrespondence; window.corrCopyRef = corrCopyRef; window.corrEditAction = corrEditAction; window.corrDeleteAction = corrDeleteAction; window.corrToggleActionClosed = corrToggleActionClosed; window.corrDownloadAttachment = corrDownloadAttachment; window.corrDeleteAttachment = corrDeleteAttachment;
   const corrRoot = q("view-correspondence");
   if (corrRoot && corrRoot.style.display !== "none") init();
 })();

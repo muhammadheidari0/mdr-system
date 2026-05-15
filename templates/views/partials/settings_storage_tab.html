@@ -27,7 +27,7 @@
     <section id="storage-step-paths" class="storage-step-panel active" data-storage-step-panel="paths">
       <div class="general-settings-note general-settings-note-info">
         <span class="material-icons-round">folder</span>
-        <div>مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور قرار بگیرند و توسط Service Account قابل‌نوشتن باشند. در ویندوز می‌توانید مسیر UNC مثل <code>\\192.168.5.5\share\technical</code> هم وارد کنید. اگر Primary Storage Provider روی Nextcloud باشد، همین دو مسیر MDR و Correspondence محل ذخیره اصلی را تعیین می‌کنند و باید زیر Local Mount Root نکست‌کلاد باشند.</div>
+        <div>در حالت محلی/Mount، مسیرها باید absolute باشند، زیر ریشه‌های مجاز سرور قرار بگیرند و توسط Service Account قابل‌نوشتن باشند. در ویندوز می‌توانید مسیر UNC مثل <code>\\192.168.5.5\share\technical</code> هم وارد کنید. اگر Primary Storage Provider روی Nextcloud و Storage Mode روی <strong>WebDAV</strong> باشد، همین دو مسیر MDR و Correspondence به‌صورت remote path ذخیره می‌شوند و باید زیر Root Path نکست‌کلاد باشند.</div>
       </div>
       <div id="storageNextcloudPickerInlineHint" class="form-help storage-nextcloud-picker-hint"></div>
       <div class="general-form-grid">
@@ -96,6 +96,39 @@
           <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/correspondence</code></div>
           <div class="storage-path-preview">Ù¾ÛŒØ´â€ŒÙ†Ù…Ø§ÛŒØ´ normalize Ø´Ø¯Ù‡: <code id="storagePathCorrespondencePreview">-</code></div>
           <span class="form-help storage-path-help">Ø¨Ø±Ø§ÛŒ Ù†Ø§Ù…Ù‡â€ŒÙ‡Ø§ØŒ Ø§Ú©Ø´Ù†â€ŒÙ‡Ø§ Ùˆ Ù¾ÛŒÙˆØ³Øªâ€ŒÙ‡Ø§ÛŒ Ù…Ú©Ø§ØªØ¨Ø§Øª</span>
+        </div>
+        <div class="storage-path-field-group">
+          <div class="storage-path-field-title">
+            مسیر سایت‌لاگ (اختیاری)
+            <span id="storagePathSiteLogBadge" class="storage-path-backend-badge">fallback</span>
+          </div>
+          <div class="storage-path-input-row">
+            <input id="siteLogStoragePathInput" class="form-input" placeholder="خالی = استفاده از مسیر مکاتبات">
+            <button
+              id="storageSiteLogPathNextcloudPickerBtn"
+              class="btn-archive-icon storage-path-picker-btn"
+              type="button"
+              data-general-action="open-nextcloud-folder-picker"
+              data-target-input="siteLogStoragePathInput"
+              aria-label="Select site log path from Nextcloud"
+              title="Select folder from Nextcloud"
+            >
+              <span class="material-icons-round">cloud</span>
+            </button>
+          </div>
+          <div class="storage-path-quick-actions">
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              data-general-action="apply-suggested-nextcloud-path"
+              data-storage-path-kind="site_log"
+            >
+              اعمال مسیر پیشنهادی نکست‌کلاد
+            </button>
+          </div>
+          <div class="storage-path-example">نمونه مسیر استاندارد: <code>/app/archive_storage/site_logs</code></div>
+          <div class="storage-path-preview">پیش‌نمایش effective: <code id="storagePathSiteLogPreview">-</code></div>
+          <span class="form-help storage-path-help">اگر خالی بماند فایل‌های گزارش کارگاهی زیر مسیر مکاتبات ذخیره می‌شوند.</span>
         </div>
       </div>
       <div id="storagePathsConflictError" class="storage-path-inline-error" style="display:none;"></div>

@@ -10,8 +10,11 @@ export interface SiteLogsListQuery {
   search?: string;
   project_code?: string;
   discipline_code?: string;
+  organization_id?: string | number;
+  organization_contract_id?: string | number;
   log_type?: string;
   status_code?: string;
+  work_status?: string;
   log_date_from?: string;
   log_date_to?: string;
 }
@@ -19,11 +22,14 @@ export interface SiteLogsListQuery {
 export interface SiteLogsDataBridge {
   requestJson(url: string, init: RequestInit | undefined, deps: SiteLogsHttpDeps): Promise<unknown>;
   catalog(deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
+  activityOptions(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
+  qcSnapshot(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   list(query: SiteLogsListQuery, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   create(payload: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   update(logId: number, payload: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   get(logId: number, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   submit(logId: number, payload: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
+  returnForRevision(logId: number, payload: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   verify(logId: number, payload: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   timeline(logId: number, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   listComments(logId: number, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
@@ -31,6 +37,8 @@ export interface SiteLogsDataBridge {
   listAttachments(logId: number, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   uploadAttachment(logId: number, formData: FormData, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   deleteAttachment(logId: number, attachmentId: number, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
+  previewAttachment(attachmentId: number, deps: SiteLogsHttpDeps): Promise<{ blob: Blob; fileName: string; contentType: string }>;
+  downloadPdf(logId: number, deps: SiteLogsHttpDeps): Promise<{ blob: Blob; fileName: string; contentType: string }>;
   reportVolume(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   reportVariance(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
   reportProgress(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>>;
@@ -83,8 +91,31 @@ async function requestJson(url: string, init: RequestInit | undefined, deps: Sit
   return parseJsonSafe(response);
 }
 
+function fileNameFromContentDisposition(value: string | null): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const utfMatch = raw.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1].trim().replace(/^"|"$/g, ""));
+    } catch {
+      return utfMatch[1].trim().replace(/^"|"$/g, "");
+    }
+  }
+  const match = raw.match(/filename="?([^";]+)"?/i);
+  return match?.[1]?.trim() || "";
+}
+
 async function catalog(deps: SiteLogsHttpDeps): Promise<Record<string, unknown>> {
   return asRecord(await requestJson("/api/v1/site-logs/catalog", undefined, deps));
+}
+
+async function activityOptions(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>> {
+  return asRecord(await requestJson(`/api/v1/site-logs/activity-options${toQuery(params)}`, undefined, deps));
+}
+
+async function qcSnapshot(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>> {
+  return asRecord(await requestJson(`/api/v1/site-logs/qc-snapshot${toQuery(params)}`, undefined, deps));
 }
 
 async function list(query: SiteLogsListQuery, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>> {
@@ -135,6 +166,21 @@ async function submit(logId: number, payload: Record<string, unknown>, deps: Sit
   return asRecord(
     await requestJson(
       `/api/v1/site-logs/${id}/submit`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      deps
+    )
+  );
+}
+
+async function returnForRevision(logId: number, payload: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>> {
+  const id = Math.max(0, Number(logId) || 0);
+  return asRecord(
+    await requestJson(
+      `/api/v1/site-logs/${id}/return`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -210,6 +256,40 @@ async function deleteAttachment(logId: number, attachmentId: number, deps: SiteL
   return asRecord(await requestJson(`/api/v1/site-logs/${id}/attachments${toQuery({ attachment_id: aid })}`, { method: "DELETE" }, deps));
 }
 
+async function previewAttachment(attachmentId: number, deps: SiteLogsHttpDeps): Promise<{ blob: Blob; fileName: string; contentType: string }> {
+  const id = Math.max(0, Number(attachmentId) || 0);
+  const response = await deps.fetch(`/api/v1/site-logs/attachments/${id}/preview`);
+  if (!response.ok) {
+    const body = asRecord(await parseJsonSafe(response.clone()));
+    const detail = String(body.detail || body.message || "").trim();
+    throw new Error(detail || `Request failed (${response.status})`);
+  }
+  const blob = await response.blob();
+  const contentType = response.headers.get("content-type") || blob.type || "";
+  return {
+    blob,
+    contentType,
+    fileName: fileNameFromContentDisposition(response.headers.get("content-disposition")) || `attachment-${id}`,
+  };
+}
+
+async function downloadPdf(logId: number, deps: SiteLogsHttpDeps): Promise<{ blob: Blob; fileName: string; contentType: string }> {
+  const id = Math.max(0, Number(logId) || 0);
+  const response = await deps.fetch(`/api/v1/site-logs/${id}/pdf`);
+  if (!response.ok) {
+    const body = asRecord(await parseJsonSafe(response.clone()));
+    const detail = String(body.detail || body.message || "").trim();
+    throw new Error(detail || `Request failed (${response.status})`);
+  }
+  const blob = await response.blob();
+  const contentType = response.headers.get("content-type") || blob.type || "application/pdf";
+  return {
+    blob,
+    contentType,
+    fileName: fileNameFromContentDisposition(response.headers.get("content-disposition")) || `site-log-${id}.pdf`,
+  };
+}
+
 async function reportVolume(params: Record<string, unknown>, deps: SiteLogsHttpDeps): Promise<Record<string, unknown>> {
   return asRecord(await requestJson(`/api/v1/site-logs/reports/volume${toQuery(params)}`, undefined, deps));
 }
@@ -226,11 +306,14 @@ export function createSiteLogsDataBridge(): SiteLogsDataBridge {
   return {
     requestJson,
     catalog,
+    activityOptions,
+    qcSnapshot,
     list,
     create,
     update,
     get,
     submit,
+    returnForRevision,
     verify,
     timeline,
     listComments,
@@ -238,6 +321,8 @@ export function createSiteLogsDataBridge(): SiteLogsDataBridge {
     listAttachments,
     uploadAttachment,
     deleteAttachment,
+    previewAttachment,
+    downloadPdf,
     reportVolume,
     reportVariance,
     reportProgress,

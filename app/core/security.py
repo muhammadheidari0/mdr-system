@@ -9,8 +9,6 @@ from app.core.config import settings
 
 SECRET_KEY = (settings.SECRET_KEY or "").strip()
 ALGORITHM = settings.JWT_ALGORITHM
-ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
-
 MAX_BCRYPT_PASSWORD_BYTES = 72
 
 
@@ -52,8 +50,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """???? JWT access token"""
     _ensure_secret_key()
     to_encode = data.copy()
+    configured_minutes = max(1, int(settings.ACCESS_TOKEN_EXPIRE_MINUTES or 43200))
     expire = datetime.now(timezone.utc) + (
-        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires_delta or timedelta(minutes=configured_minutes)
     )
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

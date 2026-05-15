@@ -19,6 +19,24 @@ export function documentPreviewUrl(documentId: number): string {
   return `/api/v1/archive/documents/${Number(documentId || 0)}/preview`;
 }
 
+export function archiveDownloadUrl(fileId: number): string {
+  return `/api/v1/archive/download/${Number(fileId || 0)}`;
+}
+
+export async function requestBlob(url: string, init: RequestInit = {}) {
+  const fetchFn = (window as any).fetchWithAuth || window.fetch.bind(window);
+  const response = await fetchFn(url, init);
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = await response.json();
+      message = String(payload?.detail || payload?.message || message).trim();
+    } catch (_) {}
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
 export async function loadDocumentDetail(documentId: number) {
   return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}`);
 }
@@ -29,6 +47,77 @@ export async function updateDocumentMetadata(documentId: number, payload: Record
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
   });
+}
+
+export async function loadArchiveFormData() {
+  return requestJson("/api/v1/archive/form-data");
+}
+
+export async function previewDocumentReclassification(documentId: number, payload: Record<string, unknown>) {
+  return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/reclassify/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export async function reclassifyDocument(documentId: number, payload: Record<string, unknown>) {
+  return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/reclassify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export async function replaceArchiveFile(fileId: number, file: File, status = "") {
+  const form = new FormData();
+  form.append("file", file);
+  if (String(status || "").trim()) {
+    form.append("status", String(status || "").trim());
+  }
+  return requestJson(`/api/v1/archive/files/${Number(fileId || 0)}/replace`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function addArchiveRevisionFile(revisionId: number, file: File, fileKind = "pdf", status = "") {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("file_kind", String(fileKind || "pdf").trim() || "pdf");
+  if (String(status || "").trim()) {
+    form.append("status", String(status || "").trim());
+  }
+  return requestJson(`/api/v1/archive/revisions/${Number(revisionId || 0)}/files`, {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function loadArchiveFilePublicShare(fileId: number) {
+  return requestJson(`/api/v1/archive/files/${Number(fileId || 0)}/public-share`);
+}
+
+export async function createArchiveFilePublicShare(fileId: number, payload: Record<string, unknown> = {}) {
+  return requestJson(`/api/v1/archive/files/${Number(fileId || 0)}/public-share`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export async function revokeArchiveFilePublicShare(fileId: number) {
+  return requestJson(`/api/v1/archive/files/${Number(fileId || 0)}/public-share`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchDocumentPreviewBlob(documentId: number) {
+  return requestBlob(documentPreviewUrl(documentId));
+}
+
+export async function fetchArchiveFileBlob(fileId: number) {
+  return requestBlob(archiveDownloadUrl(fileId));
 }
 
 export async function deleteDocument(documentId: number) {
@@ -88,23 +177,25 @@ export async function loadDocumentRelations(documentId: number) {
 
 export async function createDocumentRelation(
   documentId: number,
-  targetDocumentId: number,
+  targetCode: string,
   relationType = "related",
   notes = "",
+  targetEntityType = "document",
 ) {
   return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/relations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      target_document_id: Number(targetDocumentId || 0),
+      target_entity_type: String(targetEntityType || "document"),
+      target_code: String(targetCode || "").trim(),
       relation_type: String(relationType || "related"),
       notes: String(notes || ""),
     }),
   });
 }
 
-export async function deleteDocumentRelation(documentId: number, relationId: number) {
-  return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/relations/${Number(relationId || 0)}`, {
+export async function deleteDocumentRelation(documentId: number, relationId: string | number) {
+  return requestJson(`/api/v1/archive/documents/${Number(documentId || 0)}/relations/${encodeURIComponent(String(relationId || ""))}`, {
     method: "DELETE",
   });
 }

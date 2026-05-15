@@ -47,6 +47,9 @@
   <button type="button" class="general-settings-btn" data-general-domain="correspondence" data-general-tab="corr_categories" data-general-action="switch-page">
     <span class="material-icons-round">label</span> Ø¯Ø³ØªÙ‡â€ŒÙ‡Ø§ÛŒ Ù…Ú©Ø§ØªØ¨Ø§Øª
   </button>
+  <button type="button" class="general-settings-btn" data-general-domain="correspondence" data-general-tab="corr_tags" data-general-action="switch-page">
+    <span class="material-icons-round">sell</span> تگ‌های مکاتبات و بایگانی
+  </button>
   <button type="button" class="general-settings-btn" data-general-domain="transmittal" data-general-tab="transmittal_config" data-general-action="switch-page">
     <span class="material-icons-round">settings</span> ØªÙ†Ø¸ÛŒÙ…Ø§Øª ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„
   </button>
@@ -441,6 +444,43 @@
   </div>
 </div>
 
+<div id="general-page-corr_tags" class="general-settings-page">
+  <div class="general-settings-grid">
+    <div class="general-settings-card">
+      <h3 class="general-settings-title"><span class="material-icons-round">edit</span> تگ‌های مشترک مکاتبات و بایگانی</h3>
+      <div class="general-settings-note general-settings-note-info">
+        <span class="material-icons-round">info</span>
+        <div>این تگ‌ها در فرم مکاتبات و جزئیات بایگانی به‌صورت منوی کشویی استفاده می‌شوند.</div>
+      </div>
+      <input id="corrTagIdInput" type="hidden">
+      <div class="general-form-grid">
+        <input id="corrTagNameInput" class="form-input" placeholder="نام تگ">
+        <input id="corrTagColorInput" class="form-input" type="color" value="#2563eb" aria-label="رنگ تگ">
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-corr-tag">ذخیره</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-corr-tag">جدید</button>
+      </div>
+    </div>
+    <div class="general-settings-card">
+      <h3 class="general-settings-title"><span class="material-icons-round">list</span> لیست تگ‌ها</h3>
+      <div class="general-list-toolbar">
+        <input id="searchCorrTagsInput" class="form-input general-search-input" placeholder="جست‌وجو در تگ‌ها..." data-general-action="search-entity" data-entity="corr_tags">
+        <select class="form-input general-page-size" data-general-action="page-size-entity" data-entity="corr_tags">
+          <option value="5">5</option><option value="10" selected>10</option><option value="20">20</option><option value="50">50</option>
+        </select>
+      </div>
+      <div class="table-responsive">
+        <table class="archive-table" id="settingsCorrTagsTable">
+          <thead><tr><th>نام</th><th>رنگ</th><th>ایجاد</th><th>عملیات</th></tr></thead>
+          <tbody id="settingsCorrTagsRows"></tbody>
+        </table>
+      </div>
+      <div id="corrTagsPager" class="general-pager"></div>
+    </div>
+  </div>
+</div>
+
 <div id="general-page-transmittal_config" class="general-settings-page">
   <div class="general-settings-grid">
     <div class="general-settings-card">
@@ -454,6 +494,44 @@
       </div>
       <div id="transmittalConfigSummary" class="general-overview-grid">
         <div class="text-muted">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</div>
+      </div>
+    </div>
+    <div class="general-settings-card">
+      <h3 class="general-settings-title"><span class="material-icons-round">swap_horiz</span> طرفین ترنسمیتال</h3>
+      <div class="general-form-grid">
+        <div>
+          <label class="form-label-sm">گروه</label>
+          <select id="transmittalPartyGroupInput" class="form-input">
+            <option value="direction_options">جهت</option>
+            <option value="recipient_options">طرف مقابل</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label-sm">کد داخلی</label>
+          <input id="transmittalPartyCodeInput" class="form-input" placeholder="مثال: O">
+        </div>
+        <div>
+          <label class="form-label-sm">عنوان نمایشی</label>
+          <input id="transmittalPartyLabelInput" class="form-input" placeholder="مثال: صادره">
+        </div>
+        <div>
+          <label class="form-label-sm">ترتیب</label>
+          <input id="transmittalPartySortInput" class="form-input" type="number" value="10">
+        </div>
+        <label class="form-checkbox-row">
+          <input id="transmittalPartyActiveInput" type="checkbox" checked>
+          <span>فعال</span>
+        </label>
+      </div>
+      <div class="general-form-actions">
+        <button class="btn btn-primary" type="button" data-general-action="save-transmittal-party">ذخیره گزینه</button>
+        <button class="btn btn-secondary" type="button" data-general-action="reset-transmittal-party">جدید</button>
+      </div>
+      <div class="table-responsive" style="margin-top:12px;">
+        <table class="archive-table" id="settingsTransmittalPartiesTable">
+          <thead><tr><th>گروه</th><th>عنوان</th><th>ترتیب</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+          <tbody id="settingsTransmittalPartiesRows"></tbody>
+        </table>
       </div>
     </div>
   </div>

@@ -7,7 +7,7 @@
                         <span class="material-icons-round">engineering</span>
                         مدیریت مدارک مهندسی
                     </h2>
-                    <p class="edms-shell-subtitle">آرشیو، ترنسمیتال و مکاتبات در یک فضای یکپارچه</p>
+                    <p class="edms-shell-subtitle">آرشیو، ترنسمیتال، مکاتبات و فرم‌ها در یک فضای یکپارچه</p>
                 </div>
                 <button class="edms-stats-refresh" type="button" data-edms-action="refresh-stats" title="به‌روزرسانی آمار">
                     <span class="material-icons-round">refresh</span>
@@ -77,12 +77,34 @@
                 <span class="material-icons-round">mail</span>
                 <span>مکاتبات</span>
             </button>
+
+            <button
+                type="button"
+                class="edms-tab-btn"
+                id="edms-tab-meeting-minutes"
+                data-edms-tab="meeting_minutes"
+            >
+                <span class="material-icons-round">groups</span>
+                <span>صورتجلسات</span>
+            </button>
+
+            <button
+                type="button"
+                class="edms-tab-btn"
+                id="edms-tab-forms"
+                data-edms-tab="forms"
+            >
+                <span class="material-icons-round">assignment</span>
+                <span>فرم‌ها</span>
+            </button>
         </div>
 
         <div class="edms-panels">
             {% include 'views/archive.html' %}
             {% include 'views/transmittal.html' %}
             {% include 'views/correspondence.html' %}
+            {% include 'views/meeting_minutes.html' %}
+            {% include 'views/edms_forms.html' %}
         </div>
     </div>
 </div>

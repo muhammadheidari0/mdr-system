@@ -1,12 +1,12 @@
 <div id="view-transmittal" class="view-section" style="display: none;">
-  <div class="archive-card">
+  <div class="archive-card tr2-shell">
     <div class="archive-header">
       <div class="header-content">
         <h2 class="archive-title">
           <span class="material-icons-round" style="margin-left: 8px;">send</span>
           Transmittal 2.0
         </h2>
-        <p class="archive-subtitle">ثبت اتمیک هدر/آیتم، شماره‌دهی خودکار، انتخاب مدارک مجاز (Scope)</p>
+        <p class="archive-subtitle">ثبت هدر، انتخاب مدارک مجاز و صدور کنترل‌شده ترنسمیتال</p>
       </div>
       <div class="header-actions">
         <button class="btn-secondary" type="button" data-tr2-action="refresh-list">
@@ -21,7 +21,7 @@
     </div>
 
     <div class="archive-content">
-      <div class="general-overview-grid" style="margin-bottom: 14px;">
+      <div class="general-overview-grid tr2-stats-grid">
         <div class="general-overview-card">
           <div class="general-overview-value" id="tr2-stat-total">-</div>
           <div class="general-overview-label">کل ترنسمیتال</div>
@@ -31,18 +31,20 @@
           <div class="general-overview-label">این ماه</div>
         </div>
         <div class="general-overview-card">
-          <div class="general-overview-value" id="tr2-stat-last" style="font-size: 0.95rem;">-</div>
+          <div class="general-overview-value" id="tr2-stat-last">-</div>
           <div class="general-overview-label">آخرین شماره</div>
         </div>
       </div>
 
       <div id="tr2-list-mode">
         <div class="table-container">
-          <table class="archive-table" id="tr2ListTable">
+          <table class="archive-table tr2-list-table" id="tr2ListTable">
             <thead>
               <tr>
                 <th>شماره</th>
                 <th>موضوع</th>
+                <th>جهت</th>
+                <th>طرف مقابل</th>
                 <th>تعداد مدرک</th>
                 <th>وضعیت</th>
                 <th>تاریخ ایجاد</th>
@@ -50,46 +52,73 @@
               </tr>
             </thead>
             <tbody id="tr2-list-body">
-              <tr><td colspan="6" class="center-text muted" style="padding: 26px;">در حال بارگذاری...</td></tr>
+              <tr><td colspan="8" class="center-text muted" style="padding: 26px;">در حال بارگذاری...</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <div id="tr2-create-mode" style="display: none;">
-        <div class="general-settings-card" style="margin-bottom: 12px;">
+      <div id="tr2-create-mode" class="tr2-editor" style="display: none;">
+        <div class="tr2-editor-head">
+          <div>
+            <h3 id="tr2-editor-title" class="tr2-editor-title">ترنسمیتال جدید</h3>
+            <div class="tr2-editor-meta">
+              <span>شناسه: <strong id="tr2-edit-id">جدید</strong></span>
+              <span>وضعیت: <strong id="tr2-edit-status">پیش‌نویس</strong></span>
+            </div>
+          </div>
+          <button class="btn btn-secondary" type="button" data-tr2-action="show-list">
+            <span class="material-icons-round">arrow_back</span>
+            بازگشت به لیست
+          </button>
+        </div>
+
+        <section class="general-settings-card tr2-editor-section">
           <h3 class="general-settings-title">
             <span class="material-icons-round">description</span>
             اطلاعات هدر
           </h3>
-          <div class="small muted" style="margin: 0 0 12px 0;">
-            Draft ID: <strong id="tr2-edit-id">NEW</strong> |
-            State: <strong id="tr2-edit-status">draft</strong>
+          <div class="tr2-form-grid">
+            <label class="tr2-field">
+              <span>پروژه</span>
+              <select id="tr2-project" class="form-input"></select>
+            </label>
+            <label class="tr2-field">
+              <span>دیسیپلین</span>
+              <select id="tr2-discipline" class="form-input"></select>
+            </label>
+            <label class="tr2-field">
+              <span>جهت</span>
+              <select id="tr2-sender" class="form-input"></select>
+            </label>
+            <label class="tr2-field">
+              <span>طرف مقابل</span>
+              <select id="tr2-receiver" class="form-input"></select>
+            </label>
+            <label class="tr2-field tr2-field-wide">
+              <span>شماره خودکار</span>
+              <div class="tr2-number-row">
+                <input id="tr2-next-number" class="form-input" readonly placeholder="شماره پس از انتخاب پروژه ساخته می‌شود">
+                <button class="btn btn-secondary" type="button" data-tr2-action="preview-number">
+                  <span class="material-icons-round">tag</span>
+                  پیش‌نمایش
+                </button>
+              </div>
+            </label>
+            <label class="tr2-field tr2-field-wide">
+              <span>موضوع</span>
+              <input id="tr2-subject" class="form-input" placeholder="موضوع اختیاری">
+            </label>
           </div>
-          <div class="general-form-grid">
-            <select id="tr2-project" class="form-input"></select>
-            <select id="tr2-discipline" class="form-input"></select>
-            <input id="tr2-sender" class="form-input" value="O" placeholder="Sender (I/O)">
-            <input id="tr2-receiver" class="form-input" value="C" placeholder="Receiver">
-            <input id="tr2-next-number" class="form-input" readonly placeholder="شماره خودکار">
-            <input id="tr2-subject" class="form-input" placeholder="موضوع (اختیاری)">
-          </div>
-          <div class="general-form-actions">
-            <button class="btn btn-secondary" type="button" data-tr2-action="preview-number">
-              <span class="material-icons-round">tag</span>
-              پیش‌نمایش شماره
-            </button>
-            <button class="btn btn-secondary" type="button" data-tr2-action="show-list">بازگشت به لیست</button>
-          </div>
-        </div>
+        </section>
 
-        <div class="general-settings-card" style="margin-bottom: 12px;">
+        <section class="general-settings-card tr2-editor-section">
           <h3 class="general-settings-title">
             <span class="material-icons-round">manage_search</span>
             انتخاب مدرک مجاز
           </h3>
           <div class="general-list-toolbar">
-            <input id="tr2-doc-search" class="form-input general-search-input" placeholder="شماره/عنوان مدرک...">
+            <input id="tr2-doc-search" class="form-input general-search-input" placeholder="شماره یا عنوان مدرک">
             <button class="btn btn-primary" type="button" data-tr2-action="search-docs">جستجو</button>
           </div>
           <div class="table-responsive">
@@ -104,16 +133,16 @@
                 </tr>
               </thead>
               <tbody id="tr2-search-body">
-                <tr><td colspan="5" class="center-text muted">ابتدا پروژه/دیسیپلین را انتخاب کنید</td></tr>
+                <tr><td colspan="5" class="center-text muted">ابتدا پروژه را انتخاب کنید</td></tr>
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
 
-        <div class="general-settings-card">
+        <section class="general-settings-card tr2-editor-section tr2-editor-section-last">
           <h3 class="general-settings-title">
             <span class="material-icons-round">checklist</span>
-            آیتم‌های ترنسمیتال
+            مدارک انتخاب‌شده
           </h3>
           <div class="table-responsive">
             <table class="archive-table">
@@ -128,23 +157,69 @@
                 </tr>
               </thead>
               <tbody id="tr2-docs-body">
-                <tr><td colspan="6" class="center-text muted">هنوز آیتمی اضافه نشده است</td></tr>
+                <tr><td colspan="6" class="center-text muted">هنوز مدرکی اضافه نشده است</td></tr>
               </tbody>
             </table>
           </div>
-          <div class="general-form-actions" style="margin-top: 12px;">
-            <button id="tr2-submit-btn" class="btn btn-primary" type="button" data-tr2-action="submit-draft">
-              <span class="material-icons-round">save</span>
-              ذخیره Draft
-            </button>
-            <button id="tr2-issue-btn" class="btn btn-primary" type="button" data-tr2-action="submit-issue">
-              <span class="material-icons-round">send</span>
-              صدور (Issue)
-            </button>
-          </div>
+          <label class="tr2-field tr2-notes-field">
+            <span>یادداشت</span>
+            <textarea id="tr2-notes" class="form-input" rows="3" placeholder="یادداشت اختیاری"></textarea>
+          </label>
+        </section>
+
+        <div class="tr2-editor-footer">
+          <button id="tr2-submit-btn" class="btn btn-primary" type="button" data-tr2-action="submit-draft">
+            <span class="material-icons-round">save</span>
+            ذخیره پیش‌نویس
+          </button>
+          <button id="tr2-issue-btn" class="btn btn-primary" type="button" data-tr2-action="submit-issue">
+            <span class="material-icons-round">send</span>
+            صدور
+          </button>
+          <button class="btn btn-secondary" type="button" data-tr2-action="show-list">انصراف</button>
         </div>
       </div>
     </div>
   </div>
 
+  <div id="tr2-detail-drawer" class="ci-drawer tr2-detail-drawer" hidden>
+    <div class="ci-drawer-backdrop" data-tr2-action="close-detail"></div>
+    <aside class="ci-drawer-panel tr2-detail-drawer-panel" role="dialog" aria-modal="true" aria-label="جزئیات ترنسمیتال">
+      <header class="ci-drawer-header">
+        <div class="ci-drawer-header-main">
+          <div class="ci-drawer-title">جزئیات ترنسمیتال</div>
+          <div id="tr2-detail-drawer-meta" class="ci-drawer-meta"></div>
+        </div>
+        <button class="btn-archive-icon" type="button" data-tr2-action="close-detail" title="بستن">
+          <span class="material-icons-round">close</span>
+        </button>
+      </header>
+      <div id="tr2-detail-content" class="ci-drawer-body tr2-detail-body"></div>
+    </aside>
+  </div>
+
+  <div id="tr2-print-preview-modal" class="am-modal-overlay tr2-print-preview-modal" aria-hidden="true">
+    <div class="am-modal-box tr2-print-preview-box" role="dialog" aria-modal="true" aria-labelledby="tr2-print-preview-title">
+      <div class="tr2-print-preview-header">
+        <div>
+          <h3 id="tr2-print-preview-title">پیش‌نمایش چاپ ترنسمیتال</h3>
+          <div id="tr2-print-preview-meta" class="tr2-print-preview-meta">-</div>
+        </div>
+        <button type="button" class="btn-archive-icon" data-tr2-action="close-print-preview" aria-label="بستن پیش‌نمایش">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="tr2-print-preview-toolbar">
+        <button type="button" class="btn btn-primary" data-tr2-action="print-preview-print">
+          <span class="material-icons-round">print</span>
+          چاپ / ذخیره PDF
+        </button>
+        <button type="button" class="btn btn-secondary" data-tr2-action="print-preview-download">
+          <span class="material-icons-round">download</span>
+          دانلود PDF
+        </button>
+      </div>
+      <div id="tr2-print-preview-body" class="tr2-print-preview-body"></div>
+    </div>
+  </div>
 </div>

@@ -1,7 +1,7 @@
 ﻿// @ts-nocheck
 (() => {
     const API_BASE = '/api/v1/settings';
-    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories'];
+    const ENTITIES = ['projects', 'mdr', 'phases', 'disciplines', 'packages', 'blocks', 'levels', 'statuses', 'corr_issuing', 'corr_categories', 'corr_tags'];
 
     const STORE = {
         initialized: false,
@@ -11,6 +11,8 @@
         storagePolicyLoaded: false,
         storageIntegrationsLoaded: false,
         storageBimRevitLoaded: false,
+        powerBiTokensLoaded: false,
+        powerBiLastToken: '',
         siteCacheLoaded: false,
         actionsBound: false,
         activePage: 'db_sync',
@@ -34,6 +36,11 @@
             statuses: [],
             corr_issuing: [],
             corr_categories: [],
+            corr_tags: [],
+            transmittal_parties: {
+                direction_options: [],
+                recipient_options: [],
+            },
         },
         siteCache: {
             profiles: [],
@@ -78,6 +85,7 @@
         statuses: { url: '/statuses', tbodyId: 'settingsStatusesRows', pagerId: 'statusesPager', colspan: 5 },
         corr_issuing: { url: '/correspondence-issuing', tbodyId: 'settingsCorrIssuingRows', pagerId: 'corrIssuingPager', colspan: 5 },
         corr_categories: { url: '/correspondence-categories', tbodyId: 'settingsCorrCategoriesRows', pagerId: 'corrCategoriesPager', colspan: 5 },
+        corr_tags: { url: '/correspondence-tags', tbodyId: 'settingsCorrTagsRows', pagerId: 'corrTagsPager', colspan: 4 },
     };
 
     const ENTITY_TABLE_IDS = {
@@ -91,6 +99,7 @@
         statuses: 'settingsStatusesTable',
         corr_issuing: 'settingsCorrIssuingTable',
         corr_categories: 'settingsCorrCategoriesTable',
+        corr_tags: 'settingsCorrTagsTable',
     };
 
     const SITE_CACHE_BULK_ACTION_ACTIVATE = 'site-cache-profiles-bulk-activate';
@@ -196,6 +205,8 @@
                 return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''} ${row.project_code || ''}`;
             case 'corr_categories':
                 return `${row.code || ''} ${row.name_e || ''} ${row.name_p || ''}`;
+            case 'corr_tags':
+                return `${row.name || ''} ${row.color || ''}`;
             default:
                 return JSON.stringify(row || {});
         }
@@ -252,6 +263,7 @@
         if (entity === 'blocks') {
             return `${norm(row.project_code).toUpperCase()}::${norm(row.code).toUpperCase()}`;
         }
+        if (entity === 'corr_tags') return String(Number(row.id || 0));
         return norm(row.code).toUpperCase();
     }
 
@@ -260,6 +272,7 @@
         if (entity === 'phases') return norm(row.ph_code) || '-';
         if (entity === 'packages') return `${norm(row.discipline_code)}/${norm(row.package_code)}`;
         if (entity === 'blocks') return `${norm(row.project_code)}/${norm(row.code)}`;
+        if (entity === 'corr_tags') return norm(row.name) || `#${Number(row.id || 0)}`;
         return norm(row.code) || '-';
     }
 
@@ -399,6 +412,18 @@
                     <td>${rowActions(`
                         <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-category" data-code="${esc(encoded(s.code))}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
                         <button class="btn-archive-icon" type="button" data-general-action="delete-corr-category" data-code="${esc(encoded(s.code))}">ØºÛŒØ±ÙØ¹Ø§Ù„</button>
+                    `)}</td>
+                </tr>
+            `).join('');
+        } else if (entity === 'corr_tags') {
+            html = info.rows.map((s) => `
+                <tr data-bulk-key="${esc(entityBulkKey('corr_tags', s))}">
+                    <td>${esc(s.name || '-')}</td>
+                    <td><span class="doc-tag-chip" style="--tag-color:${esc(s.color || '#2563eb')}"><span class="doc-tag-dot"></span><span>${esc(s.color || '#2563eb')}</span></span></td>
+                    <td>${esc(s.created_at || '-')}</td>
+                    <td>${rowActions(`
+                        <button class="btn-archive-icon" type="button" data-general-action="open-edit-corr-tag" data-tag-id="${Number(s.id || 0)}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
+                        <button class="btn-archive-icon" type="button" data-general-action="delete-corr-tag" data-tag-id="${Number(s.id || 0)}">Ø­Ø°Ù</button>
                     `)}</td>
                 </tr>
             `).join('');
@@ -551,6 +576,15 @@
                     reloadEntities: ['corr_categories'],
                     successText: 'correspondence category(ies) deactivated.',
                 };
+            case 'corr_tags':
+                return {
+                    id: 'general-bulk-corr-tags-delete',
+                    label: 'Delete selected correspondence tags',
+                    confirm: (count) => `Delete ${count} selected correspondence tag(s)?`,
+                    endpoint: '/correspondence-tags/delete',
+                    reloadEntities: ['corr_tags'],
+                    successText: 'correspondence tag(s) deleted.',
+                };
             default:
                 return null;
         }
@@ -585,6 +619,8 @@
                 return { code: norm(row?.code).toUpperCase(), hard_delete: false };
             case 'corr_categories':
                 return { code: norm(row?.code).toUpperCase(), hard_delete: false };
+            case 'corr_tags':
+                return { id: Number(row?.id || 0) };
             default:
                 return null;
         }
@@ -860,6 +896,62 @@
         `).join('');
     }
 
+    function normalizeTransmittalPartyOption(item, fallbackSort = 10) {
+        return {
+            code: norm(item?.code).toUpperCase(),
+            label: norm(item?.label),
+            is_active: item?.is_active !== false,
+            sort_order: Number(item?.sort_order ?? fallbackSort),
+        };
+    }
+
+    function transmittalPartyGroupLabel(group) {
+        return group === 'recipient_options' ? 'طرف مقابل' : 'جهت';
+    }
+
+    function allTransmittalPartyRows() {
+        const payload = STORE.data.transmittal_parties || {};
+        return ['direction_options', 'recipient_options'].flatMap((group) => {
+            const rows = Array.isArray(payload[group]) ? payload[group] : [];
+            return rows.map((row) => ({ ...row, group }));
+        });
+    }
+
+    function renderTransmittalParties() {
+        const tbody = document.getElementById('settingsTransmittalPartiesRows');
+        if (!tbody) return;
+        const rows = allTransmittalPartyRows();
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="5" class="center-text muted">گزینه‌ای ثبت نشده است.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((row) => `
+            <tr>
+                <td>${esc(transmittalPartyGroupLabel(row.group))}</td>
+                <td>${esc(row.label || row.code || '-')}</td>
+                <td>${Number(row.sort_order || 0)}</td>
+                <td>${row.is_active === false ? '<span class="status-badge danger">غیرفعال</span>' : '<span class="status-badge success">فعال</span>'}</td>
+                <td>
+                    <button class="btn-archive-icon" type="button" data-general-action="open-edit-transmittal-party" data-group="${esc(row.group)}" data-code="${esc(encoded(row.code || ''))}">ویرایش</button>
+                    <button class="btn-archive-icon" type="button" data-general-action="deactivate-transmittal-party" data-group="${esc(row.group)}" data-code="${esc(encoded(row.code || ''))}">غیرفعال</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadTransmittalParties(force = false) {
+        if (!force && Array.isArray(STORE.data.transmittal_parties?.direction_options) && STORE.data.transmittal_parties.direction_options.length) {
+            renderTransmittalParties();
+            return;
+        }
+        const payload = await request(`${API_BASE}/transmittal-parties`);
+        STORE.data.transmittal_parties = {
+            direction_options: (payload.direction_options || []).map((item, index) => normalizeTransmittalPartyOption(item, (index + 1) * 10)),
+            recipient_options: (payload.recipient_options || []).map((item, index) => normalizeTransmittalPartyOption(item, (index + 1) * 10)),
+        };
+        renderTransmittalParties();
+    }
+
     function formatFaDateTime(now = new Date()) {
         try {
             return now.toLocaleString('fa-IR');
@@ -883,13 +975,20 @@
     function updateStoragePathPreview() {
         const mdrInput = document.getElementById('mdrStoragePathInput');
         const corrInput = document.getElementById('correspondenceStoragePathInput');
+        const siteLogInput = document.getElementById('siteLogStoragePathInput');
         const mdrPreview = document.getElementById('storagePathMdrPreview');
         const corrPreview = document.getElementById('storagePathCorrespondencePreview');
+        const siteLogPreview = document.getElementById('storagePathSiteLogPreview');
         if (mdrPreview && mdrInput) {
             mdrPreview.textContent = normalizeStoragePathForCompare(mdrInput.value) || '-';
         }
         if (corrPreview && corrInput) {
             corrPreview.textContent = normalizeStoragePathForCompare(corrInput.value) || '-';
+        }
+        if (siteLogPreview) {
+            const explicitPath = normalizeStoragePathForCompare(siteLogInput?.value);
+            const fallbackPath = normalizeStoragePathForCompare(corrInput?.value);
+            siteLogPreview.textContent = explicitPath || `${fallbackPath || '-'} (fallback)`;
         }
         updateStoragePathBackendBadges();
     }
@@ -1061,7 +1160,7 @@
     }
 
     function setIntegrationsProviderTab(nextTab = 'openproject') {
-        const activeTab = ['openproject', 'google', 'nextcloud', 'bim'].includes(String(nextTab || '').toLowerCase())
+        const activeTab = ['openproject', 'google', 'nextcloud', 'bim', 'powerbi'].includes(String(nextTab || '').toLowerCase())
             ? String(nextTab || '').toLowerCase()
             : 'openproject';
         STORE.integrationsProviderTab = activeTab;
@@ -1126,12 +1225,15 @@
         const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
         const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const mdrPathInput = document.getElementById('mdrStoragePathInput');
         const corrPathInput = document.getElementById('correspondenceStoragePathInput');
+        const siteLogPathInput = document.getElementById('siteLogStoragePathInput');
         if (!badge || !message || !mdrValue || !mdrMeta || !corrValue || !corrMeta || !mountValue || !mountMeta || !mirrorValue || !mirrorMeta) return;
 
         const selectedPrimary = ['local', 'nextcloud'].includes(norm(primaryProvider?.value).toLowerCase())
@@ -1140,17 +1242,30 @@
         const selectedMirror = ['none', 'google_drive', 'nextcloud'].includes(norm(mirrorProvider?.value).toLowerCase())
             ? norm(mirrorProvider?.value).toLowerCase()
             : 'none';
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
+        const rootPath = normalizeRemotePath(nextcloudRootPath?.value) || '/';
         const mountRoot = norm(nextcloudLocalMountRoot?.value);
         const mdrPath = norm(mdrPathInput?.value);
         const corrPath = norm(corrPathInput?.value);
-        const mdrOnMount = pathIsUnderMountRoot(mdrPath, mountRoot);
-        const corrOnMount = pathIsUnderMountRoot(corrPath, mountRoot);
+        const siteLogPath = norm(siteLogPathInput?.value);
+        const mdrOnTarget = mode === 'webdav'
+            ? pathIsUnderNextcloudRoot(mdrPath, rootPath)
+            : pathIsUnderMountRoot(mdrPath, mountRoot);
+        const corrOnTarget = mode === 'webdav'
+            ? pathIsUnderNextcloudRoot(corrPath, rootPath)
+            : pathIsUnderMountRoot(corrPath, mountRoot);
+        const siteLogOnTarget = !siteLogPath
+            || (mode === 'webdav'
+                ? pathIsUnderNextcloudRoot(siteLogPath, rootPath)
+                : pathIsUnderMountRoot(siteLogPath, mountRoot));
         const nextcloudReady = Boolean(
             nextcloudEnabled?.checked
             && norm(nextcloudBaseUrl?.value)
             && norm(nextcloudUsername?.value)
             && ['env', 'settings'].includes(norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase())
-            && mountRoot
+            && (mode === 'webdav' ? rootPath : mountRoot)
         );
 
         let tone = 'warning';
@@ -1164,15 +1279,21 @@
         } else if (!nextcloudReady) {
             tone = 'error';
             badgeText = 'نکست‌کلاد آماده نیست';
-            messageText = 'برای ذخیره اصلی روی نکست‌کلاد باید اتصال، اعتبارنامه و Local Mount Root کامل باشد.';
-        } else if (!mdrOnMount || !corrOnMount) {
+            messageText = mode === 'webdav'
+                ? 'برای ذخیره اصلی روی نکست‌کلاد در حالت WebDAV باید اتصال، اعتبارنامه و Root Path کامل باشد.'
+                : 'برای ذخیره اصلی روی نکست‌کلاد باید اتصال، اعتبارنامه و Local Mount Root کامل باشد.';
+        } else if (!mdrOnTarget || !corrOnTarget || !siteLogOnTarget) {
             tone = 'warning';
             badgeText = 'مسیرها ناقص‌اند';
-            messageText = 'هر دو مسیر مدارک مهندسی و مکاتبات باید زیر Local Mount Root نکست‌کلاد قرار بگیرند.';
+            messageText = mode === 'webdav'
+                ? 'مسیرهای MDR، مکاتبات و مسیر اختصاصی گزارش کارگاهی در صورت تنظیم باید زیر Root Path نکست‌کلاد قرار بگیرند.'
+                : 'مسیرهای MDR، مکاتبات و مسیر اختصاصی گزارش کارگاهی در صورت تنظیم باید زیر Local Mount Root نکست‌کلاد قرار بگیرند.';
         } else {
             tone = 'success';
             badgeText = 'نکست‌کلاد فعال';
-            messageText = 'ذخیره اصلی برای مدارک مهندسی و مکاتبات روی مسیر Mount شده نکست‌کلاد فعال است.';
+            messageText = mode === 'webdav'
+                ? 'ذخیره اصلی برای مدارک مهندسی و مکاتبات از طریق WebDAV و مستقیماً روی نکست‌کلاد فعال است.'
+                : 'ذخیره اصلی برای مدارک مهندسی و مکاتبات روی مسیر Mount شده نکست‌کلاد فعال است.';
         }
 
         badge.textContent = badgeText;
@@ -1180,23 +1301,29 @@
         message.textContent = messageText;
         mdrValue.textContent = mdrPath || '-';
         mdrMeta.textContent = selectedPrimary === 'nextcloud'
-            ? (mdrOnMount ? 'زیر ریشه Mount نکست‌کلاد است' : 'خارج از ریشه Mount نکست‌کلاد است')
+            ? (mdrOnTarget
+                ? (mode === 'webdav' ? 'زیر Root Path نکست‌کلاد است' : 'زیر ریشه Mount نکست‌کلاد است')
+                : (mode === 'webdav' ? 'خارج از Root Path نکست‌کلاد است' : 'خارج از ریشه Mount نکست‌کلاد است'))
             : 'روی مسیر محلی/UNC ذخیره می‌شود';
         corrValue.textContent = corrPath || '-';
         corrMeta.textContent = selectedPrimary === 'nextcloud'
-            ? (corrOnMount ? 'زیر ریشه Mount نکست‌کلاد است' : 'خارج از ریشه Mount نکست‌کلاد است')
+            ? (corrOnTarget
+                ? (mode === 'webdav' ? 'زیر Root Path نکست‌کلاد است' : 'زیر ریشه Mount نکست‌کلاد است')
+                : (mode === 'webdav' ? 'خارج از Root Path نکست‌کلاد است' : 'خارج از ریشه Mount نکست‌کلاد است'))
             : 'روی مسیر محلی/UNC ذخیره می‌شود';
-        mountValue.textContent = mountRoot || '-';
-        mountMeta.textContent = mountRoot
-            ? 'این همان مسیر local/UNC است که نکست‌کلاد از طریق آن به‌عنوان استورج اصلی استفاده می‌شود.'
-            : 'برای فعال شدن ذخیره اصلی نکست‌کلاد باید Local Mount Root تنظیم شود.';
+        mountValue.textContent = mode === 'webdav' ? (rootPath || '/') : (mountRoot || '-');
+        mountMeta.textContent = mode === 'webdav'
+            ? 'ریشه مرجع WebDAV برای نگهداری فایل‌ها در نکست‌کلاد است.'
+            : (mountRoot
+                ? 'این همان مسیر local/UNC است که نکست‌کلاد از طریق آن به‌عنوان استورج اصلی استفاده می‌شود.'
+                : 'برای فعال شدن ذخیره اصلی نکست‌کلاد باید Local Mount Root تنظیم شود.');
         if (selectedMirror === 'none') {
             mirrorValue.textContent = 'غیرفعال';
             mirrorMeta.textContent = 'هیچ job میروری اجرا نمی‌شود.';
         } else if (selectedMirror === 'google_drive') {
             mirrorValue.textContent = 'گوگل‌درایو';
             mirrorMeta.textContent = 'پس از ذخیره فایل، job میرور روی گوگل‌درایو اجرا می‌شود.';
-        } else if (selectedPrimary === 'nextcloud' && nextcloudReady && mdrOnMount && corrOnMount) {
+        } else if (selectedPrimary === 'nextcloud' && nextcloudReady && mdrOnTarget && corrOnTarget && siteLogOnTarget) {
             mirrorValue.textContent = 'خودکار غیرفعال';
             mirrorMeta.textContent = 'چون استورج اصلی خود نکست‌کلاد است، میرور نکست‌کلاد غیرفعال می‌شود.';
         } else {
@@ -1205,47 +1332,183 @@
         }
     }
 
-    function updateStoragePathBackendBadges() {
-        const mdrBadge = document.getElementById('storagePathMdrBadge');
-        const corrBadge = document.getElementById('storagePathCorrespondenceBadge');
+    function renderMirrorPolicyNotice() {
+        const wrap = document.getElementById('storageMirrorPolicyNotice');
+        const icon = document.getElementById('storageMirrorPolicyNoticeIcon');
+        const title = document.getElementById('storageMirrorPolicyNoticeTitle');
+        const badge = document.getElementById('storageMirrorPolicyNoticeBadge');
+        const body = document.getElementById('storageMirrorPolicyNoticeBody');
         const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
+        const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const mdrPathInput = document.getElementById('mdrStoragePathInput');
         const corrPathInput = document.getElementById('correspondenceStoragePathInput');
-        if (!mdrBadge || !corrBadge) return;
+        const siteLogPathInput = document.getElementById('siteLogStoragePathInput');
+        if (!wrap || !icon || !title || !badge || !body) return;
 
         const selectedPrimary = ['local', 'nextcloud'].includes(norm(primaryProvider?.value).toLowerCase())
             ? norm(primaryProvider?.value).toLowerCase()
             : 'local';
+        const selectedMirror = ['none', 'google_drive', 'nextcloud'].includes(norm(mirrorProvider?.value).toLowerCase())
+            ? norm(mirrorProvider?.value).toLowerCase()
+            : 'none';
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
+        const rootPath = normalizeRemotePath(nextcloudRootPath?.value) || '/';
         const mountRoot = norm(nextcloudLocalMountRoot?.value);
         const nextcloudReady = Boolean(
             nextcloudEnabled?.checked
             && norm(nextcloudBaseUrl?.value)
             && norm(nextcloudUsername?.value)
             && ['env', 'settings'].includes(norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase())
-            && mountRoot
+            && (mode === 'webdav' ? rootPath : mountRoot)
+        );
+        const mdrOnTarget = mode === 'webdav'
+            ? pathIsUnderNextcloudRoot(mdrPathInput?.value, rootPath)
+            : pathIsUnderMountRoot(mdrPathInput?.value, mountRoot);
+        const corrOnTarget = mode === 'webdav'
+            ? pathIsUnderNextcloudRoot(corrPathInput?.value, rootPath)
+            : pathIsUnderMountRoot(corrPathInput?.value, mountRoot);
+        const siteLogPath = norm(siteLogPathInput?.value);
+        const siteLogOnTarget = !siteLogPath
+            || (mode === 'webdav'
+                ? pathIsUnderNextcloudRoot(siteLogPath, rootPath)
+                : pathIsUnderMountRoot(siteLogPath, mountRoot));
+        const nextcloudPrimaryActive = selectedPrimary === 'nextcloud' && nextcloudReady && mdrOnTarget && corrOnTarget && siteLogOnTarget;
+
+        let tone = 'info';
+        let iconName = 'info';
+        let heading = 'وضعیت ترکیب استورج و میرور';
+        let badgeText = 'در حال بررسی';
+        let text = '';
+
+        if (selectedPrimary === 'local' && selectedMirror === 'none') {
+            wrap.hidden = true;
+            wrap.dataset.tone = 'info';
+            return;
+        }
+
+        if (selectedPrimary === 'local' && selectedMirror === 'nextcloud') {
+            tone = 'info';
+            iconName = 'sync_alt';
+            heading = 'نکست‌کلاد فقط نقش میرور دارد';
+            badgeText = 'میرور نکست‌کلاد';
+            text = 'فایل ابتدا روی استورج محلی/UNC ذخیره می‌شود و سپس job میرور جداگانه روی نکست‌کلاد اجرا خواهد شد.';
+        } else if (selectedPrimary === 'local' && selectedMirror === 'google_drive') {
+            tone = 'info';
+            iconName = 'cloud_sync';
+            heading = 'گوگل‌درایو فقط نقش میرور دارد';
+            badgeText = 'میرور گوگل‌درایو';
+            text = 'فایل ابتدا روی استورج محلی/UNC ذخیره می‌شود و سپس job میرور روی گوگل‌درایو اجرا خواهد شد.';
+        } else if (selectedPrimary === 'nextcloud' && !nextcloudPrimaryActive) {
+            tone = nextcloudReady ? 'warning' : 'error';
+            iconName = nextcloudReady ? 'rule' : 'error_outline';
+            heading = 'استورج اصلی نکست‌کلاد هنوز کامل فعال نشده است';
+            badgeText = nextcloudReady ? 'نیاز به تکمیل مسیرها' : 'نیاز به تکمیل تنظیمات';
+            text = mode === 'webdav'
+                ? 'تا وقتی اتصال WebDAV و مسیرهای MDR، مکاتبات و مسیر اختصاصی گزارش کارگاهی در صورت تنظیم نسبت به Root Path کامل نشوند، policy نهایی primary/mirror به‌طور کامل اعمال نمی‌شود.'
+                : 'تا وقتی اتصال نکست‌کلاد و مسیرهای MDR، مکاتبات و مسیر اختصاصی گزارش کارگاهی در صورت تنظیم نسبت به Local Mount Root کامل نشوند، policy نهایی primary/mirror به‌طور کامل اعمال نمی‌شود.';
+        } else if (selectedPrimary === 'nextcloud' && selectedMirror === 'google_drive') {
+            tone = 'success';
+            iconName = 'cloud_done';
+            heading = 'استورج اصلی نکست‌کلاد + میرور گوگل‌درایو';
+            badgeText = 'Primary + Google Mirror';
+            text = mode === 'webdav'
+                ? 'فایل ابتدا مستقیم روی نکست‌کلاد ذخیره می‌شود و سپس worker آن را از WebDAV خوانده و روی گوگل‌درایو mirror می‌کند.'
+                : 'فایل ابتدا روی مسیر Mount شده نکست‌کلاد ذخیره می‌شود و سپس job میرور روی گوگل‌درایو اجرا می‌شود.';
+        } else if (selectedPrimary === 'nextcloud' && selectedMirror === 'nextcloud') {
+            tone = 'warning';
+            iconName = 'block';
+            heading = 'میرور نکست‌کلاد با استورج اصلی هم‌پوشان است';
+            badgeText = 'خودکار غیرفعال';
+            text = 'وقتی استورج اصلی خود نکست‌کلاد است، میرور نکست‌کلاد معنی ندارد و سیستم آن را خودکار غیرفعال می‌کند.';
+        } else if (selectedPrimary === 'nextcloud' && selectedMirror === 'none') {
+            tone = 'info';
+            iconName = 'inventory_2';
+            heading = 'نکست‌کلاد فقط استورج اصلی است';
+            badgeText = 'Primary Only';
+            text = 'فایل‌ها فقط روی نکست‌کلاد ذخیره می‌شوند و هیچ job میرور جداگانه‌ای اجرا نخواهد شد.';
+        }
+
+        if (!text) {
+            wrap.hidden = true;
+            wrap.dataset.tone = 'info';
+            return;
+        }
+
+        wrap.hidden = false;
+        wrap.dataset.tone = tone;
+        icon.textContent = iconName;
+        title.textContent = heading;
+        badge.textContent = badgeText;
+        body.textContent = text;
+    }
+
+    function updateStoragePathBackendBadges() {
+        const mdrBadge = document.getElementById('storagePathMdrBadge');
+        const corrBadge = document.getElementById('storagePathCorrespondenceBadge');
+        const siteLogBadge = document.getElementById('storagePathSiteLogBadge');
+        const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
+        const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
+        const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
+        const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
+        const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
+        const mdrPathInput = document.getElementById('mdrStoragePathInput');
+        const corrPathInput = document.getElementById('correspondenceStoragePathInput');
+        const siteLogPathInput = document.getElementById('siteLogStoragePathInput');
+        if (!mdrBadge || !corrBadge) return;
+
+        const selectedPrimary = ['local', 'nextcloud'].includes(norm(primaryProvider?.value).toLowerCase())
+            ? norm(primaryProvider?.value).toLowerCase()
+            : 'local';
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
+        const rootPath = normalizeRemotePath(nextcloudRootPath?.value) || '/';
+        const mountRoot = norm(nextcloudLocalMountRoot?.value);
+        const nextcloudReady = Boolean(
+            nextcloudEnabled?.checked
+            && norm(nextcloudBaseUrl?.value)
+            && norm(nextcloudUsername?.value)
+            && ['env', 'settings'].includes(norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase())
+            && (mode === 'webdav' ? rootPath : mountRoot)
         );
 
         const rows = [
-            { badge: mdrBadge, path: norm(mdrPathInput?.value) },
-            { badge: corrBadge, path: norm(corrPathInput?.value) },
+            { badge: mdrBadge, path: norm(mdrPathInput?.value), optional: false },
+            { badge: corrBadge, path: norm(corrPathInput?.value), optional: false },
+            { badge: siteLogBadge, path: norm(siteLogPathInput?.value), optional: true },
         ];
-        rows.forEach(({ badge, path }) => {
+        rows.forEach(({ badge, path, optional }) => {
+            if (!badge) return;
             let text = 'محلی';
             let tone = 'success';
+            if (!path) {
+                text = optional ? 'fallback' : 'خالی';
+                tone = optional ? 'info' : 'warning';
+                badge.textContent = text;
+                badge.dataset.tone = tone;
+                return;
+            }
             if (selectedPrimary === 'nextcloud') {
                 if (!nextcloudReady) {
                     text = 'نکست‌کلاد آماده نیست';
                     tone = 'error';
-                } else if (pathIsUnderMountRoot(path, mountRoot)) {
+                } else if (mode === 'webdav' ? pathIsUnderNextcloudRoot(path, rootPath) : pathIsUnderMountRoot(path, mountRoot)) {
                     text = 'نکست‌کلاد';
                     tone = 'success';
                 } else {
-                    text = 'خارج از Mount';
+                    text = mode === 'webdav' ? 'خارج از Root Path' : 'خارج از Mount';
                     tone = 'warning';
                 }
             }
@@ -1261,41 +1524,78 @@
         return pathNorm === rootNorm || pathNorm.startsWith(`${rootNorm}/`);
     }
 
+    function pathIsUnderNextcloudRoot(pathValue, rootValue) {
+        const pathNorm = normalizeRemotePath(pathValue);
+        const rootNorm = normalizeRemotePath(rootValue);
+        if (!pathNorm || !rootNorm) return false;
+        return pathNorm === rootNorm || pathNorm.startsWith(`${rootNorm}/`);
+    }
+
     function updatePrimaryStorageProviderHint() {
         const primaryProvider = document.getElementById('storagePrimaryProviderSelect');
         const mirrorProvider = document.getElementById('storageMirrorProviderSelect');
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const mdrPathInput = document.getElementById('mdrStoragePathInput');
         const corrPathInput = document.getElementById('correspondenceStoragePathInput');
+        const siteLogPathInput = document.getElementById('siteLogStoragePathInput');
         const nextcloudMirrorOption = mirrorProvider?.querySelector('option[value="nextcloud"]');
 
         const selectedPrimary = ['local', 'nextcloud'].includes(norm(primaryProvider?.value).toLowerCase())
             ? norm(primaryProvider?.value).toLowerCase()
             : 'local';
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
+        const rootPath = normalizeRemotePath(nextcloudRootPath?.value) || '/';
         const mountRoot = norm(nextcloudLocalMountRoot?.value);
-        const mdrOnMount = pathIsUnderMountRoot(mdrPathInput?.value, mountRoot);
-        const corrOnMount = pathIsUnderMountRoot(corrPathInput?.value, mountRoot);
+        const mdrOnTarget = mode === 'webdav'
+            ? pathIsUnderNextcloudRoot(mdrPathInput?.value, rootPath)
+            : pathIsUnderMountRoot(mdrPathInput?.value, mountRoot);
+        const corrOnTarget = mode === 'webdav'
+            ? pathIsUnderNextcloudRoot(corrPathInput?.value, rootPath)
+            : pathIsUnderMountRoot(corrPathInput?.value, mountRoot);
+        const siteLogPath = norm(siteLogPathInput?.value);
+        const siteLogOnTarget = !siteLogPath
+            || (mode === 'webdav'
+                ? pathIsUnderNextcloudRoot(siteLogPath, rootPath)
+                : pathIsUnderMountRoot(siteLogPath, mountRoot));
         const nextcloudReady = Boolean(
             nextcloudEnabled?.checked
             && norm(nextcloudBaseUrl?.value)
             && norm(nextcloudUsername?.value)
             && ['env', 'settings'].includes(norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase())
-            && mountRoot
+            && (mode === 'webdav' ? rootPath : mountRoot)
         );
 
         if (nextcloudMirrorOption) {
-            const disableMirror = selectedPrimary === 'nextcloud' && nextcloudReady && mdrOnMount && corrOnMount;
+            if (!nextcloudMirrorOption.dataset.baseLabel) {
+                nextcloudMirrorOption.dataset.baseLabel = nextcloudMirrorOption.textContent || 'نکست‌کلاد';
+            }
+            const disableMirror = selectedPrimary === 'nextcloud' && nextcloudReady && mdrOnTarget && corrOnTarget && siteLogOnTarget;
+            const userRequestedMirror = norm(mirrorProvider?.dataset?.userRequestedValue || '').toLowerCase();
             nextcloudMirrorOption.disabled = disableMirror;
+            nextcloudMirrorOption.textContent = disableMirror
+                ? 'نکست‌کلاد (خودکار غیرفعال)'
+                : String(nextcloudMirrorOption.dataset.baseLabel || 'نکست‌کلاد');
             if (disableMirror && norm(mirrorProvider?.value).toLowerCase() === 'nextcloud') {
                 mirrorProvider.value = 'none';
+                if (userRequestedMirror === 'nextcloud') {
+                    tWarning('چون استورج اصلی روی نکست‌کلاد فعال است، میرور نکست‌کلاد خودکار غیرفعال شد و انتخاب به «بدون میرور» برگشت.');
+                }
+            }
+            if (mirrorProvider?.dataset) {
+                mirrorProvider.dataset.userRequestedValue = '';
             }
         }
 
         renderPrimaryStorageStatusCard();
+        renderMirrorPolicyNotice();
         updateStoragePathBackendBadges();
 
         if (selectedPrimary !== 'nextcloud') {
@@ -1308,26 +1608,33 @@
 
         if (!nextcloudReady) {
             setStoragePrimaryProviderHint(
-                'برای استفاده از نکست‌کلاد به‌عنوان استورج اصلی، باید اتصال نکست‌کلاد فعال، اعتبارنامه ذخیره و Local Mount Root تنظیم شده باشد.',
+                mode === 'webdav'
+                    ? 'برای استفاده از نکست‌کلاد به‌عنوان استورج اصلی در حالت WebDAV، باید اتصال، اعتبارنامه و Root Path تنظیم شده باشد.'
+                    : 'برای استفاده از نکست‌کلاد به‌عنوان استورج اصلی، باید اتصال نکست‌کلاد فعال، اعتبارنامه ذخیره و Local Mount Root تنظیم شده باشد.',
                 'error'
             );
             return;
         }
 
-        if (!mdrOnMount || !corrOnMount) {
+        if (!mdrOnTarget || !corrOnTarget || !siteLogOnTarget) {
             const missing = [
-                !mdrOnMount ? 'مسیر MDR' : '',
-                !corrOnMount ? 'مسیر مکاتبات' : '',
+                !mdrOnTarget ? 'مسیر MDR' : '',
+                !corrOnTarget ? 'مسیر مکاتبات' : '',
+                !siteLogOnTarget ? 'مسیر گزارش کارگاهی' : '',
             ].filter(Boolean).join(' + ');
             setStoragePrimaryProviderHint(
-                `${missing} باید زیر Local Mount Root نکست‌کلاد قرار بگیرد تا ذخیره اصلی روی نکست‌کلاد فعال شود.`,
+                mode === 'webdav'
+                    ? `${missing} باید زیر Root Path نکست‌کلاد قرار بگیرد تا ذخیره اصلی WebDAV فعال شود.`
+                    : `${missing} باید زیر Local Mount Root نکست‌کلاد قرار بگیرد تا ذخیره اصلی روی نکست‌کلاد فعال شود.`,
                 'error'
             );
             return;
         }
 
         setStoragePrimaryProviderHint(
-            'فایل‌های جدید مستقیم روی مسیر Mount شده نکست‌کلاد ذخیره می‌شوند. اگر میرور نکست‌کلاد انتخاب شود، به‌دلیل یکسان بودن با استورج اصلی غیرفعال می‌شود.',
+            mode === 'webdav'
+                ? 'فایل‌های جدید مستقیماً از طریق WebDAV روی نکست‌کلاد ذخیره می‌شوند. اگر میرور نکست‌کلاد انتخاب شود، به‌دلیل یکسان بودن با استورج اصلی غیرفعال می‌شود.'
+                : 'فایل‌های جدید مستقیم روی مسیر Mount شده نکست‌کلاد ذخیره می‌شوند. اگر میرور نکست‌کلاد انتخاب شود، به‌دلیل یکسان بودن با استورج اصلی غیرفعال می‌شود.',
             'success'
         );
     }
@@ -1376,9 +1683,12 @@
         const tokenBadge = document.getElementById('storageOpenProjectTokenSourceBadge');
         const tokenHint = document.getElementById('storageOpenProjectTokenManagedHint');
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
+        const nextcloudPublicSharePassword = document.getElementById('storageNextcloudPublicSharePasswordInput');
+        const nextcloudPublicSharePasswordRequired = document.getElementById('storageNextcloudPublicSharePasswordRequiredInput');
         const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
@@ -1387,12 +1697,15 @@
         const nextcloudRootPathWrap = document.getElementById('storageNextcloudRootPathWrap');
         const nextcloudLocalMountRootWrap = document.getElementById('storageNextcloudLocalMountRootWrap');
         const nextcloudTokenWrap = document.getElementById('storageNextcloudTokenWrap');
+        const nextcloudPublicSharePasswordWrap = document.getElementById('storageNextcloudPublicSharePasswordWrap');
         const nextcloudSslWrap = document.getElementById('storageNextcloudSslWrap');
         const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudPublicSharePasswordBadge = document.getElementById('storageNextcloudPublicSharePasswordBadge');
         const nextcloudCredentialHint = document.getElementById('storageNextcloudCredentialManagedHint');
         const nextcloudSslHint = document.getElementById('storageNextcloudSslManagedHint');
         const nextcloudSslWarning = document.getElementById('storageNextcloudSkipSslWarning');
         const nextcloudLocalMountRootHint = document.getElementById('storageNextcloudLocalMountRootHint');
+        const nextcloudModeWrap = document.getElementById('storageNextcloudModeWrap');
         const nextcloudSyncBtn = document.getElementById('storageNextcloudSyncRunBtn');
         const bimEnabled = document.getElementById('storageBimRevitEnabledInput');
         const bimRequireSignature = document.getElementById('storageBimRevitRequireSignatureInput');
@@ -1417,6 +1730,9 @@
         const nextcloudEnvManagedCred = nextcloudCredentialSource === 'env';
         const nextcloudEnvManagedSsl = nextcloudSslForceActive || nextcloudSslSource === 'env_force';
         const nextcloudEnvManagedMount = nextcloudLocalMountRootSource === 'env';
+        const nextcloudModeValue = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
 
         const googleOn = Boolean(googleEnabled?.checked);
         const googleDriveOn = googleOn && Boolean(googleDriveEnabled?.checked);
@@ -1426,6 +1742,7 @@
             ? Boolean(openprojectEnabled.checked)
             : Boolean(STORE.openprojectImport?.enabled);
         const nextcloudOn = Boolean(nextcloudEnabled?.checked);
+        const nextcloudPublicSharePasswordRequiredOn = Boolean(nextcloudPublicSharePasswordRequired?.checked);
         const bimOn = Boolean(bimEnabled?.checked);
         const bimSignatureOn = bimOn && Boolean(bimRequireSignature?.checked);
         const readyForExecute = openprojectOn && Number(STORE.openprojectImport?.lastValidatedRunId || 0) > 0;
@@ -1457,8 +1774,16 @@
         if (openprojectProjectMaxItems) openprojectProjectMaxItems.disabled = !openprojectOn;
         if (openprojectProjectPageSize) openprojectProjectPageSize.disabled = !openprojectOn;
         if (nextcloudBaseUrl) nextcloudBaseUrl.disabled = !nextcloudOn;
+        if (nextcloudMode) nextcloudMode.disabled = !nextcloudOn;
         if (nextcloudUsername) nextcloudUsername.disabled = !nextcloudOn;
         if (nextcloudAppPassword) nextcloudAppPassword.disabled = !nextcloudOn || nextcloudEnvManagedCred;
+        if (nextcloudPublicSharePasswordRequired) nextcloudPublicSharePasswordRequired.disabled = !nextcloudOn;
+        if (nextcloudPublicSharePassword) {
+            nextcloudPublicSharePassword.disabled = !nextcloudOn || !nextcloudPublicSharePasswordRequiredOn;
+            nextcloudPublicSharePassword.placeholder = nextcloudPublicSharePasswordRequiredOn
+                ? 'Default password for Nextcloud public links'
+                : 'No password will be set by default';
+        }
         if (nextcloudRootPath) nextcloudRootPath.disabled = !nextcloudOn;
         if (nextcloudLocalMountRoot) nextcloudLocalMountRoot.disabled = !nextcloudOn || nextcloudEnvManagedMount;
         if (nextcloudSkipSsl) nextcloudSkipSsl.disabled = !nextcloudOn || nextcloudEnvManagedSsl;
@@ -1473,8 +1798,12 @@
             openprojectSslWarning.style.display = showWarning ? 'flex' : 'none';
         }
         if (nextcloudBaseUrlWrap) nextcloudBaseUrlWrap.classList.toggle('is-disabled', !nextcloudOn);
+        if (nextcloudModeWrap) nextcloudModeWrap.classList.toggle('is-disabled', !nextcloudOn);
         if (nextcloudUsernameWrap) nextcloudUsernameWrap.classList.toggle('is-disabled', !nextcloudOn);
         if (nextcloudTokenWrap) nextcloudTokenWrap.classList.toggle('is-disabled', !nextcloudOn);
+        if (nextcloudPublicSharePasswordWrap) {
+            nextcloudPublicSharePasswordWrap.classList.toggle('is-disabled', !nextcloudOn);
+        }
         if (nextcloudRootPathWrap) nextcloudRootPathWrap.classList.toggle('is-disabled', !nextcloudOn);
         if (nextcloudLocalMountRootWrap) {
             nextcloudLocalMountRootWrap.classList.toggle('is-disabled', !nextcloudOn || nextcloudEnvManagedMount);
@@ -1489,9 +1818,13 @@
         if (nextcloudLocalMountRootHint) {
             const baseText = norm(nextcloudLocalMountRootHint.dataset.baseText)
                 || 'Used by folder picker to map Nextcloud folders to local/UNC paths.';
-            nextcloudLocalMountRootHint.textContent = nextcloudEnvManagedMount
-                ? 'Local mount root is managed by environment (NEXTCLOUD_LOCAL_MOUNT_ROOT).'
-                : baseText;
+            if (nextcloudEnvManagedMount) {
+                nextcloudLocalMountRootHint.textContent = 'Local mount root is managed by environment (NEXTCLOUD_LOCAL_MOUNT_ROOT).';
+            } else if (nextcloudModeValue === 'webdav') {
+                nextcloudLocalMountRootHint.textContent = 'در حالت WebDAV اختیاری است و فقط برای map کردن Folder Picker به مسیر محلی/UNC استفاده می‌شود.';
+            } else {
+                nextcloudLocalMountRootHint.textContent = baseText;
+            }
         }
         if (nextcloudSslWarning) {
             const showWarning = nextcloudOn && Boolean(nextcloudSkipSsl?.checked);
@@ -1565,6 +1898,7 @@
     async function loadStoragePaths(force = false) {
         const mdrInput = document.getElementById('mdrStoragePathInput');
         const corrInput = document.getElementById('correspondenceStoragePathInput');
+        const siteLogInput = document.getElementById('siteLogStoragePathInput');
         if (!mdrInput || !corrInput) return;
         bindStoragePathValidation();
         if (STORE.storagePathsLoaded && !force) return;
@@ -1572,16 +1906,20 @@
         const payload = await request(`${API_BASE}/storage-paths`);
         const mdrLocked = mdrInput.dataset.storagePathDirty === '1' || document.activeElement === mdrInput;
         const corrLocked = corrInput.dataset.storagePathDirty === '1' || document.activeElement === corrInput;
+        const siteLogLocked = siteLogInput && (siteLogInput.dataset.storagePathDirty === '1' || document.activeElement === siteLogInput);
         if (!mdrLocked) {
             mdrInput.value = norm(payload?.mdr_storage_path);
         }
         if (!corrLocked) {
             corrInput.value = norm(payload?.correspondence_storage_path);
         }
+        if (siteLogInput && !siteLogLocked) {
+            siteLogInput.value = norm(payload?.site_log_storage_path);
+        }
         updateStoragePathPreview();
         validateStoragePathConflict(false);
         updateStorageNextcloudPickerAvailability();
-        if (!mdrLocked && !corrLocked) {
+        if (!mdrLocked && !corrLocked && !siteLogLocked) {
             clearStorageStepDirty('paths');
         }
         STORE.storagePathsLoaded = true;
@@ -1723,6 +2061,8 @@
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
+        const nextcloudPublicSharePassword = document.getElementById('storageNextcloudPublicSharePasswordInput');
+        const nextcloudPublicSharePasswordRequired = document.getElementById('storageNextcloudPublicSharePasswordRequiredInput');
         const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
@@ -1754,6 +2094,7 @@
         const nextcloudSkipSslVerify = Boolean(nextcloud.skip_ssl_verify);
         const nextcloudLocalMountRootSource = norm(nextcloud.local_mount_root_source || 'none').toLowerCase();
         const nextcloudLocalMountRootConfigured = Boolean(nextcloud.local_mount_root_configured);
+        const nextcloudPasswordRequired = nextcloud.public_share_password_required !== false;
 
         if (primaryProvider) {
             primaryProvider.value = primaryProviderValue;
@@ -1808,6 +2149,8 @@
         if (nextcloudBaseUrl) nextcloudBaseUrl.value = String(nextcloud.base_url || '');
         if (nextcloudUsername) nextcloudUsername.value = String(nextcloud.username || '');
         if (nextcloudAppPassword) nextcloudAppPassword.value = '';
+        if (nextcloudPublicSharePassword) nextcloudPublicSharePassword.value = '';
+        if (nextcloudPublicSharePasswordRequired) nextcloudPublicSharePasswordRequired.checked = nextcloudPasswordRequired;
         if (nextcloudRootPath) nextcloudRootPath.value = String(nextcloud.root_path || '');
         if (nextcloudLocalMountRoot) {
             nextcloudLocalMountRoot.value = String(nextcloud.local_mount_root || '');
@@ -1822,6 +2165,11 @@
         if (nextcloudCredentialBadge) {
             nextcloudCredentialBadge.textContent = nextcloudCredentialSource || 'none';
             nextcloudCredentialBadge.dataset.tokenSource = nextcloudCredentialSource || 'none';
+        }
+        if (nextcloudPublicSharePasswordBadge) {
+            const configured = Boolean(nextcloud.public_share_password_configured);
+            nextcloudPublicSharePasswordBadge.textContent = configured ? 'saved' : 'none';
+            nextcloudPublicSharePasswordBadge.dataset.configured = configured ? 'true' : 'false';
         }
         if (nextcloudCredentialHint) {
             nextcloudCredentialHint.textContent = nextcloudCredentialSource === 'env'
@@ -1974,14 +2322,213 @@
         }
     }
 
+    const POWER_BI_REPORT_SECTIONS = new Set(['general', 'manpower', 'equipment', 'material', 'activity']);
+
+    function selectedPowerBiReportSection() {
+        const value = norm(document.getElementById('powerBiQuerySectionSelect')?.value).toLowerCase();
+        return POWER_BI_REPORT_SECTIONS.has(value) ? value : 'general';
+    }
+
+    function powerBiQueryText(tokenValue = 'PASTE_BI_API_KEY_HERE', reportSection = selectedPowerBiReportSection()) {
+        const baseUrl = window.location?.origin || 'http://192.168.20.50';
+        const section = POWER_BI_REPORT_SECTIONS.has(norm(reportSection).toLowerCase())
+            ? norm(reportSection).toLowerCase()
+            : 'general';
+        return `let
+    BaseUrl = "${baseUrl}",
+    PowerBIKey = "${tokenValue || 'PASTE_BI_API_KEY_HERE'}",
+
+    Source = Csv.Document(
+        Web.Contents(
+            BaseUrl,
+            [
+                RelativePath = "api/v1/site-logs/reports/table.csv",
+                Query = [
+                    report_section = "${section}",
+                    sort_by = "log_date",
+                    sort_dir = "desc"
+                ],
+                Headers = [
+                    Authorization = "Bearer " & PowerBIKey,
+                    Accept = "text/csv"
+                ]
+            ]
+        ),
+        [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]
+    ),
+
+    PromotedHeaders = Table.PromoteHeaders(Source, [PromoteAllScalars = true])
+in
+    PromotedHeaders`;
+    }
+
+    function updatePowerBiQueryTemplate(tokenValue = 'PASTE_BI_API_KEY_HERE') {
+        const input = document.getElementById('powerBiQueryTemplate');
+        if (input) input.value = powerBiQueryText(tokenValue);
+    }
+
+    function powerBiDate(value) {
+        const raw = norm(value);
+        if (!raw) return '-';
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return raw;
+        return formatFaDateTime(parsed);
+    }
+
+    function selectedPowerBiAllowedSections() {
+        return Array.from(document.querySelectorAll('[data-powerbi-section-limit]:checked'))
+            .map((input) => norm(input?.value).toLowerCase())
+            .filter((value) => POWER_BI_REPORT_SECTIONS.has(value));
+    }
+
+    function powerBiAccessLimitHtml(item) {
+        const projects = Array.isArray(item?.allowed_project_codes) ? item.allowed_project_codes : [];
+        const sections = Array.isArray(item?.allowed_report_sections) ? item.allowed_report_sections : [];
+        const ips = Array.isArray(item?.allowed_ip_ranges) ? item.allowed_ip_ranges : [];
+        const chips = [];
+        if (projects.length) chips.push(`Projects: ${projects.join(', ')}`);
+        if (sections.length) chips.push(`Tables: ${sections.join(', ')}`);
+        if (ips.length) chips.push(`IPs: ${ips.join(', ')}`);
+        if (!chips.length) return '<span class="muted">All site-log CSV tables</span>';
+        return `<div class="powerbi-limit-chips">${chips.map((chip) => `<span>${esc(chip)}</span>`).join('')}</div>`;
+    }
+
+    function setPowerBiTokenMessage(message = '', level = 'info') {
+        const box = document.getElementById('powerBiTokenPlain');
+        const actions = document.getElementById('powerBiTokenCopyActions');
+        if (!box) return;
+        if (!message) {
+            box.style.display = 'none';
+            box.textContent = '';
+            box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+            if (actions) actions.style.display = 'none';
+            return;
+        }
+        box.style.display = 'block';
+        box.textContent = message;
+        if (actions) actions.style.display = STORE.powerBiLastToken ? 'flex' : 'none';
+        box.classList.remove('storage-sync-result-success', 'storage-sync-result-error', 'storage-sync-result-info');
+        if (level === 'success') box.classList.add('storage-sync-result-success');
+        else if (level === 'error') box.classList.add('storage-sync-result-error');
+        else box.classList.add('storage-sync-result-info');
+    }
+
+    function renderPowerBiTokens(items = []) {
+        const tbody = document.getElementById('powerBiTokensBody');
+        if (!tbody) return;
+        if (!Array.isArray(items) || !items.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="center-text muted">No Power BI keys created.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = items.map((item) => {
+            const id = Number(item?.id || 0);
+            const active = Boolean(item?.is_active) && !norm(item?.revoked_at);
+            const statusHtml = active
+                ? '<span class="status-badge success">active</span>'
+                : '<span class="status-badge danger">revoked</span>';
+            const revokeBtn = active
+                ? `<button class="btn-archive-icon" type="button" data-integrations-action="revoke-power-bi-token" data-token-id="${id}">Revoke</button>`
+                : '-';
+            return `
+                <tr>
+                    <td>${esc(item?.name || '-')}</td>
+                    <td>${esc(item?.token_hint || '-')}</td>
+                    <td>${powerBiAccessLimitHtml(item)}</td>
+                    <td>${statusHtml}</td>
+                    <td>${esc(powerBiDate(item?.created_at))}</td>
+                    <td>${esc(powerBiDate(item?.last_used_at))}</td>
+                    <td>${esc(powerBiDate(item?.expires_at))}</td>
+                    <td>${revokeBtn}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function loadPowerBiTokens(force = false) {
+        const tbody = document.getElementById('powerBiTokensBody');
+        if (!tbody) return;
+        if (STORE.powerBiTokensLoaded && !force) {
+            updatePowerBiQueryTemplate();
+            return;
+        }
+        const payload = await request(`${API_BASE}/power-bi/tokens`);
+        renderPowerBiTokens(payload?.items || []);
+        updatePowerBiQueryTemplate();
+        STORE.powerBiTokensLoaded = true;
+    }
+
+    async function mintPowerBiToken() {
+        const name = norm(document.getElementById('powerBiTokenNameInput')?.value) || 'Power BI Dashboard';
+        const expiresValue = norm(document.getElementById('powerBiTokenExpiresInput')?.value);
+        const payload = {
+            name,
+            expires_at: expiresValue ? `${expiresValue}T23:59:59` : null,
+            allowed_project_codes: parseCommaSeparatedList(document.getElementById('powerBiTokenProjectsInput')?.value),
+            allowed_report_sections: selectedPowerBiAllowedSections(),
+            allowed_ip_ranges: parseCommaSeparatedList(document.getElementById('powerBiTokenIpRangesInput')?.value),
+        };
+        const response = await request(`${API_BASE}/power-bi/tokens/mint`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        const token = norm(response?.token);
+        STORE.powerBiLastToken = token || '';
+        await loadPowerBiTokens(true);
+        updatePowerBiQueryTemplate(token || 'PASTE_BI_API_KEY_HERE');
+        setPowerBiTokenMessage(token ? `NEW BI KEY (copy now): ${token}` : 'Token created, but server did not return a one-time key.', token ? 'success' : 'error');
+        if (token) {
+            tSuccess('Power BI key created. Copy it now; it will not be shown again.');
+        }
+    }
+
+    async function revokePowerBiToken(tokenId) {
+        const id = Number(tokenId || 0);
+        if (!id) return;
+        await request(`${API_BASE}/power-bi/tokens/${id}/revoke`, { method: 'POST' });
+        await loadPowerBiTokens(true);
+        STORE.powerBiLastToken = '';
+        setPowerBiTokenMessage('');
+        tSuccess('Power BI key revoked.');
+    }
+
+    async function copyPowerBiToken() {
+        const token = norm(STORE.powerBiLastToken);
+        if (!token) {
+            tError('No one-time BI key is available to copy.');
+            return;
+        }
+        try {
+            await navigator.clipboard?.writeText(token);
+            tSuccess('Power BI key copied.');
+        } catch (_) {
+            tError('Copy failed. Select the BI key text manually.');
+        }
+    }
+
+    async function copyPowerBiQueryTemplate() {
+        const text = String(document.getElementById('powerBiQueryTemplate')?.value || powerBiQueryText());
+        try {
+            await navigator.clipboard?.writeText(text);
+            tSuccess('Power Query template copied.');
+        } catch (_) {
+            document.getElementById('powerBiQueryTemplate')?.select?.();
+            tError('Copy failed. Select the template text manually.');
+        }
+    }
+
     async function loadStorageIntegrations(force = false) {
         const gdriveEnabled = document.getElementById('storageGoogleDriveEnabledInput');
         if (!gdriveEnabled) return;
-        if (STORE.storageIntegrationsLoaded && !force) return;
+        if (STORE.storageIntegrationsLoaded && !force) {
+            await loadBimRevitSettings(false);
+            await loadPowerBiTokens(false);
+            return;
+        }
         const payload = await request(`${API_BASE}/storage-integrations`);
         applyStorageIntegrationsToForm(payload?.integrations || {});
         STORE.storageIntegrationsLoaded = true;
         await loadBimRevitSettings(force);
+        await loadPowerBiTokens(force);
     }
 
     async function saveStorageIntegrations() {
@@ -2008,6 +2555,8 @@
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudAppPassword = document.getElementById('storageNextcloudAppPasswordInput');
+        const nextcloudPublicSharePassword = document.getElementById('storageNextcloudPublicSharePasswordInput');
+        const nextcloudPublicSharePasswordRequired = document.getElementById('storageNextcloudPublicSharePasswordRequiredInput');
         const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
         const nextcloudSkipSsl = document.getElementById('storageNextcloudSkipSslVerifyInput');
@@ -2026,6 +2575,8 @@
             || !nextcloudBaseUrl
             || !nextcloudUsername
             || !nextcloudAppPassword
+            || !nextcloudPublicSharePassword
+            || !nextcloudPublicSharePasswordRequired
             || !nextcloudRootPath
             || !nextcloudLocalMountRoot
             || !nextcloudSkipSsl
@@ -2051,6 +2602,8 @@
             base_url: norm(nextcloudBaseUrl.value),
             username: norm(nextcloudUsername.value),
             app_password: norm(nextcloudAppPassword.value),
+            public_share_password: norm(nextcloudPublicSharePassword.value),
+            public_share_password_required: Boolean(nextcloudPublicSharePasswordRequired.checked),
             root_path: norm(nextcloudRootPath.value),
             local_mount_root: norm(nextcloudLocalMountRoot.value),
         } as Record<string, unknown>;
@@ -2686,6 +3239,26 @@
                         await rotateBimRevitSecret();
                         return;
                     }
+                    if (action === 'refresh-power-bi-tokens') {
+                        await loadPowerBiTokens(true);
+                        return;
+                    }
+                    if (action === 'mint-power-bi-token') {
+                        await mintPowerBiToken();
+                        return;
+                    }
+                    if (action === 'revoke-power-bi-token') {
+                        await revokePowerBiToken(actionEl.dataset.tokenId || '');
+                        return;
+                    }
+                    if (action === 'copy-power-bi-token') {
+                        await copyPowerBiToken();
+                        return;
+                    }
+                    if (action === 'copy-power-bi-query') {
+                        await copyPowerBiQueryTemplate();
+                        return;
+                    }
                     if (action === 'run-google-sync') {
                         await runStorageSyncJob('google_drive');
                         return;
@@ -2759,8 +3332,12 @@
                     tError(err.message);
                 }
             });
-            root.addEventListener('change', () => {
+            root.addEventListener('change', (event) => {
                 updateStorageIntegrationsFieldState();
+                const target = event?.target;
+                if (target?.id === 'powerBiQuerySectionSelect') {
+                    updatePowerBiQueryTemplate(STORE.powerBiLastToken || 'PASTE_BI_API_KEY_HERE');
+                }
             });
             root.addEventListener('input', (event) => {
                 const target = event?.target;
@@ -3902,17 +4479,27 @@
     }
 
     function suggestedNextcloudStoragePath(kind = '') {
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
-        const mountRoot = norm(nextcloudLocalMountRoot?.value);
-        if (!mountRoot) return '';
+        const rootValue = mode === 'webdav'
+            ? (normalizeRemotePath(nextcloudRootPath?.value) || '/')
+            : norm(nextcloudLocalMountRoot?.value);
+        if (!rootValue) return '';
         const normalizedKind = norm(kind).toLowerCase();
         if (normalizedKind === 'mdr') {
-            return joinStorageLikePath(mountRoot, 'MDR');
+            return joinStorageLikePath(rootValue, 'MDR');
         }
         if (normalizedKind === 'correspondence') {
-            return joinStorageLikePath(mountRoot, 'Correspondence');
+            return joinStorageLikePath(rootValue, 'Correspondence');
         }
-        return mountRoot;
+        if (normalizedKind === 'site_log') {
+            return joinStorageLikePath(rootValue, 'SiteLogs');
+        }
+        return rootValue;
     }
 
     function applySuggestedNextcloudStoragePath(kind = '') {
@@ -3921,13 +4508,24 @@
             ? document.getElementById('mdrStoragePathInput')
             : normalizedKind === 'correspondence'
                 ? document.getElementById('correspondenceStoragePathInput')
-                : null;
+                : normalizedKind === 'site_log'
+                    ? document.getElementById('siteLogStoragePathInput')
+                    : null;
         if (!targetInput) return;
 
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
-        const mountRoot = norm(nextcloudLocalMountRoot?.value);
-        if (!mountRoot) {
-            tError('ابتدا Local Mount Root نکست‌کلاد را تنظیم کنید.');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
+        const basePath = mode === 'webdav'
+            ? (normalizeRemotePath(nextcloudRootPath?.value) || '/')
+            : norm(nextcloudLocalMountRoot?.value);
+        if (!basePath) {
+            tError(mode === 'webdav'
+                ? 'ابتدا Root Path نکست‌کلاد را تنظیم کنید.'
+                : 'ابتدا Local Mount Root نکست‌کلاد را تنظیم کنید.');
             return;
         }
 
@@ -3943,9 +4541,12 @@
         markStorageStepDirty('paths');
         updateStoragePathPreview();
         validateStoragePathConflict(true);
-        tSuccess(normalizedKind === 'mdr'
+        const successText = normalizedKind === 'mdr'
             ? 'مسیر پیشنهادی نکست‌کلاد برای مدارک مهندسی اعمال شد.'
-            : 'مسیر پیشنهادی نکست‌کلاد برای مکاتبات اعمال شد.');
+            : normalizedKind === 'site_log'
+                ? 'مسیر پیشنهادی نکست‌کلاد برای سایت‌لاگ اعمال شد.'
+                : 'مسیر پیشنهادی نکست‌کلاد برای مکاتبات اعمال شد.';
+        tSuccess(successText);
     }
 
     function setStorageNextcloudPickerStatus(message = '', level = 'info') {
@@ -3976,7 +4577,7 @@
     function updateStorageNextcloudPickerAvailability() {
         const buttons = Array.from(
             document.querySelectorAll(
-                '#storageMdrPathNextcloudPickerBtn, #storageCorrPathNextcloudPickerBtn'
+                '#storageMdrPathNextcloudPickerBtn, #storageCorrPathNextcloudPickerBtn, #storageSiteLogPathNextcloudPickerBtn'
             )
         );
         const suggestedButtons = Array.from(
@@ -3986,17 +4587,23 @@
             '[data-general-action="nextcloud-folder-picker-select-current"]'
         );
         const nextcloudEnabled = document.getElementById('storageNextcloudEnabledInput');
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
         const nextcloudBaseUrl = document.getElementById('storageNextcloudBaseUrlInput');
         const nextcloudUsername = document.getElementById('storageNextcloudUsernameInput');
         const nextcloudCredentialBadge = document.getElementById('storageNextcloudCredentialSourceBadge');
+        const nextcloudRootPath = document.getElementById('storageNextcloudRootPathInput');
         const nextcloudLocalMountRoot = document.getElementById('storageNextcloudLocalMountRootInput');
 
         const enabled = Boolean(nextcloudEnabled?.checked);
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
         const baseReady = Boolean(norm(nextcloudBaseUrl?.value));
         const userReady = Boolean(norm(nextcloudUsername?.value));
         const credentialSource = norm(nextcloudCredentialBadge?.dataset?.tokenSource || 'none').toLowerCase();
         const credentialReady = credentialSource === 'env' || credentialSource === 'settings';
         const localMountRoot = norm(nextcloudLocalMountRoot?.value);
+        const rootPath = normalizeRemotePath(nextcloudRootPath?.value) || '/';
         const localMappingAvailable = Boolean(localMountRoot);
         const localMountRootSource = norm(nextcloudLocalMountRoot?.dataset?.mountRootSource || 'none').toLowerCase() || 'none';
 
@@ -4005,6 +4612,7 @@
         else if (!baseReady) reason = 'Nextcloud base URL is required.';
         else if (!userReady) reason = 'Nextcloud username is required.';
         else if (!credentialReady) reason = 'Nextcloud credentials are not configured yet.';
+        else if (mode === 'webdav' && !rootPath) reason = 'Nextcloud Root Path is required in WebDAV mode.';
 
         const ready = !reason;
         STORE.nextcloudPicker.ready = ready;
@@ -4025,23 +4633,25 @@
             btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
         });
         if (selectCurrentBtn) {
-            const canSelectCurrent = ready && localMappingAvailable;
+            const canSelectCurrent = ready && (mode === 'webdav' || localMappingAvailable);
             selectCurrentBtn.disabled = !canSelectCurrent;
             selectCurrentBtn.setAttribute(
                 'title',
                 canSelectCurrent
-                    ? 'Apply mapped local path'
+                    ? (mode === 'webdav' ? 'Apply selected remote WebDAV path' : 'Apply mapped local path')
                     : (ready
                         ? 'Local mount root is empty; local path mapping is unavailable.'
                         : reason)
             );
         }
 
-        if (ready && localMappingAvailable) {
+        if (ready && localMappingAvailable && mode !== 'webdav') {
             setStorageNextcloudPickerInlineHint('Nextcloud folder picker is ready.', 'success');
         } else if (ready) {
             setStorageNextcloudPickerInlineHint(
-                'Nextcloud connected. Local mount root is empty, so picker works in browse-only mode.',
+                mode === 'webdav'
+                    ? 'Nextcloud connected in WebDAV mode. Picker selects remote paths directly.'
+                    : 'Nextcloud connected. Local mount root is empty, so picker works in browse-only mode.',
                 'info'
             );
         } else {
@@ -4163,10 +4773,16 @@
         openStorageNextcloudPickerModal();
 
         const targetInput = document.getElementById(targetId);
-        const inferredPath = inferRemotePathFromLocalInput(
-            targetInput?.value,
-            STORE.nextcloudPicker.localMountRoot
-        );
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
+        const inferredPath = mode === 'webdav'
+            ? (normalizeRemotePath(targetInput?.value) || '/')
+            : inferRemotePathFromLocalInput(
+                targetInput?.value,
+                STORE.nextcloudPicker.localMountRoot
+            );
         await loadStorageNextcloudPickerPath(inferredPath || '/');
     }
 
@@ -4177,27 +4793,35 @@
             closeStorageNextcloudPickerModal();
             return;
         }
+        const nextcloudMode = document.getElementById('storageNextcloudModeSelect');
+        const mode = ['mount', 'webdav'].includes(norm(nextcloudMode?.value).toLowerCase())
+            ? norm(nextcloudMode?.value).toLowerCase()
+            : 'mount';
         const localPath = norm(STORE.nextcloudPicker.currentLocalPath || '');
-        if (!localPath) {
+        const remotePath = normalizeRemotePath(STORE.nextcloudPicker.currentPath || '/');
+        if (mode !== 'webdav' && !localPath) {
             setStorageNextcloudPickerStatus(
                 'No local path mapping is available. Set Local Mount Root or enter the path manually.',
                 'error'
             );
             return;
         }
-        targetInput.value = localPath;
+        targetInput.value = mode === 'webdav' ? remotePath : localPath;
         targetInput.dataset.storagePathDirty = '1';
         hideStorageStepSaved('paths');
         markStorageStepDirty('paths');
         updateStoragePathPreview();
         validateStoragePathConflict(true);
         closeStorageNextcloudPickerModal();
-        tSuccess('Storage path updated from Nextcloud folder picker.');
+        tSuccess(mode === 'webdav'
+            ? 'مسیر WebDAV از انتخاب‌گر نکست‌کلاد اعمال شد.'
+            : 'Storage path updated from Nextcloud folder picker.');
     }
 
     function bindStoragePathValidation() {
         const mdrInput = document.getElementById('mdrStoragePathInput');
         const corrInput = document.getElementById('correspondenceStoragePathInput');
+        const siteLogInput = document.getElementById('siteLogStoragePathInput');
         if (!mdrInput || !corrInput) return;
         if (mdrInput.dataset.storagePathBound === '1') return;
 
@@ -4210,11 +4834,14 @@
             markStorageStepDirty('paths');
             updateStoragePathPreview();
             validateStoragePathConflict(true);
+            updatePrimaryStorageProviderHint();
         };
         mdrInput.addEventListener('input', onInput);
         corrInput.addEventListener('input', onInput);
+        if (siteLogInput) siteLogInput.addEventListener('input', onInput);
         mdrInput.dataset.storagePathBound = '1';
         corrInput.dataset.storagePathBound = '1';
+        if (siteLogInput) siteLogInput.dataset.storagePathBound = '1';
         updateStorageNextcloudPickerAvailability();
     }
 
@@ -4342,6 +4969,7 @@
             await loadEntity('phases', force);
             await loadEntity('disciplines', force);
             await loadEntity('statuses', force);
+            await loadTransmittalParties(force);
             refreshTransmittalConfigSummary();
             return;
         }
@@ -4514,6 +5142,18 @@
                 case 'reset-status':
                     window.resetStatusForm();
                     break;
+                case 'save-transmittal-party':
+                    window.saveTransmittalPartySetting();
+                    break;
+                case 'reset-transmittal-party':
+                    window.resetTransmittalPartySetting();
+                    break;
+                case 'open-edit-transmittal-party':
+                    window.openEditTransmittalParty(actionEl.dataset.group || '', actionEl.dataset.code || '');
+                    break;
+                case 'deactivate-transmittal-party':
+                    window.deactivateTransmittalParty(actionEl.dataset.group || '', actionEl.dataset.code || '');
+                    break;
                 case 'goto-page':
                     window.settingsGotoPage(actionEl.dataset.entity || '', Number(actionEl.dataset.page || 1));
                     break;
@@ -4589,6 +5229,18 @@
                 case 'delete-corr-category':
                     window.deleteCorrespondenceCategorySetting(actionEl.dataset.code || '');
                     break;
+                case 'save-corr-tag':
+                    window.saveCorrespondenceTagSetting();
+                    break;
+                case 'reset-corr-tag':
+                    window.resetCorrespondenceTagForm();
+                    break;
+                case 'open-edit-corr-tag':
+                    window.openEditCorrespondenceTagById(actionEl.dataset.tagId || '');
+                    break;
+                case 'delete-corr-tag':
+                    window.deleteCorrespondenceTagSetting(actionEl.dataset.tagId || '');
+                    break;
                 default:
                     break;
             }
@@ -4610,7 +5262,11 @@
                 : null;
             if (!actionEl) {
                 const target = event?.target;
-                if (target?.id === 'siteCacheProfileSelect') {
+                if (target?.id === 'storageMirrorProviderSelect') {
+                    target.dataset.userRequestedValue = String(target.value || '').trim().toLowerCase();
+                    updateStorageIntegrationsFieldState();
+                    return;
+                } else if (target?.id === 'siteCacheProfileSelect') {
                     const profileId = Number(target.value || 0);
                     STORE.siteCache.activeProfileId = profileId;
                     const profile = currentSiteCacheProfile();
@@ -4749,6 +5405,104 @@
         tSuccess(successMessage);
         await reloadEntitiesAfterMutation(reloadEntities);
     }
+
+    function resetTransmittalPartyForm() {
+        const groupEl = document.getElementById('transmittalPartyGroupInput');
+        const codeEl = document.getElementById('transmittalPartyCodeInput');
+        const labelEl = document.getElementById('transmittalPartyLabelInput');
+        const sortEl = document.getElementById('transmittalPartySortInput');
+        const activeEl = document.getElementById('transmittalPartyActiveInput');
+        if (groupEl) groupEl.value = 'direction_options';
+        if (codeEl) {
+            codeEl.value = '';
+            codeEl.readOnly = false;
+        }
+        if (labelEl) labelEl.value = '';
+        if (sortEl) sortEl.value = '10';
+        if (activeEl) activeEl.checked = true;
+    }
+
+    function transmittalPartiesPayloadWithRow(group, row) {
+        const current = STORE.data.transmittal_parties || {};
+        const payload = {
+            direction_options: Array.isArray(current.direction_options) ? [...current.direction_options] : [],
+            recipient_options: Array.isArray(current.recipient_options) ? [...current.recipient_options] : [],
+        };
+        const target = group === 'recipient_options' ? 'recipient_options' : 'direction_options';
+        const index = payload[target].findIndex((item) => norm(item.code).toUpperCase() === row.code);
+        if (index >= 0) payload[target][index] = row;
+        else payload[target].push(row);
+        return payload;
+    }
+
+    async function saveTransmittalPartiesPayload(payload, message = 'تنظیمات طرفین ترنسمیتال ذخیره شد.') {
+        const saved = await request(`${API_BASE}/transmittal-parties`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        STORE.data.transmittal_parties = {
+            direction_options: saved.direction_options || [],
+            recipient_options: saved.recipient_options || [],
+        };
+        renderTransmittalParties();
+        tSuccess(message);
+    }
+
+    window.saveTransmittalPartySetting = async function saveTransmittalPartySetting() {
+        try {
+            const group = norm(document.getElementById('transmittalPartyGroupInput')?.value) || 'direction_options';
+            const code = norm(document.getElementById('transmittalPartyCodeInput')?.value).toUpperCase();
+            const label = norm(document.getElementById('transmittalPartyLabelInput')?.value);
+            const sort_order = Number(document.getElementById('transmittalPartySortInput')?.value || 0);
+            const is_active = Boolean(document.getElementById('transmittalPartyActiveInput')?.checked);
+            if (!code || !label) {
+                tError('کد داخلی و عنوان نمایشی الزامی است.');
+                return;
+            }
+            const payload = transmittalPartiesPayloadWithRow(group, { code, label, sort_order, is_active });
+            await saveTransmittalPartiesPayload(payload);
+            resetTransmittalPartyForm();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
+    window.resetTransmittalPartySetting = function resetTransmittalPartySetting() {
+        resetTransmittalPartyForm();
+    };
+
+    window.openEditTransmittalParty = function openEditTransmittalParty(group, encodedCode) {
+        const code = decoded(encodedCode);
+        const rows = STORE.data.transmittal_parties?.[group] || [];
+        const row = rows.find((item) => norm(item.code).toUpperCase() === norm(code).toUpperCase());
+        if (!row) return;
+        const groupEl = document.getElementById('transmittalPartyGroupInput');
+        const codeEl = document.getElementById('transmittalPartyCodeInput');
+        const labelEl = document.getElementById('transmittalPartyLabelInput');
+        const sortEl = document.getElementById('transmittalPartySortInput');
+        const activeEl = document.getElementById('transmittalPartyActiveInput');
+        if (groupEl) groupEl.value = group;
+        if (codeEl) {
+            codeEl.value = row.code || '';
+            codeEl.readOnly = true;
+        }
+        if (labelEl) labelEl.value = row.label || '';
+        if (sortEl) sortEl.value = String(row.sort_order ?? 0);
+        if (activeEl) activeEl.checked = row.is_active !== false;
+    };
+
+    window.deactivateTransmittalParty = async function deactivateTransmittalParty(group, encodedCode) {
+        try {
+            const code = decoded(encodedCode);
+            const rows = STORE.data.transmittal_parties?.[group] || [];
+            const row = rows.find((item) => norm(item.code).toUpperCase() === norm(code).toUpperCase());
+            if (!row) return;
+            const payload = transmittalPartiesPayloadWithRow(group, { ...row, is_active: false });
+            await saveTransmittalPartiesPayload(payload, 'گزینه ترنسمیتال غیرفعال شد.');
+        } catch (err) {
+            tError(err.message);
+        }
+    };
 
     window.saveSiteCacheProfileSetting = async function saveSiteCacheProfileSetting() {
         try {
@@ -4919,6 +5673,7 @@
             bindStoragePathValidation();
             const mdr_storage_path = norm(document.getElementById('mdrStoragePathInput')?.value);
             const correspondence_storage_path = norm(document.getElementById('correspondenceStoragePathInput')?.value);
+            const site_log_storage_path = norm(document.getElementById('siteLogStoragePathInput')?.value);
             const network_username = norm(document.getElementById('storageNetworkUsernameInput')?.value);
             const network_password = String(document.getElementById('storageNetworkPasswordInput')?.value || '').trim();
             requireVal(mdr_storage_path, 'Ù…Ø³ÛŒØ± Ø°Ø®ÛŒØ±Ù‡ Ù…Ø¯Ø§Ø±Ú© Ù…Ù‡Ù†Ø¯Ø³ÛŒ');
@@ -4930,6 +5685,7 @@
                 body: JSON.stringify({
                     mdr_storage_path,
                     correspondence_storage_path,
+                    site_log_storage_path,
                     network_username,
                     network_password,
                 }),
@@ -4939,10 +5695,13 @@
             document.getElementById('correspondenceStoragePathInput').value = norm(
                 payload?.correspondence_storage_path || correspondence_storage_path
             );
+            const siteLogInput = document.getElementById('siteLogStoragePathInput');
+            if (siteLogInput) siteLogInput.value = norm(payload?.site_log_storage_path || site_log_storage_path);
             const networkPasswordInput = document.getElementById('storageNetworkPasswordInput');
             if (networkPasswordInput) networkPasswordInput.value = '';
             document.getElementById('mdrStoragePathInput').dataset.storagePathDirty = '0';
             document.getElementById('correspondenceStoragePathInput').dataset.storagePathDirty = '0';
+            if (siteLogInput) siteLogInput.dataset.storagePathDirty = '0';
             updateStoragePathPreview();
             setStoragePathConflictError('');
             STORE.storagePathsLoaded = true;
@@ -5383,8 +6142,45 @@
         }
     };
 
+    window.resetCorrespondenceTagForm = function resetCorrespondenceTagForm() {
+        document.getElementById('corrTagIdInput').value = '';
+        document.getElementById('corrTagNameInput').value = '';
+        document.getElementById('corrTagColorInput').value = '#2563eb';
+    };
+    window.saveCorrespondenceTagSetting = async function saveCorrespondenceTagSetting() {
+        try {
+            const payload = {
+                id: Number(document.getElementById('corrTagIdInput')?.value || 0) || null,
+                name: norm(document.getElementById('corrTagNameInput')?.value),
+                color: norm(document.getElementById('corrTagColorInput')?.value) || null,
+            };
+            requireVal(payload.name, 'Tag name');
+            await postAndReload('/correspondence-tags/upsert', payload, ['corr_tags'], 'Tag saved.');
+            window.resetCorrespondenceTagForm();
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+    window.openEditCorrespondenceTagById = function openEditCorrespondenceTagById(tagId) {
+        const id = Number(tagId || 0);
+        const item = findBy('corr_tags', (x) => Number(x.id || 0) === id);
+        if (!item) return;
+        document.getElementById('corrTagIdInput').value = String(Number(item.id || 0) || '');
+        document.getElementById('corrTagNameInput').value = item.name || '';
+        document.getElementById('corrTagColorInput').value = item.color || '#2563eb';
+    };
+    window.deleteCorrespondenceTagSetting = async function deleteCorrespondenceTagSetting(tagId) {
+        const id = Number(tagId || 0);
+        if (!id) return;
+        if (!confirm('Delete selected tag?')) return;
+        try {
+            await postAndReload('/correspondence-tags/delete', { id }, ['corr_tags'], 'Tag deleted.');
+        } catch (err) {
+            tError(err.message);
+        }
+    };
+
     window.initGeneralSettings = initGeneralSettings;
     window.initStorageSettingsPanel = initStorageSettingsPanel;
     window.initSettingsIntegrations = initSettingsIntegrations;
 })();
-

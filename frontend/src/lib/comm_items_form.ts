@@ -1,4 +1,4 @@
-export type CommItemType = "RFI" | "NCR" | "TECH";
+export type CommItemType = "RFI" | "NCR";
 
 export interface CommItemsFormInput {
   itemType?: unknown;
@@ -12,6 +12,7 @@ export interface CommItemsFormInput {
   statusCode?: unknown;
   priority?: unknown;
   responseDueDate?: unknown;
+  organizationId?: unknown;
   recipientOrgId?: unknown;
   assigneeUserId?: unknown;
   contractClauseRef?: unknown;
@@ -40,15 +41,6 @@ export interface CommItemsFormInput {
   ncrRectificationMethod?: unknown;
   ncrVerificationNote?: unknown;
   ncrVerifiedAt?: unknown;
-  techSubtypeCode?: unknown;
-  techDocumentTitle?: unknown;
-  techDocumentNo?: unknown;
-  techRevision?: unknown;
-  techTransmittalNo?: unknown;
-  techSubmissionNo?: unknown;
-  techReviewResultCode?: unknown;
-  techReviewNote?: unknown;
-  techMeetingDate?: unknown;
 }
 
 export interface CommItemsFormDefaults {
@@ -86,22 +78,18 @@ function normalizeModule(value: unknown): string {
 
 function resolveItemType(input: { itemType?: unknown; moduleKey?: unknown; tabKey?: unknown }): CommItemType {
   const explicit = upperString(input.itemType);
-  if (explicit === "RFI" || explicit === "NCR" || explicit === "TECH") {
+  if (explicit === "RFI" || explicit === "NCR") {
     return explicit;
   }
 
   const moduleKey = normalizeModule(input.moduleKey);
   const tabKey = normalizeModule(input.tabKey);
   const mapping: Record<string, CommItemType> = {
-    "contractor:execution": "TECH",
     "contractor:requests": "RFI",
     "consultant:defects": "NCR",
-    "consultant:instructions": "TECH",
-    "consultant:inspection": "TECH",
-    "consultant:control": "TECH",
   };
 
-  return mapping[`${moduleKey}:${tabKey}`] || "TECH";
+  return mapping[`${moduleKey}:${tabKey}`] || "RFI";
 }
 
 function resolveDefaultTechSubtype(moduleKey: unknown, tabKey: unknown): string {
@@ -209,20 +197,6 @@ function validateForSubmit(input: CommItemsFormInput): string[] {
     }
   }
 
-  if (itemType === "TECH") {
-    const subtype = upperString(input.techSubtypeCode) || resolveDefaultTechSubtype(input.moduleKey, input.tabKey);
-    if (!subtype) errors.push("TECH subtype is required.");
-    if (statusCode === "SUBMITTED") {
-      if (!toInt(input.recipientOrgId)) errors.push("Recipient org is required for TECH SUBMITTED.");
-      if (!toIsoDate(input.responseDueDate)) errors.push("Response due date is required for TECH SUBMITTED.");
-    }
-    if (statusCode === "SUBMITTED" && subtype === "SUBMITTAL") {
-      if (!trimString(input.techDocumentNo)) errors.push("TECH document_no is required for SUBMITTAL.");
-      if (!trimString(input.techRevision)) errors.push("TECH revision is required for SUBMITTAL.");
-      if (!toIsoDate(input.responseDueDate)) errors.push("Response due date is required for TECH SUBMITTAL.");
-    }
-  }
-
   return errors;
 }
 
@@ -242,6 +216,7 @@ function basePayload(input: CommItemsFormInput): Record<string, unknown> {
     status_code: upperString(input.statusCode) || defaultStatusForType(itemType),
     priority: upperString(input.priority) || "NORMAL",
     response_due_date: toIsoDate(input.responseDueDate),
+    organization_id: toInt(input.organizationId),
     recipient_org_id: toInt(input.recipientOrgId),
     assignee_user_id: toInt(input.assigneeUserId),
     contract_clause_ref: trimString(input.contractClauseRef) || null,
@@ -262,7 +237,7 @@ function basePayload(input: CommItemsFormInput): Record<string, unknown> {
 
 function buildCreatePayload(input: CommItemsFormInput): Record<string, unknown> {
   const payload = basePayload(input);
-  const itemType = String(payload.item_type || "TECH") as CommItemType;
+  const itemType = String(payload.item_type || "RFI") as CommItemType;
 
   if (itemType === "RFI") {
     payload.rfi = {
@@ -284,21 +259,6 @@ function buildCreatePayload(input: CommItemsFormInput): Record<string, unknown> 
       rectification_method: trimString(input.ncrRectificationMethod) || null,
       verification_note: trimString(input.ncrVerificationNote) || null,
       verified_at: toIsoDate(input.ncrVerifiedAt),
-    };
-  }
-
-  if (itemType === "TECH") {
-    payload.tech = {
-      tech_subtype_code:
-        upperString(input.techSubtypeCode) || resolveDefaultTechSubtype(input.moduleKey, input.tabKey),
-      document_title: trimString(input.techDocumentTitle) || null,
-      document_no: trimString(input.techDocumentNo) || null,
-      revision: trimString(input.techRevision) || null,
-      transmittal_no: trimString(input.techTransmittalNo) || null,
-      submission_no: trimString(input.techSubmissionNo) || null,
-      review_result_code: upperString(input.techReviewResultCode) || null,
-      review_note: trimString(input.techReviewNote) || null,
-      meeting_date: toIsoDate(input.techMeetingDate),
     };
   }
 

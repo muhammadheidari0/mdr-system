@@ -5,17 +5,20 @@ from hashlib import sha256
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.api import dependencies
+from app.core.config import settings
 from app.core import security
-from app.core.organizations import OrganizationType
-from app.core.roles import Role, normalize_role
+from app.core.access_matrix import build_navigation_state
+from app.core.permission_catalog import permission_keys
 from app.db import models
 from app.schemas import auth as auth_schemas
 from app.services.access_control import resolve_effective_access
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+bearer_scheme = HTTPBearer(auto_error=False)
 
 @router.post("/login", response_model=auth_schemas.Token)
 async def login(
@@ -38,7 +41,7 @@ async def login(
             detail="حساب کاربری غیرفعال است"
         )
     
-    access_token_expires = timedelta(minutes=30)
+    access_token_expires = timedelta(minutes=max(1, int(settings.ACCESS_TOKEN_EXPIRE_MINUTES or 43200)))
     access = resolve_effective_access(user)
     
     # ساخت توکن
@@ -49,7 +52,17 @@ async def login(
     
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.get("/me", response_model=auth_schemas.UserResponse)
+
+@router.post("/logout")
+def logout(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(dependencies.get_db),
+):
+    if credentials and credentials.credentials:
+        dependencies.revoke_auth_session(db, credentials.credentials)
+    return {"ok": True}
+
+@router.get("/me", response_model=auth_schemas.AuthMeResponse)
 # اصلاح این خط: استفاده از dependencies.get_current_user به جای security.get_current_user
 def read_users_me(current_user: models.User = Depends(dependencies.get_current_user)):
     access = resolve_effective_access(current_user)
@@ -67,6 +80,8 @@ def read_users_me(current_user: models.User = Depends(dependencies.get_current_u
         "organization": current_user.organization,
         "is_active": current_user.is_active,
         "created_at": current_user.created_at,
+        "idle_timeout_minutes": dependencies.auth_idle_timeout_minutes(),
+        "heartbeat_interval_seconds": dependencies.auth_heartbeat_interval_seconds(),
     }
 
 
@@ -80,117 +95,32 @@ def get_navigation(
     user_role = access.effective_role
     category = access.permission_category
 
-    # --- ETag caching: return 304 if permissions haven't changed ---
-    etag_base = f"{user_role}:{category}:{getattr(current_user, 'organization_id', 0) or 0}"
-    etag = f'W/"{sha256(etag_base.encode()).hexdigest()[:16]}"'
+    # --- Bulk permission check: single DB round-trip ---
+    all_permissions = permission_keys()
+    p = dependencies.bulk_check_permissions_for_user(db, current_user, all_permissions)
+
+    # Cache key must track the effective permission set itself; otherwise a matrix
+    # update for the same role/category/user org can leave stale hub/tab visibility
+    # in the browser and produce 403s on first load.
+    granted_permissions = sorted(permission for permission, allowed in p.items() if allowed)
+    etag_payload = {
+        "user_id": getattr(current_user, "id", 0) or 0,
+        "organization_id": getattr(current_user, "organization_id", 0) or 0,
+        "role": user_role,
+        "category": category,
+        "granted": granted_permissions,
+    }
+    etag = f'W/"{sha256(json.dumps(etag_payload, sort_keys=True).encode()).hexdigest()[:16]}"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag})
 
-    # --- Bulk permission check: single DB round-trip instead of 22 queries ---
-    all_permissions = [
-        "module_settings:read",
-        "module_archive:read", "archive:read",
-        "module_transmittal:read", "transmittal:read",
-        "module_correspondence:read", "correspondence:read",
-        "module_reports:read", "reports:read",
-        "module_site_logs_contractor:read",
-        "module_comm_items_contractor:read",
-        "module_permit_qc_contractor:read",
-        "module_site_logs_consultant:read",
-        "module_comm_items_consultant:read",
-        "module_permit_qc_consultant:read",
-        "dashboard:read",
-        "hub_edms:read",
-        "hub_reports:read",
-        "hub_contractor:read",
-        "hub_consultant:read",
-        "users:read",
-        "users:create",
-        "users:update",
-        "users:delete",
-        "organizations:read",
-        "organizations:manage",
-        "permissions:read",
-        "permissions:update",
-        "permissions:audit_read",
-        "settings:read",
-        "settings:update",
-        "lookup:read",
-        "lookup:manage",
-        "storage:read",
-        "storage:update",
-        "storage:sync_manage",
-        "site_cache:read",
-        "site_cache:manage",
-        "integrations:read",
-        "integrations:update",
-    ]
-    p = dependencies.bulk_check_permissions_for_user(db, current_user, all_permissions)
-
-    module_settings_allowed = p["module_settings:read"]
-
-    modules = {
-        "edms": {
-            "archive": p["module_archive:read"] and p["archive:read"],
-            "transmittal": p["module_transmittal:read"] and p["transmittal:read"],
-            "correspondence": p["module_correspondence:read"] and p["correspondence:read"],
-        },
-        "reports": {
-            "overview": p["module_reports:read"] and p["reports:read"],
-        },
-        "contractor": {
-            "execution": p["module_site_logs_contractor:read"],
-            "requests": p["module_comm_items_contractor:read"],
-            "permit_qc": p["module_permit_qc_contractor:read"],
-        },
-        "consultant": {
-            "inspection": p["module_site_logs_consultant:read"],
-            "defects": p["module_comm_items_consultant:read"],
-            "instructions": p["module_comm_items_consultant:read"],
-            "control": p["module_comm_items_consultant:read"],
-            "permit_qc": p["module_permit_qc_consultant:read"],
-        },
-        "settings": {
-            "module_settings": module_settings_allowed,
-        },
-    }
-
-    hubs = {
-        "dashboard": p["dashboard:read"],
-        "edms": p["hub_edms:read"] and any(bool(v) for v in modules["edms"].values()),
-        "reports": p["hub_reports:read"] and bool(modules["reports"].get("overview")),
-        "contractor": p["hub_contractor:read"] and any(bool(v) for v in modules["contractor"].values()),
-        "consultant": p["hub_consultant:read"] and any(bool(v) for v in modules["consultant"].values()),
-    }
-
-    category_default_hub = {
-        OrganizationType.DCC.value: "edms",
-        OrganizationType.CONSULTANT.value: "consultant",
-        OrganizationType.EMPLOYER.value: "reports",
-        OrganizationType.CONTRACTOR.value: "contractor",
-        OrganizationType.SYSTEM.value: "dashboard",
-    }
-    default_hub = category_default_hub.get(category, "dashboard")
-    if not hubs.get(default_hub):
-        default_hub = next((key for key in ("dashboard", "edms", "reports", "contractor", "consultant") if hubs.get(key)), "dashboard")
-
-    tabs = {
-        "archive": bool(modules["edms"]["archive"]),
-        "transmittal": bool(modules["edms"]["transmittal"]),
-        "correspondence": bool(modules["edms"]["correspondence"]),
-        "reports": bool(modules["reports"]["overview"]),
-    }
-
-    role_default_map = {
-        Role.ADMIN.value: "archive",
-        Role.DCC.value: "transmittal",
-        Role.MANAGER.value: "transmittal",
-        Role.USER.value: "archive",
-        Role.VIEWER.value: "archive",
-    }
-    default_tab = role_default_map.get(user_role, "archive")
-    if not tabs.get(default_tab):
-        default_tab = next((key for key in ("archive", "transmittal", "correspondence", "reports") if tabs.get(key)), "archive")
+    navigation_state = build_navigation_state(
+        p,
+        category=category,
+        effective_role=user_role,
+    )
+    module_settings_visibility = navigation_state["module_settings_visibility"]
+    module_settings_allowed = any(bool(value) for value in module_settings_visibility.values())
 
     response_data = {
         "ok": True,
@@ -200,22 +130,25 @@ def get_navigation(
         "organization_type": access.organization_type,
         "is_system_admin": access.is_system_admin,
         "capabilities": p,
-        "hubs": hubs,
-        "default_hub": default_hub,
-        "modules": modules,
-        "edms_tabs": tabs,
-        "default_edms_tab": default_tab,
+        "hubs": navigation_state["hubs"],
+        "default_hub": navigation_state["default_hub"],
+        "modules": navigation_state["modules"],
+        "contractor_tabs": navigation_state["contractor_tabs"],
+        "consultant_tabs": navigation_state["consultant_tabs"],
+        "edms_tabs": navigation_state["edms_tabs"],
+        "default_edms_tab": navigation_state["default_edms_tab"],
         "module_settings": module_settings_allowed,
+        "module_settings_visibility": navigation_state["module_settings_visibility"],
     }
     # Backward compatibility for legacy clients expecting per-hub module-settings flags.
-    response_data["edms"] = module_settings_allowed
-    response_data["contractor"] = module_settings_allowed
-    response_data["consultant"] = module_settings_allowed
+    response_data["edms"] = bool(module_settings_visibility.get("edms"))
+    response_data["contractor"] = bool(module_settings_visibility.get("contractor"))
+    response_data["consultant"] = bool(module_settings_visibility.get("consultant"))
 
     return Response(
         content=json.dumps(response_data),
         media_type="application/json",
-        headers={"ETag": etag, "Cache-Control": "private, max-age=300"},
+        headers={"ETag": etag, "Cache-Control": "private, no-cache"},
     )
 
 

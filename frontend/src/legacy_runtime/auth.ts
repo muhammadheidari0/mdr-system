@@ -1,9 +1,20 @@
 ﻿// @ts-nocheck
 // Authentication Management
+const DEFAULT_AUTH_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
+const DEFAULT_AUTH_HEARTBEAT_MS = 5 * 60 * 1000;
+const AUTH_LAST_ACTIVITY_KEY = 'auth_last_activity_at';
+const AUTH_LAST_HEARTBEAT_KEY = 'auth_last_heartbeat_at';
+
 class AuthManager {
     constructor() {
         this.token = localStorage.getItem('access_token');
         this.user = null;
+        this.idleTimeoutMs = DEFAULT_AUTH_IDLE_TIMEOUT_MS;
+        this.heartbeatMs = DEFAULT_AUTH_HEARTBEAT_MS;
+        this.idleTimer = null;
+        this.activityListenersRegistered = false;
+        this.registerActivityListeners();
+        this.startIdleWatcher();
         this.init();
     }
 
@@ -29,16 +40,124 @@ class AuthManager {
         }
     }
 
+    ensureActivityTimestamp() {
+        if (!localStorage.getItem(AUTH_LAST_ACTIVITY_KEY)) {
+            localStorage.setItem(AUTH_LAST_ACTIVITY_KEY, String(Date.now()));
+        }
+    }
+
+    markActivity(options = {}) {
+        if (!this.token && !localStorage.getItem('access_token')) return;
+        localStorage.setItem(AUTH_LAST_ACTIVITY_KEY, String(Date.now()));
+        if (options.ping === false) return;
+        this.maybeSendHeartbeat();
+    }
+
+    isIdleExpired() {
+        const token = this.token || localStorage.getItem('access_token');
+        if (!token) return false;
+        if (!Number.isFinite(this.idleTimeoutMs) || this.idleTimeoutMs <= 0) return false;
+        const lastActivity = Number(localStorage.getItem(AUTH_LAST_ACTIVITY_KEY) || 0);
+        if (!Number.isFinite(lastActivity) || lastActivity <= 0) return false;
+        return Date.now() - lastActivity > this.idleTimeoutMs;
+    }
+
+    idleTimeoutMinutesLabel() {
+        const minutes = Math.max(1, Math.round(Number(this.idleTimeoutMs || DEFAULT_AUTH_IDLE_TIMEOUT_MS) / 60000));
+        return String(minutes);
+    }
+
+    idleTimeoutMessage() {
+        return `به دلیل ${this.idleTimeoutMinutesLabel()} دقیقه بی‌کاری از سامانه خارج شدید.`;
+    }
+
+    applySessionMetadata(payload = {}) {
+        const idleMinutes = Number(payload?.idle_timeout_minutes);
+        if (Number.isFinite(idleMinutes) && idleMinutes >= 0) {
+            this.idleTimeoutMs = idleMinutes > 0 ? idleMinutes * 60 * 1000 : 0;
+        }
+        const heartbeatSeconds = Number(payload?.heartbeat_interval_seconds);
+        if (Number.isFinite(heartbeatSeconds) && heartbeatSeconds >= 0) {
+            this.heartbeatMs = heartbeatSeconds > 0 ? heartbeatSeconds * 1000 : 0;
+        } else if (this.idleTimeoutMs > 0) {
+            this.heartbeatMs = Math.max(60000, Math.min(300000, Math.round(this.idleTimeoutMs / 2)));
+        }
+    }
+
+    registerActivityListeners() {
+        if (this.activityListenersRegistered) return;
+        this.activityListenersRegistered = true;
+        let lastMarkedAt = 0;
+        const mark = () => {
+            const now = Date.now();
+            if (now - lastMarkedAt < 15000) return;
+            lastMarkedAt = now;
+            this.markActivity();
+        };
+        ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach((eventName) => {
+            window.addEventListener(eventName, mark, { passive: true });
+        });
+    }
+
+    startIdleWatcher() {
+        if (this.idleTimer) window.clearInterval(this.idleTimer);
+        this.idleTimer = window.setInterval(() => {
+            if (this.isIdleExpired()) {
+                if (window.UI && typeof window.UI.warning === 'function') {
+                    window.UI.warning(this.idleTimeoutMessage());
+                }
+                this.logout({ notifyServer: true });
+            }
+        }, 60000);
+    }
+
+    async maybeSendHeartbeat(force = false) {
+        const token = this.token || localStorage.getItem('access_token');
+        if (!token) return;
+        if (this.isIdleExpired()) {
+            this.logout({ notifyServer: true });
+            return;
+        }
+        const now = Date.now();
+        const lastHeartbeat = Number(localStorage.getItem(AUTH_LAST_HEARTBEAT_KEY) || 0);
+        if (!force && (!Number.isFinite(this.heartbeatMs) || this.heartbeatMs <= 0)) return;
+        if (!force && Number.isFinite(lastHeartbeat) && now - lastHeartbeat < this.heartbeatMs) return;
+        localStorage.setItem(AUTH_LAST_HEARTBEAT_KEY, String(now));
+        try {
+            const response = await fetch('/api/v1/auth/me', {
+                headers: { 'Authorization': `Bearer ${token}`, 'X-User-Activity': '1' },
+                cache: 'no-store',
+            });
+            if (response.ok) {
+                const body = await response.clone().json().catch(() => null);
+                if (body) this.applySessionMetadata(body);
+            }
+            if (response.status === 401) {
+                this.logout({ notifyServer: false });
+            }
+        } catch (error) {
+            console.warn('Auth heartbeat failed:', error);
+        }
+    }
+
     async validateToken() {
+        this.ensureActivityTimestamp();
+        if (this.isIdleExpired()) {
+            this.logout({ notifyServer: true });
+            return;
+        }
         try {
             const response = await fetch('/api/v1/auth/me', {
                 headers: {
-                    'Authorization': `Bearer ${this.token}`
+                    'Authorization': `Bearer ${this.token}`,
+                    'X-User-Activity': '1',
                 }
             });
 
             if (response.ok) {
+                localStorage.setItem(AUTH_LAST_HEARTBEAT_KEY, String(Date.now()));
                 const userData = await response.json();
+                this.applySessionMetadata(userData);
                 this.user = userData;
                 this.updateUI();
                 this.showAdminMenuIfAdmin();
@@ -91,6 +210,7 @@ class AuthManager {
         if (key === 'admin') return 'مدیر سیستم';
         if (key === 'manager') return 'سرپرست';
         if (key === 'dcc') return 'کنترل مدارک';
+        if (key === 'project_control') return 'کنترل پروژه';
         if (key === 'viewer') return 'مشاهده‌گر';
         return 'کاربر';
     }
@@ -125,6 +245,8 @@ class AuthManager {
             if (response.ok) {
                 this.token = data.access_token;
                 localStorage.setItem('access_token', this.token);
+                localStorage.setItem(AUTH_LAST_ACTIVITY_KEY, String(Date.now()));
+                localStorage.setItem(AUTH_LAST_HEARTBEAT_KEY, '0');
                 
                 // Ã˜Â¯Ã˜Â±Ã›Å’Ã˜Â§Ã™ÂÃ˜Âª Ã˜Â§Ã˜Â·Ã™â€žÃ˜Â§Ã˜Â¹Ã˜Â§Ã˜Âª ÃšÂ©Ã˜Â§Ã˜Â±Ã˜Â¨Ã˜Â±
                 await this.validateToken();
@@ -139,9 +261,18 @@ class AuthManager {
         }
     }
 
-    logout() {
+    logout(options = {}) {
+        const token = this.token || localStorage.getItem('access_token');
+        if (options.notifyServer !== false && token) {
+            fetch('/api/v1/auth/logout', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+            }).catch(() => undefined);
+        }
         // Ã˜Â­Ã˜Â°Ã™Â Ã˜ÂªÃ™Ë†ÃšÂ©Ã™â€  Ã˜Â§Ã˜Â² localStorage
         localStorage.removeItem('access_token');
+        localStorage.removeItem(AUTH_LAST_ACTIVITY_KEY);
+        localStorage.removeItem(AUTH_LAST_HEARTBEAT_KEY);
         
         // Ã™Â¾Ã˜Â§ÃšÂ© ÃšÂ©Ã˜Â±Ã˜Â¯Ã™â€  Ã˜Â§Ã˜Â·Ã™â€žÃ˜Â§Ã˜Â¹Ã˜Â§Ã˜Âª ÃšÂ©Ã˜Â§Ã˜Â±Ã˜Â¨Ã˜Â±
         this.token = null;
@@ -258,22 +389,46 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Central authenticated request helper
 async function fetchWithAuth(url, options = {}) {
-    const headers = options.headers instanceof Headers
-        ? new Headers(options.headers)
-        : new Headers(options.headers || {});
+    if (window.authManager && typeof window.authManager.isIdleExpired === 'function' && window.authManager.isIdleExpired()) {
+        if (window.UI && typeof window.UI.warning === 'function') {
+            window.UI.warning(
+                typeof window.authManager.idleTimeoutMessage === 'function'
+                    ? window.authManager.idleTimeoutMessage()
+                    : 'Session idle timeout'
+            );
+        }
+        window.authManager.logout({ notifyServer: true });
+        throw new Error('Session idle timeout');
+    }
+    const originalOptions = options || {};
+    const { authActivity, ...fetchOptions } = originalOptions;
+    const headers = originalOptions.headers instanceof Headers
+        ? new Headers(originalOptions.headers)
+        : new Headers(originalOptions.headers || {});
     const token = localStorage.getItem('access_token');
+    let usingJwtToken = false;
 
     if (token && !headers.has('Authorization')) {
         headers.set('Authorization', `Bearer ${token}`);
+        usingJwtToken = true;
+    } else if (token && String(headers.get('Authorization') || '').trim() === `Bearer ${token}`) {
+        usingJwtToken = true;
     }
 
-    if (!(options.body instanceof FormData) && !headers.has('Content-Type')) {
+    if (usingJwtToken && authActivity !== false && !headers.has('X-User-Activity')) {
+        headers.set('X-User-Activity', '1');
+        if (window.authManager && typeof window.authManager.markActivity === 'function') {
+            window.authManager.markActivity({ ping: false });
+        }
+    }
+
+    if (!(originalOptions.body instanceof FormData) && !headers.has('Content-Type')) {
         headers.set('Content-Type', 'application/json');
     }
 
-    const config = { ...options, headers };
-    const max429Retries = Number.isFinite(options.max429Retries) ? Number(options.max429Retries) : 0;
-    const base429DelayMs = Number.isFinite(options.base429DelayMs) ? Number(options.base429DelayMs) : 700;
+    const config = { ...fetchOptions, headers };
+    const max429Retries = Number.isFinite(originalOptions.max429Retries) ? Number(originalOptions.max429Retries) : 0;
+    const base429DelayMs = Number.isFinite(originalOptions.base429DelayMs) ? Number(originalOptions.base429DelayMs) : 700;
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
     function parseRetryAfterMs(response, fallbackMs) {
@@ -305,7 +460,12 @@ async function fetchWithAuth(url, options = {}) {
 
         if (response.status === 401) {
             UI.error('Your session has expired. Please login again.');
-            setTimeout(() => window.location.href = '/login', 2000);
+            if (window.authManager && typeof window.authManager.logout === 'function') {
+                window.authManager.logout({ notifyServer: false });
+            } else {
+                localStorage.removeItem('access_token');
+                setTimeout(() => window.location.href = '/login', 2000);
+            }
             throw new Error('Unauthorized');
         }
 

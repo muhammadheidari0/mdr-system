@@ -142,6 +142,7 @@ def test_regression_settings_storage_paths_roundtrip(admin_headers: dict[str, st
         restore_payload = {
             "mdr_storage_path": before.get("mdr_storage_path") or "./files/technical",
             "correspondence_storage_path": before.get("correspondence_storage_path") or "./files/correspondence",
+            "site_log_storage_path": before.get("site_log_storage_path") or "",
         }
         restore_res = client.post(
             "/api/v1/settings/storage-paths",
@@ -172,6 +173,7 @@ def test_regression_correspondence_tables_exist() -> None:
         "correspondences",
         "correspondence_actions",
         "correspondence_attachments",
+        "correspondence_tag_assignments",
         "issuing_entities",
         "correspondence_categories",
     }
@@ -189,10 +191,22 @@ def test_regression_correspondence_tables_exist() -> None:
     attachment_columns = {
         str(col["name"]) for col in inspector.get_columns("correspondence_attachments")
     }
+    tag_assignment_columns = {
+        str(col["name"]) for col in inspector.get_columns("correspondence_tag_assignments")
+    }
     corr_indexes = {str(idx["name"]): bool(idx.get("unique", False)) for idx in inspector.get_indexes("correspondences")}
     corr_uniques = {
         str(item.get("name"))
         for item in inspector.get_unique_constraints("correspondences")
+        if item.get("name")
+    }
+    tag_assignment_indexes = {
+        str(idx["name"]): bool(idx.get("unique", False))
+        for idx in inspector.get_indexes("correspondence_tag_assignments")
+    }
+    tag_assignment_uniques = {
+        str(item.get("name"))
+        for item in inspector.get_unique_constraints("correspondence_tag_assignments")
         if item.get("name")
     }
 
@@ -228,12 +242,142 @@ def test_regression_correspondence_tables_exist() -> None:
         "uploaded_by_id",
     ):
         assert required in attachment_columns
+    for required in (
+        "correspondence_id",
+        "tag_id",
+        "assigned_by_id",
+        "assigned_at",
+    ):
+        assert required in tag_assignment_columns
     assert (
         "uq_correspondences_reference_no" in corr_indexes
         or "uq_correspondences_reference_no" in corr_uniques
     )
     if "uq_correspondences_reference_no" in corr_indexes:
         assert corr_indexes["uq_correspondences_reference_no"] is True
+    assert (
+        "uq_corr_tag_assignment" in tag_assignment_indexes
+        or "uq_corr_tag_assignment" in tag_assignment_uniques
+    )
+
+
+def test_regression_correspondence_tags_settings_and_runtime_flow(
+    admin_headers: dict[str, str],
+) -> None:
+    from app.db.models import Correspondence, CorrespondenceTagAssignment, DocumentTag, Project
+
+    project_code = f"CT{uuid.uuid4().hex[:6].upper()}"
+    reference_no = f"{project_code}-CO-O-{uuid.uuid4().hex[:7].upper()}"
+    subject = f"Regression tag flow {uuid.uuid4().hex[:6]}"
+    tag_name = f"Regression Tag {uuid.uuid4().hex[:6]}"
+    next_tag_name = f"Regression Tag {uuid.uuid4().hex[:6]}"
+    correspondence_id: int | None = None
+    tag_ids: list[int] = []
+
+    with Session(engine) as db:
+        project = db.query(Project).filter(Project.code == project_code).first()
+        if not project:
+            db.add(Project(code=project_code, name_e=f"Project {project_code}", is_active=True))
+            db.commit()
+
+    try:
+        create_tag = client.post(
+            "/api/v1/settings/correspondence-tags/upsert",
+            json={"name": tag_name, "color": "#22AA88"},
+            headers=admin_headers,
+        )
+        assert create_tag.status_code == 200, create_tag.text
+        first_tag_id = int(create_tag.json().get("id") or 0)
+        assert first_tag_id > 0
+        tag_ids.append(first_tag_id)
+
+        create_next_tag = client.post(
+            "/api/v1/settings/correspondence-tags/upsert",
+            json={"name": next_tag_name, "color": "#2563EB"},
+            headers=admin_headers,
+        )
+        assert create_next_tag.status_code == 200, create_next_tag.text
+        second_tag_id = int(create_next_tag.json().get("id") or 0)
+        assert second_tag_id > 0
+        tag_ids.append(second_tag_id)
+
+        settings_tags = client.get("/api/v1/settings/correspondence-tags", headers=admin_headers)
+        assert settings_tags.status_code == 200, settings_tags.text
+        settings_items = settings_tags.json().get("items") or []
+        assert any(int(item.get("id") or 0) == first_tag_id for item in settings_items)
+        assert any(int(item.get("id") or 0) == second_tag_id for item in settings_items)
+
+        catalog_res = client.get("/api/v1/correspondence/catalog", headers=admin_headers)
+        assert catalog_res.status_code == 200, catalog_res.text
+        catalog_tags = catalog_res.json().get("tags") or []
+        assert any(int(item.get("id") or 0) == first_tag_id for item in catalog_tags)
+        assert any(int(item.get("id") or 0) == second_tag_id for item in catalog_tags)
+
+        create_corr = client.post(
+            "/api/v1/correspondence/create",
+            json={
+                "project_code": project_code,
+                "issuing_code": project_code,
+                "category_code": "CO",
+                "doc_type": "Correspondence",
+                "direction": "O",
+                "reference_no": reference_no,
+                "subject": subject,
+                "sender": "QA",
+                "recipient": "PMO",
+                "status": "Open",
+                "priority": "Normal",
+                "tag_id": first_tag_id,
+            },
+            headers=admin_headers,
+        )
+        assert create_corr.status_code == 200, create_corr.text
+        created_item = (create_corr.json().get("data") or {})
+        correspondence_id = int(created_item.get("id") or 0)
+        assert correspondence_id > 0
+        assert int(created_item.get("tag_id") or 0) == first_tag_id
+        assert first_tag_id in [int(value) for value in (created_item.get("tag_ids") or [])]
+
+        update_corr = client.put(
+            f"/api/v1/correspondence/{correspondence_id}",
+            json={"tag_id": second_tag_id, "status": "Closed"},
+            headers=admin_headers,
+        )
+        assert update_corr.status_code == 200, update_corr.text
+        updated_item = (update_corr.json().get("data") or {})
+        assert updated_item.get("status") == "Closed"
+        assert int(updated_item.get("tag_id") or 0) == second_tag_id
+        assert [int(value) for value in (updated_item.get("tag_ids") or [])] == [second_tag_id]
+
+        list_res = client.get(
+            f"/api/v1/correspondence/list?project_code={project_code}&tag_id={second_tag_id}",
+            headers=admin_headers,
+        )
+        assert list_res.status_code == 200, list_res.text
+        listed_items = list_res.json().get("data") or []
+        matched = next(
+            (item for item in listed_items if int(item.get("id") or 0) == correspondence_id),
+            None,
+        )
+        assert matched is not None
+        assert int(matched.get("tag_id") or 0) == second_tag_id
+    finally:
+        with Session(engine) as db:
+            if correspondence_id is not None:
+                db.query(CorrespondenceTagAssignment).filter(
+                    CorrespondenceTagAssignment.correspondence_id == correspondence_id
+                ).delete(synchronize_session=False)
+                db.query(Correspondence).filter(Correspondence.id == correspondence_id).delete(
+                    synchronize_session=False
+                )
+            if tag_ids:
+                db.query(DocumentTag).filter(DocumentTag.id.in_(tag_ids)).delete(
+                    synchronize_session=False
+                )
+            db.query(Project).filter(Project.code == project_code).delete(
+                synchronize_session=False
+            )
+            db.commit()
 
 
 def test_regression_correspondence_c2_router_flow() -> None:
@@ -674,6 +818,93 @@ def test_regression_archive_dual_upload_links_files(admin_headers: dict[str, str
                 os.remove(path)
             except Exception:
                 pass
+
+
+def test_regression_archive_native_only_upload_is_listed(admin_headers: dict[str, str]) -> None:
+    from app.db.models import ArchiveFile, DocumentRevision, MdrDocument, Project
+
+    project_code = f"TN{uuid.uuid4().hex[:6].upper()}"
+    doc_number = f"{project_code}-EGN0001-TGEN"
+
+    created_project = False
+    native_path: str | None = None
+    native_file_id: int | None = None
+    doc_id: int | None = None
+
+    with Session(engine) as db:
+        project = db.query(Project).filter(Project.code == project_code).first()
+        if not project:
+            project = Project(code=project_code, name_e=f"Native Only {project_code}", is_active=True)
+            db.add(project)
+            created_project = True
+
+        doc = MdrDocument(
+            doc_number=doc_number,
+            doc_title_e=f"Native Only Upload {project_code}",
+            subject=f"Native Only Upload {project_code}",
+            project_code=project_code,
+            mdr_code="E",
+            discipline_code=None,
+            package_code=None,
+            block="T",
+            level_code=None,
+        )
+        db.add(doc)
+        db.commit()
+        db.refresh(doc)
+        doc_id = doc.id
+
+    files = {"file": ("native-only.dwg", io.BytesIO(b"native-only-content"), "application/octet-stream")}
+    payload = {"document_id": str(doc_id), "revision": "N1", "status": "IFA", "file_kind": "native"}
+    response = client.post("/api/v1/archive/upload", data=payload, files=files, headers=admin_headers)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body.get("ok") is True
+    native_file_id = body.get("file_id")
+    assert isinstance(native_file_id, int)
+
+    with Session(engine) as db:
+        native_row = db.query(ArchiveFile).filter(ArchiveFile.id == native_file_id).first()
+        assert native_row is not None
+        assert native_row.file_kind == "native"
+        assert bool(native_row.is_primary) is True
+        native_path = native_row.stored_path
+
+    list_res = client.get(f"/api/v1/archive/list?project_code={project_code}&limit=200", headers=admin_headers)
+    assert list_res.status_code == 200, list_res.text
+    rows = list_res.json().get("data", [])
+    row_for_doc = next((r for r in rows if r.get("document_id") == doc_id), None)
+    assert row_for_doc is not None
+    assert row_for_doc.get("file_kind") == "native"
+    assert row_for_doc.get("pdf_file_id") is None
+    assert row_for_doc.get("native_file_id") == native_file_id
+    assert row_for_doc.get("native_file_name")
+
+    with Session(engine) as db:
+        if native_file_id is not None:
+            row = db.query(ArchiveFile).filter(ArchiveFile.id == native_file_id).first()
+            if row:
+                db.delete(row)
+
+        if doc_id is not None:
+            revs = db.query(DocumentRevision).filter(DocumentRevision.document_id == doc_id).all()
+            for rev in revs:
+                db.delete(rev)
+            doc = db.query(MdrDocument).filter(MdrDocument.id == doc_id).first()
+            if doc:
+                db.delete(doc)
+
+        if created_project:
+            project = db.query(Project).filter(Project.code == project_code).first()
+            if project:
+                db.delete(project)
+        db.commit()
+
+    if native_path and os.path.exists(native_path):
+        try:
+            os.remove(native_path)
+        except Exception:
+            pass
 
 
 def test_regression_permissions_scope_roundtrip(admin_headers: dict[str, str]) -> None:
@@ -1514,6 +1745,34 @@ def test_regression_build_titles_uses_block_plus_level_for_title_p(admin_headers
             subject_p="موضوع تست",
         )
         assert title_p.startswith(f"{seed['block']}{level.code}-")
+
+
+def test_regression_build_titles_omits_location_only_for_t_gen(admin_headers: dict[str, str]) -> None:
+    seed = _archive_seed_values(admin_headers)
+    with Session(engine) as db:
+        title_e, title_p = mdr_service.build_document_titles(
+            db,
+            discipline_code=seed["discipline"],
+            package_code=seed["pkg"],
+            block_code="T",
+            level_code="GEN",
+            subject_e="Subject",
+            subject_p="Subject",
+        )
+        assert "TGEN" not in title_e
+        assert not title_p.startswith("TGEN-")
+
+        title_e, title_p = mdr_service.build_document_titles(
+            db,
+            discipline_code=seed["discipline"],
+            package_code=seed["pkg"],
+            block_code="B",
+            level_code="GEN",
+            subject_e="Subject",
+            subject_p="Subject",
+        )
+        assert "-BGEN" in title_e
+        assert title_p.startswith("BGEN-")
 
 
 def test_regression_build_titles_normalizes_prefixed_package_code(admin_headers: dict[str, str]) -> None:

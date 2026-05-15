@@ -5,7 +5,7 @@
                 <span class="material-icons-round settings-shell-icon">construction</span>
                 <div>
                     <h2 class="settings-shell-title">تنظیمات داخلی فرم‌ها و اجرا (پیمانکار)</h2>
-                    <p class="settings-shell-subtitle">فهرست‌های داخلی گزارش کارگاهی در این بخش مدیریت می‌شوند و مستقیماً در فرم ثبت گزارش استفاده خواهند شد.</p>
+                    <p class="settings-shell-subtitle">فهرست‌های پایه گزارش کارگاهی در این بخش مدیریت می‌شوند و مستقیم در فرم ثبت گزارش استفاده خواهند شد.</p>
                 </div>
             </div>
             <div class="settings-shell-badges">
@@ -20,16 +20,42 @@
             </div>
         </div>
 
-        <div class="settings-shell-panels">
-            <div class="general-settings-note general-settings-note-info">
-                <span class="material-icons-round">info</span>
-                <div>
-                    عنوان نقش، عنوان تجهیز و وضعیت اعلامی در فرم گزارش کارگاهی از این فهرست‌ها خوانده می‌شوند.
-                    حذف در این بخش به‌صورت غیرفعال‌سازی انجام می‌شود.
-                </div>
-            </div>
+        <div class="settings-shell-nav module-settings-nav" role="tablist" aria-label="Contractor Module Settings Navigation">
+            <button
+                type="button"
+                class="settings-nav-card active"
+                data-contractor-settings-tab="report-settings"
+                role="tab"
+                aria-selected="true"
+                aria-controls="contractor-settings-tab-report-settings"
+            >
+                <span class="material-icons-round settings-nav-card-icon">assignment</span>
+                <span class="settings-nav-card-copy">
+                    <span class="settings-nav-card-title">تنظیمات داخلی گزارش</span>
+                    <span class="settings-nav-card-subtitle">کاتالوگ‌های گزارش پیمانکار</span>
+                </span>
+            </button>
+        </div>
 
-            <div id="contractorSiteLogCatalogsRoot" class="contractor-settings-catalogs-root"></div>
+        <div class="settings-shell-panels">
+            <section
+                id="contractor-settings-tab-report-settings"
+                class="module-settings-tab-content active"
+                data-contractor-settings-tab-content="report-settings"
+                role="tabpanel"
+                aria-hidden="false"
+            >
+                <div class="general-settings-note general-settings-note-info">
+                    <span class="material-icons-round">info</span>
+                    <div>
+                        عنوان نقش، واحد / بخش کاری نفرات، عنوان تجهیز، وضعیت تجهیز، نوع موانع و نوع پیوست گزارش کارگاهی از این بخش خوانده می‌شوند.
+                        کاتالوگ فعالیت‌های اجرایی به تنظیمات داخلی نظارت و کنترل پروژه (مشاور) منتقل شده است.
+                        حذف در این بخش به‌صورت غیرفعال‌سازی انجام می‌شود.
+                    </div>
+                </div>
+
+                <div id="contractorSiteLogCatalogsRoot" class="contractor-settings-catalogs-root"></div>
+            </section>
         </div>
     </div>
 </div>

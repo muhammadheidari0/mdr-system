@@ -71,28 +71,13 @@ def test_comm_items_reports_return_expected_candidates_and_cycles() -> None:
         "status_code": "SUBMITTED",
         "recipient_org_id": org_id,
         "response_due_date": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%dT00:00:00"),
+        "potential_impact_cost": True,
         "rfi": {
             "question_text": "Please clarify this overdue item request to validate report behavior.",
         },
     }
     overdue_res = client.post("/api/v1/comm-items/create", json=overdue_rfi_payload, headers=headers)
     assert overdue_res.status_code == 200, overdue_res.text
-
-    impact_tech_payload = {
-        "item_type": "TECH",
-        "project_code": project_code,
-        "discipline_code": discipline_code,
-        "title": f"TECH impact {uuid4().hex[:6]}",
-        "status_code": "DRAFT",
-        "potential_impact_cost": True,
-        "tech": {
-            "tech_subtype_code": "INSTRUCTION",
-            "document_no": f"DOC-{uuid4().hex[:4].upper()}",
-            "revision": "A",
-        },
-    }
-    impact_res = client.post("/api/v1/comm-items/create", json=impact_tech_payload, headers=headers)
-    assert impact_res.status_code == 200, impact_res.text
 
     answered_rfi_payload = {
         "item_type": "RFI",

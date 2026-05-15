@@ -1,7 +1,8 @@
 // @ts-nocheck
 (() => {
     const API_BASE = '/api/v1/settings/organizations';
-    const TABLE_COLSPAN = 9;
+    const BLOCKS_API = '/api/v1/settings/blocks';
+    const TABLE_COLSPAN = 10;
     const SEARCH_DEBOUNCE_MS = 180;
     const DEFAULT_PAGE_SIZE = 20;
 
@@ -10,7 +11,10 @@
         loading: false,
         bound: false,
         bulkRegistered: false,
+        blocksLoaded: false,
+        blocksLoadingPromise: null,
         items: [],
+        blockItems: [],
         filtered: [],
         page: 1,
         pageSize: DEFAULT_PAGE_SIZE,
@@ -134,6 +138,7 @@
                     org_type: norm(row.org_type).toLowerCase(),
                     parent_id: row.parent_id == null ? null : Number(row.parent_id),
                     is_active: true,
+                    contracts: cloneContractsForRequest(row.contracts),
                 }),
             });
         } else if (actionId === 'org-bulk-hard-delete') {
@@ -240,6 +245,187 @@
         return normUpper(item && item.code) === 'SYSTEM_ROOT';
     }
 
+    function cloneContractsForRequest(contracts = []) {
+        return (Array.isArray(contracts) ? contracts : []).map((item) => {
+            const id = normId(item && item.id);
+            const blockId = normId(item && item.block_id);
+            return {
+                id: id ? Number(id) : null,
+                contract_number: norm(item && item.contract_number),
+                subject: norm(item && item.subject),
+                block_id: blockId ? Number(blockId) : null,
+            };
+        });
+    }
+
+    function blockLabel(item) {
+        if (!item) return '';
+        const primary = [norm(item.project_code), norm(item.code)].filter(Boolean).join(' / ');
+        const title = norm(item.name_p || item.name_e);
+        if (!primary) return title;
+        return title ? `${primary} - ${title}` : primary;
+    }
+
+    async function ensureBlocksLoaded(force = false) {
+        if (state.blocksLoaded && !force) return;
+        if (state.blocksLoadingPromise && !force) {
+            await state.blocksLoadingPromise;
+            return;
+        }
+
+        state.blocksLoadingPromise = (async () => {
+            const payload = await request(BLOCKS_API);
+            const items = Array.isArray(payload && payload.items) ? payload.items : [];
+            state.blockItems = items
+                .map((item) => ({
+                    id: Number(item && item.id ? item.id : 0),
+                    project_code: norm(item && item.project_code),
+                    code: norm(item && item.code),
+                    name_e: norm(item && item.name_e),
+                    name_p: norm(item && item.name_p),
+                    is_active: Boolean(item && item.is_active),
+                }))
+                .filter((item) => item.id > 0)
+                .sort((left, right) => {
+                    const leftKey = `${norm(left.project_code).toLowerCase()}|${norm(left.code).toLowerCase()}`;
+                    const rightKey = `${norm(right.project_code).toLowerCase()}|${norm(right.code).toLowerCase()}`;
+                    return leftKey.localeCompare(rightKey);
+                });
+            state.blocksLoaded = true;
+        })();
+
+        try {
+            await state.blocksLoadingPromise;
+        } finally {
+            state.blocksLoadingPromise = null;
+        }
+    }
+
+    function contractRowHtml(contract = {}) {
+        const contractId = normId(contract && contract.id);
+        const selectedBlockId = normId(contract && contract.block_id);
+        const selectedBlock = state.blockItems.find((item) => normId(item && item.id) === selectedBlockId) || null;
+        const fallbackBlockLabel = norm(contract && (contract.block_label || contract.block_code));
+        const blockOptions = state.blockItems.map((item) => {
+            const itemId = normId(item.id);
+            const label = blockLabel(item);
+            return `<option value="${esc(itemId)}" ${itemId === selectedBlockId ? 'selected' : ''}>${esc(label)}</option>`;
+        }).join('');
+        const fallbackOption = selectedBlockId && !selectedBlock
+            ? `<option value="${esc(selectedBlockId)}" selected>${esc(fallbackBlockLabel || `Block ${selectedBlockId}`)}</option>`
+            : '';
+
+        return `
+            <div class="organization-contract-card" data-org-contract-row>
+                <input type="hidden" data-contract-field="id" value="${esc(contractId)}">
+                <div class="organization-contract-grid">
+                    <div class="form-group">
+                        <label class="form-label-sm">شماره قرارداد</label>
+                        <input type="text" class="form-input" data-contract-field="contract_number" value="${esc(contract && contract.contract_number)}" placeholder="مثال: CNT-1403-01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label-sm">موضوع قرارداد</label>
+                        <input type="text" class="form-input" data-contract-field="subject" value="${esc(contract && contract.subject)}" placeholder="موضوع قرارداد">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label-sm">بلوک</label>
+                        <select class="form-input" data-contract-field="block_id">
+                            <option value="">- بدون بلوک -</option>
+                            ${fallbackOption}
+                            ${blockOptions}
+                        </select>
+                    </div>
+                </div>
+                <div class="organization-contract-actions">
+                    <button type="button" class="btn-archive-icon" data-org-action="remove-contract-row">
+                        <span class="material-icons-round">delete</span>
+                        حذف قرارداد
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderContractRows(contracts = []) {
+        const list = document.getElementById('organizationContractsList');
+        if (!list) return;
+        const rows = Array.isArray(contracts) && contracts.length ? contracts : [{}];
+        list.innerHTML = rows.map((item) => contractRowHtml(item)).join('');
+    }
+
+    function addContractRow(contract = {}) {
+        const list = document.getElementById('organizationContractsList');
+        if (!list) return;
+        if (list.querySelector('.organization-contract-empty')) {
+            list.innerHTML = '';
+        }
+        list.insertAdjacentHTML('beforeend', contractRowHtml(contract));
+    }
+
+    function removeContractRow(buttonEl) {
+        const row = buttonEl && buttonEl.closest ? buttonEl.closest('[data-org-contract-row]') : null;
+        if (row && row.parentNode) {
+            row.parentNode.removeChild(row);
+        }
+        const list = document.getElementById('organizationContractsList');
+        if (list && !list.querySelector('[data-org-contract-row]')) {
+            renderContractRows([]);
+        }
+    }
+
+    function collectOrganizationContracts() {
+        const rows = Array.from(document.querySelectorAll('#organizationContractsList [data-org-contract-row]'));
+        return rows.map((row) => {
+            const id = normId(row.querySelector('[data-contract-field="id"]')?.value || '');
+            const contractNumber = norm(row.querySelector('[data-contract-field="contract_number"]')?.value || '');
+            const subject = norm(row.querySelector('[data-contract-field="subject"]')?.value || '');
+            const blockId = normId(row.querySelector('[data-contract-field="block_id"]')?.value || '');
+
+            if (!contractNumber && !subject && !blockId) return null;
+            if (!contractNumber) {
+                throw new Error('Contract number is required for each contract row.');
+            }
+            if (!subject) {
+                throw new Error('Contract subject is required for each contract row.');
+            }
+
+            return {
+                id: id ? Number(id) : null,
+                contract_number: contractNumber,
+                subject,
+                block_id: blockId ? Number(blockId) : null,
+            };
+        }).filter(Boolean);
+    }
+
+    function closeAllOrganizationActionMenus() {
+        const root = document.getElementById('settingsOrganizationsTabRoot');
+        if (!root || !root.querySelectorAll) return;
+        root.querySelectorAll('.users-kebab-menu.show').forEach((menu) => menu.classList.remove('show'));
+        root.querySelectorAll('.users-kebab-btn[aria-expanded="true"]').forEach((btn) => btn.setAttribute('aria-expanded', 'false'));
+    }
+
+    function toggleOrganizationActionMenu(event, organizationId) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+
+        const id = normId(organizationId);
+        if (!id) return;
+        const menu = document.getElementById(`organizationsActionMenu-${id}`);
+        if (!menu) return;
+
+        const shouldOpen = !menu.classList.contains('show');
+        closeAllOrganizationActionMenus();
+        if (!shouldOpen) return;
+
+        menu.classList.add('show');
+        if (event && event.currentTarget) {
+            event.currentTarget.setAttribute('aria-expanded', 'true');
+        }
+    }
+
     function renderParentOptions(selectedId = '', excludeId = '') {
         const parentSelect = document.getElementById('organizationParentId');
         if (!parentSelect) return;
@@ -293,12 +479,16 @@
         state.filtered = state.items.filter((item) => {
             const itemType = norm(item && item.org_type).toLowerCase();
             const active = Boolean(item && item.is_active);
+            const contractText = Array.isArray(item && item.contracts)
+                ? item.contracts.map((contract) => [contract && contract.contract_number, contract && contract.subject].join(' ')).join(' ')
+                : '';
             const haystack = [
                 item && item.code,
                 item && item.name,
                 item && item.parent_code,
                 item && item.parent_name,
                 itemType,
+                contractText,
             ].join(' ').toLowerCase();
 
             if (q && !haystack.includes(q)) return false;
@@ -341,6 +531,47 @@
             : '<span class="status-badge inactive">ØºÛŒØ±ÙØ¹Ø§Ù„</span>';
     }
 
+    function buildOrganizationContractsSummary(item) {
+        const contracts = Array.isArray(item && item.contracts) ? item.contracts.filter(Boolean) : [];
+        const organizationId = Number(item && item.id ? item.id : 0);
+        if (!contracts.length) {
+            return `
+                <button type="button" class="org-contract-trigger is-empty" data-org-action="open-organization-contracts" data-org-id="${organizationId}">
+                    <div class="org-contract-cell is-empty">بدون قرارداد</div>
+                </button>
+            `;
+        }
+
+        const previewRows = contracts.slice(0, 2).map((contract) => {
+            const parts = [norm(contract && contract.contract_number), norm(contract && contract.subject)].filter(Boolean);
+            const blockText = norm(contract && (contract.block_label || contract.block_code));
+            const title = parts.join(' - ') || 'قرارداد';
+            return `
+                <div class="org-contract-preview-row">
+                    <span class="org-contract-preview-title">${esc(title)}</span>
+                    ${blockText ? `<span class="org-contract-preview-meta">${esc(blockText)}</span>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        const moreCount = Math.max(0, contracts.length - 2);
+        const moreText = moreCount > 0
+            ? `<span class="org-contract-preview-more">+${moreCount} قرارداد دیگر</span>`
+            : '';
+
+        return `
+            <button type="button" class="org-contract-trigger" data-org-action="open-organization-contracts" data-org-id="${organizationId}">
+                <div class="org-contract-cell">
+                    <span class="org-contract-count">${contracts.length} قرارداد</span>
+                    <div class="org-contract-preview-list">
+                        ${previewRows}
+                    </div>
+                    ${moreText}
+                </div>
+            </button>
+        `;
+    }
+
     function renderOrganizationsTable() {
         const body = document.getElementById('organizationsTableBody');
         const meta = document.getElementById('organizationsTableMeta');
@@ -348,6 +579,7 @@
         const nextBtn = document.getElementById('organizationsNextPageBtn');
         const pageButtons = document.getElementById('organizationsPageButtons');
         if (!body) return;
+        closeAllOrganizationActionMenus();
 
         const info = getPagination();
 
@@ -363,26 +595,51 @@
                 const toggleAction = item.is_active ? 'deactivate-organization' : 'restore-organization';
                 const toggleDisabled = protectedOrg ? 'disabled' : '';
                 const deleteDisabled = protectedOrg ? 'disabled' : '';
+                const actionMenuId = `organizationsActionMenu-${id}`;
 
                 return `
                     <tr data-bulk-key="${id}" data-org-id="${id}">
                         <td>${id}</td>
                         <td><code>${esc(item.code || '-')}</code></td>
                         <td>
-                            <div style="padding-right:${padding}px;">
-                                ${esc(item.name || '-')}
+                            <div class="org-row-name" style="padding-right:${padding}px;">
+                                <span>${esc(item.name || '-')}</span>
                             </div>
                         </td>
+                        <td>${buildOrganizationContractsSummary(item)}</td>
                         <td>${esc(typeLabel(item.org_type))}</td>
                         <td>${esc(item.parent_name || item.parent_code || '-')}</td>
                         <td>${Number(item.users_count || 0)}</td>
                         <td>${Number(item.children_count || 0)}</td>
                         <td>${statusBadge(Boolean(item.is_active))}</td>
                         <td>
-                            <div class="general-row-actions">
-                                <button class="btn-archive-icon" type="button" data-org-action="open-edit-organization-modal" data-org-id="${id}">ÙˆÛŒØ±Ø§ÛŒØ´</button>
-                                <button class="btn-archive-icon" type="button" data-org-action="${toggleAction}" data-org-id="${id}" ${toggleDisabled}>${toggleLabel}</button>
-                                <button class="btn-archive-icon" type="button" data-org-action="hard-delete-organization" data-org-id="${id}" ${deleteDisabled}>Ø­Ø°Ù Ø¯Ø§Ø¦Ù…</button>
+                            <div class="users-kebab">
+                                <button
+                                    type="button"
+                                    class="users-kebab-btn"
+                                    data-org-action="toggle-organization-action-menu"
+                                    data-org-id="${id}"
+                                    aria-label="عملیات"
+                                    aria-haspopup="true"
+                                    aria-expanded="false"
+                                    aria-controls="${actionMenuId}"
+                                >
+                                    <span class="material-icons-round">more_vert</span>
+                                </button>
+                                <div class="users-kebab-menu" id="${actionMenuId}" role="menu">
+                                    <button type="button" class="users-kebab-item" data-org-action="open-edit-organization-modal" data-org-id="${id}">
+                                        <span class="material-icons-round">edit</span>
+                                        ویرایش
+                                    </button>
+                                    <button type="button" class="users-kebab-item" data-org-action="${toggleAction}" data-org-id="${id}" ${toggleDisabled}>
+                                        <span class="material-icons-round">${item.is_active ? 'block' : 'check_circle'}</span>
+                                        ${toggleLabel}
+                                    </button>
+                                    <button type="button" class="users-kebab-item danger" data-org-action="hard-delete-organization" data-org-id="${id}" ${deleteDisabled}>
+                                        <span class="material-icons-round">delete</span>
+                                        حذف دائم
+                                    </button>
+                                </div>
                             </div>
                         </td>
                     </tr>
@@ -416,6 +673,7 @@
     function setLoadingRow(message = 'Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...') {
         const body = document.getElementById('organizationsTableBody');
         if (!body) return;
+        closeAllOrganizationActionMenus();
         body.innerHTML = `<tr><td colspan="${TABLE_COLSPAN}" class="center-text muted" style="padding: 26px;">${esc(message)}</td></tr>`;
     }
 
@@ -458,6 +716,7 @@
         if (activeInput) activeInput.checked = true;
         if (titleEl) titleEl.textContent = 'Ø§ÛŒØ¬Ø§Ø¯ Ø³Ø§Ø²Ù…Ø§Ù† Ø¬Ø¯ÛŒØ¯';
         renderParentOptions('', '');
+        renderContractRows([]);
     }
 
     function openOrganizationModal() {
@@ -465,9 +724,23 @@
         if (modal) modal.style.display = 'flex';
     }
 
+    function focusOrganizationContractsSection() {
+        window.setTimeout(() => {
+            const section = document.querySelector('#organizationForm .organization-contracts-section');
+            const firstInput = document.querySelector('#organizationContractsList [data-contract-field="contract_number"]');
+            if (section && typeof section.scrollIntoView === 'function') {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            if (firstInput && typeof firstInput.focus === 'function') {
+                firstInput.focus();
+            }
+        }, 60);
+    }
+
     function closeOrganizationModal() {
         const modal = document.getElementById('organizationModal');
         if (modal) modal.style.display = 'none';
+        closeAllOrganizationActionMenus();
     }
 
     function collectOrganizationPayload() {
@@ -477,6 +750,7 @@
         const orgType = norm(document.getElementById('organizationType')?.value || '').toLowerCase();
         const parentId = normId(document.getElementById('organizationParentId')?.value || '');
         const isActive = Boolean(document.getElementById('organizationIsActive')?.checked);
+        const contracts = collectOrganizationContracts();
 
         if (!code) throw new Error('Ú©Ø¯ Ø³Ø§Ø²Ù…Ø§Ù† Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª');
         if (!name) throw new Error('Ù†Ø§Ù… Ø³Ø§Ø²Ù…Ø§Ù† Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª');
@@ -489,6 +763,7 @@
             org_type: orgType,
             parent_id: parentId ? Number(parentId) : null,
             is_active: isActive,
+            contracts,
         };
     }
 
@@ -537,6 +812,7 @@
                     org_type: norm(row.org_type).toLowerCase(),
                     parent_id: row.parent_id == null ? null : Number(row.parent_id),
                     is_active: true,
+                    contracts: cloneContractsForRequest(row.contracts),
                 }),
             });
             notify('success', 'Ø³Ø§Ø²Ù…Ø§Ù† ÙØ¹Ø§Ù„ Ø´Ø¯');
@@ -562,16 +838,26 @@
         }
     }
 
-    function openCreateOrganizationModal() {
+    async function openCreateOrganizationModal() {
+        try {
+            await ensureBlocksLoaded(false);
+        } catch (error) {
+            console.warn('Organization blocks unavailable in create modal:', error);
+        }
         resetOrganizationForm();
         openOrganizationModal();
     }
 
-    function openEditOrganizationModal(id) {
+    async function openEditOrganizationModal(id, options = {}) {
         const row = getOrganizationById(id);
         if (!row) {
             notify('error', 'Ø³Ø§Ø²Ù…Ø§Ù† Ø§Ù†ØªØ®Ø§Ø¨ Ø´Ø¯Ù‡ ÛŒØ§ÙØª Ù†Ø´Ø¯');
             return;
+        }
+        try {
+            await ensureBlocksLoaded(false);
+        } catch (error) {
+            console.warn('Organization blocks unavailable in edit modal:', error);
         }
         const idInput = document.getElementById('organizationId');
         const codeInput = document.getElementById('organizationCode');
@@ -587,7 +873,11 @@
         if (activeInput) activeInput.checked = Boolean(row.is_active);
         if (titleEl) titleEl.textContent = `ÙˆÛŒØ±Ø§ÛŒØ´ Ø³Ø§Ø²Ù…Ø§Ù† ${row.code || ''}`;
         renderParentOptions(normId(row.parent_id), normId(row.id));
+        renderContractRows(Array.isArray(row.contracts) ? row.contracts : []);
         openOrganizationModal();
+        if (options && options.focusContracts) {
+            focusOrganizationContractsSection();
+        }
     }
 
     function bindEvents() {
@@ -649,6 +939,12 @@
         }
 
         document.addEventListener('click', (event) => {
+            const target = event && event.target;
+            const insideKebab = Boolean(target && target.closest && target.closest('.users-kebab') && root && root.contains(target.closest('.users-kebab')));
+            if (!insideKebab) {
+                closeAllOrganizationActionMenus();
+            }
+
             const actionEl = event && event.target && event.target.closest
                 ? event.target.closest('[data-org-action]')
                 : null;
@@ -664,7 +960,7 @@
                     loadOrganizations(true);
                     break;
                 case 'open-create-organization-modal':
-                    openCreateOrganizationModal();
+                    void openCreateOrganizationModal();
                     break;
                 case 'change-organizations-page':
                     changeOrganizationsPage(Number(actionEl.dataset.step || 0));
@@ -678,20 +974,43 @@
                 case 'save-organization':
                     saveOrganization();
                     break;
+                case 'add-contract-row':
+                    addContractRow();
+                    break;
+                case 'remove-contract-row':
+                    removeContractRow(actionEl);
+                    break;
+                case 'toggle-organization-action-menu':
+                    toggleOrganizationActionMenu(event, actionEl.dataset.orgId || 0);
+                    break;
                 case 'open-edit-organization-modal':
-                    openEditOrganizationModal(Number(actionEl.dataset.orgId || 0));
+                    closeAllOrganizationActionMenus();
+                    void openEditOrganizationModal(Number(actionEl.dataset.orgId || 0));
+                    break;
+                case 'open-organization-contracts':
+                    closeAllOrganizationActionMenus();
+                    void openEditOrganizationModal(Number(actionEl.dataset.orgId || 0), { focusContracts: true });
                     break;
                 case 'deactivate-organization':
+                    closeAllOrganizationActionMenus();
                     deactivateOrganization(Number(actionEl.dataset.orgId || 0));
                     break;
                 case 'restore-organization':
+                    closeAllOrganizationActionMenus();
                     restoreOrganization(Number(actionEl.dataset.orgId || 0));
                     break;
                 case 'hard-delete-organization':
+                    closeAllOrganizationActionMenus();
                     hardDeleteOrganization(Number(actionEl.dataset.orgId || 0));
                     break;
                 default:
                     break;
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event && event.key === 'Escape') {
+                closeAllOrganizationActionMenus();
             }
         });
     }
@@ -708,7 +1027,12 @@
 
     async function initOrganizationsSettings(force = false) {
         bindEvents();
-        await loadOrganizations(force);
+        await Promise.all([
+            loadOrganizations(force),
+            ensureBlocksLoaded(false).catch((error) => {
+                console.warn('Organization blocks unavailable during init:', error);
+            }),
+        ]);
     }
 
     window.initOrganizationsSettings = initOrganizationsSettings;

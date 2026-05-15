@@ -11,7 +11,7 @@ from typing import Any, Optional
 
 import requests
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
@@ -2051,12 +2051,40 @@ def site_agent_download_file(
         .filter(ArchiveFile.id == int(file_id), ArchiveFile.deleted_at.is_(None))
         .first()
     )
-    if not archive or not os.path.exists(str(archive.stored_path or "")):
+    if not archive:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    stored_path = str(archive.stored_path or "").strip()
+    if stored_path.startswith("webdav://"):
+        integrations = get_storage_integrations(db)
+        runtime = resolve_nextcloud_runtime(integrations)
+        if not runtime.get("enabled") or runtime.get("mode") != "webdav":
+            raise HTTPException(status_code=503, detail="WebDAV storage not configured.")
+        adapter = NextcloudAdapter(
+            base_url=str(runtime.get("base_url") or ""),
+            username=str(runtime.get("username") or ""),
+            app_password=str(runtime.get("app_password") or ""),
+            root_path=str(runtime.get("root_path") or ""),
+            connect_timeout=float(runtime.get("connect_timeout") or 5),
+            read_timeout=float(runtime.get("read_timeout") or 10),
+            tls_verify=bool(runtime.get("tls_verify")),
+        )
+        remote_path = stored_path.replace("webdav://", "", 1)
+        if not adapter.file_exists(remote_path):
+            raise HTTPException(status_code=404, detail="File not found")
+        db.commit()
+        return StreamingResponse(
+            adapter.download_file_stream(remote_path),
+            media_type=archive.mime_type or "application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{archive.original_name}"'},
+        )
+
+    if not os.path.exists(stored_path):
         raise HTTPException(status_code=404, detail="File not found")
 
     db.commit()
     return FileResponse(
-        path=archive.stored_path,
+        path=stored_path,
         filename=archive.original_name,
         media_type=archive.mime_type,
     )

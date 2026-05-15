@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import date, datetime
+from html import escape as html_escape
 from types import SimpleNamespace
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, aliased
@@ -16,6 +17,10 @@ from app.api.dependencies import (
     require_permission,
 )
 from app.db.models import (
+    ArchiveFile,
+    ArchiveFilePublicShare,
+    Correspondence,
+    CorrespondenceExternalRelation,
     DocumentRevision,
     MdrDocument,
     Transmittal,
@@ -23,6 +28,10 @@ from app.db.models import (
 )
 from app.services.document_activity_service import log_document_activity
 from app.services.pdf_service import generate_transmittal_pdf
+from app.services.transmittal_options import (
+    transmittal_options_payload,
+    transmittal_party_label,
+)
 
 router = APIRouter(prefix="/transmittal", tags=["Transmittal"])
 STATE_DRAFT = "draft"
@@ -38,6 +47,7 @@ class TransmittalDocItem(BaseModel):
     status: str
     electronic_copy: bool = True
     hard_copy: bool = False
+    document_title: Optional[str] = None
 
 
 class TransmittalCreate(BaseModel):
@@ -57,6 +67,8 @@ class TransmittalResponse(BaseModel):
     created_at: datetime
     doc_count: int
     status: str
+    sender_label: Optional[str] = None
+    receiver_label: Optional[str] = None
     void_reason: Optional[str] = None
     voided_by: Optional[str] = None
     voided_at: Optional[str] = None
@@ -68,6 +80,8 @@ class TransmittalDetailResponse(BaseModel):
     project_code: str
     sender: str
     receiver: str
+    sender_label: Optional[str] = None
+    receiver_label: Optional[str] = None
     subject: str
     created_at: datetime
     status: str
@@ -75,6 +89,7 @@ class TransmittalDetailResponse(BaseModel):
     voided_by: Optional[str] = None
     voided_at: Optional[str] = None
     documents: List[TransmittalDocItem]
+    correspondence_relations: List[Dict[str, object]] = Field(default_factory=list)
 
 
 class EligibleDocumentResponse(BaseModel):
@@ -121,6 +136,469 @@ def _display_subject(transmittal: Transmittal) -> str:
         if first_title:
             return first_title
     return f"{transmittal.sender} -> {transmittal.receiver}"
+
+
+def _transmittal_party_labels(db: Session, transmittal: Transmittal) -> Dict[str, str]:
+    return {
+        "sender_label": transmittal_party_label(db, "direction_options", transmittal.sender),
+        "receiver_label": transmittal_party_label(db, "recipient_options", transmittal.receiver),
+    }
+
+
+def _display_subject_with_labels(db: Session, transmittal: Transmittal) -> str:
+    if transmittal.docs:
+        first_title = transmittal.docs[0].document_title
+        if first_title:
+            return first_title
+    labels = _transmittal_party_labels(db, transmittal)
+    return f"{labels['sender_label']} -> {labels['receiver_label']}"
+
+
+def _status_label(value: Any) -> str:
+    key = str(value or "").strip().lower()
+    return {
+        STATE_DRAFT: "پیش‌نویس",
+        STATE_ISSUED: "صادر شده",
+        STATE_VOID: "باطل",
+    }.get(key, str(value or "-").strip() or "-")
+
+
+def _gregorian_to_jalali(g_year: int, g_month: int, g_day: int) -> tuple[int, int, int]:
+    g_days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    j_days_in_month = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29]
+    gy = g_year - 1600
+    gm = g_month - 1
+    gd = g_day - 1
+    g_day_no = 365 * gy + (gy + 3) // 4 - (gy + 99) // 100 + (gy + 399) // 400
+    for idx in range(gm):
+        g_day_no += g_days_in_month[idx]
+    if gm > 1 and ((gy + 1600) % 4 == 0 and ((gy + 1600) % 100 != 0 or (gy + 1600) % 400 == 0)):
+        g_day_no += 1
+    g_day_no += gd
+    j_day_no = g_day_no - 79
+    j_np = j_day_no // 12053
+    j_day_no %= 12053
+    jy = 979 + 33 * j_np + 4 * (j_day_no // 1461)
+    j_day_no %= 1461
+    if j_day_no >= 366:
+        jy += (j_day_no - 1) // 365
+        j_day_no = (j_day_no - 1) % 365
+    jm = 0
+    while jm < 11 and j_day_no >= j_days_in_month[jm]:
+        j_day_no -= j_days_in_month[jm]
+        jm += 1
+    return jy, jm + 1, j_day_no + 1
+
+
+def _format_jalali_date(value: Any) -> str:
+    if value is None:
+        return "-"
+    parsed: date | datetime | None = None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return "-"
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except Exception:
+            return text.split("T", 1)[0] or "-"
+    jy, jm, jd = _gregorian_to_jalali(parsed.year, parsed.month, parsed.day)
+    return f"{jy:04d}/{jm:02d}/{jd:02d}"
+
+
+def _safe_text(value: Any, fallback: str = "-") -> str:
+    text = str(value if value is not None else "").strip()
+    return text or fallback
+
+
+def _uniq_join(values: List[Any]) -> str:
+    seen: list[str] = []
+    for value in values:
+        text = _safe_text(value, "")
+        if text and text not in seen:
+            seen.append(text)
+    return "، ".join(seen) if seen else "-"
+
+
+def _copy_format_label(doc: TransmittalDoc) -> str:
+    electronic = bool(doc.electronic_copy)
+    hard = bool(doc.hard_copy)
+    if electronic and hard:
+        return "PDF / کاغذی"
+    if electronic:
+        return "PDF"
+    if hard:
+        return "کاغذی"
+    return "-"
+
+
+def _purpose_flags(docs: List[TransmittalDoc]) -> Dict[str, bool]:
+    statuses = {str(doc.status or "").strip().upper() for doc in docs}
+    return {
+        "approval": any(item in statuses for item in {"IFA", "AFC", "APPROVAL"}),
+        "review": any(item in statuses for item in {"IFR", "REVIEW"}),
+        "info": any(item in statuses for item in {"IFI", "INFO", "INFORMATION"}),
+        "execution": any(item in statuses for item in {"IFC", "AFC", "EXECUTION"}),
+        "archive": False,
+    }
+
+
+def _checkbox_html(checked: bool) -> str:
+    return '<span class="check is-checked"></span>' if checked else '<span class="check"></span>'
+
+
+def _active_pdf_public_share_url(
+    db: Session,
+    document: Optional[MdrDocument],
+    transmittal_doc: TransmittalDoc,
+) -> Optional[str]:
+    if document is None:
+        return None
+    if not bool(transmittal_doc.electronic_copy):
+        return None
+
+    now = datetime.utcnow()
+    pdf_file_filter = or_(
+        func.lower(func.coalesce(ArchiveFile.file_kind, "")) == "pdf",
+        func.lower(func.coalesce(ArchiveFile.mime_type, "")).in_(["application/pdf", "application/x-pdf"]),
+        func.lower(func.coalesce(ArchiveFile.detected_mime, "")).in_(["application/pdf", "application/x-pdf"]),
+        ArchiveFile.original_name.ilike("%.pdf"),
+    )
+    base_query = (
+        db.query(ArchiveFilePublicShare)
+        .join(ArchiveFile, ArchiveFilePublicShare.file_id == ArchiveFile.id)
+        .join(DocumentRevision, ArchiveFile.revision_id == DocumentRevision.id)
+        .filter(
+            DocumentRevision.document_id == document.id,
+            ArchiveFile.deleted_at.is_(None),
+            ArchiveFilePublicShare.provider == "nextcloud",
+            ArchiveFilePublicShare.revoked_at.is_(None),
+            or_(ArchiveFilePublicShare.expires_at.is_(None), ArchiveFilePublicShare.expires_at > now),
+            pdf_file_filter,
+        )
+    )
+
+    revision = _safe_text(transmittal_doc.revision, "").strip()
+    if revision:
+        exact_share = (
+            base_query.filter(or_(DocumentRevision.revision == revision, ArchiveFile.revision == revision))
+            .order_by(
+                ArchiveFilePublicShare.created_at.desc(),
+                ArchiveFile.uploaded_at.desc(),
+                ArchiveFilePublicShare.id.desc(),
+            )
+            .first()
+        )
+        if exact_share is not None:
+            return exact_share.share_url
+
+    latest_share = (
+        base_query.order_by(
+            DocumentRevision.created_at.desc(),
+            ArchiveFile.uploaded_at.desc(),
+            ArchiveFilePublicShare.created_at.desc(),
+            ArchiveFilePublicShare.id.desc(),
+        )
+        .first()
+    )
+    return latest_share.share_url if latest_share is not None else None
+
+
+def _download_link_html(url: Optional[str]) -> str:
+    if not url:
+        return "-"
+    escaped_url = html_escape(url, quote=True)
+    return f'<a class="download-link" href="{escaped_url}" target="_blank" rel="noopener noreferrer">دانلود</a>'
+
+
+def _build_transmittal_pdf_payload(db: Session, tr: Transmittal) -> SimpleNamespace:
+    doc_codes = [str(doc.document_code or "").strip() for doc in tr.docs if str(doc.document_code or "").strip()]
+    mdr_rows: dict[str, MdrDocument] = {}
+    if doc_codes:
+        mdr_rows = {
+            row.doc_number: row
+            for row in db.query(MdrDocument).filter(MdrDocument.doc_number.in_(doc_codes)).all()
+        }
+    pdf_docs = [
+        SimpleNamespace(
+            document_code=d.document_code,
+            revision=d.revision,
+            status=d.status,
+            document_title=d.document_title,
+            electronic_copy=d.electronic_copy,
+            hard_copy=d.hard_copy,
+            public_share_url=_active_pdf_public_share_url(db, mdr_rows.get(str(d.document_code or "").strip()), d),
+        )
+        for d in tr.docs
+    ]
+    return SimpleNamespace(
+        transmittal_no=tr.id,
+        subject=_display_subject_with_labels(db, tr),
+        created_at=tr.created_at or datetime.utcnow(),
+        sender=transmittal_party_label(db, "direction_options", tr.sender),
+        receiver=transmittal_party_label(db, "recipient_options", tr.receiver),
+        notes=None,
+        documents=pdf_docs,
+    )
+
+
+def _render_transmittal_print_html(db: Session, tr: Transmittal) -> str:
+    state_record = _get_transmittal_state_record(tr)
+    sender_label = transmittal_party_label(db, "direction_options", tr.sender)
+    receiver_label = transmittal_party_label(db, "recipient_options", tr.receiver)
+    project = tr.project
+    project_name = _safe_text(getattr(project, "name_p", None) or getattr(project, "name_e", None), f"Project {tr.project_code}")
+    project_code = _safe_text(tr.project_code)
+    doc_codes = [str(doc.document_code or "").strip() for doc in tr.docs if str(doc.document_code or "").strip()]
+    mdr_rows: dict[str, MdrDocument] = {}
+    if doc_codes:
+        mdr_rows = {
+            row.doc_number: row
+            for row in db.query(MdrDocument).filter(MdrDocument.doc_number.in_(doc_codes)).all()
+        }
+    disciplines = _uniq_join([getattr(mdr_rows.get(code), "discipline_code", None) for code in doc_codes])
+    packages = _uniq_join([getattr(mdr_rows.get(code), "package_code", None) for code in doc_codes])
+    purposes = _purpose_flags(tr.docs)
+    rows: list[str] = []
+    for idx, doc in enumerate(tr.docs, 1):
+        public_share_url = _active_pdf_public_share_url(db, mdr_rows.get(str(doc.document_code or "").strip()), doc)
+        rows.append(
+            "<tr>"
+            f"<td>{idx}</td>"
+            f"<td class=\"doc-no\">{html_escape(_safe_text(doc.document_code))}</td>"
+            f"<td class=\"doc-title\">{html_escape(_safe_text(doc.document_title))}</td>"
+            f"<td>{html_escape(_safe_text(doc.revision, '00'))}</td>"
+            f"<td>{html_escape(_safe_text(doc.status, 'IFA'))}</td>"
+            f"<td>1</td>"
+            f"<td>{html_escape(_copy_format_label(doc))}</td>"
+            f"<td>{_download_link_html(public_share_url)}</td>"
+            f"<td>{html_escape('لینک عمومی Nextcloud' if public_share_url else ('نسخه کاغذی' if doc.hard_copy else '-'))}</td>"
+            "</tr>"
+        )
+    if not rows:
+        rows.append('<tr><td colspan="9" class="empty-row">مدرکی در این ترنسمیتال ثبت نشده است.</td></tr>')
+
+    html = f"""<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>برگه ارسال مدارک - {html_escape(_safe_text(tr.id))}</title>
+  <style>
+    @page {{ size: A4; margin: 0; }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: #eef2f7;
+      color: #111827;
+      font-family: Tahoma, Arial, sans-serif;
+      direction: rtl;
+      font-size: 12px;
+      line-height: 1.65;
+    }}
+    .sheet {{
+      width: 210mm;
+      min-height: 297mm;
+      margin: 18px auto;
+      padding: 0;
+      background: #fff;
+      box-shadow: 0 14px 34px rgba(15,23,42,.18);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }}
+    .print-header {{
+      flex: 0 0 auto;
+    }}
+    .print-content {{
+      flex: 1 1 auto;
+      padding: 4mm 8mm 0;
+    }}
+    .print-footer {{
+      flex: 0 0 auto;
+      margin-top: auto;
+      padding: 0 8mm;
+    }}
+    table {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
+    td, th {{ border: 1px solid #1f2937; padding: 5px 6px; vertical-align: middle; }}
+    th {{ background: #d9d9d9; font-weight: 800; text-align: center; }}
+    .no-border td {{ border: 0; }}
+    .header td {{ height: 28px; border-top: 0; }}
+    .header > tbody > tr > td:first-child {{ border-right: 0; }}
+    .header > tbody > tr > td:last-child {{ border-left: 0; }}
+    .meta {{ width: 42mm; font-size: 11px; }}
+    .meta .label {{ width: 16mm; background: #f3f4f6; font-weight: 800; text-align: center; }}
+    .title-cell {{ text-align: center; }}
+    .title-fa {{ font-size: 21px; font-weight: 900; letter-spacing: 0; }}
+    .title-en {{ margin-top: 1px; direction: ltr; font-size: 12px; font-weight: 900; }}
+    .subtitle {{ font-size: 11px; color: #374151; }}
+    .logo-box {{
+      height: 24mm;
+      border: 1px solid #8b95a1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      background: #fafafa;
+    }}
+    .section-title {{
+      background: #d6d6d6;
+      border: 1px solid #1f2937;
+      border-bottom: 0;
+      margin-top: 4mm;
+      padding: 4px 6px;
+      text-align: center;
+      font-weight: 900;
+    }}
+    .info td:nth-child(odd) {{ width: 25mm; background: #f2f2f2; font-weight: 900; text-align: center; }}
+    .info td:nth-child(even) {{ text-align: right; }}
+    .purpose td {{ height: 9mm; text-align: center; font-weight: 700; }}
+    .check {{
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 5px;
+      border: 1.4px solid #111827;
+      vertical-align: -1px;
+      background: #fff;
+    }}
+    .check.is-checked {{ background: #111827; box-shadow: inset 0 0 0 2px #fff; }}
+    .docs th {{ font-size: 11px; }}
+    .docs td {{ text-align: center; font-size: 10.5px; }}
+    .docs .doc-no {{ direction: ltr; font-family: Consolas, 'Courier New', monospace; font-weight: 800; }}
+    .docs .doc-title {{ text-align: right; font-size: 10.2px; }}
+    .download-link {{ color: #0f5f9e; font-weight: 900; text-decoration: underline; }}
+    .empty-row {{ height: 26mm; color: #64748b; font-weight: 800; }}
+    .signatures td {{ height: 23mm; text-align: center; font-weight: 800; }}
+    .muted {{ color: #64748b; font-size: 10px; }}
+    .ltr {{ direction: ltr; unicode-bidi: embed; }}
+    @media print {{
+      body {{ background: #fff; }}
+      .sheet {{ width: 210mm; min-height: 297mm; margin: 0; box-shadow: none; }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="sheet">
+    <header class="print-header">
+    <table class="header">
+      <tr>
+        <td class="meta">
+          <table>
+            <tr><td class="label">شماره</td><td class="ltr">{html_escape(_safe_text(tr.id))}</td></tr>
+            <tr><td class="label">ویرایش</td><td>00</td></tr>
+            <tr><td class="label">تاریخ</td><td>{html_escape(_format_jalali_date(tr.created_at))}</td></tr>
+          </table>
+        </td>
+        <td class="title-cell">
+          <div class="title-fa">برگه ارسال مدارک / ترنسمیتال</div>
+          <div class="title-en">DOCUMENT TRANSMITTAL</div>
+          <div class="subtitle">{html_escape(project_name)}</div>
+        </td>
+        <td style="width: 43mm;"><div class="logo-box">لوگوی شرکت</div></td>
+      </tr>
+    </table>
+    </header>
+
+    <section class="print-content">
+    <div class="section-title">مشخصات پروژه و ترنسمیتال</div>
+    <table class="info">
+      <tr><td>نام پروژه</td><td>{html_escape(project_name)}</td><td>شماره پروژه</td><td class="ltr">{html_escape(project_code)}</td></tr>
+      <tr><td>از</td><td>{html_escape(sender_label)}</td><td>به</td><td>{html_escape(receiver_label)}</td></tr>
+      <tr><td>دیسیپلین</td><td>{html_escape(disciplines)}</td><td>پکیج / ناحیه</td><td>{html_escape(packages)}</td></tr>
+      <tr><td>وضعیت</td><td>{html_escape(_status_label(state_record['status']))}</td><td>موضوع</td><td>{html_escape(_display_subject_with_labels(db, tr))}</td></tr>
+    </table>
+
+    <div class="section-title">هدف از ارسال</div>
+    <table class="purpose">
+      <tr>
+        <td>{_checkbox_html(purposes['approval'])} جهت تایید</td>
+        <td>{_checkbox_html(purposes['review'])} جهت بررسی</td>
+        <td>{_checkbox_html(purposes['info'])} جهت اطلاع</td>
+        <td>{_checkbox_html(purposes['execution'])} جهت اجرا</td>
+        <td>{_checkbox_html(purposes['archive'])} جهت بایگانی</td>
+      </tr>
+    </table>
+
+    <div class="section-title">فهرست مدارک ارسالی</div>
+    <table class="docs">
+      <thead>
+        <tr>
+          <th style="width: 8mm;">ردیف</th>
+          <th style="width: 36mm;">شماره مدرک</th>
+          <th>عنوان مدرک</th>
+          <th style="width: 14mm;">ویرایش</th>
+          <th style="width: 18mm;">وضعیت</th>
+          <th style="width: 14mm;">تعداد</th>
+          <th style="width: 22mm;">فرمت</th>
+          <th style="width: 20mm;">دریافت</th>
+          <th style="width: 28mm;">توضیحات</th>
+        </tr>
+      </thead>
+      <tbody>{''.join(rows)}</tbody>
+    </table>
+
+    </section>
+
+    <footer class="print-footer">
+    <div class="section-title">تایید و دریافت</div>
+    <table class="signatures">
+      <tr><td>تهیه‌کننده / صادرکننده<br><span class="muted">نام، امضا، تاریخ</span></td><td>کنترل مدارک<br><span class="muted">نام، امضا، تاریخ</span></td><td>دریافت‌کننده<br><span class="muted">نام، امضا، تاریخ</span></td></tr>
+    </table>
+    </footer>
+  </main>
+</body>
+</html>"""
+    return html
+
+
+def _serialize_transmittal_correspondence_relation(
+    row: CorrespondenceExternalRelation,
+    correspondence: Correspondence,
+) -> Dict[str, object]:
+    return {
+        "id": f"correspondence_external:{int(row.id or 0)}",
+        "relation_id": int(row.id or 0),
+        "correspondence_id": int(correspondence.id or 0),
+        "reference_no": correspondence.reference_no or f"CORR-{int(correspondence.id or 0)}",
+        "subject": correspondence.subject,
+        "project_code": correspondence.project_code,
+        "direction": correspondence.direction,
+        "doc_type": correspondence.doc_type,
+        "status": correspondence.status,
+        "relation_type": row.relation_type,
+        "notes": row.notes,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _list_transmittal_correspondence_relations(
+    db: Session,
+    user: User,
+    transmittal: Transmittal,
+) -> List[Dict[str, object]]:
+    query = (
+        db.query(CorrespondenceExternalRelation, Correspondence)
+        .join(Correspondence, Correspondence.id == CorrespondenceExternalRelation.correspondence_id)
+        .filter(
+            CorrespondenceExternalRelation.target_entity_type == "transmittal",
+            CorrespondenceExternalRelation.target_entity_id == str(transmittal.id),
+        )
+    )
+    query = apply_scope_query_filters(
+        query,
+        db,
+        user,
+        project_column=Correspondence.project_code,
+    )
+    rows = query.order_by(
+        CorrespondenceExternalRelation.created_at.desc(),
+        CorrespondenceExternalRelation.id.desc(),
+    ).all()
+    return [_serialize_transmittal_correspondence_relation(row, corr) for row, corr in rows]
 
 
 def _normalize_code(value: str | None, fallback: str = "") -> str:
@@ -210,6 +688,15 @@ def _validate_payload_documents(
             discipline_code=doc.discipline_code,
         )
     return docs_by_code
+
+
+@router.get("/options")
+def get_transmittal_options(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("transmittal:read")),
+):
+    del user
+    return {"ok": True, **transmittal_options_payload(db, active_only=True)}
 
 
 @router.get("/next-number")
@@ -325,14 +812,16 @@ def get_transmittals(
     output = []
     for t in items:
         state_record = _get_transmittal_state_record(t)
+        party_labels = _transmittal_party_labels(db, t)
         output.append(
             {
                 "id": t.id,
                 "transmittal_no": t.id,
-                "subject": _display_subject(t),
+                "subject": _display_subject_with_labels(db, t),
                 "created_at": t.created_at,
                 "doc_count": len(t.docs),
                 "status": state_record["status"],
+                **party_labels,
                 "void_reason": state_record["void_reason"],
                 "voided_by": state_record["voided_by"],
                 "voided_at": state_record["voided_at"],
@@ -427,13 +916,16 @@ def get_transmittal_detail(
 
     enforce_scope_access(db, user, project_code=tr.project_code)
     state_record = _get_transmittal_state_record(tr)
+    correspondence_relations = _list_transmittal_correspondence_relations(db, user, tr)
+    party_labels = _transmittal_party_labels(db, tr)
     return {
         "id": tr.id,
         "transmittal_no": tr.id,
         "project_code": tr.project_code,
         "sender": tr.sender,
         "receiver": tr.receiver,
-        "subject": _display_subject(tr),
+        **party_labels,
+        "subject": _display_subject_with_labels(db, tr),
         "created_at": tr.created_at,
         "status": state_record["status"],
         "void_reason": state_record["void_reason"],
@@ -446,9 +938,11 @@ def get_transmittal_detail(
                 "status": d.status or "IFA",
                 "electronic_copy": bool(d.electronic_copy),
                 "hard_copy": bool(d.hard_copy),
+                "document_title": d.document_title,
             }
             for d in tr.docs
         ],
+        "correspondence_relations": correspondence_relations,
     }
 
 
@@ -598,6 +1092,19 @@ def void_transmittal(
     }
 
 
+@router.get("/{transmittal_id}/print-preview", response_class=HTMLResponse)
+def print_preview_transmittal(
+    transmittal_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("transmittal:read")),
+):
+    tr = db.query(Transmittal).filter(Transmittal.id == transmittal_id).first()
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transmittal not found")
+    enforce_scope_access(db, user, project_code=tr.project_code)
+    return HTMLResponse(_render_transmittal_print_html(db, tr))
+
+
 @router.get("/{transmittal_id}/download-cover")
 def download_cover_sheet(
     transmittal_id: str,
@@ -616,30 +1123,8 @@ def download_cover_sheet(
     elif state == STATE_VOID:
         watermark_text = "VOID"
 
-    pdf_docs = [
-        SimpleNamespace(
-            document_code=d.document_code,
-            revision=d.revision,
-            status=d.status,
-            document_title=d.document_title,
-            electronic_copy=d.electronic_copy,
-            hard_copy=d.hard_copy,
-        )
-        for d in tr.docs
-    ]
-
-    pdf_payload = SimpleNamespace(
-        transmittal_no=tr.id,
-        subject=_display_subject(tr),
-        created_at=tr.created_at or datetime.utcnow(),
-        sender=tr.sender,
-        receiver=tr.receiver,
-        notes=None,
-        documents=pdf_docs,
-    )
-
     pdf_buffer = generate_transmittal_pdf(
-        pdf_payload,
+        _build_transmittal_pdf_payload(db, tr),
         project_name=f"Project {tr.project_code}",
         watermark_text=watermark_text,
     )

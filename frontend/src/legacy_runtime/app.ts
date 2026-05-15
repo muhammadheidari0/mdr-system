@@ -44,6 +44,8 @@ const TS_APP_DATA = requireBridge(APP_RUNTIME?.appData, 'App data');
 const TS_COMM_ITEMS_UI = requireBridge(APP_RUNTIME?.commItemsUi, 'Comm items UI');
 const TS_SITE_LOGS_UI = requireBridge(APP_RUNTIME?.siteLogsUi, 'Site logs UI');
 const TS_PERMIT_QC_UI = requireBridge(APP_RUNTIME?.permitQcUi, 'Permit QC UI');
+const TS_WORK_INSTRUCTIONS_UI = requireBridge(APP_RUNTIME?.workInstructionsUi, 'Work instructions UI');
+const TS_PROJECT_CONTROL_UI = requireBridge(APP_RUNTIME?.projectControlUi, 'Project control UI');
 
 const API_BASE = '/api/v1'; 
 window.CACHE = {}; // Ú©Ø´ Ø¨Ø±Ø§ÛŒ Ù†Ú¯Ù‡Ø¯Ø§Ø±ÛŒ Ø§Ø·Ù„Ø§Ø¹Ø§Øª Ù¾Ø§ÛŒÙ‡ (Ù¾Ø±ÙˆÚ˜Ù‡â€ŒÙ‡Ø§ Ùˆ...)
@@ -60,6 +62,8 @@ let EDMS_TAB_VISIBILITY = {
     archive: true,
     transmittal: true,
     correspondence: true,
+    meeting_minutes: true,
+    forms: true,
 };
 let EDMS_STATS_LOADING = false;
 let EDMS_STATS_LAST_LOADED_AT = 0;
@@ -94,6 +98,7 @@ let CONSULTANT_TAB_VISIBILITY = {
 };
 
 let NAV_CAPABILITIES = {};
+const RECENT_TOASTS = new Map();
 
 const HUB_TO_VIEW = {
     dashboard: 'view-dashboard',
@@ -107,12 +112,16 @@ const EDMS_TAB_TO_VIEW = {
     archive: 'view-archive',
     transmittal: 'view-transmittal',
     correspondence: 'view-correspondence',
+    meeting_minutes: 'view-meeting-minutes',
+    forms: 'view-edms-forms',
 };
 
 const EDMS_VIEW_TO_TAB = {
     'view-archive': 'archive',
     'view-transmittal': 'transmittal',
     'view-correspondence': 'correspondence',
+    'view-meeting-minutes': 'meeting_minutes',
+    'view-edms-forms': 'forms',
 };
 
 const CONTRACTOR_TAB_TO_PANEL = {
@@ -658,6 +667,15 @@ function hasCapability(permissionKey) {
 
 window.hasCapability = hasCapability;
 
+function moduleBoardCanRead() {
+    return (
+        hasCapability('workboard:read')
+        || hasCapability('workboard:create')
+        || hasCapability('workboard:update')
+        || hasCapability('workboard:delete')
+    );
+}
+
 function fallbackHubByRole(roleValue) {
     const orgType = String(
         window.authManager?.user?.organization?.org_type
@@ -672,6 +690,7 @@ function fallbackHubByRole(roleValue) {
 
     const role = normalizeUserRole(roleValue);
     if (role === 'dcc') return 'edms';
+    if (role === 'project_control') return 'consultant';
     if (role === 'admin') return 'dashboard';
     return 'dashboard';
 }
@@ -700,7 +719,7 @@ function hubFromView(viewId) {
     const view = String(viewId || '').trim().toLowerCase();
     if (!view) return '';
     if (view === 'view-dashboard') return 'dashboard';
-    if (view === 'view-edms' || view === 'view-archive' || view === 'view-transmittal' || view === 'view-correspondence' || view === 'view-document-detail' || view === 'view-edms-settings') return 'edms';
+    if (view === 'view-edms' || view === 'view-archive' || view === 'view-transmittal' || view === 'view-correspondence' || view === 'view-meeting-minutes' || view === 'view-edms-forms' || view === 'view-document-detail' || view === 'view-edms-settings') return 'edms';
     if (view === 'view-reports') return 'reports';
     if (view === 'view-contractor' || view === 'view-contractor-settings') return 'contractor';
     if (view === 'view-consultant' || view === 'view-consultant-settings') return 'consultant';
@@ -757,6 +776,8 @@ function resolveInitialViewFromQuery() {
     if (queryView === 'archive') return 'view-archive';
     if (queryView === 'transmittal') return 'view-transmittal';
     if (queryView === 'correspondence') return 'view-correspondence';
+    if (queryView === 'meeting-minutes' || queryView === 'meeting_minutes' || queryView === 'minutes') return 'view-meeting-minutes';
+    if (queryView === 'forms' || queryView === 'edms-forms') return 'view-edms-forms';
     if (queryView.startsWith('view-')) return queryView;
     return `view-${queryView}`;
 }
@@ -862,9 +883,18 @@ function applyNavigationPayload(payload) {
     const hubs = body && typeof body.hubs === 'object' ? body.hubs : {};
     const modules = body && typeof body.modules === 'object' ? body.modules : {};
     const capabilities = body && typeof body.capabilities === 'object' ? body.capabilities : {};
-    const moduleSettings = modules && typeof modules.settings === 'object' ? modules.settings : {};
-    const contractorModules = modules && typeof modules.contractor === 'object' ? modules.contractor : {};
-    const consultantModules = modules && typeof modules.consultant === 'object' ? modules.consultant : {};
+    const contractorModules = body && typeof body.contractor_tabs === 'object'
+        ? body.contractor_tabs
+        : (modules && typeof modules.contractor === 'object' ? modules.contractor : {});
+    const consultantModules = body && typeof body.consultant_tabs === 'object'
+        ? body.consultant_tabs
+        : (modules && typeof modules.consultant === 'object' ? modules.consultant : {});
+    const edmsTabs = body && typeof body.edms_tabs === 'object'
+        ? body.edms_tabs
+        : (modules && typeof modules.edms === 'object' ? modules.edms : {});
+    const moduleSettingsVisibility = body && typeof body.module_settings_visibility === 'object'
+        ? body.module_settings_visibility
+        : {};
 
     NAV_CAPABILITIES = {};
     Object.keys(capabilities).forEach((key) => {
@@ -886,17 +916,21 @@ function applyNavigationPayload(payload) {
     }
 
     MODULE_SETTINGS_VISIBILITY = {
-        edms: body.edms !== false,
-        contractor: body.contractor !== false,
-        consultant: body.consultant !== false,
+        edms: moduleSettingsVisibility.edms !== false && body.edms !== false,
+        contractor: moduleSettingsVisibility.contractor !== false && body.contractor !== false,
+        consultant: moduleSettingsVisibility.consultant !== false && body.consultant !== false,
     };
-    if (Object.prototype.hasOwnProperty.call(moduleSettings, 'module_settings')) {
-        const enabled = moduleSettings.module_settings !== false;
-        MODULE_SETTINGS_VISIBILITY = {
-            edms: enabled,
-            contractor: enabled,
-            consultant: enabled,
-        };
+
+    EDMS_TAB_VISIBILITY = {
+        archive: edmsTabs.archive !== false,
+        transmittal: edmsTabs.transmittal !== false,
+        correspondence: edmsTabs.correspondence !== false,
+        meeting_minutes: edmsTabs.meeting_minutes !== false,
+        forms: edmsTabs.forms !== false,
+    };
+    const payloadDefaultEdmsTab = String(body.default_edms_tab || '').trim().toLowerCase();
+    if (payloadDefaultEdmsTab && EDMS_TAB_TO_VIEW[payloadDefaultEdmsTab]) {
+        EDMS_DEFAULT_TAB = payloadDefaultEdmsTab;
     }
 
     CONTRACTOR_TAB_VISIBILITY = {
@@ -932,7 +966,7 @@ function getFirstVisibleEdmsTab() {
         return TS_EDMS_STATE.getFirstVisibleTab();
     }
 
-    const order = ['archive', 'transmittal', 'correspondence'];
+    const order = ['archive', 'transmittal', 'correspondence', 'meeting_minutes', 'forms'];
     return order.find((tab) => isEdmsTabVisible(tab)) || null;
 }
 
@@ -1137,7 +1171,7 @@ async function loadEdmsHeaderStats(force = false) {
                 fetchStats: async () => {
                     try {
                         const res = (typeof window.fetchWithAuth === 'function')
-                            ? await window.fetchWithAuth(`${API_BASE}/dashboard/stats`)
+                            ? await window.fetchWithAuth(`${API_BASE}/dashboard/stats`, { authActivity: false })
                             : await fetch(`${API_BASE}/dashboard/stats`);
                         if (!res || !res.ok) return null;
                         return await res.json();
@@ -1166,7 +1200,7 @@ async function loadEdmsHeaderStats(force = false) {
     let loadSucceeded = false;
     try {
         const res = (typeof window.fetchWithAuth === 'function')
-            ? await window.fetchWithAuth(`${API_BASE}/dashboard/stats`)
+            ? await window.fetchWithAuth(`${API_BASE}/dashboard/stats`, { authActivity: false })
             : await fetch(`${API_BASE}/dashboard/stats`);
         if (!res || !res.ok) return;
         const data = await res.json();
@@ -1199,7 +1233,7 @@ async function loadEdmsNavigation() {
                 role: currentEffectiveUserRole(),
                 fetchNavigation: async () => {
                     const res = (typeof window.fetchWithAuth === 'function')
-                        ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`)
+                        ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`, { authActivity: false })
                         : await fetch(`${API_BASE}/auth/navigation`);
                     if (res && res.ok) {
                         const payload = await res.json();
@@ -1227,7 +1261,7 @@ async function loadEdmsNavigation() {
         role: currentEffectiveUserRole(),
         fetchNavigation: async () => {
             const res = (typeof window.fetchWithAuth === 'function')
-                ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`)
+                ? await window.fetchWithAuth(`${API_BASE}/auth/navigation`, { authActivity: false })
                 : await fetch(`${API_BASE}/auth/navigation`);
             if (res && res.ok) {
                 const payload = await res.json();
@@ -1295,6 +1329,12 @@ function openEdmsTab(tabName, btnEl = null) {
                         case 'correspondence':
                             if (typeof initCorrespondenceView === 'function') initCorrespondenceView();
                             break;
+                        case 'meeting_minutes':
+                            if (typeof window.initMeetingMinutesView === 'function') window.initMeetingMinutesView();
+                            break;
+                        case 'forms':
+                            if (typeof window.initEdmsFormsView === 'function') window.initEdmsFormsView();
+                            break;
                         default:
                             break;
                     }
@@ -1356,6 +1396,12 @@ function openEdmsTab(tabName, btnEl = null) {
             break;
         case 'correspondence':
             if (typeof initCorrespondenceView === 'function') initCorrespondenceView();
+            break;
+        case 'meeting_minutes':
+            if (typeof window.initMeetingMinutesView === 'function') window.initMeetingMinutesView();
+            break;
+        case 'forms':
+            if (typeof window.initEdmsFormsView === 'function') window.initEdmsFormsView();
             break;
         default:
             break;
@@ -1419,18 +1465,50 @@ function hasCommItemsRoots(moduleKey, tabKey = null) {
     }
 }
 
-function hasSiteLogsRoots(moduleKey) {
+function hasSiteLogsRoots(moduleKey, tabKey = null) {
     const normalized = String(moduleKey || '').trim().toLowerCase();
     if (!normalized) return false;
+    const tab = String(tabKey || '').trim().toLowerCase();
     try {
-        return !!document.querySelector(`.site-logs-root[data-module="${normalized}"][data-tab]`);
+        const selector = tab
+            ? `.site-logs-root[data-module="${normalized}"][data-tab="${tab}"]`
+            : `.site-logs-root[data-module="${normalized}"][data-tab]`;
+        return !!document.querySelector(selector);
+    } catch (error) {
+        return false;
+    }
+}
+
+function hasWorkInstructionsRoots(moduleKey, tabKey = null) {
+    const normalized = String(moduleKey || '').trim().toLowerCase();
+    if (!normalized) return false;
+    const tab = String(tabKey || '').trim().toLowerCase();
+    try {
+        const selector = tab
+            ? `.work-instructions-root[data-module="${normalized}"][data-tab="${tab}"]`
+            : `.work-instructions-root[data-module="${normalized}"][data-tab]`;
+        return !!document.querySelector(selector);
+    } catch (error) {
+        return false;
+    }
+}
+
+function hasProjectControlRoots(moduleKey, tabKey = null) {
+    const normalized = String(moduleKey || '').trim().toLowerCase();
+    if (!normalized) return false;
+    const tab = String(tabKey || '').trim().toLowerCase();
+    try {
+        const selector = tab
+            ? `.project-control-root[data-module="${normalized}"][data-tab="${tab}"]`
+            : `.project-control-root[data-module="${normalized}"][data-tab]`;
+        return !!document.querySelector(selector);
     } catch (error) {
         return false;
     }
 }
 
 function onSiteLogsTabOpened(moduleKey, tabKey) {
-    if (!(TS_SITE_LOGS_UI?.onTabOpened) || !hasSiteLogsRoots(moduleKey)) return;
+    if (!(TS_SITE_LOGS_UI?.onTabOpened) || !hasSiteLogsRoots(moduleKey, tabKey)) return;
     Promise.resolve(
         TS_SITE_LOGS_UI.onTabOpened(moduleKey, tabKey, buildSiteLogsUiDeps())
     ).catch((error) => {
@@ -1506,17 +1584,19 @@ function openContractorTab(tabName, btnEl = null) {
         Promise.resolve(
             TS_COMM_ITEMS_UI.onTabOpened('contractor', normalized, buildCommItemsUiDeps())
         ).then((handled) => {
-            if (!handled) return moduleBoardOnTabOpened('contractor', normalized);
+            if (!handled && moduleBoardCanRead()) return moduleBoardOnTabOpened('contractor', normalized);
             return null;
         }).catch((error) => {
             console.warn('commItemsUi contractor tab open failed:', error);
-            return moduleBoardOnTabOpened('contractor', normalized);
+            return moduleBoardCanRead() ? moduleBoardOnTabOpened('contractor', normalized) : null;
         });
     }
-    if (!handledByCommBridge) {
+    if (!handledByCommBridge && moduleBoardCanRead()) {
         moduleBoardOnTabOpened('contractor', normalized);
     }
-    onSiteLogsTabOpened('contractor', normalized);
+    if (normalized === 'execution') {
+        onSiteLogsTabOpened('contractor', normalized);
+    }
 }
 
 function initContractorView() {
@@ -1526,19 +1606,6 @@ function initContractorView() {
         showToast('No accessible tab is available for contractor hub.', 'error');
         return;
     }
-    initPermitQcModule('contractor');
-    if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('contractor')) {
-        Promise.resolve(
-            TS_COMM_ITEMS_UI.initModule('contractor', buildCommItemsUiDeps())
-        ).then((handled) => {
-            if (!handled) initModuleCrudBoards();
-        }).catch((error) => {
-            console.warn('commItemsUi contractor init failed:', error);
-            initModuleCrudBoards();
-        });
-    }
-    initSiteLogsModule('contractor');
-    initModuleCrudBoards();
     if (TS_MODULE_TABS?.resolveInitialTab) {
         try {
             const initial = TS_MODULE_TABS.resolveInitialTab('.contractor-tab-btn', 'data-contractor-tab', 'execution');
@@ -1575,23 +1642,41 @@ function openConsultantTab(tabName, btnEl = null) {
         onPermitQcTabOpened('consultant', normalized);
         return;
     }
+    if (normalized === 'instructions' && TS_WORK_INSTRUCTIONS_UI?.onTabOpened && hasWorkInstructionsRoots('consultant', normalized)) {
+        Promise.resolve(
+            TS_WORK_INSTRUCTIONS_UI.onTabOpened('consultant', normalized, buildCommItemsUiDeps())
+        ).catch((error) => {
+            console.warn('workInstructionsUi consultant tab open failed:', error);
+        });
+        return;
+    }
+    if (normalized === 'control' && TS_PROJECT_CONTROL_UI?.onTabOpened && hasProjectControlRoots('consultant', normalized)) {
+        Promise.resolve(
+            TS_PROJECT_CONTROL_UI.onTabOpened('consultant', normalized, buildCommItemsUiDeps())
+        ).catch((error) => {
+            console.warn('projectControlUi consultant tab open failed:', error);
+        });
+        return;
+    }
     let handledByCommBridge = false;
     if (TS_COMM_ITEMS_UI?.onTabOpened && hasCommItemsRoots('consultant', normalized)) {
         handledByCommBridge = true;
         Promise.resolve(
             TS_COMM_ITEMS_UI.onTabOpened('consultant', normalized, buildCommItemsUiDeps())
         ).then((handled) => {
-            if (!handled) return moduleBoardOnTabOpened('consultant', normalized);
+            if (!handled && moduleBoardCanRead()) return moduleBoardOnTabOpened('consultant', normalized);
             return null;
         }).catch((error) => {
             console.warn('commItemsUi consultant tab open failed:', error);
-            return moduleBoardOnTabOpened('consultant', normalized);
+            return moduleBoardCanRead() ? moduleBoardOnTabOpened('consultant', normalized) : null;
         });
     }
-    if (!handledByCommBridge) {
+    if (!handledByCommBridge && moduleBoardCanRead()) {
         moduleBoardOnTabOpened('consultant', normalized);
     }
-    onSiteLogsTabOpened('consultant', normalized);
+    if (normalized === 'inspection') {
+        onSiteLogsTabOpened('consultant', normalized);
+    }
 }
 
 function initConsultantView() {
@@ -1601,19 +1686,6 @@ function initConsultantView() {
         showToast('No accessible tab is available for consultant hub.', 'error');
         return;
     }
-    initPermitQcModule('consultant');
-    if (TS_COMM_ITEMS_UI?.initModule && hasCommItemsRoots('consultant')) {
-        Promise.resolve(
-            TS_COMM_ITEMS_UI.initModule('consultant', buildCommItemsUiDeps())
-        ).then((handled) => {
-            if (!handled) initModuleCrudBoards();
-        }).catch((error) => {
-            console.warn('commItemsUi consultant init failed:', error);
-            initModuleCrudBoards();
-        });
-    }
-    initSiteLogsModule('consultant');
-    initModuleCrudBoards();
     if (TS_MODULE_TABS?.resolveInitialTab) {
         try {
             const initial = TS_MODULE_TABS.resolveInitialTab('.consultant-tab-btn', 'data-consultant-tab', 'inspection');
@@ -1663,13 +1735,7 @@ function moduleBoardCanEdit() {
     );
     if (canWriteByCapability) return true;
     if (hasCapability('workboard:read')) return false;
-
-    if (TS_MODULE_BOARD?.canEdit) {
-        return !!TS_MODULE_BOARD.canEdit(currentEffectiveUserRole());
-    }
-
-    const role = currentEffectiveUserRole();
-    return role !== 'viewer';
+    return false;
 }
 
 function moduleBoardGetProjects() {
@@ -2418,6 +2484,7 @@ async function moduleBoardRefreshSummary(moduleKey) {
 }
 
 async function moduleBoardOnTabOpened(moduleKey, tabKey) {
+    if (!moduleBoardCanRead()) return false;
     if (TS_MODULE_BOARD?.onTabOpened) {
         const handled = await TS_MODULE_BOARD.onTabOpened(moduleKey, tabKey, {
             initBoards: () => initModuleCrudBoards(),
@@ -2632,7 +2699,7 @@ function updateSidebarState(activeViewId) {
     let navTargetView = activeViewId;
     if (activeViewId === 'view-users' || activeViewId === 'view-bulk') {
         navTargetView = 'view-settings';
-    } else if (activeViewId === 'view-archive' || activeViewId === 'view-transmittal' || activeViewId === 'view-correspondence' || activeViewId === 'view-document-detail') {
+    } else if (activeViewId === 'view-archive' || activeViewId === 'view-transmittal' || activeViewId === 'view-correspondence' || activeViewId === 'view-meeting-minutes' || activeViewId === 'view-edms-forms' || activeViewId === 'view-document-detail') {
         navTargetView = 'view-edms';
     } else if (activeViewId === 'view-edms-settings') {
         navTargetView = 'view-edms';
@@ -2661,6 +2728,28 @@ function toggleLoader(show) {
 }
 
 function showToast(message, type = 'info', duration = 3000) {
+    let normalizedMessage = String(message == null ? '' : message).trim();
+    if (!normalizedMessage) return;
+    if (
+        normalizedMessage.includes('You do not have permission')
+        || normalizedMessage.includes('Access denied')
+        || normalizedMessage.includes('Missing permission')
+    ) {
+        normalizedMessage = 'شما دسترسی لازم برای این بخش را ندارید.';
+    }
+    const toastKey = `${String(type || 'info')}:${normalizedMessage}`;
+    const now = Date.now();
+    const lastShownAt = Number(RECENT_TOASTS.get(toastKey) || 0);
+    if (lastShownAt && (now - lastShownAt) < 1800) {
+        return;
+    }
+    RECENT_TOASTS.set(toastKey, now);
+    setTimeout(() => {
+        if (RECENT_TOASTS.get(toastKey) === now) {
+            RECENT_TOASTS.delete(toastKey);
+        }
+    }, Math.max(2000, Number(duration || 0) + 500));
+
     // Ø§ÛŒØ¬Ø§Ø¯ container Ø§Ú¯Ø± ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -2681,7 +2770,7 @@ function showToast(message, type = 'info', duration = 3000) {
         box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 0.9rem;
         animation: slideIn 0.3s ease; max-width: 300px;
     `;
-    toast.textContent = message;
+    toast.textContent = normalizedMessage;
     
     container.appendChild(toast);
     

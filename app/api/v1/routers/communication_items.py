@@ -36,7 +36,6 @@ from app.db.models import (
     ReviewResult,
     RfiDetail,
     TechDetail,
-    TechSubtype,
     User as DbUser,
     WorkflowStatus,
     WorkflowTransition,
@@ -54,7 +53,7 @@ from app.services.storage_sync import (
 
 router = APIRouter(prefix="/comm-items", tags=["Communication Items"])
 
-VALID_ITEM_TYPES = {"RFI", "NCR", "TECH"}
+VALID_ITEM_TYPES = {"RFI", "NCR"}
 RELATION_TYPES = {"CAUSED_BY", "RESULTS_IN", "REFERENCES", "SUPERSEDES", "LINKED_TO_CLAIM"}
 ATTACHMENT_SCOPES = {"GENERAL", "REFERENCE", "RESPONSE"}
 ATTACHMENT_SLOT_RULES: dict[str, dict[str, str]] = {
@@ -68,11 +67,6 @@ ATTACHMENT_SLOT_RULES: dict[str, dict[str, str]] = {
         "REFERENCE": "NCR_REFERENCE",
         "RESPONSE": "NCR_RESPONSE",
     },
-    "TECH": {
-        "GENERAL": "GENERAL_ATTACHMENT",
-        "REFERENCE": "TECH_REFERENCE",
-        "RESPONSE": "TECH_RESPONSE",
-    },
 }
 FILE_ACCEPT_MATRIX: dict[str, list[str]] = {
     "pdf": [".pdf"],
@@ -82,16 +76,9 @@ FILE_ACCEPT_MATRIX: dict[str, list[str]] = {
     "model": [".ifc"],
     "archive": [".zip"],
 }
-REMOVED_TECH_REPORT_SUBTYPES = {
-    "DAILY_REPORT",
-    "WEEKLY_REPORT",
-    "MANPOWER_REPORT",
-    "EQUIPMENT_REPORT",
-}
 TERMINAL_BY_TYPE: dict[str, set[str]] = {
     "RFI": {"CLOSED", "SUPERSEDED"},
     "NCR": {"CLOSED"},
-    "TECH": {"CLOSED"},
 }
 SENSITIVE_FIELDS = {
     "status_code",
@@ -193,6 +180,11 @@ def _enforce_item_scope(db: Session, user: User, item: CommItem) -> None:
         discipline_code=item.discipline_code,
     )
     enforce_organization_access(db, user, organization_id=item.organization_id)
+
+
+def _enforce_mutable_item(item: CommItem) -> None:
+    if _upper(item.item_type) not in VALID_ITEM_TYPES:
+        raise HTTPException(status_code=409, detail="Legacy TECH items are read-only. Use Work Instructions.")
 
 
 def _require_project_and_discipline(db: Session, project_code: str, discipline_code: str) -> None:
@@ -381,34 +373,6 @@ def _validate_business_rules(item: CommItem) -> None:
             if not detail.verified_at:
                 raise HTTPException(status_code=400, detail=f"NCR {status_code} requires verified_at.")
 
-    if item_type == "TECH":
-        if item.rfi_detail or item.ncr_detail:
-            raise HTTPException(status_code=400, detail="TECH item cannot include RFI/NCR details.")
-        detail = item.tech_detail
-        if not detail:
-            raise HTTPException(status_code=400, detail="TECH details are required.")
-        if status_code == "SUBMITTED":
-            if not item.recipient_org_id or not item.response_due_date:
-                raise HTTPException(status_code=400, detail="TECH SUBMITTED requires recipient_org_id and response_due_date.")
-        if _upper(detail.tech_subtype_code) == "SUBMITTAL":
-            if not _norm(detail.document_no) or not _norm(detail.revision) or not item.response_due_date:
-                raise HTTPException(
-                    status_code=400,
-                    detail="TECH SUBMITTAL requires document_no, revision, and response_due_date.",
-                )
-        if detail.review_result_code and status_code not in {
-            "IN_REVIEW",
-            "APPROVED",
-            "APPROVED_AS_NOTED",
-            "REVISE_RESUBMIT",
-            "REJECTED",
-            "CLOSED",
-        }:
-            raise HTTPException(
-                status_code=400,
-                detail="TECH review_result is only valid in review/approval statuses.",
-            )
-
 
 def _item_storage_dir(db: Session, item: CommItem, file_kind: str, scope_code: str = "GENERAL") -> Path:
     storage_manager = StorageManager(db)
@@ -485,24 +449,13 @@ def _delete_stored_attachment_file(db: Session, stored_path: str) -> None:
 
 
 TAB_RULES: dict[tuple[str, str], dict[str, Any]] = {
-    ("contractor", "execution"): {"item_types": ["TECH"]},
     ("contractor", "requests"): {"item_types": ["RFI", "NCR"]},
-    ("consultant", "defects"): {"item_types": ["NCR"]},
-    ("consultant", "instructions"): {
-        "item_types": ["TECH"],
-        "tech_subtypes": ["INSTRUCTION", "MOM"],
-    },
-    ("consultant", "inspection"): {
-        "item_types": ["TECH"],
-        "tech_subtypes": ["IR"],
-    },
-    ("consultant", "control"): {"item_types": ["RFI", "NCR", "TECH"], "claim_or_overdue_default": True},
+    ("consultant", "defects"): {"item_types": ["RFI", "NCR"]},
 }
 
 DEFAULT_STATUS_BY_TYPE = {
     "RFI": "DRAFT",
     "NCR": "ISSUED",
-    "TECH": "DRAFT",
 }
 
 VALID_PRIORITIES = {"LOW", "NORMAL", "HIGH", "URGENT"}
@@ -725,6 +678,7 @@ def _serialize_item(row: CommItem, *, include_details: bool = True) -> dict[str,
         "project_code": row.project_code,
         "discipline_code": row.discipline_code,
         "organization_id": row.organization_id,
+        "sender_org_name": getattr(getattr(row, "organization", None), "name", None),
         "zone": row.zone,
         "title": row.title,
         "short_description": row.short_description,
@@ -824,9 +778,6 @@ def _enforce_detail_payload_match(
         if rfi is not None or tech is not None:
             raise HTTPException(status_code=400, detail="NCR payload cannot include RFI/TECH details.")
         return
-    if normalized_item_type == "TECH":
-        if rfi is not None or ncr is not None:
-            raise HTTPException(status_code=400, detail="TECH payload cannot include RFI/NCR details.")
 
 
 def _attachment_type_exists_condition(db: Session, attachment_type: Optional[str]):
@@ -927,24 +878,6 @@ def _set_item_field(
         )
 
 
-def _require_tech_subtype(db: Session, code: str) -> None:
-    normalized = _upper(code)
-    if normalized in REMOVED_TECH_REPORT_SUBTYPES:
-        raise HTTPException(status_code=400, detail="TECH report subtypes moved to Site Logs.")
-    row = db.query(TechSubtype.code).filter(TechSubtype.code == normalized, TechSubtype.is_active.is_(True)).first()
-    if not row:
-        raise HTTPException(status_code=400, detail=f"Unknown TECH subtype: {code}")
-
-
-def _require_review_result_if_provided(db: Session, code: str | None) -> None:
-    normalized = _upper(code)
-    if not normalized:
-        return
-    row = db.query(ReviewResult.code).filter(ReviewResult.code == normalized, ReviewResult.is_active.is_(True)).first()
-    if not row:
-        raise HTTPException(status_code=400, detail=f"Unknown review result: {code}")
-
-
 def _create_rfi_detail(payload: RfiDetailIn | None) -> RfiDetail:
     if payload is None:
         raise HTTPException(status_code=400, detail="RFI detail payload is required.")
@@ -980,30 +913,6 @@ def _create_ncr_detail(payload: NcrDetailIn | None) -> NcrDetail:
         verification_note=_norm(payload.verification_note) or None,
         verified_by_id=payload.verified_by_id,
         verified_at=payload.verified_at,
-    )
-
-
-def _create_tech_detail(db: Session, payload: TechDetailIn | None) -> TechDetail:
-    if payload is None:
-        raise HTTPException(status_code=400, detail="TECH detail payload is required.")
-    subtype_code = _upper(payload.tech_subtype_code)
-    if not subtype_code:
-        raise HTTPException(status_code=400, detail="TECH requires tech_subtype_code.")
-    _require_tech_subtype(db, subtype_code)
-    _require_review_result_if_provided(db, payload.review_result_code)
-    return TechDetail(
-        tech_subtype_code=subtype_code,
-        document_title=_norm(payload.document_title) or None,
-        document_no=_norm(payload.document_no) or None,
-        revision=_norm(payload.revision) or None,
-        transmittal_no=_norm(payload.transmittal_no) or None,
-        submission_no=_norm(payload.submission_no) or None,
-        review_cycle_no=payload.review_cycle_no,
-        review_result_code=_upper(payload.review_result_code) or None,
-        review_note=_norm(payload.review_note) or None,
-        reviewed_by_id=payload.reviewed_by_id,
-        reviewed_at=payload.reviewed_at,
-        meeting_date=payload.meeting_date,
     )
 
 
@@ -1047,38 +956,6 @@ def _update_ncr_detail(detail: NcrDetail, payload: NcrDetailIn) -> None:
         detail.verified_by_id = payload.verified_by_id
     if payload.verified_at is not None:
         detail.verified_at = payload.verified_at
-
-
-def _update_tech_detail(db: Session, detail: TechDetail, payload: TechDetailIn) -> None:
-    if payload.tech_subtype_code is not None:
-        subtype_code = _upper(payload.tech_subtype_code)
-        if not subtype_code:
-            raise HTTPException(status_code=400, detail="tech_subtype_code cannot be empty.")
-        _require_tech_subtype(db, subtype_code)
-        detail.tech_subtype_code = subtype_code
-    if payload.document_title is not None:
-        detail.document_title = _norm(payload.document_title) or None
-    if payload.document_no is not None:
-        detail.document_no = _norm(payload.document_no) or None
-    if payload.revision is not None:
-        detail.revision = _norm(payload.revision) or None
-    if payload.transmittal_no is not None:
-        detail.transmittal_no = _norm(payload.transmittal_no) or None
-    if payload.submission_no is not None:
-        detail.submission_no = _norm(payload.submission_no) or None
-    if payload.review_cycle_no is not None:
-        detail.review_cycle_no = payload.review_cycle_no
-    if payload.review_result_code is not None:
-        _require_review_result_if_provided(db, payload.review_result_code)
-        detail.review_result_code = _upper(payload.review_result_code) or None
-    if payload.review_note is not None:
-        detail.review_note = _norm(payload.review_note) or None
-    if payload.reviewed_by_id is not None:
-        detail.reviewed_by_id = payload.reviewed_by_id
-    if payload.reviewed_at is not None:
-        detail.reviewed_at = payload.reviewed_at
-    if payload.meeting_date is not None:
-        detail.meeting_date = payload.meeting_date
 
 
 def _serialize_status_log(row: ItemStatusLog) -> dict[str, Any]:
@@ -1169,7 +1046,6 @@ def _open_status_condition():
             CommItem.status_code.notin_(["CLOSED", "SUPERSEDED"]),
         ),
         and_(CommItem.item_type == "NCR", CommItem.status_code != "CLOSED"),
-        and_(CommItem.item_type == "TECH", CommItem.status_code != "CLOSED"),
     )
 
 
@@ -1198,7 +1074,9 @@ def _base_items_query(db: Session, user: User):
         joinedload(CommItem.created_by),
         joinedload(CommItem.assignee_user),
         joinedload(CommItem.recipient_org),
+        joinedload(CommItem.organization),
     )
+    query = query.filter(CommItem.item_type.in_(sorted(list(VALID_ITEM_TYPES))))
     query = apply_scope_query_filters(
         query,
         db,
@@ -1223,13 +1101,13 @@ def get_comm_items_catalog(
     del user
     statuses = (
         db.query(WorkflowStatus)
-        .filter(WorkflowStatus.is_active.is_(True))
+        .filter(WorkflowStatus.item_type.in_(sorted(list(VALID_ITEM_TYPES))), WorkflowStatus.is_active.is_(True))
         .order_by(WorkflowStatus.item_type.asc(), WorkflowStatus.sort_order.asc(), WorkflowStatus.id.asc())
         .all()
     )
     transitions = (
         db.query(WorkflowTransition)
-        .filter(WorkflowTransition.is_active.is_(True))
+        .filter(WorkflowTransition.item_type.in_(sorted(list(VALID_ITEM_TYPES))), WorkflowTransition.is_active.is_(True))
         .order_by(
             WorkflowTransition.item_type.asc(),
             WorkflowTransition.from_status_code.asc(),
@@ -1237,13 +1115,7 @@ def get_comm_items_catalog(
         )
         .all()
     )
-    tech_subtypes = (
-        db.query(TechSubtype)
-        .filter(TechSubtype.is_active.is_(True))
-        .filter(~TechSubtype.code.in_(list(REMOVED_TECH_REPORT_SUBTYPES)))
-        .order_by(TechSubtype.sort_order.asc(), TechSubtype.code.asc())
-        .all()
-    )
+    tech_subtypes = []
     review_results = (
         db.query(ReviewResult)
         .filter(ReviewResult.is_active.is_(True))
@@ -1453,16 +1325,14 @@ def create_comm_item(
     if organization_id:
         _check_optional_org(db, organization_id)
         enforce_organization_access(db, user, organization_id=organization_id)
-    for org_id in [payload.recipient_org_id, payload.contractor_org_id, payload.consultant_org_id]:
+    _check_optional_org(db, payload.recipient_org_id)
+    for org_id in [payload.contractor_org_id, payload.consultant_org_id]:
         _check_optional_org(db, org_id)
         if org_id:
             enforce_organization_access(db, user, organization_id=org_id)
     _check_optional_user(db, payload.assignee_user_id)
     if payload.ncr and payload.ncr.verified_by_id:
         _check_optional_user(db, payload.ncr.verified_by_id)
-    if payload.tech and payload.tech.reviewed_by_id:
-        _check_optional_user(db, payload.tech.reviewed_by_id)
-
     item = CommItem(
         item_no=_next_item_no(
             db,
@@ -1508,8 +1378,6 @@ def create_comm_item(
         item.rfi_detail = _create_rfi_detail(payload.rfi)
     elif item_type == "NCR":
         item.ncr_detail = _create_ncr_detail(payload.ncr)
-    elif item_type == "TECH":
-        item.tech_detail = _create_tech_detail(db, payload.tech)
 
     if item.superseded_by_item_id:
         target = db.query(CommItem.id).filter(CommItem.id == item.superseded_by_item_id).first()
@@ -1565,6 +1433,7 @@ def update_comm_item(
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
+    _enforce_mutable_item(item)
     changed_by_id = getattr(user, "id", None)
     fields_set = set(getattr(payload, "model_fields_set", set()) or set())
     _enforce_detail_payload_match(item_type=item.item_type, rfi=payload.rfi, ncr=payload.ncr, tech=payload.tech)
@@ -1635,8 +1504,6 @@ def update_comm_item(
         )
     if "recipient_org_id" in fields_set:
         _check_optional_org(db, payload.recipient_org_id)
-        if payload.recipient_org_id:
-            enforce_organization_access(db, user, organization_id=payload.recipient_org_id)
         _set_item_field(
             db,
             item=item,
@@ -1785,14 +1652,6 @@ def update_comm_item(
             item.ncr_detail = _create_ncr_detail(payload.ncr)
         else:
             _update_ncr_detail(item.ncr_detail, payload.ncr)
-    if item.item_type == "TECH" and payload.tech is not None:
-        if payload.tech.reviewed_by_id:
-            _check_optional_user(db, payload.tech.reviewed_by_id)
-        if not item.tech_detail:
-            item.tech_detail = _create_tech_detail(db, payload.tech)
-        else:
-            _update_tech_detail(db, item.tech_detail, payload.tech)
-
     item.updated_at = datetime.utcnow()
     _validate_business_rules(item)
     db.commit()
@@ -1809,6 +1668,7 @@ def transition_comm_item(
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
+    _enforce_mutable_item(item)
 
     from_status = _upper(item.status_code)
     to_status = _upper(payload.to_status_code)
@@ -1933,6 +1793,7 @@ def create_comm_item_comment(
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
+    _enforce_mutable_item(item)
 
     row = ItemComment(
         item_id=item_id,
@@ -1996,6 +1857,7 @@ def upload_comm_item_attachment(
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
+    _enforce_mutable_item(item)
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="file is required")
 
@@ -2118,6 +1980,7 @@ def delete_comm_item_attachment(
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
+    _enforce_mutable_item(item)
     row = _load_attachment_or_404(db, attachment_id)
     if int(row.item_id or 0) != int(item_id):
         raise HTTPException(status_code=400, detail="Attachment does not belong to this item.")
@@ -2173,6 +2036,7 @@ def create_comm_item_relation(
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
+    _enforce_mutable_item(item)
     to_item = _load_item_or_404(db, payload.to_item_id)
     _enforce_item_scope(db, user, to_item)
     if int(payload.to_item_id) == int(item_id):
@@ -2226,6 +2090,7 @@ def delete_comm_item_relation(
 ):
     item = _load_item_or_404(db, item_id)
     _enforce_item_scope(db, user, item)
+    _enforce_mutable_item(item)
     row = _load_relation_or_404(db, relation_id)
     if int(item_id) not in {int(row.from_item_id), int(row.to_item_id)}:
         raise HTTPException(status_code=400, detail="Relation does not belong to this item.")

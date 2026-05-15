@@ -1,12 +1,6 @@
 // @ts-nocheck
 const EDITABLE_FIELDS = [
-  "doc_title_e",
-  "doc_title_p",
   "subject",
-  "phase_code",
-  "package_code",
-  "block",
-  "level_code",
   "notes",
 ];
 

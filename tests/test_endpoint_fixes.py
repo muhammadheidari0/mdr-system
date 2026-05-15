@@ -1,11 +1,15 @@
 import uuid
+from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
+from app.db.models import ArchiveFile, ArchiveFilePublicShare, DocumentRevision, MdrDocument
+from app.db.session import SessionLocal
 from app.main import app
 from tests.auth_helpers import get_auth_headers
 from tests.auth_helpers import get_test_admin_credentials
+from tests.site_logs_helpers import create_scoped_user_and_login, ensure_project_discipline
 
 client = TestClient(app)
 API_PREFIX = "/api/v1"
@@ -60,6 +64,185 @@ def test_transmittal_create_and_list_work_with_current_model():
     assert any(item.get("transmittal_no") == created_no for item in items)
 
 
+def test_transmittal_download_cover_returns_pdf_attachment():
+    headers = _auth_headers()
+    project_code, discipline_code = ensure_project_discipline(client, headers)
+    doc_number = f"{project_code}-PDF-{uuid.uuid4().hex[:6].upper()}-TGEN"
+    document_id = 0
+    revision_id = 0
+    archive_file_id = 0
+
+    with SessionLocal() as db:
+        document = MdrDocument(
+            doc_number=doc_number,
+            doc_title_e="Transmittal PDF Test Document",
+            doc_title_p="Transmittal PDF Test Document",
+            subject="Transmittal PDF Test Document",
+            project_code=project_code,
+            discipline_code=discipline_code,
+            mdr_code="E",
+            package_code=None,
+            block="T",
+            level_code=None,
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+        document_id = int(document.id or 0)
+        revision = DocumentRevision(
+            document_id=document_id,
+            revision="00",
+            status="IFA",
+            file_name=f"{doc_number}.pdf",
+            file_path=f"webdav://Archive/{doc_number}.pdf",
+        )
+        db.add(revision)
+        db.flush()
+        revision_id = int(revision.id or 0)
+        archive_file = ArchiveFile(
+            revision_id=revision_id,
+            original_name=f"{doc_number}.pdf",
+            stored_path=f"webdav://Archive/{doc_number}.pdf",
+            mime_type="application/pdf",
+            detected_mime="application/pdf",
+            size_bytes=2048,
+            storage_backend="nextcloud",
+            file_kind="pdf",
+            is_primary=True,
+            revision="00",
+            status="IFA",
+        )
+        db.add(archive_file)
+        db.flush()
+        archive_file_id = int(archive_file.id or 0)
+        share_url = f"https://cloud.example.test/s/{uuid.uuid4().hex}"
+        db.add(
+            ArchiveFilePublicShare(
+                file_id=archive_file_id,
+                provider="nextcloud",
+                provider_share_id=f"share-{uuid.uuid4().hex[:8]}",
+                share_url=share_url,
+                resolved_path=f"/Archive/{doc_number}.pdf",
+                source="primary_nextcloud",
+                permissions=1,
+                password_set=False,
+                expires_at=datetime.utcnow() + timedelta(days=30),
+            )
+        )
+        db.commit()
+
+    payload = {
+        "project_code": project_code,
+        "sender": "O",
+        "receiver": "C",
+        "subject": f"pdf-{uuid.uuid4().hex[:6]}",
+        "notes": "",
+        "documents": [
+            {
+                "document_code": doc_number,
+                "revision": "00",
+                "status": "IFA",
+                "electronic_copy": True,
+                "hard_copy": False,
+            }
+        ],
+    }
+
+    try:
+        create_response = client.post(
+            "/api/v1/transmittal/create",
+            headers={**headers, "Content-Type": "application/json"},
+            json=payload,
+        )
+        assert create_response.status_code == 200, create_response.text
+        transmittal_no = create_response.json()["transmittal_no"]
+
+        preview_response = client.get(f"/api/v1/transmittal/{transmittal_no}/print-preview", headers=headers)
+        assert preview_response.status_code == 200, preview_response.text
+        assert preview_response.headers.get("content-type", "").startswith("text/html")
+        assert "برگه ارسال مدارک" in preview_response.text
+        assert transmittal_no in preview_response.text
+        assert doc_number in preview_response.text
+        assert share_url in preview_response.text
+        assert f'href="{share_url}"' in preview_response.text
+
+        pdf_response = client.get(f"/api/v1/transmittal/{transmittal_no}/download-cover", headers=headers)
+        assert pdf_response.status_code == 200, pdf_response.text
+        assert pdf_response.headers.get("content-type", "").startswith("application/pdf")
+        disposition = pdf_response.headers.get("content-disposition", "").lower()
+        assert "attachment" in disposition
+        assert transmittal_no.lower() in disposition
+        assert pdf_response.content.startswith(b"%PDF")
+        assert len(pdf_response.content) > 1000
+    finally:
+        with SessionLocal() as db:
+            if archive_file_id > 0:
+                db.query(ArchiveFilePublicShare).filter(ArchiveFilePublicShare.file_id == archive_file_id).delete(
+                    synchronize_session=False
+                )
+                db.query(ArchiveFile).filter(ArchiveFile.id == archive_file_id).delete(synchronize_session=False)
+            if revision_id > 0:
+                db.query(DocumentRevision).filter(DocumentRevision.id == revision_id).delete(synchronize_session=False)
+            if document_id > 0:
+                document = db.query(MdrDocument).filter(MdrDocument.id == document_id).first()
+                if document is not None:
+                    db.delete(document)
+            db.commit()
+
+
+def test_transmittal_options_settings_and_labels():
+    headers = _auth_headers()
+    settings_payload = {
+        "direction_options": [
+            {"code": "O", "label": "صادره", "is_active": True, "sort_order": 10},
+            {"code": "I", "label": "وارده", "is_active": True, "sort_order": 20},
+        ],
+        "recipient_options": [
+            {"code": "C", "label": "مشاور", "is_active": True, "sort_order": 10},
+        ],
+    }
+    save_response = client.post(
+        "/api/v1/settings/transmittal-parties",
+        headers={**headers, "Content-Type": "application/json"},
+        json=settings_payload,
+    )
+    assert save_response.status_code == 200, save_response.text
+
+    options_response = client.get("/api/v1/transmittal/options", headers=headers)
+    assert options_response.status_code == 200, options_response.text
+    options = options_response.json()
+    assert options["direction_options"][0]["label"] == "صادره"
+    assert options["recipient_options"][0]["label"] == "مشاور"
+
+    payload = {
+        "project_code": "T202",
+        "sender": "O",
+        "receiver": "C",
+        "subject": f"labels-{uuid.uuid4().hex[:6]}",
+        "notes": "",
+        "documents": [],
+    }
+    create_response = client.post(
+        "/api/v1/transmittal/create",
+        headers={**headers, "Content-Type": "application/json"},
+        json=payload,
+    )
+    assert create_response.status_code == 200, create_response.text
+    transmittal_no = create_response.json()["transmittal_no"]
+
+    detail_response = client.get(f"/api/v1/transmittal/item/{transmittal_no}", headers=headers)
+    assert detail_response.status_code == 200, detail_response.text
+    detail = detail_response.json()
+    assert detail["sender_label"] == "صادره"
+    assert detail["receiver_label"] == "مشاور"
+
+    list_response = client.get("/api/v1/transmittal/", headers=headers)
+    assert list_response.status_code == 200, list_response.text
+    row = next(item for item in list_response.json() if item.get("transmittal_no") == transmittal_no)
+    assert row["sender_label"] == "صادره"
+    assert row["receiver_label"] == "مشاور"
+
+
 def test_lookup_dictionary_endpoint_available():
     response = client.get("/api/v1/lookup/dictionary")
     assert response.status_code == 200, response.text
@@ -112,6 +295,113 @@ def test_users_paged_response_contains_pagination_meta():
     assert pagination.get("page") == 1
     assert pagination.get("page_size") == 5
     assert pagination.get("count") == len(body.get("items", []))
+
+
+def test_users_paged_scope_summary_keeps_effective_scope_fields():
+    headers = _auth_headers()
+    project_code, discipline_code = ensure_project_discipline(client, headers)
+    scoped_user = create_scoped_user_and_login(
+        client,
+        headers,
+        org_type="contractor",
+        project_code=project_code,
+        discipline_code=discipline_code,
+        email_prefix=f"user_scope_{uuid.uuid4().hex[:6]}",
+        role="user",
+        organization_role="user",
+    )
+
+    response = client.get(
+        f"/api/v1/users/paged?page=1&page_size=10&q={scoped_user['email']}",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    items = body.get("items") or []
+    assert items, body
+    item = next((row for row in items if row.get("email") == scoped_user["email"]), None)
+    assert item, items
+
+    summary = item.get("scope_summary") or {}
+    assert summary.get("status") == "restricted"
+    assert summary.get("source") in {"user", "intersection", "role", "empty_intersection"}
+    assert summary.get("user_projects_count", 0) >= 1
+    assert summary.get("effective_projects_count", 0) >= 1
+    assert summary.get("user_disciplines_count", 0) >= 1
+    assert summary.get("effective_disciplines_count", 0) >= 1
+
+
+def test_archive_list_includes_mdr_documents_without_uploaded_files():
+    headers = _auth_headers()
+    project_code, discipline_code = ensure_project_discipline(client, headers)
+    doc_number = f"{project_code}-E{uuid.uuid4().hex[:6].upper()}-TGEN"
+    document_id = 0
+
+    with SessionLocal() as db:
+        document = MdrDocument(
+            doc_number=doc_number,
+            doc_title_e="MDR Only Test Document",
+            doc_title_p="سند فقط MDR",
+            subject="MDR Only Test Document",
+            project_code=project_code,
+            discipline_code=discipline_code,
+            mdr_code="E",
+            package_code=None,
+            block="T",
+            level_code=None,
+        )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
+        document_id = int(document.id or 0)
+
+    try:
+        response = client.get(
+            f"/api/v1/archive/list?search={doc_number}&limit=50",
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body.get("ok") is True
+        summary = body.get("summary") or {}
+        assert summary.get("total_documents", 0) >= 1
+        assert summary.get("mdr_only", 0) >= 1
+        rows = body.get("data") or []
+        row = next((item for item in rows if int(item.get("document_id") or 0) == document_id), None)
+        assert row is not None, rows
+        assert row.get("is_mdr_only") is True
+        assert row.get("has_uploaded_file") is False
+        assert row.get("pdf_file_id") is None
+        assert row.get("native_file_id") is None
+        assert "MDR" in str(row.get("row_message") or "")
+
+        only_mdr_response = client.get(
+            f"/api/v1/archive/list?search={doc_number}&file_presence=mdr_only&limit=50",
+            headers=headers,
+        )
+        assert only_mdr_response.status_code == 200, only_mdr_response.text
+        only_mdr_summary = only_mdr_response.json().get("summary") or {}
+        assert only_mdr_summary.get("with_file") == 0
+        assert only_mdr_summary.get("mdr_only", 0) >= 1
+        only_mdr_rows = only_mdr_response.json().get("data") or []
+        assert any(int(item.get("document_id") or 0) == document_id for item in only_mdr_rows)
+
+        with_file_response = client.get(
+            f"/api/v1/archive/list?search={doc_number}&file_presence=with_file&limit=50",
+            headers=headers,
+        )
+        assert with_file_response.status_code == 200, with_file_response.text
+        with_file_summary = with_file_response.json().get("summary") or {}
+        assert with_file_summary.get("mdr_only") == 0
+        with_file_rows = with_file_response.json().get("data") or []
+        assert all(int(item.get("document_id") or 0) != document_id for item in with_file_rows)
+    finally:
+        if document_id > 0:
+            with SessionLocal() as db:
+                document = db.query(MdrDocument).filter(MdrDocument.id == document_id).first()
+                if document is not None:
+                    db.delete(document)
+                    db.commit()
 
 
 def test_bulk_register_respects_project_and_mdr_from_manual_format():

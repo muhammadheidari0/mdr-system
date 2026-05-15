@@ -220,6 +220,7 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
     headers = _admin_headers()
     before = _read_integrations_raw()
     nextcloud_password = "nextcloud-app-password-xyz"
+    public_share_password = "public-share-password-xyz"
     monkeypatch.setattr(settings, "NEXTCLOUD_USERNAME", "")
     monkeypatch.setattr(settings, "NEXTCLOUD_APP_PASSWORD", "")
     monkeypatch.setattr(settings, "NEXTCLOUD_LOCAL_MOUNT_ROOT", "")
@@ -235,6 +236,8 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
                     "base_url": "https://nextcloud.example.com",
                     "username": "nc-user",
                     "app_password": nextcloud_password,
+                    "public_share_password": public_share_password,
+                    "public_share_password_required": True,
                     "root_path": "/mdr",
                     "local_mount_root": "/mnt/nextcloud",
                     "skip_ssl_verify": True,
@@ -259,7 +262,10 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
         assert nextcloud.get("local_mount_root") == "/mnt/nextcloud"
         assert nextcloud.get("local_mount_root_source") == "settings"
         assert nextcloud.get("local_mount_root_configured") is True
+        assert nextcloud.get("public_share_password_configured") is True
+        assert nextcloud.get("public_share_password_required") is True
         assert "app_password" not in nextcloud
+        assert "public_share_password" not in nextcloud
 
         read_res = client.get("/api/v1/settings/storage-integrations", headers=headers)
         assert read_res.status_code == 200, read_res.text
@@ -269,13 +275,17 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
         assert read_nextcloud.get("local_mount_root") == "/mnt/nextcloud"
         assert read_nextcloud.get("local_mount_root_source") == "settings"
         assert read_nextcloud.get("local_mount_root_configured") is True
+        assert read_nextcloud.get("public_share_password_configured") is True
+        assert read_nextcloud.get("public_share_password_required") is True
         assert "app_password" not in read_nextcloud
+        assert "public_share_password" not in read_nextcloud
 
         preserve_res = client.post(
             "/api/v1/settings/storage-integrations",
             json={
                 "nextcloud": {
                     "app_password": "",
+                    "public_share_password": "",
                 }
             },
             headers=headers,
@@ -284,6 +294,23 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
         preserve_nextcloud = preserve_res.json().get("integrations", {}).get("nextcloud", {})
         assert preserve_nextcloud.get("credential_source") == "settings"
         assert preserve_nextcloud.get("credentials_configured") is True
+        assert preserve_nextcloud.get("public_share_password_configured") is True
+        assert preserve_nextcloud.get("public_share_password_required") is True
+
+        no_password_res = client.post(
+            "/api/v1/settings/storage-integrations",
+            json={
+                "nextcloud": {
+                    "public_share_password": "",
+                    "public_share_password_required": False,
+                }
+            },
+            headers=headers,
+        )
+        assert no_password_res.status_code == 200, no_password_res.text
+        no_password_nextcloud = no_password_res.json().get("integrations", {}).get("nextcloud", {})
+        assert no_password_nextcloud.get("public_share_password_configured") is True
+        assert no_password_nextcloud.get("public_share_password_required") is False
 
         invalid_provider_res = client.post(
             "/api/v1/settings/storage-integrations",
@@ -306,6 +333,7 @@ def test_storage_integrations_nextcloud_fields_redaction_and_password_preserve(m
             for item in items
         )
         assert nextcloud_password not in combined
+        assert public_share_password not in combined
     finally:
         _restore_integrations_raw(before)
 

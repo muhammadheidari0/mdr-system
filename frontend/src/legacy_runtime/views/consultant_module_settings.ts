@@ -96,9 +96,18 @@
         Promise.resolve(runtime.permitQcUi.initConsultantTemplateSettings()).catch(() => {});
     }
 
+    function initSiteLogActivityCatalogSettings() {
+        if (typeof window.initConsultantSiteLogActivityCatalog !== 'function') return;
+        const result = window.initConsultantSiteLogActivityCatalog(false);
+        if (result && typeof result.then === 'function') {
+            result.catch(() => {});
+        }
+    }
+
     function initConsultantModuleSettingsView() {
         bindConsultantSettingsTabs();
         bindConsultantOpenProjectTabs();
+        initSiteLogActivityCatalogSettings();
         initPermitQcTemplateSettings();
         if (typeof window.initSettingsIntegrations !== 'function') return;
         const result = window.initSettingsIntegrations();

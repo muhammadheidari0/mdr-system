@@ -1737,6 +1737,7 @@ tr:hover {
 .role-badge.admin { background: #fef3c7; color: #92400e; }
 .role-badge.manager { background: #dcfce7; color: #166534; }
 .role-badge.dcc { background: #e0f2fe; color: #075985; }
+.role-badge.project_control { background: #ede9fe; color: #5b21b6; }
 .role-badge.user { background: #dbeafe; color: #1e40af; }
 .role-badge.viewer { background: #f1f5f9; color: #334155; }
 .status-badge { padding: 4px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }

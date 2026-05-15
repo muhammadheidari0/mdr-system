@@ -4,6 +4,7 @@ import {
   createCorrespondenceMutationsBridge,
   type CorrespondenceActionPayload,
   type CorrespondencePreviewResult,
+  type CorrespondenceRelationPayload,
   type CorrespondenceSavePayload,
 } from "./correspondence_mutations";
 
@@ -52,6 +53,10 @@ export interface CorrespondenceWorkflowBridge {
     correspondenceId: number,
     deps: CorrespondenceWorkflowHttpDeps
   ): Promise<CorrespondenceWorkflowListResult>;
+  loadRelations(
+    correspondenceId: number,
+    deps: CorrespondenceWorkflowHttpDeps
+  ): Promise<CorrespondenceWorkflowListResult>;
   openWorkflow(correspondenceId: number, deps: CorrespondenceWorkflowOpenDeps): Promise<boolean>;
   saveCorrespondence(
     correspondenceId: number,
@@ -90,6 +95,20 @@ export interface CorrespondenceWorkflowBridge {
     correspondenceId: number,
     deps: CorrespondenceWorkflowHttpDeps
   ): Promise<CorrespondencePreviewResult>;
+  previewAttachment(
+    attachmentId: number,
+    deps: CorrespondenceWorkflowHttpDeps
+  ): Promise<CorrespondencePreviewResult>;
+  createRelation(
+    correspondenceId: number,
+    payload: CorrespondenceRelationPayload,
+    deps: CorrespondenceWorkflowHttpDeps
+  ): Promise<CorrespondenceWorkflowMutationResult>;
+  deleteRelation(
+    correspondenceId: number,
+    relationId: string,
+    deps: CorrespondenceWorkflowHttpDeps
+  ): Promise<CorrespondenceWorkflowMutationResult>;
   deleteCorrespondence(
     correspondenceId: number,
     deps: CorrespondenceWorkflowHttpDeps
@@ -181,6 +200,32 @@ async function loadAttachments(
     return {
       ok: false,
       detail: asMessage(error, "Failed to load attachments."),
+      data: [],
+    };
+  }
+}
+
+async function loadRelations(
+  correspondenceId: number,
+  deps: CorrespondenceWorkflowHttpDeps
+): Promise<CorrespondenceWorkflowListResult> {
+  try {
+    const body = asRecord(await dataBridge.listRelations(correspondenceId, deps));
+    if (!body.ok) {
+      return {
+        ok: false,
+        detail: String(body.detail || "Failed to load relations."),
+        data: [],
+      };
+    }
+    return {
+      ok: true,
+      data: Array.isArray(body.data) ? (body.data as Record<string, unknown>[]) : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      detail: asMessage(error, "Failed to load relations."),
       data: [],
     };
   }
@@ -314,6 +359,45 @@ async function previewCorrespondence(
   return mutationBridge.previewCorrespondence(correspondenceId, deps);
 }
 
+async function previewAttachment(
+  attachmentId: number,
+  deps: CorrespondenceWorkflowHttpDeps
+): Promise<CorrespondencePreviewResult> {
+  return mutationBridge.previewAttachment(attachmentId, deps);
+}
+
+async function createRelation(
+  correspondenceId: number,
+  payload: CorrespondenceRelationPayload,
+  deps: CorrespondenceWorkflowHttpDeps
+): Promise<CorrespondenceWorkflowMutationResult> {
+  try {
+    const body = asRecord(await mutationBridge.createRelation(correspondenceId, payload, deps));
+    return toMutationResult(body, true);
+  } catch (error) {
+    return {
+      ok: false,
+      detail: asMessage(error, "Failed to create relation."),
+    };
+  }
+}
+
+async function deleteRelation(
+  correspondenceId: number,
+  relationId: string,
+  deps: CorrespondenceWorkflowHttpDeps
+): Promise<CorrespondenceWorkflowMutationResult> {
+  try {
+    const body = asRecord(await mutationBridge.deleteRelation(correspondenceId, relationId, deps));
+    return toMutationResult(body, true);
+  } catch (error) {
+    return {
+      ok: false,
+      detail: asMessage(error, "Failed to delete relation."),
+    };
+  }
+}
+
 async function deleteCorrespondence(
   correspondenceId: number,
   deps: CorrespondenceWorkflowHttpDeps
@@ -356,6 +440,7 @@ export function createCorrespondenceWorkflowBridge(): CorrespondenceWorkflowBrid
   return {
     loadActions,
     loadAttachments,
+    loadRelations,
     openWorkflow,
     saveCorrespondence,
     upsertAction,
@@ -365,6 +450,9 @@ export function createCorrespondenceWorkflowBridge(): CorrespondenceWorkflowBrid
     deleteAttachment,
     downloadAttachment,
     previewCorrespondence,
+    previewAttachment,
+    createRelation,
+    deleteRelation,
     deleteCorrespondence,
     afterActionMutation,
     afterAttachmentMutation,

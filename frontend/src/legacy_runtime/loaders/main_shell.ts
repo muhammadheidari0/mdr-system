@@ -7,6 +7,8 @@ import "../views/base_interactions";
 import "../views/table_bulk_actions";
 import "../views/dashboard";
 import "../views/edms";
+import "../views/meeting_minutes";
+import "../views/edms_forms";
 import "../views/reports_logic";
 import "../views/reports";
 import "../views/contractor";

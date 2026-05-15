@@ -16,6 +16,7 @@ export interface CorrespondenceSavePayload {
   issuing_code?: string | null;
   category_code?: string | null;
   discipline_code?: string | null;
+  tag_id?: number | null;
   doc_type?: string | null;
   direction?: string;
   reference_no?: string | null;
@@ -32,11 +33,21 @@ export interface CorrespondenceSavePayload {
 export interface CorrespondenceAttachmentDownloadResult {
   blob: Blob;
   fileName: string | null;
+  contentType?: string | null;
+}
+
+export interface CorrespondenceRelationPayload {
+  target_entity_type?: string;
+  target_code?: string | null;
+  target_entity_id?: string | null;
+  relation_type?: string;
+  notes?: string | null;
 }
 
 export interface CorrespondencePreviewResult {
   blob: Blob;
   fileName: string | null;
+  contentType?: string | null;
 }
 
 export interface CorrespondenceMutationsBridge {
@@ -70,6 +81,20 @@ export interface CorrespondenceMutationsBridge {
     correspondenceId: number,
     deps: CorrespondenceHttpDeps
   ): Promise<CorrespondencePreviewResult>;
+  previewAttachment(
+    attachmentId: number,
+    deps: CorrespondenceHttpDeps
+  ): Promise<CorrespondencePreviewResult>;
+  createRelation(
+    correspondenceId: number,
+    payload: CorrespondenceRelationPayload,
+    deps: CorrespondenceHttpDeps
+  ): Promise<Record<string, unknown>>;
+  deleteRelation(
+    correspondenceId: number,
+    relationId: string,
+    deps: CorrespondenceHttpDeps
+  ): Promise<Record<string, unknown>>;
   deleteCorrespondence(correspondenceId: number, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
   deleteAttachment(attachmentId: number, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
 }
@@ -209,7 +234,8 @@ async function downloadAttachment(
   }
   const fileName = parseFileNameFromHeaders(response.headers);
   const blob = await response.blob();
-  return { blob, fileName };
+  const contentType = response.headers.get("Content-Type") || response.headers.get("content-type") || blob.type || null;
+  return { blob, fileName, contentType };
 }
 
 async function previewCorrespondence(
@@ -227,7 +253,52 @@ async function previewCorrespondence(
   }
   const fileName = parseFileNameFromHeaders(response.headers);
   const blob = await response.blob();
+  const contentType = response.headers.get("Content-Type") || response.headers.get("content-type") || blob.type || null;
+  return { blob, fileName, contentType };
+}
+
+async function previewAttachment(
+  attachmentId: number,
+  deps: CorrespondenceHttpDeps
+): Promise<CorrespondencePreviewResult> {
+  const id = Math.max(0, Number(attachmentId) || 0);
+  const response = await deps.fetch(`/api/v1/correspondence/attachments/${id}/preview`);
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    const body = asRecord(await parseJsonSafe(response.clone()));
+    const detail = String(body.detail || body.message || "").trim();
+    if (detail) message = detail;
+    throw new Error(message);
+  }
+  const fileName = parseFileNameFromHeaders(response.headers);
+  const blob = await response.blob();
   return { blob, fileName };
+}
+
+async function createRelation(
+  correspondenceId: number,
+  payload: CorrespondenceRelationPayload,
+  deps: CorrespondenceHttpDeps
+): Promise<Record<string, unknown>> {
+  const id = Math.max(0, Number(correspondenceId) || 0);
+  return requestJson(
+    `/api/v1/correspondence/${id}/relations`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    deps
+  );
+}
+
+async function deleteRelation(
+  correspondenceId: number,
+  relationId: string,
+  deps: CorrespondenceHttpDeps
+): Promise<Record<string, unknown>> {
+  const id = Math.max(0, Number(correspondenceId) || 0);
+  const relationKey = encodeURIComponent(String(relationId || ""));
+  return requestJson(`/api/v1/correspondence/${id}/relations/${relationKey}`, { method: "DELETE" }, deps);
 }
 
 async function deleteCorrespondence(
@@ -255,6 +326,9 @@ export function createCorrespondenceMutationsBridge(): CorrespondenceMutationsBr
     uploadAttachment,
     downloadAttachment,
     previewCorrespondence,
+    previewAttachment,
+    createRelation,
+    deleteRelation,
     deleteCorrespondence,
     deleteAttachment,
   };

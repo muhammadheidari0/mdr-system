@@ -3,14 +3,14 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.dependencies import (
     User,
@@ -24,10 +24,19 @@ from app.db.models import (
     CorrespondenceAction,
     CorrespondenceAttachment,
     CorrespondenceCategory,
+    CorrespondenceExternalRelation,
+    CorrespondenceTagAssignment,
     Discipline,
+    DocumentExternalRelation,
+    DocumentRevision,
+    DocumentTag,
     IssuingEntity,
+    MdrDocument,
+    MeetingMinute,
     OpenProjectLink,
     Project,
+    Transmittal,
+    TransmittalDoc,
 )
 from app.services.folder_service import safe_name
 from app.services.nextcloud_adapter import NextcloudAdapter
@@ -44,6 +53,7 @@ from app.services.storage_sync import (
     resolve_mirror_enqueue_plan,
     resolve_nextcloud_runtime,
 )
+from app.services import tag_service
 
 router = APIRouter(prefix="/correspondence", tags=["Correspondence"])
 AUTO_REFERENCE_MAX_RETRIES = 8
@@ -316,6 +326,7 @@ class CorrespondenceCreateIn(BaseModel):
     issuing_code: Optional[str] = Field(default=None, max_length=20)
     category_code: Optional[str] = Field(default=None, max_length=20)
     discipline_code: Optional[str] = Field(default=None, max_length=20)
+    tag_id: Optional[int] = Field(default=None, ge=1)
     doc_type: str = Field(default="Letter", min_length=1, max_length=20)
     direction: str = Field(default="IN", min_length=1, max_length=10)
     reference_no: Optional[str] = Field(default=None, max_length=120)
@@ -334,6 +345,7 @@ class CorrespondenceUpdateIn(BaseModel):
     issuing_code: Optional[str] = Field(default=None, max_length=20)
     category_code: Optional[str] = Field(default=None, max_length=20)
     discipline_code: Optional[str] = Field(default=None, max_length=20)
+    tag_id: Optional[int] = Field(default=None, ge=1)
     doc_type: Optional[str] = Field(default=None, max_length=20)
     direction: Optional[str] = Field(default=None, max_length=10)
     reference_no: Optional[str] = Field(default=None, max_length=120)
@@ -365,6 +377,14 @@ class CorrespondenceActionUpdateIn(BaseModel):
     due_date: Optional[datetime] = None
     status: Optional[str] = Field(default=None, max_length=20)
     is_closed: Optional[bool] = None
+
+
+class CorrespondenceRelationCreateIn(BaseModel):
+    target_entity_type: str = Field(default="document", min_length=1, max_length=32)
+    target_code: Optional[str] = Field(default=None, max_length=128)
+    target_entity_id: Optional[str] = Field(default=None, max_length=128)
+    relation_type: Optional[str] = Field(default="related", max_length=32)
+    notes: Optional[str] = None
 
 
 def _attachment_kind(value: Optional[str]) -> str:
@@ -515,7 +535,11 @@ def _download_webdav_attachment(
     if not adapter.file_exists(remote_path):
         raise HTTPException(status_code=404, detail="Attachment file not found")
     filename = safe_name(row.file_name or f"attachment-{row.id}") or f"attachment-{row.id}"
-    media_type = _norm(row.mime_type or row.detected_mime) or "application/octet-stream"
+    media_type = (
+        _attachment_preview_media_type(row)
+        if inline
+        else _norm(row.mime_type or row.detected_mime)
+    ) or "application/octet-stream"
     disposition = "inline" if inline else "attachment"
     return StreamingResponse(
         adapter.download_file_stream(remote_path),
@@ -577,6 +601,7 @@ def _serialize_attachment(
         "file_kind": _attachment_kind(row.file_kind),
         "mime_type": row.mime_type,
         "detected_mime": row.detected_mime,
+        "preview_supported": _attachment_preview_supported(row),
         "validation_status": row.validation_status,
         "sha256": row.sha256,
         "size_bytes": row.size_bytes,
@@ -596,6 +621,22 @@ def _serialize_attachment(
 
 def _load_correspondence_or_404(db: Session, correspondence_id: int) -> Correspondence:
     row = db.query(Correspondence).filter(Correspondence.id == correspondence_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Correspondence not found")
+    return row
+
+
+def _load_correspondence_with_tags(db: Session, correspondence_id: int) -> Correspondence:
+    row = (
+        db.query(Correspondence)
+        .options(
+            selectinload(Correspondence.issuing_entity),
+            selectinload(Correspondence.category),
+            selectinload(Correspondence.tag_assignments).selectinload(CorrespondenceTagAssignment.tag),
+        )
+        .filter(Correspondence.id == int(correspondence_id))
+        .first()
+    )
     if not row:
         raise HTTPException(status_code=404, detail="Correspondence not found")
     return row
@@ -622,11 +663,42 @@ def _load_attachment_or_404(db: Session, attachment_id: int) -> CorrespondenceAt
     return row
 
 
+PREVIEW_UNSUPPORTED_DETAIL = (
+    "پیش‌نمایش فقط برای PDF و فایل‌های تصویری پشتیبانی می‌شود. "
+    "برای این فایل از دانلود استفاده کنید."
+)
+
+_PREVIEW_EXTENSION_MEDIA_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
+
+def _attachment_preview_media_type(row: CorrespondenceAttachment | None) -> str | None:
+    if not row or row.deleted_at is not None:
+        return None
+    mime_type = _norm(row.detected_mime or row.mime_type).lower()
+    if mime_type in {"application/pdf", "application/x-pdf"}:
+        return "application/pdf"
+    if mime_type.startswith("image/"):
+        return mime_type
+
+    for raw_name in (row.file_name, row.stored_path):
+        suffix = Path(str(raw_name or "")).suffix.lower()
+        if suffix in _PREVIEW_EXTENSION_MEDIA_TYPES:
+            return _PREVIEW_EXTENSION_MEDIA_TYPES[suffix]
+    return None
+
+
 def _attachment_preview_supported(row: CorrespondenceAttachment | None) -> bool:
     if not row or row.deleted_at is not None:
         return False
-    mime_type = _norm(row.mime_type or row.detected_mime).lower()
-    return mime_type.startswith("image/") or mime_type in {"application/pdf", "application/x-pdf"}
+    return bool(_attachment_preview_media_type(row))
 
 
 def _attachment_sort_key(row: CorrespondenceAttachment) -> tuple[str, int]:
@@ -660,12 +732,223 @@ def _resolve_correspondence_preview_attachment(row: Correspondence) -> Correspon
 
 
 def _enforce_corr_scope(db: Session, user: User, row: Correspondence) -> None:
-    enforce_scope_access(
-        db,
-        user,
-        project_code=row.project_code,
-        discipline_code=row.discipline_code,
+    enforce_scope_access(db, user, project_code=row.project_code)
+
+
+def _normalize_relation_target_type(value: Optional[str]) -> str:
+    raw = _norm(value).lower().replace("-", "_")
+    aliases = {
+        "doc": "document",
+        "mdr": "document",
+        "mdr_document": "document",
+        "document": "document",
+        "transmittal": "transmittal",
+        "transmittals": "transmittal",
+        "tr": "transmittal",
+        "trans": "transmittal",
+        "meeting": "meeting_minute",
+        "meeting_minute": "meeting_minute",
+        "meeting_minutes": "meeting_minute",
+        "minute": "meeting_minute",
+        "mom": "meeting_minute",
+        "corr": "correspondence",
+        "correspondence": "correspondence",
+        "letter": "correspondence",
+        "mail": "correspondence",
+    }
+    normalized = aliases.get(raw)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid relation target type")
+    return normalized
+
+
+def _normalize_relation_type(value: Optional[str]) -> str:
+    return _norm(value).lower() or "related"
+
+
+def _resolve_relation_document(db: Session, *, target_code: Optional[str], target_entity_id: Optional[str]) -> MdrDocument:
+    code = _norm(target_code)
+    entity_key = _norm(target_entity_id)
+    row: MdrDocument | None = None
+    if entity_key.isdigit():
+        row = db.query(MdrDocument).filter(MdrDocument.id == int(entity_key)).first()
+    if not row and code.isdigit():
+        row = db.query(MdrDocument).filter(MdrDocument.id == int(code)).first()
+    if not row and code:
+        row = (
+            db.query(MdrDocument)
+            .filter(func.lower(MdrDocument.doc_number) == code.lower(), MdrDocument.deleted_at.is_(None))
+            .first()
+        )
+    if not row or row.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Target document not found")
+    return row
+
+
+def _resolve_relation_transmittal(
+    db: Session, *, target_code: Optional[str], target_entity_id: Optional[str]
+) -> Transmittal:
+    code = _norm(target_code)
+    entity_key = _norm(target_entity_id)
+    lookup = entity_key or code
+    if not lookup:
+        raise HTTPException(status_code=400, detail="Target transmittal code is required")
+    row = db.query(Transmittal).filter(func.lower(Transmittal.id) == lookup.lower()).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Target transmittal not found")
+    return row
+
+
+def _resolve_relation_meeting_minute(
+    db: Session, *, target_code: Optional[str], target_entity_id: Optional[str]
+) -> MeetingMinute:
+    code = _norm(target_code)
+    entity_key = _norm(target_entity_id)
+    row: MeetingMinute | None = None
+    if entity_key.isdigit():
+        row = (
+            db.query(MeetingMinute)
+            .filter(MeetingMinute.id == int(entity_key), MeetingMinute.deleted_at.is_(None))
+            .first()
+        )
+    if not row and code.isdigit():
+        row = (
+            db.query(MeetingMinute)
+            .filter(MeetingMinute.id == int(code), MeetingMinute.deleted_at.is_(None))
+            .first()
+        )
+    if not row and code:
+        row = (
+            db.query(MeetingMinute)
+            .filter(func.lower(MeetingMinute.meeting_no) == code.lower(), MeetingMinute.deleted_at.is_(None))
+            .first()
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Target meeting minute not found")
+    return row
+
+
+def _resolve_relation_correspondence(
+    db: Session, *, target_code: Optional[str], target_entity_id: Optional[str]
+) -> Correspondence:
+    code = _norm(target_code)
+    entity_key = _norm(target_entity_id)
+    row: Correspondence | None = None
+    if entity_key.isdigit():
+        row = db.query(Correspondence).filter(Correspondence.id == int(entity_key)).first()
+    if not row and code.isdigit():
+        row = db.query(Correspondence).filter(Correspondence.id == int(code)).first()
+    if not row and code:
+        row = (
+            db.query(Correspondence)
+            .filter(func.lower(Correspondence.reference_no) == code.lower())
+            .first()
+        )
+    if not row:
+        raise HTTPException(status_code=404, detail="Target correspondence not found")
+    return row
+
+
+def _latest_document_revision(db: Session, document_id: int) -> DocumentRevision | None:
+    return (
+        db.query(DocumentRevision)
+        .filter(DocumentRevision.document_id == int(document_id))
+        .order_by(DocumentRevision.created_at.desc(), DocumentRevision.id.desc())
+        .first()
     )
+
+
+def _serialize_document_relation(db: Session, row: DocumentExternalRelation) -> dict[str, Any]:
+    document = row.source_document
+    revision = _latest_document_revision(db, int(document.id or 0)) if document else None
+    return {
+        "id": f"document_external:{int(row.id or 0)}",
+        "relation_id": int(row.id or 0),
+        "target_entity_type": "document",
+        "target_entity_id": int(getattr(document, "id", 0) or row.source_document_id or 0),
+        "target_code": getattr(document, "doc_number", None),
+        "target_title": (
+            getattr(document, "doc_title_p", None)
+            or getattr(document, "doc_title_e", None)
+            or getattr(document, "subject", None)
+        ),
+        "target_project_code": getattr(document, "project_code", None),
+        "target_status": getattr(revision, "status", None),
+        "revision": getattr(revision, "revision", None),
+        "relation_type": row.relation_type,
+        "notes": row.notes,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "inferred": False,
+    }
+
+
+def _serialize_external_relation(row: CorrespondenceExternalRelation) -> dict[str, Any]:
+    return {
+        "id": f"external:{int(row.id or 0)}",
+        "relation_id": int(row.id or 0),
+        "target_entity_type": row.target_entity_type,
+        "target_entity_id": row.target_entity_id,
+        "target_code": row.target_code,
+        "target_title": row.target_title,
+        "target_project_code": row.target_project_code,
+        "target_status": row.target_status,
+        "relation_type": row.relation_type,
+        "notes": row.notes,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "inferred": False,
+    }
+
+
+def _serialize_incoming_correspondence_relation(
+    row: CorrespondenceExternalRelation,
+    source: Correspondence,
+) -> dict[str, Any]:
+    return {
+        "id": f"incoming_external:{int(row.id or 0)}",
+        "relation_id": int(row.id or 0),
+        "target_entity_type": "correspondence",
+        "target_entity_id": str(int(source.id or 0)),
+        "target_code": source.reference_no or row.target_code,
+        "target_title": source.subject or row.target_title,
+        "target_project_code": source.project_code or row.target_project_code,
+        "target_status": source.status or row.target_status,
+        "relation_type": row.relation_type,
+        "notes": row.notes,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "direction": "incoming",
+        "inferred": False,
+    }
+
+
+def _serialize_inferred_transmittal(row: Transmittal, document_codes: set[str]) -> dict[str, Any]:
+    matched_codes = [
+        str(doc.document_code or "")
+        for doc in list(row.docs or [])
+        if str(doc.document_code or "") in document_codes
+    ]
+    state = row.lifecycle_status or ("issued" if row.send_date else "draft")
+    return {
+        "id": f"inferred_transmittal:{row.id}",
+        "relation_id": None,
+        "target_entity_type": "transmittal",
+        "target_entity_id": row.id,
+        "target_code": row.id,
+        "target_title": _display_transmittal_title(row),
+        "target_project_code": row.project_code,
+        "target_status": state,
+        "relation_type": "contains_document",
+        "notes": ", ".join(matched_codes),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "inferred": True,
+    }
+
+
+def _display_transmittal_title(row: Transmittal) -> str:
+    if row.docs:
+        title = _norm(row.docs[0].document_title)
+        if title:
+            return title
+    return f"{row.sender} -> {row.receiver}"
 
 
 def _corr_storage_dir(db: Session, row: Correspondence, file_kind: str) -> Path:
@@ -742,16 +1025,52 @@ def _counts_for_rows(db: Session, correspondence_ids: list[int]) -> tuple[dict[i
     return action_counts, open_action_counts, attachment_counts
 
 
+def _serialize_tag_payload(row: DocumentTag | None) -> dict[str, Any]:
+    if not row:
+        return {
+            "id": 0,
+            "name": None,
+            "color": None,
+        }
+    return {
+        "id": int(getattr(row, "id", 0) or 0),
+        "name": getattr(row, "name", None),
+        "color": getattr(row, "color", None),
+    }
+
+
+def _serialize_correspondence_tag_assignments(
+    rows: list[CorrespondenceTagAssignment] | None,
+) -> list[dict[str, Any]]:
+    payload: list[dict[str, Any]] = []
+    for row in rows or []:
+        tag = getattr(row, "tag", None)
+        tag_id = int(getattr(tag, "id", 0) or getattr(row, "tag_id", 0) or 0)
+        if tag_id <= 0:
+            continue
+        payload.append(
+            {
+                "id": tag_id,
+                "name": getattr(tag, "name", None),
+                "color": getattr(tag, "color", None),
+            }
+        )
+    return payload
+
+
 def _serialize_correspondence(
     row: Correspondence,
     *,
     action_counts: Optional[dict[int, int]] = None,
     open_action_counts: Optional[dict[int, int]] = None,
     attachment_counts: Optional[dict[int, int]] = None,
-) -> dict:
+    ) -> dict:
     action_counts = action_counts or {}
     open_action_counts = open_action_counts or {}
     attachment_counts = attachment_counts or {}
+    tags = _serialize_correspondence_tag_assignments(
+        list(getattr(row, "tag_assignments", None) or [])
+    )
     return {
         "id": row.id,
         "project_code": row.project_code,
@@ -774,10 +1093,48 @@ def _serialize_correspondence(
         "created_by_id": row.created_by_id,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "tag_id": int(tags[0]["id"]) if tags else None,
+        "tag_ids": [int(item["id"]) for item in tags],
+        "tags": tags,
         "actions_count": int(action_counts.get(int(row.id), 0)),
         "open_actions_count": int(open_action_counts.get(int(row.id), 0)),
         "attachments_count": int(attachment_counts.get(int(row.id), 0)),
     }
+
+
+def _is_open_correspondence(row: Correspondence) -> bool:
+    return _norm(row.status).lower() == "open"
+
+
+def _serialize_correspondence_report_row(
+    row: Correspondence,
+    *,
+    now: datetime,
+    action_counts: Optional[dict[int, int]] = None,
+    open_action_counts: Optional[dict[int, int]] = None,
+    attachment_counts: Optional[dict[int, int]] = None,
+) -> dict[str, Any]:
+    payload = _serialize_correspondence(
+        row,
+        action_counts=action_counts,
+        open_action_counts=open_action_counts,
+        attachment_counts=attachment_counts,
+    )
+    due_date = row.due_date
+    corr_date = row.corr_date
+    is_overdue = bool(_is_open_correspondence(row) and due_date and due_date < now)
+    payload.update(
+        {
+            "is_overdue": is_overdue,
+            "aging_days": max(0, (now.date() - due_date.date()).days) if is_overdue and due_date else None,
+            "response_window_days": (
+                max(0, (due_date.date() - corr_date.date()).days)
+                if due_date and corr_date
+                else None
+            ),
+        }
+    )
+    return payload
 
 
 @router.get("/catalog")
@@ -805,6 +1162,7 @@ def get_correspondence_catalog(
         .all()
     )
     discipline_rows = db.query(Discipline).order_by(Discipline.code.asc()).all()
+    tag_rows = tag_service.list_tags(db)
 
     return {
         "ok": True,
@@ -844,6 +1202,7 @@ def get_correspondence_catalog(
             }
             for row in discipline_rows
         ],
+        "tags": [_serialize_tag_payload(row) for row in tag_rows],
     }
 
 
@@ -858,7 +1217,6 @@ def get_correspondence_dashboard(
         db,
         user,
         project_column=Correspondence.project_code,
-        discipline_column=Correspondence.discipline_code,
     )
     now = datetime.utcnow()
     today_start = datetime(year=now.year, month=now.month, day=now.day)
@@ -885,7 +1243,6 @@ def get_correspondence_dashboard(
         db,
         user,
         project_column=Correspondence.project_code,
-        discipline_column=Correspondence.discipline_code,
     )
     open_actions = actions_query.filter(CorrespondenceAction.is_closed.is_(False)).count()
 
@@ -910,6 +1267,7 @@ def list_correspondence(
     issuing_code: Optional[str] = None,
     category_code: Optional[str] = None,
     discipline_code: Optional[str] = None,
+    tag_id: Optional[int] = None,
     doc_type: Optional[str] = None,
     direction: Optional[str] = None,
     status: Optional[str] = None,
@@ -924,7 +1282,11 @@ def list_correspondence(
         db,
         user,
         project_column=Correspondence.project_code,
-        discipline_column=Correspondence.discipline_code,
+    )
+    query = query.options(
+        selectinload(Correspondence.issuing_entity),
+        selectinload(Correspondence.category),
+        selectinload(Correspondence.tag_assignments).selectinload(CorrespondenceTagAssignment.tag),
     )
 
     pcode = _norm_upper(project_code)
@@ -942,6 +1304,12 @@ def list_correspondence(
     dcode = _norm_upper(discipline_code)
     if dcode:
         query = query.filter(Correspondence.discipline_code == dcode)
+
+    if tag_id is not None and int(tag_id or 0) > 0:
+        query = query.join(
+            CorrespondenceTagAssignment,
+            CorrespondenceTagAssignment.correspondence_id == Correspondence.id,
+        ).filter(CorrespondenceTagAssignment.tag_id == int(tag_id))
 
     dtype = _norm(doc_type)
     if dtype:
@@ -998,6 +1366,156 @@ def list_correspondence(
     return {"ok": True, "total": total, "data": data}
 
 
+@router.get("/reports/table")
+def report_correspondence_table(
+    project_code: Optional[str] = Query(default=None),
+    discipline_code: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    status_code: Optional[str] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),
+    date_to: Optional[str] = Query(default=None),
+    date_start: Optional[str] = Query(default=None),
+    date_end: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    limit: int = Query(default=1000, ge=1, le=5000),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:read")),
+):
+    query = db.query(Correspondence)
+    query = apply_scope_query_filters(
+        query,
+        db,
+        user,
+        project_column=Correspondence.project_code,
+    )
+    query = query.options(
+        selectinload(Correspondence.issuing_entity),
+        selectinload(Correspondence.category),
+        selectinload(Correspondence.tag_assignments).selectinload(CorrespondenceTagAssignment.tag),
+    )
+
+    pcode = _norm_upper(project_code)
+    if pcode:
+        query = query.filter(Correspondence.project_code == pcode)
+
+    dcode = _norm_upper(discipline_code)
+    if dcode:
+        query = query.filter(Correspondence.discipline_code == dcode)
+
+    svalue = _norm(status or status_code)
+    if svalue:
+        query = query.filter(Correspondence.status.ilike(svalue))
+
+    search_value = _norm(search)
+    if search_value:
+        pattern = f"%{search_value}%"
+        query = query.filter(
+            or_(
+                Correspondence.reference_no.ilike(pattern),
+                Correspondence.subject.ilike(pattern),
+                Correspondence.sender.ilike(pattern),
+                Correspondence.recipient.ilike(pattern),
+            )
+        )
+
+    from_dt = _parse_filter_date(date_from or date_start, "date_from")
+    to_dt = _parse_filter_date(date_to or date_end, "date_to")
+    if from_dt and to_dt and from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="`date_from` must be earlier than or equal to `date_to`.")
+    if from_dt:
+        query = query.filter(Correspondence.corr_date >= from_dt)
+    if to_dt:
+        query = query.filter(Correspondence.corr_date < (to_dt + timedelta(days=1)))
+
+    now = datetime.utcnow()
+    total = query.count()
+    rows = (
+        query.order_by(Correspondence.corr_date.desc(), Correspondence.id.desc())
+        .limit(limit)
+        .all()
+    )
+    row_ids = [int(row.id) for row in rows]
+    action_counts, open_action_counts, attachment_counts = _counts_for_rows(db, row_ids)
+    data = [
+        _serialize_correspondence_report_row(
+            row,
+            now=now,
+            action_counts=action_counts,
+            open_action_counts=open_action_counts,
+            attachment_counts=attachment_counts,
+        )
+        for row in rows
+    ]
+    overdue_count = sum(1 for row in rows if _is_open_correspondence(row) and row.due_date and row.due_date < now)
+    open_count = sum(1 for row in rows if _is_open_correspondence(row))
+    inbound_count = sum(1 for row in rows if _direction_code(row.direction) == "I")
+    outbound_count = sum(1 for row in rows if _direction_code(row.direction) == "O")
+    return {
+        "ok": True,
+        "total": total,
+        "count": len(data),
+        "summary": {
+            "total": total,
+            "returned": len(data),
+            "open": open_count,
+            "overdue": overdue_count,
+            "inbound": inbound_count,
+            "outbound": outbound_count,
+            "open_actions": sum(int(open_action_counts.get(int(row.id), 0)) for row in rows),
+            "attachments": sum(int(attachment_counts.get(int(row.id), 0)) for row in rows),
+        },
+        "data": data,
+    }
+
+
+@router.get("/suggestions")
+def suggest_correspondence(
+    q: Optional[str] = None,
+    limit: int = 8,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:read")),
+):
+    search_value = _norm(q)
+    if len(search_value) < 2:
+        return {"ok": True, "items": []}
+    pattern = f"%{search_value}%"
+    query = db.query(Correspondence)
+    query = apply_scope_query_filters(
+        query,
+        db,
+        user,
+        project_column=Correspondence.project_code,
+    )
+    rows = (
+        query.filter(
+            or_(
+                Correspondence.reference_no.ilike(pattern),
+                Correspondence.subject.ilike(pattern),
+                Correspondence.sender.ilike(pattern),
+                Correspondence.recipient.ilike(pattern),
+            )
+        )
+        .order_by(Correspondence.corr_date.desc(), Correspondence.id.desc())
+        .limit(max(1, min(int(limit or 8), 20)))
+        .all()
+    )
+    return {
+        "ok": True,
+        "items": [
+            {
+                "id": int(row.id or 0),
+                "reference_no": row.reference_no,
+                "subject": row.subject,
+                "sender": row.sender,
+                "recipient": row.recipient,
+                "status": row.status,
+                "corr_date": row.corr_date.isoformat() if row.corr_date else None,
+            }
+            for row in rows
+        ],
+    }
+
+
 @router.post("/create")
 def create_correspondence(
     payload: CorrespondenceCreateIn,
@@ -1029,13 +1547,11 @@ def create_correspondence(
         discipline = db.query(Discipline).filter(Discipline.code == discipline_code).first()
         if not discipline:
             raise HTTPException(status_code=404, detail="Discipline not found")
+    tag_ids = [int(payload.tag_id)] if int(payload.tag_id or 0) > 0 else []
+    if tag_ids:
+        tag_service.get_tag_or_404(db, tag_ids[0])
 
-    enforce_scope_access(
-        db,
-        user,
-        project_code=project_code,
-        discipline_code=discipline_code,
-    )
+    enforce_scope_access(db, user, project_code=project_code)
 
     doc_type = _norm(payload.doc_type) or "Letter"
     direction = _direction_code(payload.direction)
@@ -1083,8 +1599,15 @@ def create_correspondence(
             row = Correspondence(reference_no=candidate_reference, **base_data)
             db.add(row)
             try:
+                db.flush()
+                tag_service.replace_correspondence_tags(
+                    db,
+                    row,
+                    tag_ids=tag_ids,
+                    user=user,
+                )
                 db.commit()
-                db.refresh(row)
+                row = _load_correspondence_with_tags(db, int(row.id or 0))
                 return {"ok": True, "data": _serialize_correspondence(row)}
             except IntegrityError as exc:
                 db.rollback()
@@ -1101,13 +1624,20 @@ def create_correspondence(
     row = Correspondence(reference_no=manual_reference, **base_data)
     db.add(row)
     try:
+        db.flush()
+        tag_service.replace_correspondence_tags(
+            db,
+            row,
+            tag_ids=tag_ids,
+            user=user,
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         if _is_reference_unique_violation(exc):
             raise HTTPException(status_code=409, detail="reference_no already exists") from exc
         raise
-    db.refresh(row)
+    row = _load_correspondence_with_tags(db, int(row.id or 0))
     return {"ok": True, "data": _serialize_correspondence(row)}
 
 
@@ -1122,12 +1652,8 @@ def update_correspondence(
     if not row:
         raise HTTPException(status_code=404, detail="Correspondence not found")
 
-    enforce_scope_access(
-        db,
-        user,
-        project_code=row.project_code,
-        discipline_code=row.discipline_code,
-    )
+    enforce_scope_access(db, user, project_code=row.project_code)
+    payload_fields = set(getattr(payload, "model_fields_set", set()) or set())
 
     if payload.issuing_code is not None:
         issuing_code = _norm_upper(payload.issuing_code)
@@ -1197,14 +1723,20 @@ def update_correspondence(
     if payload.notes is not None:
         row.notes = _norm(payload.notes) or None
 
-    enforce_scope_access(
-        db,
-        user,
-        project_code=row.project_code,
-        discipline_code=row.discipline_code,
-    )
+    if "tag_id" in payload_fields:
+        next_tag_ids = [int(payload.tag_id)] if int(payload.tag_id or 0) > 0 else []
+        if next_tag_ids:
+            tag_service.get_tag_or_404(db, next_tag_ids[0])
+        tag_service.replace_correspondence_tags(
+            db,
+            row,
+            tag_ids=next_tag_ids,
+            user=user,
+        )
+
+    enforce_scope_access(db, user, project_code=row.project_code)
     db.commit()
-    db.refresh(row)
+    row = _load_correspondence_with_tags(db, int(row.id or 0))
     return {"ok": True, "data": _serialize_correspondence(row)}
 
 
@@ -1219,7 +1751,7 @@ def preview_correspondence_attachment(
 
     attachment = _resolve_correspondence_preview_attachment(row)
     if not attachment:
-        raise HTTPException(status_code=404, detail="No previewable attachment found")
+        raise HTTPException(status_code=404, detail=PREVIEW_UNSUPPORTED_DETAIL)
 
     file_path = Path(attachment.stored_path)
     if str(attachment.stored_path or "").strip().startswith("webdav://"):
@@ -1228,13 +1760,307 @@ def preview_correspondence_attachment(
         raise HTTPException(status_code=404, detail="Attachment file not found")
 
     filename = safe_name(attachment.file_name or f"correspondence-{correspondence_id}")
-    media_type = _norm(attachment.mime_type or attachment.detected_mime) or "application/octet-stream"
+    media_type = _attachment_preview_media_type(attachment)
+    if not media_type:
+        raise HTTPException(status_code=415, detail=PREVIEW_UNSUPPORTED_DETAIL)
     return FileResponse(
         path=str(file_path),
         filename=filename,
         media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        content_disposition_type="inline",
     )
+
+
+@router.get("/{correspondence_id}/relations")
+def list_correspondence_relations(
+    correspondence_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:read")),
+):
+    corr = _load_correspondence_or_404(db, correspondence_id)
+    _enforce_corr_scope(db, user, corr)
+
+    document_query = (
+        db.query(DocumentExternalRelation)
+        .join(MdrDocument, MdrDocument.id == DocumentExternalRelation.source_document_id)
+        .options(selectinload(DocumentExternalRelation.source_document))
+        .filter(
+            DocumentExternalRelation.target_entity_type == "correspondence",
+            DocumentExternalRelation.target_entity_id == int(correspondence_id),
+            MdrDocument.deleted_at.is_(None),
+        )
+    )
+    document_query = apply_scope_query_filters(
+        document_query,
+        db,
+        user,
+        project_column=MdrDocument.project_code,
+        discipline_column=MdrDocument.discipline_code,
+    )
+    document_rows = (
+        document_query.order_by(DocumentExternalRelation.created_at.desc(), DocumentExternalRelation.id.desc())
+        .all()
+    )
+
+    external_rows = (
+        db.query(CorrespondenceExternalRelation)
+        .filter(CorrespondenceExternalRelation.correspondence_id == int(correspondence_id))
+        .order_by(CorrespondenceExternalRelation.created_at.desc(), CorrespondenceExternalRelation.id.desc())
+        .all()
+    )
+    incoming_correspondence_query = (
+        db.query(CorrespondenceExternalRelation, Correspondence)
+        .join(Correspondence, Correspondence.id == CorrespondenceExternalRelation.correspondence_id)
+        .filter(
+            CorrespondenceExternalRelation.target_entity_type == "correspondence",
+            CorrespondenceExternalRelation.target_entity_id == str(int(correspondence_id)),
+        )
+    )
+    incoming_correspondence_query = apply_scope_query_filters(
+        incoming_correspondence_query,
+        db,
+        user,
+        project_column=Correspondence.project_code,
+        discipline_column=Correspondence.discipline_code,
+    )
+    incoming_correspondence_rows = incoming_correspondence_query.order_by(
+        CorrespondenceExternalRelation.created_at.desc(),
+        CorrespondenceExternalRelation.id.desc(),
+    ).all()
+
+    document_items = [_serialize_document_relation(db, row) for row in document_rows]
+    external_items = [_serialize_external_relation(row) for row in external_rows]
+    incoming_correspondence_items = [
+        _serialize_incoming_correspondence_relation(row, source)
+        for row, source in incoming_correspondence_rows
+    ]
+
+    document_codes = {
+        str(item.get("target_code") or "").strip()
+        for item in document_items
+        if str(item.get("target_code") or "").strip()
+    }
+    direct_transmittal_codes = {
+        str(row.target_code or "").strip()
+        for row in external_rows
+        if str(row.target_entity_type or "").lower() == "transmittal"
+    }
+    inferred_items: list[dict[str, Any]] = []
+    if document_codes:
+        transmittal_query = (
+            db.query(Transmittal)
+            .join(TransmittalDoc, TransmittalDoc.transmittal_id == Transmittal.id)
+            .filter(TransmittalDoc.document_code.in_(document_codes))
+        )
+        transmittal_query = apply_scope_query_filters(
+            transmittal_query,
+            db,
+            user,
+            project_column=Transmittal.project_code,
+        )
+        seen: set[str] = set()
+        for row in transmittal_query.order_by(Transmittal.created_at.desc()).all():
+            code = str(row.id or "").strip()
+            if not code or code in seen or code in direct_transmittal_codes:
+                continue
+            seen.add(code)
+            inferred_items.append(_serialize_inferred_transmittal(row, document_codes))
+
+    return {"ok": True, "data": document_items + external_items + incoming_correspondence_items + inferred_items}
+
+
+@router.post("/{correspondence_id}/relations")
+def create_correspondence_relation(
+    correspondence_id: int,
+    payload: CorrespondenceRelationCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:update")),
+):
+    corr = _load_correspondence_or_404(db, correspondence_id)
+    _enforce_corr_scope(db, user, corr)
+    target_type = _normalize_relation_target_type(payload.target_entity_type)
+    relation_type = _normalize_relation_type(payload.relation_type)
+    notes = _norm(payload.notes) or None
+
+    if target_type == "document":
+        document = _resolve_relation_document(
+            db,
+            target_code=payload.target_code,
+            target_entity_id=payload.target_entity_id,
+        )
+        enforce_scope_access(
+            db,
+            user,
+            project_code=document.project_code,
+            discipline_code=document.discipline_code,
+        )
+        existing = (
+            db.query(DocumentExternalRelation)
+            .filter(
+                DocumentExternalRelation.source_document_id == int(document.id or 0),
+                DocumentExternalRelation.target_entity_type == "correspondence",
+                DocumentExternalRelation.target_entity_id == int(correspondence_id),
+                DocumentExternalRelation.relation_type == relation_type,
+            )
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=409, detail="Relation already exists")
+        row = DocumentExternalRelation(
+            source_document_id=int(document.id or 0),
+            target_entity_type="correspondence",
+            target_entity_id=int(correspondence_id),
+            target_code=str(corr.reference_no or f"CORR-{int(corr.id or 0)}"),
+            target_title=corr.subject,
+            target_project_code=corr.project_code,
+            target_status=corr.status,
+            relation_type=relation_type,
+            notes=notes,
+            created_by_id=getattr(user, "id", None),
+            created_at=datetime.utcnow(),
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {"ok": True, "data": _serialize_document_relation(db, row)}
+
+    if target_type == "transmittal":
+        transmittal = _resolve_relation_transmittal(
+            db,
+            target_code=payload.target_code,
+            target_entity_id=payload.target_entity_id,
+        )
+        enforce_scope_access(db, user, project_code=transmittal.project_code)
+        target = {
+            "type": "transmittal",
+            "id": str(transmittal.id),
+            "code": str(transmittal.id),
+            "title": _display_transmittal_title(transmittal),
+            "project_code": transmittal.project_code,
+            "status": transmittal.lifecycle_status or ("issued" if transmittal.send_date else "draft"),
+        }
+    elif target_type == "meeting_minute":
+        meeting = _resolve_relation_meeting_minute(
+            db,
+            target_code=payload.target_code,
+            target_entity_id=payload.target_entity_id,
+        )
+        enforce_scope_access(db, user, project_code=meeting.project_code)
+        target = {
+            "type": "meeting_minute",
+            "id": str(int(meeting.id or 0)),
+            "code": str(meeting.meeting_no or f"MOM-{int(meeting.id or 0)}"),
+            "title": meeting.title,
+            "project_code": meeting.project_code,
+            "status": meeting.status,
+        }
+    else:
+        target_correspondence = _resolve_relation_correspondence(
+            db,
+            target_code=payload.target_code,
+            target_entity_id=payload.target_entity_id,
+        )
+        if int(target_correspondence.id or 0) == int(correspondence_id):
+            raise HTTPException(status_code=400, detail="Cannot relate a correspondence to itself")
+        enforce_scope_access(db, user, project_code=target_correspondence.project_code)
+        target = {
+            "type": "correspondence",
+            "id": str(int(target_correspondence.id or 0)),
+            "code": str(target_correspondence.reference_no or f"CORR-{int(target_correspondence.id or 0)}"),
+            "title": target_correspondence.subject,
+            "project_code": target_correspondence.project_code,
+            "status": target_correspondence.status,
+        }
+    existing_external = (
+        db.query(CorrespondenceExternalRelation)
+        .filter(
+            CorrespondenceExternalRelation.correspondence_id == int(correspondence_id),
+            CorrespondenceExternalRelation.target_entity_type == target["type"],
+            CorrespondenceExternalRelation.target_entity_id == str(target["id"]),
+            CorrespondenceExternalRelation.relation_type == relation_type,
+        )
+        .first()
+    )
+    if existing_external:
+        raise HTTPException(status_code=409, detail="Relation already exists")
+    row = CorrespondenceExternalRelation(
+        correspondence_id=int(correspondence_id),
+        target_entity_type=str(target["type"]),
+        target_entity_id=str(target["id"]),
+        target_code=str(target["code"]),
+        target_title=target.get("title"),
+        target_project_code=target.get("project_code"),
+        target_status=target.get("status"),
+        relation_type=relation_type,
+        notes=notes,
+        created_by_id=getattr(user, "id", None),
+        created_at=datetime.utcnow(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"ok": True, "data": _serialize_external_relation(row)}
+
+
+@router.delete("/{correspondence_id}/relations/{relation_id}")
+def delete_correspondence_relation(
+    correspondence_id: int,
+    relation_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:update")),
+):
+    corr = _load_correspondence_or_404(db, correspondence_id)
+    _enforce_corr_scope(db, user, corr)
+    key = _norm(relation_id)
+    if key.lower().startswith("document_external:"):
+        try:
+            row_id = int(key.split(":", 1)[1])
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid relation id") from exc
+        row = (
+            db.query(DocumentExternalRelation)
+            .options(selectinload(DocumentExternalRelation.source_document))
+            .filter(
+                DocumentExternalRelation.id == row_id,
+                DocumentExternalRelation.target_entity_type == "correspondence",
+                DocumentExternalRelation.target_entity_id == int(correspondence_id),
+            )
+            .first()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Relation not found")
+        document = row.source_document
+        if document:
+            enforce_scope_access(
+                db,
+                user,
+                project_code=document.project_code,
+                discipline_code=document.discipline_code,
+            )
+        db.delete(row)
+        db.commit()
+        return {"ok": True, "id": key}
+
+    if key.lower().startswith("external:"):
+        try:
+            row_id = int(key.split(":", 1)[1])
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid relation id") from exc
+        row = (
+            db.query(CorrespondenceExternalRelation)
+            .filter(
+                CorrespondenceExternalRelation.id == row_id,
+                CorrespondenceExternalRelation.correspondence_id == int(correspondence_id),
+            )
+            .first()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="Relation not found")
+        db.delete(row)
+        db.commit()
+        return {"ok": True, "id": key}
+
+    raise HTTPException(status_code=400, detail="Invalid relation id")
 
 
 @router.delete("/{correspondence_id}")
@@ -1540,6 +2366,34 @@ def download_correspondence_attachment(
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Attachment file not found")
     return FileResponse(path=str(file_path), filename=row.file_name, media_type=row.mime_type)
+
+
+@router.get("/attachments/{attachment_id}/preview")
+def preview_correspondence_attachment_by_id(
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("correspondence:read")),
+):
+    row = _load_attachment_or_404(db, attachment_id)
+    corr = _load_correspondence_or_404(db, row.correspondence_id)
+    _enforce_corr_scope(db, user, corr)
+    if not _attachment_preview_supported(row):
+        raise HTTPException(status_code=415, detail=PREVIEW_UNSUPPORTED_DETAIL)
+    if str(row.stored_path or "").strip().startswith("webdav://"):
+        return _download_webdav_attachment(db, row, inline=True)
+    file_path = Path(row.stored_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Attachment file not found")
+    filename = safe_name(row.file_name or f"attachment-{attachment_id}") or f"attachment-{attachment_id}"
+    media_type = _attachment_preview_media_type(row)
+    if not media_type:
+        raise HTTPException(status_code=415, detail=PREVIEW_UNSUPPORTED_DETAIL)
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type=media_type,
+        content_disposition_type="inline",
+    )
 
 
 @router.delete("/attachments/{attachment_id}")

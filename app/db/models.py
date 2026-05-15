@@ -52,6 +52,12 @@ class Organization(Base):
         back_populates="parent",
     )
     users: Mapped[List["User"]] = relationship(back_populates="organization")
+    contracts: Mapped[List["OrganizationContract"]] = relationship(
+        "OrganizationContract",
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        order_by="OrganizationContract.sort_order, OrganizationContract.id",
+    )
 
 
 class User(Base):
@@ -88,6 +94,26 @@ class User(Base):
         foreign_keys="CorrespondenceAttachment.uploaded_by_id",
         back_populates="uploaded_by",
     )
+    meeting_minutes_created: Mapped[List["MeetingMinute"]] = relationship(
+        "MeetingMinute",
+        foreign_keys="MeetingMinute.created_by_id",
+        back_populates="created_by",
+    )
+    meeting_resolutions_created: Mapped[List["MeetingResolution"]] = relationship(
+        "MeetingResolution",
+        foreign_keys="MeetingResolution.created_by_id",
+        back_populates="created_by",
+    )
+    meeting_resolution_responsibilities: Mapped[List["MeetingResolution"]] = relationship(
+        "MeetingResolution",
+        foreign_keys="MeetingResolution.responsible_user_id",
+        back_populates="responsible_user",
+    )
+    meeting_minute_attachments_uploaded: Mapped[List["MeetingMinuteAttachment"]] = relationship(
+        "MeetingMinuteAttachment",
+        foreign_keys="MeetingMinuteAttachment.uploaded_by_id",
+        back_populates="uploaded_by",
+    )
     settings_audit_logs: Mapped[List["SettingsAuditLog"]] = relationship(back_populates="actor")
     project_scopes: Mapped[List["UserProjectScope"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -121,6 +147,9 @@ class Project(Base):
     correspondences: Mapped[List["Correspondence"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+    meeting_minutes: Mapped[List["MeetingMinute"]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
 
     blocks: Mapped[List["Block"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
@@ -144,6 +173,34 @@ class Block(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     project: Mapped["Project"] = relationship(back_populates="blocks")
+
+
+class OrganizationContract(Base):
+    __tablename__ = "organization_contracts"
+    __table_args__ = (
+        Index("ix_org_contracts_org_sort", "organization_id", "sort_order"),
+        Index("ix_org_contracts_block", "block_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    organization_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contract_number: Mapped[str] = mapped_column(String(128), nullable=False)
+    subject: Mapped[str] = mapped_column(String(500), nullable=False)
+    block_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("blocks.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    organization: Mapped["Organization"] = relationship("Organization", back_populates="contracts")
+    block: Mapped["Block | None"] = relationship("Block")
 
 class Phase(Base):
     __tablename__ = "phases"
@@ -354,6 +411,12 @@ class MdrDocument(Base):
         back_populates="target_document",
         cascade="all, delete-orphan",
     )
+    outgoing_external_relations: Mapped[List["DocumentExternalRelation"]] = relationship(
+        "DocumentExternalRelation",
+        foreign_keys="DocumentExternalRelation.source_document_id",
+        back_populates="source_document",
+        cascade="all, delete-orphan",
+    )
     tag_assignments: Mapped[List["DocumentTagAssignment"]] = relationship(
         "DocumentTagAssignment", back_populates="document", cascade="all, delete-orphan"
     )
@@ -432,6 +495,50 @@ class ArchiveFile(Base):
         foreign_keys=[companion_file_id],
         uselist=False,
     )
+    public_shares: Mapped[List["ArchiveFilePublicShare"]] = relationship(
+        "ArchiveFilePublicShare",
+        back_populates="archive_file",
+        cascade="all, delete-orphan",
+        order_by="ArchiveFilePublicShare.created_at.desc(), ArchiveFilePublicShare.id.desc()",
+    )
+
+
+class ArchiveFilePublicShare(Base):
+    __tablename__ = "archive_file_public_shares"
+    __table_args__ = (
+        Index("ix_archive_file_public_shares_file", "file_id"),
+        Index("ix_archive_file_public_shares_provider_share", "provider", "provider_share_id"),
+        Index("ix_archive_file_public_shares_active", "file_id", "revoked_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    file_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("archive_files.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[str] = mapped_column(String(32), default="nextcloud", nullable=False)
+    provider_share_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    token: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    share_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    resolved_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    permissions: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    password_set: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    revoked_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    archive_file: Mapped["ArchiveFile"] = relationship("ArchiveFile", back_populates="public_shares")
+    created_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[created_by_id])
+    revoked_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[revoked_by_id])
 
 # ----------------------------------------------------------------
 # 5a. Document Comments, Activity, Relations & Tags
@@ -532,6 +639,44 @@ class DocumentRelation(Base):
     created_by: Mapped[Optional["User"]] = relationship("User")
 
 
+class DocumentExternalRelation(Base):
+    __tablename__ = "document_external_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_document_id",
+            "target_entity_type",
+            "target_entity_id",
+            "relation_type",
+            name="uq_document_external_relation",
+        ),
+        Index("ix_doc_ext_relations_source", "source_document_id"),
+        Index("ix_doc_ext_relations_target", "target_entity_type", "target_entity_id"),
+        Index("ix_doc_ext_relations_code", "target_entity_type", "target_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_document_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("mdr_documents.id", ondelete="CASCADE"), nullable=False
+    )
+    target_entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_entity_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    target_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    target_title: Mapped[str | None] = mapped_column(Text)
+    target_project_code: Mapped[str | None] = mapped_column(String(50))
+    target_status: Mapped[str | None] = mapped_column(String(64))
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False, default="related")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    source_document: Mapped["MdrDocument"] = relationship(
+        "MdrDocument", foreign_keys=[source_document_id], back_populates="outgoing_external_relations"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
+
+
 class DocumentTag(Base):
     __tablename__ = "document_tags"
     __table_args__ = (
@@ -544,6 +689,9 @@ class DocumentTag(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     assignments: Mapped[List["DocumentTagAssignment"]] = relationship(
         "DocumentTagAssignment", back_populates="tag", cascade="all, delete-orphan"
+    )
+    correspondence_assignments: Mapped[List["CorrespondenceTagAssignment"]] = relationship(
+        "CorrespondenceTagAssignment", back_populates="tag", cascade="all, delete-orphan"
     )
 
 
@@ -679,6 +827,41 @@ class Correspondence(Base):
     attachments: Mapped[List["CorrespondenceAttachment"]] = relationship(
         back_populates="correspondence", cascade="all, delete-orphan"
     )
+    external_relations: Mapped[List["CorrespondenceExternalRelation"]] = relationship(
+        "CorrespondenceExternalRelation", back_populates="correspondence", cascade="all, delete-orphan"
+    )
+    tag_assignments: Mapped[List["CorrespondenceTagAssignment"]] = relationship(
+        "CorrespondenceTagAssignment", back_populates="correspondence", cascade="all, delete-orphan"
+    )
+
+
+class CorrespondenceTagAssignment(Base):
+    __tablename__ = "correspondence_tag_assignments"
+    __table_args__ = (
+        UniqueConstraint("correspondence_id", "tag_id", name="uq_corr_tag_assignment"),
+        Index("ix_cta_correspondence", "correspondence_id"),
+        Index("ix_cta_tag", "tag_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    correspondence_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("correspondences.id", ondelete="CASCADE"), nullable=False
+    )
+    tag_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("document_tags.id", ondelete="CASCADE"), nullable=False
+    )
+    assigned_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    correspondence: Mapped["Correspondence"] = relationship(
+        "Correspondence", back_populates="tag_assignments"
+    )
+    tag: Mapped["DocumentTag"] = relationship(
+        "DocumentTag", back_populates="correspondence_assignments"
+    )
+    assigned_by: Mapped[Optional["User"]] = relationship("User")
 
 
 class CorrespondenceAction(Base):
@@ -763,6 +946,243 @@ class CorrespondenceAttachment(Base):
         foreign_keys=[uploaded_by_id],
         back_populates="correspondence_attachments_uploaded",
     )
+
+
+class CorrespondenceExternalRelation(Base):
+    __tablename__ = "correspondence_external_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "correspondence_id",
+            "target_entity_type",
+            "target_entity_id",
+            "relation_type",
+            name="uq_correspondence_external_relation",
+        ),
+        Index("ix_corr_ext_relations_source", "correspondence_id"),
+        Index("ix_corr_ext_relations_target", "target_entity_type", "target_entity_id"),
+        Index("ix_corr_ext_relations_code", "target_entity_type", "target_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    correspondence_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("correspondences.id", ondelete="CASCADE"), nullable=False
+    )
+    target_entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    target_title: Mapped[str | None] = mapped_column(Text)
+    target_project_code: Mapped[str | None] = mapped_column(String(50))
+    target_status: Mapped[str | None] = mapped_column(String(64))
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False, default="related")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    correspondence: Mapped["Correspondence"] = relationship(
+        "Correspondence", back_populates="external_relations"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
+
+
+class MeetingMinute(Base):
+    __tablename__ = "meeting_minutes"
+    __table_args__ = (
+        Index("ix_meeting_minutes_project_date", "project_code", "meeting_date"),
+        Index("ix_meeting_minutes_meeting_no", "meeting_no"),
+        Index("ix_meeting_minutes_status", "status"),
+        Index("ix_meeting_minutes_deleted_at", "deleted_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    meeting_no: Mapped[str] = mapped_column(String(120), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    project_code: Mapped[str | None] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="SET NULL"), index=True, nullable=True
+    )
+    meeting_type: Mapped[str] = mapped_column(String(64), default="General", index=True)
+    meeting_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    chairperson: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    secretary: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    participants: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="Open", index=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    project: Mapped[Optional["Project"]] = relationship(back_populates="meeting_minutes")
+    created_by: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[created_by_id],
+        back_populates="meeting_minutes_created",
+    )
+    resolutions: Mapped[List["MeetingResolution"]] = relationship(
+        back_populates="meeting_minute", cascade="all, delete-orphan"
+    )
+    attachments: Mapped[List["MeetingMinuteAttachment"]] = relationship(
+        back_populates="meeting_minute", cascade="all, delete-orphan"
+    )
+    external_relations: Mapped[List["MeetingMinuteExternalRelation"]] = relationship(
+        "MeetingMinuteExternalRelation", back_populates="meeting_minute", cascade="all, delete-orphan"
+    )
+
+
+class MeetingMinuteSequence(Base):
+    __tablename__ = "meeting_minute_sequences"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_code",
+            "period",
+            name="uq_meeting_minute_sequences_project_period",
+        ),
+        Index("ix_meeting_minute_sequences_project_period", "project_code", "period"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    period: Mapped[str] = mapped_column(String(8), nullable=False)
+    next_value: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class MeetingResolution(Base):
+    __tablename__ = "meeting_resolutions"
+    __table_args__ = (
+        Index("ix_meeting_resolutions_minute", "meeting_minute_id"),
+        Index("ix_meeting_resolutions_status_due", "status", "due_date"),
+        Index("ix_meeting_resolutions_responsible_user", "responsible_user_id"),
+        Index("ix_meeting_resolutions_deleted_at", "deleted_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    meeting_minute_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("meeting_minutes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    resolution_no: Mapped[str] = mapped_column(String(64), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    responsible_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    responsible_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    responsible_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="Open", index=True)
+    priority: Mapped[str] = mapped_column(String(20), default="Normal", index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    meeting_minute: Mapped["MeetingMinute"] = relationship(back_populates="resolutions")
+    responsible_user: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[responsible_user_id],
+        back_populates="meeting_resolution_responsibilities",
+    )
+    responsible_org: Mapped[Optional["Organization"]] = relationship("Organization")
+    created_by: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[created_by_id],
+        back_populates="meeting_resolutions_created",
+    )
+    attachments: Mapped[List["MeetingMinuteAttachment"]] = relationship(
+        back_populates="resolution"
+    )
+
+
+class MeetingMinuteAttachment(Base):
+    __tablename__ = "meeting_minute_attachments"
+    __table_args__ = (
+        Index("ix_meeting_minute_attachments_minute", "meeting_minute_id"),
+        Index("ix_meeting_minute_attachments_resolution", "resolution_id"),
+        Index("ix_meeting_minute_attachments_uploaded_at", "uploaded_at"),
+        Index("ix_meeting_minute_attachments_deleted_at", "deleted_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    meeting_minute_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("meeting_minutes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    resolution_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("meeting_resolutions.id", ondelete="SET NULL"), nullable=True
+    )
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_kind: Mapped[str] = mapped_column(String(20), default="attachment", nullable=False)
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    detected_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(32), default="local", nullable=False, index=True)
+    mirror_provider: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    mirror_remote_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    mirror_remote_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    mirror_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    mirror_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    uploaded_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    meeting_minute: Mapped["MeetingMinute"] = relationship(back_populates="attachments")
+    resolution: Mapped[Optional["MeetingResolution"]] = relationship(back_populates="attachments")
+    uploaded_by: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[uploaded_by_id],
+        back_populates="meeting_minute_attachments_uploaded",
+    )
+
+
+class MeetingMinuteExternalRelation(Base):
+    __tablename__ = "meeting_minute_external_relations"
+    __table_args__ = (
+        UniqueConstraint(
+            "meeting_minute_id",
+            "target_entity_type",
+            "target_entity_id",
+            "relation_type",
+            name="uq_meeting_minute_external_relation",
+        ),
+        Index("ix_mm_ext_relations_source", "meeting_minute_id"),
+        Index("ix_mm_ext_relations_target", "target_entity_type", "target_entity_id"),
+        Index("ix_mm_ext_relations_code", "target_entity_type", "target_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    meeting_minute_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("meeting_minutes.id", ondelete="CASCADE"), nullable=False
+    )
+    target_entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    target_title: Mapped[str | None] = mapped_column(Text)
+    target_project_code: Mapped[str | None] = mapped_column(String(50))
+    target_status: Mapped[str | None] = mapped_column(String(64))
+    relation_type: Mapped[str] = mapped_column(String(32), nullable=False, default="related")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_by_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    meeting_minute: Mapped["MeetingMinute"] = relationship(
+        "MeetingMinute", back_populates="external_relations"
+    )
+    created_by: Mapped[Optional["User"]] = relationship("User")
 
 
 class WorkflowStatus(Base):
@@ -1172,6 +1592,311 @@ class ItemRelation(Base):
     created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
 
 
+class WorkInstruction(Base):
+    __tablename__ = "work_instructions"
+    __table_args__ = (
+        UniqueConstraint("instruction_no", name="uq_work_instructions_instruction_no"),
+        UniqueConstraint("legacy_comm_item_id", name="uq_work_instructions_legacy_comm_item"),
+        Index(
+            "ix_work_instructions_project_disc_status_created",
+            "project_code",
+            "discipline_code",
+            "status_code",
+            "created_at",
+        ),
+        Index("ix_work_instructions_response_due_date", "response_due_date"),
+        Index("ix_work_instructions_org_status", "organization_id", "status_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    legacy_comm_item_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    instruction_no: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    legacy_subtype: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    is_legacy_readonly: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    discipline_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    zone: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    required_action: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    status_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="NORMAL")
+    response_due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    assignee_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    recipient_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    contractor_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    consultant_org_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True
+    )
+    contract_clause_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    spec_clause_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    wbs_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    activity_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    document_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    document_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    transmittal_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    submission_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    review_cycle_no: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    review_result_code: Mapped[str | None] = mapped_column(
+        String(32), ForeignKey("review_results.code", ondelete="SET NULL"), nullable=True
+    )
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reviewed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    potential_impact_time: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    potential_impact_cost: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    potential_impact_quality: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    potential_impact_safety: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    impact_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delay_days_estimate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    claim_notice_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notice_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    legacy_comm_item: Mapped["CommItem | None"] = relationship("CommItem")
+    project: Mapped["Project"] = relationship("Project")
+    discipline: Mapped["Discipline"] = relationship("Discipline")
+    organization: Mapped["Organization | None"] = relationship("Organization", foreign_keys=[organization_id])
+    recipient_org: Mapped["Organization | None"] = relationship("Organization", foreign_keys=[recipient_org_id])
+    assignee_user: Mapped["User | None"] = relationship("User", foreign_keys=[assignee_user_id])
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+    reviewed_by: Mapped["User | None"] = relationship("User", foreign_keys=[reviewed_by_id])
+    review_result: Mapped["ReviewResult | None"] = relationship("ReviewResult")
+    status_logs: Mapped[List["WorkInstructionStatusLog"]] = relationship(
+        back_populates="instruction", cascade="all, delete-orphan"
+    )
+    field_audits: Mapped[List["WorkInstructionFieldAudit"]] = relationship(
+        back_populates="instruction", cascade="all, delete-orphan"
+    )
+    comments: Mapped[List["WorkInstructionComment"]] = relationship(
+        back_populates="instruction", cascade="all, delete-orphan"
+    )
+    attachments: Mapped[List["WorkInstructionAttachment"]] = relationship(
+        back_populates="instruction", cascade="all, delete-orphan"
+    )
+    outgoing_relations: Mapped[List["WorkInstructionRelation"]] = relationship(
+        "WorkInstructionRelation",
+        foreign_keys="WorkInstructionRelation.from_instruction_id",
+        back_populates="from_instruction",
+        cascade="all, delete-orphan",
+    )
+    incoming_relations: Mapped[List["WorkInstructionRelation"]] = relationship(
+        "WorkInstructionRelation",
+        foreign_keys="WorkInstructionRelation.to_instruction_id",
+        back_populates="to_instruction",
+        cascade="all, delete-orphan",
+    )
+
+
+class WorkInstructionSequence(Base):
+    __tablename__ = "work_instruction_sequences"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_code",
+            "discipline_code",
+            name="uq_work_instruction_sequences_project_discipline",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False
+    )
+    discipline_code: Mapped[str] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="CASCADE"), nullable=False
+    )
+    next_value: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class WorkInstructionStatusLog(Base):
+    __tablename__ = "work_instruction_status_logs"
+    __table_args__ = (
+        Index("ix_work_instruction_status_logs_instruction_changed_at", "instruction_id", "changed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instruction_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("work_instructions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    from_status_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    to_status_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    changed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    instruction: Mapped["WorkInstruction"] = relationship(back_populates="status_logs")
+    changed_by: Mapped["User | None"] = relationship("User", foreign_keys=[changed_by_id])
+
+
+class WorkInstructionFieldAudit(Base):
+    __tablename__ = "work_instruction_field_audits"
+    __table_args__ = (
+        Index("ix_work_instruction_field_audits_instruction_changed_at", "instruction_id", "changed_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instruction_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("work_instructions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    field_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    old_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    new_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    changed_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    changed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    instruction: Mapped["WorkInstruction"] = relationship(back_populates="field_audits")
+    changed_by: Mapped["User | None"] = relationship("User", foreign_keys=[changed_by_id])
+
+
+class WorkInstructionComment(Base):
+    __tablename__ = "work_instruction_comments"
+    __table_args__ = (
+        Index("ix_work_instruction_comments_instruction_created_at", "instruction_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instruction_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("work_instructions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False)
+    comment_type: Mapped[str] = mapped_column(String(32), nullable=False, default="comment")
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    instruction: Mapped["WorkInstruction"] = relationship(back_populates="comments")
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+
+
+class WorkInstructionAttachment(Base):
+    __tablename__ = "work_instruction_attachments"
+    __table_args__ = (
+        Index("ix_work_instruction_attachments_instruction_uploaded_at", "instruction_id", "uploaded_at"),
+        Index(
+            "ix_work_instruction_attachments_instruction_scope_uploaded_at",
+            "instruction_id",
+            "scope_code",
+            "uploaded_at",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    instruction_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("work_instructions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    legacy_item_attachment_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("item_attachments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(1024), nullable=False)
+    file_kind: Mapped[str] = mapped_column(String(20), nullable=False, default="attachment")
+    scope_code: Mapped[str] = mapped_column(String(16), nullable=False, default="GENERAL", index=True)
+    slot_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    detected_mime: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    storage_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="local")
+    gdrive_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    mirror_provider: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    mirror_remote_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    mirror_remote_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    mirror_status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    mirror_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    uploaded_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    instruction: Mapped["WorkInstruction"] = relationship(back_populates="attachments")
+    uploaded_by: Mapped["User | None"] = relationship("User", foreign_keys=[uploaded_by_id])
+
+
+class WorkInstructionRelation(Base):
+    __tablename__ = "work_instruction_relations"
+    __table_args__ = (
+        Index("ix_work_instruction_relations_from_instruction", "from_instruction_id"),
+        Index("ix_work_instruction_relations_to_instruction", "to_instruction_id"),
+        Index("ix_work_instruction_relations_from_comm_item", "from_comm_item_id"),
+        Index("ix_work_instruction_relations_to_comm_item", "to_comm_item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    from_instruction_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("work_instructions.id", ondelete="CASCADE"), nullable=True
+    )
+    from_comm_item_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=True
+    )
+    to_instruction_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("work_instructions.id", ondelete="CASCADE"), nullable=True
+    )
+    to_comm_item_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("comm_items.id", ondelete="CASCADE"), nullable=True
+    )
+    relation_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    from_instruction: Mapped["WorkInstruction | None"] = relationship(
+        "WorkInstruction",
+        foreign_keys=[from_instruction_id],
+        back_populates="outgoing_relations",
+    )
+    to_instruction: Mapped["WorkInstruction | None"] = relationship(
+        "WorkInstruction",
+        foreign_keys=[to_instruction_id],
+        back_populates="incoming_relations",
+    )
+    from_comm_item: Mapped["CommItem | None"] = relationship("CommItem", foreign_keys=[from_comm_item_id])
+    to_comm_item: Mapped["CommItem | None"] = relationship("CommItem", foreign_keys=[to_comm_item_id])
+    created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
+
+
 class SiteLogWorkflowStatus(Base):
     __tablename__ = "site_log_workflow_statuses"
 
@@ -1194,10 +1919,36 @@ class SiteLogRoleCatalog(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class SiteLogWorkSectionCatalog(Base):
+    __tablename__ = "site_log_work_section_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_work_section_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
 class SiteLogEquipmentCatalog(Base):
     __tablename__ = "site_log_equipment_catalog"
     __table_args__ = (
         UniqueConstraint("code", name="uq_site_log_equipment_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogMaterialCatalog(Base):
+    __tablename__ = "site_log_material_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_material_catalog_code"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -1218,6 +1969,212 @@ class SiteLogEquipmentStatusCatalog(Base):
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogAttachmentTypeCatalog(Base):
+    __tablename__ = "site_log_attachment_type_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_attachment_type_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogShiftCatalog(Base):
+    __tablename__ = "site_log_shift_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_shift_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogWeatherCatalog(Base):
+    __tablename__ = "site_log_weather_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_weather_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogIssueTypeCatalog(Base):
+    __tablename__ = "site_log_issue_type_catalog"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_issue_type_catalog_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class SiteLogActivityCatalog(Base):
+    __tablename__ = "site_log_activity_catalog"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_code",
+            "organization_id",
+            "organization_contract_id",
+            "activity_code",
+            name="uq_site_log_activity_catalog_scope_code",
+        ),
+        Index("ix_site_log_activity_catalog_project_sort", "project_code", "sort_order"),
+        Index("ix_site_log_activity_catalog_org", "organization_id"),
+        Index("ix_site_log_activity_catalog_contract", "organization_contract_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_code: Mapped[str] = mapped_column(
+        String(50), ForeignKey("projects.code", ondelete="CASCADE"), nullable=False, index=True
+    )
+    organization_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    organization_contract_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("organization_contracts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    activity_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    activity_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    default_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    default_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    project: Mapped["Project"] = relationship("Project")
+    organization: Mapped["Organization | None"] = relationship("Organization")
+    organization_contract: Mapped["OrganizationContract | None"] = relationship("OrganizationContract")
+    pms_mapping: Mapped["SiteLogActivityPmsMapping | None"] = relationship(
+        "SiteLogActivityPmsMapping",
+        back_populates="activity_catalog",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+class SiteLogPmsTemplate(Base):
+    __tablename__ = "site_log_pms_templates"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_site_log_pms_templates_code"),
+        Index("ix_site_log_pms_templates_active_sort", "is_active", "sort_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    steps: Mapped[List["SiteLogPmsTemplateStep"]] = relationship(
+        "SiteLogPmsTemplateStep",
+        back_populates="template",
+        cascade="all, delete-orphan",
+        order_by="SiteLogPmsTemplateStep.sort_order, SiteLogPmsTemplateStep.id",
+    )
+    activity_mappings: Mapped[List["SiteLogActivityPmsMapping"]] = relationship(
+        "SiteLogActivityPmsMapping",
+        back_populates="template",
+    )
+
+
+class SiteLogPmsTemplateStep(Base):
+    __tablename__ = "site_log_pms_template_steps"
+    __table_args__ = (
+        UniqueConstraint("template_id", "step_code", name="uq_site_log_pms_template_steps_template_code"),
+        Index("ix_site_log_pms_template_steps_template_sort", "template_id", "sort_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    template_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_log_pms_templates.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    step_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    step_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    weight_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    template: Mapped["SiteLogPmsTemplate"] = relationship("SiteLogPmsTemplate", back_populates="steps")
+
+
+class SiteLogActivityPmsMapping(Base):
+    __tablename__ = "site_log_activity_pms_mappings"
+    __table_args__ = (
+        UniqueConstraint("activity_catalog_id", name="uq_site_log_activity_pms_mappings_activity"),
+        Index("ix_site_log_activity_pms_mappings_template", "template_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    activity_catalog_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_log_activity_catalog.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    template_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_log_pms_templates.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    template_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    template_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    snapshot_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    activity_catalog: Mapped["SiteLogActivityCatalog"] = relationship(
+        "SiteLogActivityCatalog", back_populates="pms_mapping"
+    )
+    template: Mapped["SiteLogPmsTemplate"] = relationship("SiteLogPmsTemplate", back_populates="activity_mappings")
+    steps: Mapped[List["SiteLogActivityPmsStep"]] = relationship(
+        "SiteLogActivityPmsStep",
+        back_populates="mapping",
+        cascade="all, delete-orphan",
+        order_by="SiteLogActivityPmsStep.sort_order, SiteLogActivityPmsStep.id",
+    )
+
+
+class SiteLogActivityPmsStep(Base):
+    __tablename__ = "site_log_activity_pms_steps"
+    __table_args__ = (
+        UniqueConstraint("mapping_id", "step_code", name="uq_site_log_activity_pms_steps_mapping_code"),
+        Index("ix_site_log_activity_pms_steps_mapping_sort", "mapping_id", "sort_order"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mapping_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_log_activity_pms_mappings.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_template_step_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("site_log_pms_template_steps.id", ondelete="SET NULL"), nullable=True
+    )
+    step_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    step_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    weight_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    mapping: Mapped["SiteLogActivityPmsMapping"] = relationship("SiteLogActivityPmsMapping", back_populates="steps")
 
 
 class SiteLogSequence(Base):
@@ -1263,15 +2220,34 @@ class SiteLog(Base):
     project_code: Mapped[str] = mapped_column(
         String(50), ForeignKey("projects.code", ondelete="RESTRICT"), nullable=False, index=True
     )
-    discipline_code: Mapped[str] = mapped_column(
-        String(20), ForeignKey("disciplines.code", ondelete="RESTRICT"), nullable=False, index=True
+    discipline_code: Mapped[str | None] = mapped_column(
+        String(20), ForeignKey("disciplines.code", ondelete="RESTRICT"), nullable=True, index=True
     )
     organization_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    organization_contract_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("organization_contracts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     log_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    work_status: Mapped[str] = mapped_column(String(32), nullable=False, default="ACTIVE", index=True)
+    shift: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    contract_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    contract_subject: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    contract_block: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    qc_test_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    qc_inspection_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    qc_open_ncr_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    qc_open_punch_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    qc_summary_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qc_snapshot_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     weather: Mapped[str | None] = mapped_column(String(64), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_work_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_plan_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     status_code: Mapped[str] = mapped_column(String(32), nullable=False, default="DRAFT", index=True)
     created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
@@ -1290,8 +2266,12 @@ class SiteLog(Base):
     )
 
     project: Mapped["Project"] = relationship("Project")
-    discipline: Mapped["Discipline"] = relationship("Discipline")
+    discipline: Mapped["Discipline | None"] = relationship("Discipline")
     organization: Mapped["Organization | None"] = relationship("Organization", foreign_keys=[organization_id])
+    organization_contract: Mapped["OrganizationContract | None"] = relationship(
+        "OrganizationContract",
+        foreign_keys=[organization_contract_id],
+    )
     created_by: Mapped["User | None"] = relationship("User", foreign_keys=[created_by_id])
     submitted_by: Mapped["User | None"] = relationship("User", foreign_keys=[submitted_by_id])
     verified_by: Mapped["User | None"] = relationship("User", foreign_keys=[verified_by_id])
@@ -1303,6 +2283,15 @@ class SiteLog(Base):
         back_populates="site_log", cascade="all, delete-orphan"
     )
     activity_rows: Mapped[List["SiteLogActivityRow"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    material_rows: Mapped[List["SiteLogMaterialRow"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    issue_rows: Mapped[List["SiteLogIssueRow"]] = relationship(
+        back_populates="site_log", cascade="all, delete-orphan"
+    )
+    attachment_rows: Mapped[List["SiteLogAttachmentRow"]] = relationship(
         back_populates="site_log", cascade="all, delete-orphan"
     )
     status_logs: Mapped[List["SiteLogStatusLog"]] = relationship(
@@ -1328,6 +2317,7 @@ class SiteLogManpowerRow(Base):
     )
     role_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     role_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    work_section_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
     claimed_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     claimed_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     verified_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -1350,8 +2340,11 @@ class SiteLogEquipmentRow(Base):
     )
     equipment_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     equipment_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    work_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    claimed_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     claimed_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     claimed_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    verified_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     verified_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
     verified_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -1364,6 +2357,7 @@ class SiteLogActivityRow(Base):
     __tablename__ = "site_log_activity_rows"
     __table_args__ = (
         Index("ix_site_log_activity_rows_site_activity", "site_log_id", "activity_code"),
+        Index("ix_site_log_activity_rows_measurement_qc", "measurement_status", "qc_status"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -1376,10 +2370,120 @@ class SiteLogActivityRow(Base):
     external_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     claimed_progress_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     verified_progress_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    personnel_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pms_mapping_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("site_log_activity_pms_mappings.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    pms_template_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pms_template_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pms_template_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pms_step_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pms_step_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pms_step_weight_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    today_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cumulative_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    supervisor_today_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    supervisor_cumulative_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    supervisor_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    qc_status: Mapped[str | None] = mapped_column(String(32), nullable=True, default="PENDING")
+    qc_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    qc_by_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    qc_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    measurement_status: Mapped[str | None] = mapped_column(String(32), nullable=True, default="DRAFT")
+    measurement_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    measurement_updated_by_user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    activity_status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stop_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     site_log: Mapped["SiteLog"] = relationship(back_populates="activity_rows")
+    pms_mapping: Mapped["SiteLogActivityPmsMapping | None"] = relationship("SiteLogActivityPmsMapping")
+    qc_by_user: Mapped["User | None"] = relationship("User", foreign_keys=[qc_by_user_id])
+    measurement_updated_by_user: Mapped["User | None"] = relationship(
+        "User", foreign_keys=[measurement_updated_by_user_id]
+    )
+
+
+class SiteLogMaterialRow(Base):
+    __tablename__ = "site_log_material_rows"
+    __table_args__ = (
+        Index("ix_site_log_material_rows_site_code", "site_log_id", "material_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    material_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    consumption_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    incoming_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    consumed_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cumulative_quantity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="material_rows")
+
+
+class SiteLogIssueRow(Base):
+    __tablename__ = "site_log_issue_rows"
+    __table_args__ = (
+        Index("ix_site_log_issue_rows_site_type", "site_log_id", "issue_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    issue_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    responsible_party: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    status: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="issue_rows")
+
+
+class SiteLogAttachmentRow(Base):
+    __tablename__ = "site_log_attachment_rows"
+    __table_args__ = (
+        Index("ix_site_log_attachment_rows_site_type", "site_log_id", "attachment_type"),
+        Index("ix_site_log_attachment_rows_linked_attachment", "linked_attachment_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_log_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("site_logs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    attachment_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    reference_no: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    linked_attachment_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("site_log_attachments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    site_log: Mapped["SiteLog"] = relationship(back_populates="attachment_rows")
+    linked_attachment: Mapped["SiteLogAttachment | None"] = relationship(
+        "SiteLogAttachment",
+        back_populates="report_rows",
+        foreign_keys=[linked_attachment_id],
+    )
 
 
 class SiteLogStatusLog(Base):
@@ -1454,6 +2558,11 @@ class SiteLogAttachment(Base):
 
     site_log: Mapped["SiteLog"] = relationship(back_populates="attachments")
     uploaded_by: Mapped["User | None"] = relationship("User", foreign_keys=[uploaded_by_id])
+    report_rows: Mapped[List["SiteLogAttachmentRow"]] = relationship(
+        "SiteLogAttachmentRow",
+        back_populates="linked_attachment",
+        foreign_keys="SiteLogAttachmentRow.linked_attachment_id",
+    )
 
 
 class BimPublishRun(Base):
@@ -2098,6 +3207,36 @@ class SiteCacheAgentToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     profile: Mapped["SiteCacheProfile"] = relationship(back_populates="agent_tokens")
+    created_by: Mapped["User | None"] = relationship("User")
+
+
+class PowerBiApiToken(Base):
+    __tablename__ = "power_bi_api_tokens"
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_power_bi_api_tokens_hash"),
+        Index("ix_power_bi_api_tokens_active", "is_active", "revoked_at"),
+        Index("ix_power_bi_api_tokens_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    token_hint: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    scopes: Mapped[str] = mapped_column(Text, nullable=False, default='["site_logs:report_read"]')
+    allowed_project_codes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allowed_report_sections: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allowed_ip_ranges: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_by_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     created_by: Mapped["User | None"] = relationship("User")
 
 

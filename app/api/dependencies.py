@@ -1,8 +1,13 @@
 from __future__ import annotations
+import json
+from datetime import datetime, timedelta
+from hashlib import sha256
 from typing import Any, Dict, Generator, List
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
+from app.core.config import settings
 from app.db.session import get_db as _get_db
 from app.core.organizations import (
     is_contractor_category,
@@ -16,6 +21,7 @@ from app.db.models import (
     RoleDisciplineScope,
     RolePermission,
     RoleProjectScope,
+    SettingsKV,
     User,
     UserDisciplineScope,
     UserProjectScope,
@@ -24,12 +30,137 @@ from app.core.security import verify_token
 from app.core.roles import MATRIX_ROLES, ROLE_PERMISSIONS, Role, is_valid_role, normalize_role
 from app.services.access_control import resolve_effective_access
 
+
 def get_db() -> Generator[Session, None, None]:
     yield from _get_db()
 
 security = HTTPBearer()
+AUTH_SESSION_KEY_PREFIX = "auth.sess:"
+AUTH_SESSION_TOUCH_THROTTLE_SECONDS = 120
+
+
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _session_key_for_token(token: str) -> str:
+    digest = sha256(str(token or "").encode("utf-8")).hexdigest()[:48]
+    return f"{AUTH_SESSION_KEY_PREFIX}{digest}"
+
+
+def auth_idle_timeout_minutes() -> int:
+    minutes = int(getattr(settings, "AUTH_IDLE_TIMEOUT_MINUTES", 20) or 0)
+    return max(0, minutes)
+
+
+def auth_heartbeat_interval_seconds() -> int:
+    minutes = auth_idle_timeout_minutes()
+    if minutes <= 0:
+        return 0
+    return max(60, min(300, int(minutes * 60 / 2)))
+
+
+def _auth_idle_timeout() -> timedelta | None:
+    minutes = auth_idle_timeout_minutes()
+    if minutes <= 0:
+        return None
+    return timedelta(minutes=minutes)
+
+
+def _parse_session_timestamp(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).replace(tzinfo=None)
+    except Exception:
+        return None
+
+
+def _decode_session_value(value: str | None) -> dict[str, Any]:
+    try:
+        payload = json.loads(str(value or "{}"))
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def revoke_auth_session(db: Session, token: str) -> None:
+    if settings.READ_ONLY_MODE:
+        return
+    key = _session_key_for_token(token)
+    row = db.query(SettingsKV).filter(SettingsKV.key == key).first()
+    if not row:
+        return
+    db.delete(row)
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+
+
+def _is_user_activity_request(request: Request) -> bool:
+    value = str(request.headers.get("x-user-activity") or "").strip().lower()
+    return value in {"1", "true", "yes", "y"}
+
+
+def _session_payload(user: User, now: datetime) -> str:
+    return json.dumps(
+        {"user_id": user.id, "email": user.email, "last_seen": now.isoformat(timespec="seconds")},
+        ensure_ascii=False,
+    )
+
+
+def _commit_session_change(db: Session) -> None:
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+
+
+def _should_touch_session(last_seen: datetime | None, now: datetime) -> bool:
+    if last_seen is None:
+        return True
+    return now - last_seen >= timedelta(seconds=AUTH_SESSION_TOUCH_THROTTLE_SECONDS)
+
+
+def _validate_auth_session(db: Session, user: User, token: str, *, touch: bool) -> None:
+    timeout = _auth_idle_timeout()
+    if timeout is None:
+        return
+    key = _session_key_for_token(token)
+    now = _utcnow()
+    row = db.query(SettingsKV).filter(SettingsKV.key == key).first()
+    if row:
+        payload = _decode_session_value(row.value)
+        last_seen = _parse_session_timestamp(payload.get("last_seen"))
+        if last_seen and now - last_seen > timeout:
+            if not settings.READ_ONLY_MODE:
+                db.delete(row)
+                _commit_session_change(db)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session expired due to inactivity",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if touch and not settings.READ_ONLY_MODE and _should_touch_session(last_seen, now):
+            row.value = _session_payload(user, now)
+            row.updated_at = now
+            _commit_session_change(db)
+        return
+    if not settings.READ_ONLY_MODE:
+        db.add(
+            SettingsKV(
+                key=key,
+                value=_session_payload(user, now),
+                updated_at=now,
+            )
+        )
+        _commit_session_change(db)
+
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
@@ -52,7 +183,8 @@ def get_current_user(
     
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
-    
+
+    _validate_auth_session(db, user, credentials.credentials, touch=_is_user_activity_request(request))
     return user
 
 def get_current_admin_user(current_user: User = Depends(get_current_user)) -> User:
@@ -98,7 +230,7 @@ def _load_allowed_permissions(
                 )
                 .all()
             )
-            return {perm for (perm,) in rows if perm}
+            return {str(perm or "").strip() for (perm,) in rows if str(perm or "").strip()}
 
     has_rows = db.query(RolePermission.role).filter(RolePermission.role == role).first()
     if has_rows:
@@ -107,7 +239,7 @@ def _load_allowed_permissions(
             .filter(RolePermission.role == role, RolePermission.allowed == True)
             .all()
         )
-        return {perm for (perm,) in rows if perm}
+        return {str(perm or "").strip() for (perm,) in rows if str(perm or "").strip()}
 
     # Fallback to static defaults when matrix is not seeded.
     return _fallback_permissions_for_role(role)

@@ -32,6 +32,7 @@ const debounceTimers: Record<string, number | undefined> = {};
 const drawerDirtyByKey: Record<string, boolean> = {};
 const sectionExpandedByKey: Record<string, Record<string, boolean>> = {};
 const shamsiRegistryByKey: Record<string, { syncAll: () => void }> = {};
+const printPreviewState: { url: string; title: string } = { url: "", title: "" };
 
 let actionsBound = false;
 let catalogCache: Record<string, unknown> | null = null;
@@ -212,9 +213,12 @@ function setFormSavingState(moduleKey: string, tabKey: string, saving: boolean):
 function effectiveFormItemType(moduleKey: string, tabKey: string): string {
   const key = keyOf(moduleKey, tabKey);
   const itemId = Number(valueOf(`ci-form-id-${key}`) || 0);
-  const currentType = upper(valueOf(`ci-form-item-type-${key}`) || itemTypeForTab(moduleKey, tabKey));
-  if (itemId <= 0 && upper(itemTypeForTab(moduleKey, tabKey)) === "RFI" && checkedOf(`ci-form-rfi-as-ncr-${key}`)) {
-    return "NCR";
+  const fallbackType = upper(itemTypeForTab(moduleKey, tabKey));
+  const currentType = upper(valueOf(`ci-form-item-type-${key}`) || fallbackType);
+  const allowedTypes = itemTypesForTab(moduleKey, tabKey).map((row) => upper(row));
+  const canToggleRfiNcr = itemId <= 0 && allowedTypes.includes("RFI") && allowedTypes.includes("NCR");
+  if (canToggleRfiNcr) {
+    return checkedOf(`ci-form-rfi-as-ncr-${key}`) ? "NCR" : "RFI";
   }
   return currentType;
 }
@@ -433,7 +437,7 @@ function tabTitle(moduleKey: string, tabKey: string): string {
     "contractor:execution": "دفتر فنی و اجرا",
     "contractor:requests": "درخواست‌ها (RFI/NCR)",
     "consultant:inspection": "بازدید و IR",
-    "consultant:defects": "نواقص (NCR)",
+    "consultant:defects": "نواقص و درخواست‌ها (RFI/NCR)",
     "consultant:instructions": "دستورکار و صورتجلسه",
     "consultant:control": "کنترل پروژه",
   };
@@ -494,6 +498,69 @@ function findOrganizationName(cache: Record<string, unknown>, organizationId: un
   if (!id) return "-";
   const row = asArray(cache.organizations).find((organization) => Number(organization.id || 0) === id);
   return textOrDash(row?.name || row?.name_e || row?.name_p || row?.code);
+}
+
+function currentUserRecord(): Record<string, unknown> {
+  try {
+    return asRecord((window as any)?.authManager?.user);
+  } catch {
+    return {};
+  }
+}
+
+function currentUserOrganizationId(): number {
+  return Number(currentUserRecord().organization_id || 0);
+}
+
+function currentUserOrganizationName(cache: Record<string, unknown>): string {
+  const user = currentUserRecord();
+  const organization = asRecord(user.organization);
+  return textOrDash(
+    organization.name ||
+      organization.name_e ||
+      organization.name_p ||
+      organization.code ||
+      findOrganizationName(cache, user.organization_id)
+  );
+}
+
+function organizationLabel(row: Record<string, unknown>): string {
+  const name = text(row.name || row.name_p || row.name_e || row.title);
+  const code = text(row.code);
+  if (name && code) return `${name} (${code})`;
+  return name || code || `#${text(row.id)}`;
+}
+
+function organizationOptionsHtml(
+  cache: Record<string, unknown>,
+  selectedValue: unknown = "",
+  placeholder = "سازمان"
+): string {
+  const selected = String(selectedValue ?? "");
+  const rows = asArray(cache.organizations)
+    .filter((row) => row.is_active !== false)
+    .sort((a, b) => organizationLabel(a).localeCompare(organizationLabel(b), "fa"));
+  return [`<option value="">${stateBridge.esc(placeholder)}</option>`]
+    .concat(
+      rows.map((row) => {
+        const value = String(row.id ?? "");
+        const isSelected = value && value === selected ? " selected" : "";
+        return `<option value="${stateBridge.esc(value)}"${isSelected}>${stateBridge.esc(organizationLabel(row))}</option>`;
+      })
+    )
+    .join("");
+}
+
+function setSenderOrganizationFields(moduleKey: string, tabKey: string, organizationId?: unknown, organizationName?: unknown): void {
+  const key = keyOf(moduleKey, tabKey);
+  const id = Number(organizationId || 0) || currentUserOrganizationId();
+  const cachedName = id ? text(findOrganizationName(catalogCache || {}, id)) : "";
+  const name =
+    text(organizationName) ||
+    (cachedName && cachedName !== "-" ? cachedName : "") ||
+    currentUserOrganizationName(catalogCache || {});
+  setValue(`ci-form-sender-org-${key}`, id || "");
+  setValue(`ci-form-sender-org-label-${key}`, name || "-");
 }
 
 function escHtml(value: unknown): string {
@@ -623,7 +690,17 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
   }
 }
 
-function buildRfiPrintHtml(item: Record<string, unknown>, cache: Record<string, unknown>): string {
+function printAutoScript(autoPrint: boolean): string {
+  if (!autoPrint) return "";
+  return `
+  <script>
+    window.addEventListener('load', function () {
+      setTimeout(function () { window.print(); }, 250);
+    });
+  </script>`;
+}
+
+function buildRfiPrintHtml(item: Record<string, unknown>, cache: Record<string, unknown>, autoPrint = false): string {
   const rfi = asRecord(item.rfi);
   const drawingRefs = asStringArray(rfi.drawing_refs).join("، ");
   const specRefs = asStringArray(rfi.spec_refs).join("، ");
@@ -1068,14 +1145,277 @@ function buildRfiPrintHtml(item: Record<string, unknown>, cache: Record<string, 
     <span>صفحه <span class="print-page-number"></span></span>
   </div>
 
-  <script>
-    window.addEventListener('load', function () {
-      setTimeout(function () { window.print(); }, 250);
-    });
-  </script>
+  ${printAutoScript(autoPrint)}
 </body>
 </html>
 `;
+}
+
+function buildNcrPrintHtml(item: Record<string, unknown>, cache: Record<string, unknown>, autoPrint = false): string {
+  const ncr = asRecord(item.ncr);
+  const projectName = findProjectName(cache, item.project_code);
+  const disciplineLabel = findDisciplineLabel(cache, item.discipline_code);
+  const ownerOrgName = textOrDash(item.sender_org_name || findOrganizationName(cache, item.organization_id));
+  const recipientOrgName = textOrDash(item.recipient_org_name);
+  const issueDate = formatShamsiDate(item.created_at);
+  const verifiedDate = formatShamsiDate(ncr.verified_at);
+  const printTime = formatShamsiDate(new Date());
+  const statusLabel = String(item.status_code || "ISSUED");
+
+  return `
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>چاپ فرم NCR - ${stateBridge.esc(textOrDash(item.item_no))}</title>
+  <style>
+    @page { size: A4; margin: 7mm 7mm 10mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Tahoma, "Segoe UI", Arial, sans-serif; font-size: 9px; color: #111827; background: #ffffff; }
+    .sheet {
+      min-height: calc(297mm - 17mm);
+      border: 1.8px solid #111827;
+      padding: 5px 5px 9mm;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .letterhead {
+      display: grid;
+      grid-template-columns: 126px 1fr 126px;
+      gap: 5px;
+      align-items: stretch;
+      border: 1.5px solid #111827;
+    }
+    .letterhead-side {
+      display: grid;
+      grid-template-rows: repeat(3, 1fr);
+      font-size: 7.5px;
+    }
+    .letterhead-side div {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      border-bottom: 1px solid #111827;
+      padding: 3px 5px;
+      min-height: 22px;
+    }
+    .letterhead-side div:last-child { border-bottom: 0; }
+    .letterhead-side strong { white-space: nowrap; }
+    .letterhead-title {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
+      border-inline: 1.5px solid #111827;
+      padding: 4px 8px;
+    }
+    .letterhead-title h1 { margin: 0; font-size: 13.5px; font-weight: 900; line-height: 1.15; }
+    .letterhead-title p { margin: 2px 0 0; font-size: 7px; color: #374151; }
+    .logo-box {
+      height: 100%;
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #9ca3af;
+      color: #4b5563;
+      font-size: 8px;
+      font-weight: 800;
+    }
+    .form-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .form-table td, .form-table th {
+      border: 1.2px solid #111827;
+      padding: 3px 5px;
+      vertical-align: top;
+      text-align: right;
+      word-break: break-word;
+    }
+    .form-table th {
+      background: #e5e7eb;
+      font-size: 9px;
+      font-weight: 900;
+      text-align: center;
+    }
+    .label { display: inline-block; font-size: 7.4px; font-weight: 800; margin-left: 5px; white-space: nowrap; }
+    .value { font-size: 8.3px; line-height: 1.45; }
+    .section {
+      border: 1.2px solid #111827;
+      break-inside: avoid;
+    }
+    .section-title {
+      background: #e5e7eb;
+      border-bottom: 1.2px solid #111827;
+      text-align: center;
+      font-size: 9.3px;
+      font-weight: 900;
+      padding: 3px 6px;
+    }
+    .section-body {
+      min-height: 72px;
+      padding: 6px 7px;
+      line-height: 1.65;
+      font-size: 9px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .section-body.large { min-height: 138px; }
+    .section-body.medium { min-height: 92px; }
+    .lined {
+      background-image: linear-gradient(to bottom, transparent 0, transparent 21px, rgba(17,24,39,0.08) 22px);
+      background-size: 100% 22px;
+    }
+    .choice-strip {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1.2px solid #111827;
+      padding: 5px 8px;
+      font-weight: 800;
+      font-size: 8px;
+    }
+    .choice { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .box { width: 10px; height: 10px; border: 1.2px solid #111827; display: inline-block; }
+    .box.checked::after { content: "✓"; display: block; font-size: 9px; line-height: 9px; text-align: center; }
+    .signature-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px;
+      margin-top: auto;
+      break-inside: avoid;
+    }
+    .signature-card {
+      border: 1.2px solid #111827;
+      min-height: 58px;
+      padding: 4px 6px;
+      position: relative;
+    }
+    .signature-card h4 { margin: 0 0 3px; font-size: 8px; }
+    .signature-card .name { min-height: 13px; font-weight: 800; font-size: 7.6px; }
+    .signature-card .date { color: #4b5563; font-size: 6.8px; margin-top: 2px; }
+    .signature-card .line { border-top: 1px dashed #64748b; margin-top: 10px; padding-top: 2px; color: #64748b; font-size: 6.8px; }
+    .print-footer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7px;
+      color: #475569;
+      border-top: 1px solid #9ca3af;
+      padding-top: 1px;
+      background: #ffffff;
+    }
+    .print-page-number::after { content: counter(page); }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <header class="letterhead">
+      <div class="letterhead-side">
+        <div><strong>شماره</strong><span>${escHtml(textOrDash(item.item_no))}</span></div>
+        <div><strong>تاریخ صدور</strong><span>${escHtml(issueDate)}</span></div>
+        <div><strong>وضعیت</strong><span>${escHtml(statusLabel)}</span></div>
+      </div>
+      <div class="letterhead-title">
+        <h1>گزارش عدم انطباق / NCR</h1>
+        <p>NON-CONFORMANCE REPORT</p>
+      </div>
+      <div class="logo-box">لوگوی شرکت</div>
+    </header>
+
+    <table class="form-table">
+      <tr><th colspan="4">مشخصات پروژه و آیتم</th></tr>
+      <tr>
+        <td><span class="label">پروژه:</span><span class="value">${escHtml(projectName)}</span></td>
+        <td><span class="label">کد پروژه:</span><span class="value">${escHtml(textOrDash(item.project_code))}</span></td>
+        <td><span class="label">دیسپلین:</span><span class="value">${escHtml(disciplineLabel)}</span></td>
+        <td><span class="label">اولویت:</span><span class="value">${escHtml(textOrDash(item.priority))}</span></td>
+      </tr>
+      <tr>
+        <td><span class="label">صادرکننده:</span><span class="value">${escHtml(ownerOrgName)}</span></td>
+        <td><span class="label">گیرنده:</span><span class="value">${escHtml(recipientOrgName)}</span></td>
+        <td><span class="label">نوع NCR:</span><span class="value">${escHtml(textOrDash(ncr.kind || "NCR"))}</span></td>
+        <td><span class="label">شدت:</span><span class="value">${escHtml(textOrDash(ncr.severity || "-"))}</span></td>
+      </tr>
+      <tr>
+        <td colspan="2"><span class="label">عنوان:</span><span class="value">${escHtml(textOrDash(item.title))}</span></td>
+        <td><span class="label">WBS:</span><span class="value">${escHtml(textOrDash(item.wbs_code))}</span></td>
+        <td><span class="label">Activity:</span><span class="value">${escHtml(textOrDash(item.activity_code))}</span></td>
+      </tr>
+    </table>
+
+    <div class="choice-strip">
+      <span class="choice"><span class="box ${upper(ncr.severity) === "MINOR" ? "checked" : ""}"></span>MINOR</span>
+      <span class="choice"><span class="box ${upper(ncr.severity) === "MAJOR" ? "checked" : ""}"></span>MAJOR</span>
+      <span class="choice"><span class="box ${upper(statusLabel) === "ISSUED" ? "checked" : ""}"></span>صادر شده</span>
+      <span class="choice"><span class="box ${upper(statusLabel) === "CONTRACTOR_REPLY" ? "checked" : ""}"></span>پاسخ پیمانکار</span>
+      <span class="choice"><span class="box ${["VERIFIED", "CLOSED"].includes(upper(statusLabel)) ? "checked" : ""}"></span>تایید/بسته</span>
+    </div>
+
+    <section class="section">
+      <div class="section-title">شرح عدم انطباق</div>
+      <div class="section-body large lined">${escHtml(textOrDash(ncr.nonconformance_text || item.short_description))}</div>
+    </section>
+    <section class="section">
+      <div class="section-title">اقدام فوری / مهار</div>
+      <div class="section-body medium lined">${escHtml(textOrDash(ncr.containment_action))}</div>
+    </section>
+    <section class="section">
+      <div class="section-title">روش اصلاح / پاسخ پیمانکار</div>
+      <div class="section-body medium lined">${escHtml(textOrDash(ncr.rectification_method))}</div>
+    </section>
+    <section class="section">
+      <div class="section-title">یادداشت تایید و بستن NCR</div>
+      <div class="section-body lined">${escHtml(textOrDash(ncr.verification_note))}</div>
+    </section>
+
+    <div class="signature-grid">
+      <div class="signature-card">
+        <h4>صادرکننده</h4>
+        <div class="name">${escHtml(ownerOrgName)}</div>
+        <div class="date">تاریخ: ${escHtml(issueDate)}</div>
+        <div class="line">مهر / امضا</div>
+      </div>
+      <div class="signature-card">
+        <h4>دریافت‌کننده</h4>
+        <div class="name">${escHtml(recipientOrgName)}</div>
+        <div class="date">تاریخ: -</div>
+        <div class="line">مهر / امضا</div>
+      </div>
+      <div class="signature-card">
+        <h4>بررسی اصلاح</h4>
+        <div class="name">-</div>
+        <div class="date">تاریخ: ${escHtml(verifiedDate)}</div>
+        <div class="line">مهر / امضا</div>
+      </div>
+      <div class="signature-card">
+        <h4>تایید نهایی</h4>
+        <div class="name">-</div>
+        <div class="date">تاریخ: ${escHtml(verifiedDate)}</div>
+        <div class="line">مهر / امضا</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="print-footer">
+    <span>EDMS NCR Form</span>
+    <span>تاریخ چاپ: ${escHtml(printTime)}</span>
+    <span>صفحه <span class="print-page-number"></span></span>
+  </div>
+  ${printAutoScript(autoPrint)}
+</body>
+</html>`;
+}
+
+function buildCommItemPrintHtml(item: Record<string, unknown>, cache: Record<string, unknown>, autoPrint = false): string {
+  const itemType = upper(item.item_type);
+  if (itemType === "NCR") return buildNcrPrintHtml(item, cache, autoPrint);
+  return buildRfiPrintHtml(item, cache, autoPrint);
 }
 
 function typeSectionsHtml(key: string, defaultTechSubtype: string): string {
@@ -1215,13 +1555,16 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
   const impactLabel = "اثرات احتمالی";
   const projects = asArray(cache.projects);
   const disciplines = asArray(cache.disciplines);
+  const senderOrgId = currentUserOrganizationId();
+  const senderOrgName = currentUserOrganizationName(cache);
   const projectHtml = [`<option value="">همه پروژه‌ها</option>`]
     .concat(projects.map((row) => `<option value="${stateBridge.esc(row.code || row.project_code || "")}">${stateBridge.esc(row.code || row.project_code || "")}</option>`))
     .join("");
   const disciplineHtml = [`<option value="">همه دیسیپلین‌ها</option>`]
     .concat(disciplines.map((row) => `<option value="${stateBridge.esc(row.code || row.discipline_code || "")}">${stateBridge.esc(row.code || row.discipline_code || "")}</option>`))
     .join("");
-  const quickTypeLabels: Record<string, string> = { RFI: "RFI", NCR: "NCR", TECH: "TECH" };
+  const recipientOrgHtml = organizationOptionsHtml(cache, "", "گیرنده");
+  const quickTypeLabels: Record<string, string> = { RFI: "RFI", NCR: "NCR" };
   const quickTypes = Array.from(new Set(itemTypesForTab(moduleKey, tabKey).map((row) => upper(row)))).filter((row) => !!row);
   const quickTypeButtons = [{ value: "", label: "همه" }]
     .concat(quickTypes.map((row) => ({ value: row, label: quickTypeLabels[row] || row })))
@@ -1287,6 +1630,7 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
               <input id="ci-form-id-${key}" type="hidden" value="">
               <input id="ci-form-item-type-${key}" type="hidden" value="${stateBridge.esc(defaults.itemType)}">
               <input id="ci-form-tech-subtype-default-${key}" type="hidden" value="${stateBridge.esc(defaults.techSubtypeCode)}">
+              <input id="ci-form-sender-org-${key}" type="hidden" value="${stateBridge.esc(senderOrgId || "")}">
 
               <div id="ci-form-error-summary-${key}" class="ci-form-error-summary" hidden></div>
 
@@ -1320,9 +1664,13 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
                       <label>وضعیت</label>
                       <select id="ci-form-status-${key}" class="module-crud-select"><option value="${stateBridge.esc(defaults.statusCode)}">${stateBridge.esc(defaults.statusCode)}</option></select>
                     </div>
+                    <div class="module-crud-form-field" data-ci-field="organization_id">
+                      <label>فرستنده (سازمان شما)</label>
+                      <input id="ci-form-sender-org-label-${key}" class="module-crud-input" value="${stateBridge.esc(senderOrgName)}" readonly>
+                    </div>
                     <div class="module-crud-form-field" data-ci-field="recipient_org_id">
-                      <label>گیرنده (شناسه سازمان)</label>
-                      <input id="ci-form-recipient-org-${key}" class="module-crud-input" type="number" min="1" placeholder="مثال: 12">
+                      <label>گیرنده</label>
+                      <select id="ci-form-recipient-org-${key}" class="module-crud-select">${recipientOrgHtml}</select>
                       <div class="ci-field-error" hidden></div>
                     </div>
                     <div class="module-crud-form-field" data-ci-field="response_due_date">
@@ -1418,8 +1766,8 @@ function buildBoardCard(moduleKey: string, tabKey: string, cache: Record<string,
 async function ensureCatalog(deps: CommItemsUiDeps): Promise<boolean> {
   if (catalogCache) return true;
   const payload = await dataBridge.catalog({ fetch: deps.fetch });
-  catalogCache = payload;
-  transitionMap = workflowBridge.buildMap(asArray(payload.workflow_transitions) as any);
+  catalogCache = { ...(deps.cache || {}), ...payload };
+  transitionMap = workflowBridge.buildMap(asArray(catalogCache.workflow_transitions) as any);
   return true;
 }
 
@@ -1429,16 +1777,19 @@ function statusOptionsForItemType(itemType: string): { value: string; label: str
 }
 
 function itemTypesForTab(moduleKey: string, tabKey: string): string[] {
+  const allowed = new Set(["RFI", "NCR"]);
+  const fallback = upper(itemTypeForTab(moduleKey, tabKey));
+  const safeFallback = allowed.has(fallback) ? fallback : "RFI";
   const m = normalize(moduleKey);
   const t = normalize(tabKey);
-  if (!m || !t) return [upper(itemTypeForTab(moduleKey, tabKey))];
+  if (!m || !t) return [safeFallback];
   const matchedRule = asArray(catalogCache?.tab_rules).find(
     (row) => normalize(row.module_key) === m && normalize(row.tab_key) === t
   );
-  if (!matchedRule) return [upper(itemTypeForTab(moduleKey, tabKey))];
+  if (!matchedRule) return [safeFallback];
   const rule = asRecord(matchedRule.rule);
-  const mapped = asStringArray(rule.item_types).map((row) => upper(row)).filter((row) => !!row);
-  if (!mapped.length) return [upper(itemTypeForTab(moduleKey, tabKey))];
+  const mapped = asStringArray(rule.item_types).map((row) => upper(row)).filter((row) => allowed.has(row));
+  if (!mapped.length) return [safeFallback];
   return Array.from(new Set(mapped));
 }
 
@@ -1489,35 +1840,36 @@ function applyTypeVisibility(moduleKey: string, tabKey: string): void {
   const defaultTabType = upper(itemTypeForTab(moduleKey, tabKey));
   const itemId = Number(valueOf(`ci-form-id-${key}`) || 0);
   const createMode = itemId <= 0;
-  const rfiAsNcr = createMode && defaultTabType === "RFI" && checkedOf(`ci-form-rfi-as-ncr-${key}`);
+  const allowedTypes = itemTypesForTab(moduleKey, tabKey).map((row) => upper(row));
+  const canToggleMode = createMode && allowedTypes.includes("RFI") && allowedTypes.includes("NCR");
+  const ncrMode = canToggleMode ? checkedOf(`ci-form-rfi-as-ncr-${key}`) : defaultTabType === "NCR";
   const rfiAsNcrInput = asInput(getElement(`ci-form-rfi-as-ncr-${key}`));
   const rfiAsNcrNote = getElement(`ci-form-rfi-as-ncr-note-${key}`);
   const modeSwitch = getElement(`ci-drawer-mode-switch-${key}`);
   const rfiModeBtn = getElement(`ci-form-mode-rfi-${key}`);
   const ncrModeBtn = getElement(`ci-form-mode-ncr-${key}`);
-  const canToggleMode = createMode && defaultTabType === "RFI";
-  if (rfiAsNcrInput) rfiAsNcrInput.disabled = !(createMode && defaultTabType === "RFI");
+  if (rfiAsNcrInput) rfiAsNcrInput.disabled = !canToggleMode;
   if (rfiAsNcrNote instanceof HTMLElement) {
-    rfiAsNcrNote.hidden = !rfiAsNcr;
+    rfiAsNcrNote.hidden = !ncrMode;
   }
   if (modeSwitch instanceof HTMLElement) {
     modeSwitch.hidden = !canToggleMode;
   }
   if (rfiModeBtn instanceof HTMLButtonElement) {
     rfiModeBtn.disabled = !canToggleMode;
-    rfiModeBtn.classList.toggle("active", !rfiAsNcr);
-    rfiModeBtn.setAttribute("aria-pressed", !rfiAsNcr ? "true" : "false");
+    rfiModeBtn.classList.toggle("active", !ncrMode);
+    rfiModeBtn.setAttribute("aria-pressed", !ncrMode ? "true" : "false");
   }
   if (ncrModeBtn instanceof HTMLButtonElement) {
     ncrModeBtn.disabled = !canToggleMode;
-    ncrModeBtn.classList.toggle("active", rfiAsNcr);
-    ncrModeBtn.setAttribute("aria-pressed", rfiAsNcr ? "true" : "false");
+    ncrModeBtn.classList.toggle("active", ncrMode);
+    ncrModeBtn.setAttribute("aria-pressed", ncrMode ? "true" : "false");
   }
-  if (createMode && defaultTabType === "RFI") {
-    setValue(`ci-form-item-type-${key}`, rfiAsNcr ? "NCR" : "RFI");
+  if (canToggleMode) {
+    setValue(`ci-form-item-type-${key}`, ncrMode ? "NCR" : "RFI");
   }
   const itemType = upper(valueOf(`ci-form-item-type-${key}`) || defaultTabType);
-  const effectiveType = rfiAsNcr ? "NCR" : itemType;
+  const effectiveType = canToggleMode ? (ncrMode ? "NCR" : "RFI") : itemType;
   populateStatusOptions(moduleKey, tabKey, effectiveType);
   const card = getElement(`ci-form-wrap-${key}`)?.closest(".comm-items-card") as HTMLElement | null;
   if (!card) return;
@@ -1613,10 +1965,11 @@ function resetForm(moduleKey: string, tabKey: string): void {
     `ci-form-tech-review-note-${key}`,
     `ci-form-tech-meeting-date-${key}`,
   ].forEach((id) => setValue(id, ""));
+  setSenderOrganizationFields(moduleKey, tabKey);
   setValue(`ci-form-priority-${key}`, "NORMAL");
   setValue(`ci-form-status-${key}`, defaults.statusCode);
   setValue(`ci-form-tech-subtype-${key}`, valueOf(`ci-form-tech-subtype-default-${key}`) || defaults.techSubtypeCode);
-  setChecked(`ci-form-rfi-as-ncr-${key}`, false);
+  setChecked(`ci-form-rfi-as-ncr-${key}`, upper(defaults.itemType) === "NCR");
   setChecked(`ci-form-impact-time-${key}`, false);
   setChecked(`ci-form-impact-cost-${key}`, false);
   setFormSavingState(moduleKey, tabKey, false);
@@ -1657,6 +2010,7 @@ function fillFormWithItem(moduleKey: string, tabKey: string, item: Record<string
   setValue(`ci-form-priority-${key}`, item.priority || "NORMAL");
   setValue(`ci-form-status-${key}`, item.status_code || "");
   setValue(`ci-form-response-due-${key}`, String(item.response_due_date || "").slice(0, 10));
+  setSenderOrganizationFields(moduleKey, tabKey, item.organization_id, item.sender_org_name);
   setValue(`ci-form-recipient-org-${key}`, item.recipient_org_id || "");
   setValue(`ci-form-contract-clause-${key}`, item.contract_clause_ref || "");
   setValue(`ci-form-spec-clause-${key}`, item.spec_clause_ref || "");
@@ -1711,6 +2065,7 @@ function buildFormInput(moduleKey: string, tabKey: string): Record<string, unkno
     statusCode: valueOf(`ci-form-status-${key}`),
     priority: valueOf(`ci-form-priority-${key}`),
     responseDueDate: valueOf(`ci-form-response-due-${key}`),
+    organizationId: valueOf(`ci-form-sender-org-${key}`),
     recipientOrgId: valueOf(`ci-form-recipient-org-${key}`),
     contractClauseRef: valueOf(`ci-form-contract-clause-${key}`),
     specClauseRef: valueOf(`ci-form-spec-clause-${key}`),
@@ -1964,7 +2319,7 @@ function renderSummaryTab(moduleKey: string, tabKey: string, item: Record<string
             <div class="ci-detail-side-label">تاریخ ثبت</div>
             <div class="ci-detail-side-value">${stateBridge.esc(createdAt)}</div>
           </div>
-          ${itemType === "RFI" ? '<button type="button" class="btn btn-secondary ci-detail-print-btn" data-ci-action="print-rfi-form">پرینت فرم RFI</button>' : ""}
+          ${["RFI", "NCR"].includes(itemType) ? `<button type="button" class="btn btn-secondary ci-detail-print-btn" data-ci-action="print-rfi-form"><span class="material-icons-round">preview</span> پیش‌نمایش چاپ ${stateBridge.esc(itemType)}</button>` : ""}
         </div>
       </section>
 
@@ -2100,10 +2455,11 @@ async function saveForm(moduleKey: string, tabKey: string, deps: CommItemsUiDeps
   const key = keyOf(moduleKey, tabKey);
   const itemId = Number(valueOf(`ci-form-id-${key}`) || 0);
   const formInput = buildFormInput(moduleKey, tabKey);
-  const rfiAsNcrMode = itemId <= 0 && upper(itemTypeForTab(moduleKey, tabKey)) === "RFI" && checkedOf(`ci-form-rfi-as-ncr-${key}`);
-  if (rfiAsNcrMode) {
+  const createAsNcrMode = itemId <= 0 && effectiveFormItemType(moduleKey, tabKey) === "NCR";
+  if (createAsNcrMode) {
     formInput.itemType = "NCR";
-    formInput.statusCode = "ISSUED";
+    const ncrStatus = upper(formInput.statusCode);
+    formInput.statusCode = ncrStatus && ncrStatus !== "DRAFT" ? ncrStatus : "ISSUED";
     if (!text(formInput.ncrKind)) formInput.ncrKind = "NCR";
     if (!text(formInput.ncrSeverity)) formInput.ncrSeverity = "MINOR";
     if (!text(formInput.ncrNonconformanceText)) {
@@ -2141,8 +2497,8 @@ async function saveForm(moduleKey: string, tabKey: string, deps: CommItemsUiDeps
     const created = await dataBridge.create(createPayload, { fetch: deps.fetch });
     const createdId = Number(asRecord(created.data).id || 0);
     deps.showToast("Item created", "success");
-    if (rfiAsNcrMode) {
-      deps.showToast("آیتم با نوع NCR ثبت شد و در جدول درخواست‌ها قابل مشاهده است.", "success");
+    if (createAsNcrMode) {
+      deps.showToast("آیتم با نوع NCR ثبت شد و در همین جدول قابل مشاهده است.", "success");
     }
     markDrawerDirty(moduleKey, tabKey, false);
     closeForm(moduleKey, tabKey);
@@ -2163,6 +2519,10 @@ async function openEdit(moduleKey: string, tabKey: string, itemId: number, deps:
   const row = rows.find((r) => Number(r.id || 0) === Number(itemId || 0));
   if (!row) {
     deps.showToast("Item not found", "error");
+    return;
+  }
+  if (!["RFI", "NCR"].includes(upper(row.item_type))) {
+    deps.showToast("Legacy TECH items are read-only. Use Work Instructions.", "error");
     return;
   }
   const body = await dataBridge.get(itemId, { fetch: deps.fetch });
@@ -2312,6 +2672,93 @@ async function exportRfiExcel(moduleKey: string, tabKey: string, deps: CommItems
   }
 }
 
+function ensureCommItemPrintPreviewModal(): HTMLElement {
+  let modal = document.getElementById("ci-print-preview-modal") as HTMLElement | null;
+  if (modal) return modal;
+  modal = document.createElement("div");
+  modal.id = "ci-print-preview-modal";
+  modal.className = "am-modal-overlay ci-print-preview-modal";
+  modal.setAttribute("aria-hidden", "true");
+  modal.innerHTML = `
+    <div class="am-modal-box ci-print-preview-box" role="dialog" aria-modal="true" aria-labelledby="ci-print-preview-title">
+      <div class="ci-print-preview-header">
+        <div>
+          <h3 id="ci-print-preview-title">پیش‌نمایش چاپ فرم</h3>
+          <div id="ci-print-preview-meta" class="ci-print-preview-meta">-</div>
+        </div>
+        <button type="button" class="btn-archive-icon" data-ci-action="close-print-preview" aria-label="بستن پیش‌نمایش">
+          <span class="material-icons-round">close</span>
+        </button>
+      </div>
+      <div class="ci-print-preview-toolbar">
+        <button type="button" class="btn btn-primary" data-ci-action="print-preview-print">
+          <span class="material-icons-round">print</span>
+          چاپ / ذخیره PDF
+        </button>
+        <button type="button" class="btn btn-secondary" data-ci-action="print-preview-open">
+          <span class="material-icons-round">open_in_new</span>
+          باز کردن در تب جدید
+        </button>
+      </div>
+      <div id="ci-print-preview-body" class="ci-print-preview-body"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function closeCommItemPrintPreview(): void {
+  const modal = document.getElementById("ci-print-preview-modal");
+  const body = document.getElementById("ci-print-preview-body");
+  const meta = document.getElementById("ci-print-preview-meta");
+  if (modal instanceof HTMLElement) {
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
+  }
+  if (body instanceof HTMLElement) body.innerHTML = "";
+  if (meta instanceof HTMLElement) meta.textContent = "-";
+  if (printPreviewState.url) {
+    window.URL.revokeObjectURL(printPreviewState.url);
+  }
+  printPreviewState.url = "";
+  printPreviewState.title = "";
+}
+
+function showCommItemPrintPreview(html: string, metaText: string): void {
+  closeCommItemPrintPreview();
+  const modal = ensureCommItemPrintPreviewModal();
+  const body = document.getElementById("ci-print-preview-body");
+  const meta = document.getElementById("ci-print-preview-meta");
+  if (!(body instanceof HTMLElement)) return;
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  printPreviewState.url = url;
+  printPreviewState.title = metaText || "Communication Item";
+  if (meta instanceof HTMLElement) meta.textContent = metaText || "-";
+  body.innerHTML = `<iframe class="ci-print-preview-frame" src="${url}" title="${stateBridge.esc(metaText || "پیش‌نمایش چاپ")}"></iframe>`;
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function printCommItemPreview(deps: CommItemsUiDeps): void {
+  const frame = document.querySelector("#ci-print-preview-body iframe") as HTMLIFrameElement | null;
+  const frameWindow = frame?.contentWindow;
+  if (!frameWindow) {
+    deps.showToast("پیش‌نمایش چاپ هنوز آماده نیست.", "error");
+    return;
+  }
+  frameWindow.focus();
+  frameWindow.print();
+}
+
+function openCommItemPreviewInNewTab(deps: CommItemsUiDeps): void {
+  if (!printPreviewState.url) {
+    deps.showToast("پیش‌نمایش چاپ هنوز آماده نیست.", "error");
+    return;
+  }
+  window.open(printPreviewState.url, "_blank", "noopener,noreferrer");
+}
+
 async function printRfiForm(moduleKey: string, tabKey: string, deps: CommItemsUiDeps, explicitItemId?: number): Promise<void> {
   const key = keyOf(moduleKey, tabKey);
   const selectedId = Number(explicitItemId || selectedItemByKey[key] || 0);
@@ -2319,37 +2766,20 @@ async function printRfiForm(moduleKey: string, tabKey: string, deps: CommItemsUi
     deps.showToast("ابتدا یک آیتم را در جزئیات انتخاب کنید.", "error");
     return;
   }
-  const popup = window.open("", "_blank", "width=980,height=900");
-  if (!popup) {
-    deps.showToast("پنجره پرینت توسط مرورگر مسدود شده است.", "error");
-    return;
-  }
   try {
     const body = await dataBridge.get(selectedId, { fetch: deps.fetch });
     const item = asRecord(body.data);
-    if (upper(item.item_type) !== "RFI") {
-      popup.close();
-      deps.showToast("فرم پرینت فقط برای آیتم RFI فعال است.", "error");
+    const itemType = upper(item.item_type);
+    if (!["RFI", "NCR"].includes(itemType)) {
+      deps.showToast("پیش‌نمایش چاپ فقط برای فرم‌های RFI و NCR فعال است.", "error");
       return;
     }
-    popup.document.open();
-    popup.document.write(buildRfiPrintHtml(item, deps.cache || {}));
-    popup.document.close();
-    popup.focus();
-    window.setTimeout(() => {
-      try {
-        popup.print();
-      } catch {
-        // no-op
-      }
-    }, 180);
+    showCommItemPrintPreview(
+      buildCommItemPrintHtml(item, deps.cache || {}, false),
+      `${itemType} - ${textOrDash(item.item_no)}`
+    );
   } catch (error) {
-    try {
-      popup.close();
-    } catch {
-      // no-op
-    }
-    deps.showToast(error instanceof Error ? error.message : "Print failed", "error");
+    deps.showToast(error instanceof Error ? error.message : "پیش‌نمایش چاپ ناموفق بود", "error");
   }
 }
 
@@ -2366,6 +2796,19 @@ function bindActions(depsResolver: () => CommItemsUiDeps): void {
     const action = normalize(actionEl.dataset.ciAction);
     const deps = depsResolver();
     if (!deps) return;
+
+    if (action === "close-print-preview") {
+      closeCommItemPrintPreview();
+      return;
+    }
+    if (action === "print-preview-print") {
+      printCommItemPreview(deps);
+      return;
+    }
+    if (action === "print-preview-open") {
+      openCommItemPreviewInNewTab(deps);
+      return;
+    }
 
     if (action === "detail-tab") {
       const key = String(actionEl.dataset.ciKey || "");

@@ -159,7 +159,8 @@ def _generate_full_titles(
     """
     Title convention aligned with MDR coding sheet:
     - title_e: PackageE[-BlockLevel][ - SubjectE]
-    - title_p: PackageP (GEN) or Block+LevelCode-PackageP (non-GEN), then [-SubjectP]
+    - title_p: PackageP or Block+LevelCode-PackageP, then [-SubjectP]
+    - BlockLevel is omitted only for the main-building general scope (T + GEN).
     """
     pkg_name_e = str(package_code or "").strip() or "00"
     pkg_name_p = pkg_name_e
@@ -182,18 +183,18 @@ def _generate_full_titles(
 
     block_str = str(block_code or "").strip().upper() or "G"
     level_str = str(level_code or "").strip().upper() or "GEN"
-    is_general = level_str == "GEN"
+    omit_location = block_str == "T" and level_str == "GEN"
 
     sub_e = str(subject_e or "").strip()
     sub_p = str(subject_p or "").strip()
 
     title_e = pkg_name_e
-    if not is_general and level_str:
+    if not omit_location and level_str:
         title_e = f"{title_e}-{block_str}{level_str}"
     if sub_e:
         title_e = f"{title_e} - {sub_e}"
 
-    if is_general:
+    if omit_location:
         title_p = pkg_name_p
     else:
         title_p = f"{block_str}{level_str}-{pkg_name_p}"

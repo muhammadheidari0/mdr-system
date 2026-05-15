@@ -1,5 +1,4 @@
 // @ts-nocheck
-import { documentPreviewUrl } from "./document_detail_data";
 
 function esc(value: unknown): string {
   return String(value ?? "")
@@ -42,6 +41,7 @@ function actionLabel(action: unknown): string {
     comment_deleted: "حذف کامنت",
     relation_added: "افزودن ارتباط",
     relation_removed: "حذف ارتباط",
+    revision_file_added: "افزودن فایل تکمیلی",
     tag_added: "افزودن تگ",
     tag_removed: "حذف تگ",
     transmittal_sent: "ارسال ترنسمیتال",
@@ -61,6 +61,7 @@ function actionIcon(action: unknown): string {
     comment_deleted: "speaker_notes_off",
     relation_added: "account_tree",
     relation_removed: "link_off",
+    revision_file_added: "note_add",
     tag_added: "sell",
     tag_removed: "label_off",
     transmittal_sent: "send",
@@ -77,6 +78,71 @@ function relationTypeLabel(type: unknown): string {
     child: "فرزند",
   };
   return labels[String(type || "")] || String(type || "مرتبط");
+}
+
+function relationTargetLabel(type: unknown): string {
+  const key = String(type || "document").trim().toLowerCase();
+  const labels: Record<string, string> = {
+    document: "مدرک",
+    correspondence: "مکاتبه",
+    meeting_minute: "صورتجلسه",
+    rfi: "RFI",
+    ncr: "NCR",
+    tech: "فنی/TECH",
+    comm_item: "فرم",
+    site_log: "گزارش کارگاهی",
+    permit_qc: "Permit QC",
+  };
+  return labels[key] || key || "مدرک";
+}
+
+function publicShareUnavailableMessage(file: any): string {
+  const status = String(file?.public_share_status || "").trim();
+  if (status === "not_nextcloud") {
+    return "برای این فایل لینک عمومی فقط بعد از ذخیره در Nextcloud فعال می‌شود.";
+  }
+  if (status === "mirror_not_ready") {
+    return "mirror Nextcloud برای این فایل آماده نیست.";
+  }
+  if (status === "missing_remote_path") {
+    return "مسیر دقیق فایل در Nextcloud پیدا نشد.";
+  }
+  return "این فایل هنوز در Nextcloud قابل اشتراک‌گذاری نیست.";
+}
+
+function publicShareButton(file: any, capabilities: any, isDeleted: boolean): string {
+  if (!capabilities?.can_share_public || isDeleted) return "";
+  const fileId = Number(file?.id || 0);
+  if (!fileId) return "";
+  const supported = Boolean(file?.public_share_supported);
+  const active = Boolean(file?.public_share?.url);
+  const title = supported ? (active ? "مدیریت لینک عمومی" : "ساخت لینک عمومی") : publicShareUnavailableMessage(file);
+  const disabled = supported ? "" : "disabled aria-disabled=\"true\"";
+  return `<button type="button" class="doc-mini-btn ${supported ? "" : "is-disabled"}" data-doc-detail-action="public-share" data-file-id="${fileId}" data-file-name="${esc(file?.name || file?.filename || "")}" title="${esc(title)}" ${disabled}>
+    <span class="material-icons-round">${active ? "link" : "add_link"}</span>لینک عمومی
+  </button>`;
+}
+
+function revisionSupplementButtons(row: any, capabilities: any, isDeleted: boolean): string {
+  if (!capabilities?.can_replace_files || isDeleted) return "";
+  const revisionId = Number(row?.revision_id || 0);
+  if (!revisionId) return "";
+  const files = Array.isArray(row?.files) ? row.files : [];
+  const hasPdf = files.some((file: any) => String(file?.file_kind || "pdf").toLowerCase() !== "native");
+  const hasNative = files.some((file: any) => String(file?.file_kind || "").toLowerCase() === "native");
+  const status = esc(row?.status || "");
+  const actions: string[] = [];
+  if (!hasPdf) {
+    actions.push(`<button type="button" class="doc-mini-btn" data-doc-detail-action="add-revision-file" data-revision-id="${revisionId}" data-file-kind="pdf" data-status="${status}">
+      <span class="material-icons-round">picture_as_pdf</span>افزودن PDF/خروجی
+    </button>`);
+  }
+  if (!hasNative) {
+    actions.push(`<button type="button" class="doc-mini-btn" data-doc-detail-action="add-revision-file" data-revision-id="${revisionId}" data-file-kind="native" data-status="${status}">
+      <span class="material-icons-round">description</span>افزودن Native
+    </button>`);
+  }
+  return actions.length ? `<div class="doc-file-supplement-actions">${actions.join("")}</div>` : "";
 }
 
 function statCard(icon: string, label: string, value: unknown, caption = ""): string {
@@ -121,6 +187,11 @@ function metadataFieldRow(
   isEdit = false,
   options: { wide?: boolean; multiline?: boolean; locked?: boolean } = {},
 ): string {
+  const lockedKeys = new Set(["doc_title_e", "doc_title_p", "phase_code", "package_code", "block", "level_code"]);
+  if (lockedKeys.has(String(key || ""))) {
+    isEdit = false;
+    options = { ...options, locked: true };
+  }
   const classes = ["doc-metadata-field"];
   if (options.wide) classes.push("is-wide");
   if (options.locked) classes.push("is-locked");
@@ -196,8 +267,13 @@ function renderCommentNode(node: any, depth = 0): string {
   `;
 }
 
-function renderTags(tags: any[], isReadOnly: boolean): string {
+function renderTags(tags: any[], isReadOnly: boolean, tagCatalog: any[] = []): string {
   const rows = Array.isArray(tags) ? tags : [];
+  const assignedIds = new Set(
+    rows
+      .map((row) => Number(row?.tag?.id || row?.tag_id || 0))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  );
   const chips = rows
     .map((row) => {
       const tag = row?.tag || {};
@@ -220,8 +296,16 @@ function renderTags(tags: any[], isReadOnly: boolean): string {
     ? ""
     : `
       <div class="doc-tag-add">
-        <input id="docDetailTagInput" class="doc-form-control" placeholder="افزودن تگ">
-        <input id="docDetailTagColor" class="doc-color-input" type="color" value="#2563eb" aria-label="رنگ تگ">
+        <select id="docDetailTagSelect" class="doc-form-control">
+          <option value="">انتخاب تگ</option>
+          ${tagCatalog
+            .filter((tag) => !assignedIds.has(Number(tag?.id || 0)))
+            .map(
+              (tag) =>
+                `<option value="${Number(tag?.id || 0)}">${esc(tag?.name || `Tag #${Number(tag?.id || 0)}`)}</option>`,
+            )
+            .join("")}
+        </select>
         <button type="button" class="doc-mini-btn" data-doc-detail-action="add-tag">
           <span class="material-icons-round">add</span> افزودن
         </button>
@@ -240,16 +324,19 @@ function renderTags(tags: any[], isReadOnly: boolean): string {
 
 function relationCard(row: any, canManage: boolean, removable = false): string {
   const counterpart = row?.counterpart || {};
+  const targetType = row?.target_entity_type || counterpart?.entity_type || "document";
+  const title = counterpart?.title || counterpart?.doc_title_e || counterpart?.doc_title_p || counterpart?.subject || "";
   return `
     <div class="doc-relation-card">
       <div>
-        <strong>${esc(counterpart?.doc_number || "-")}</strong>
-        <span>${esc(relationTypeLabel(row?.relation_type || "related"))}</span>
+        <strong>${esc(counterpart?.doc_number || counterpart?.code || row?.target_code || "-")}</strong>
+        <span>${esc(relationTargetLabel(targetType))} | ${esc(relationTypeLabel(row?.relation_type || "related"))}</span>
       </div>
+      ${title ? `<p>${esc(title)}</p>` : ""}
       ${row?.notes ? `<p>${esc(row.notes)}</p>` : ""}
       ${
         canManage && removable
-          ? `<button type="button" class="doc-mini-btn is-danger" data-doc-detail-action="remove-relation" data-relation-id="${Number(row?.id || 0)}">
+          ? `<button type="button" class="doc-mini-btn is-danger" data-doc-detail-action="remove-relation" data-relation-id="${esc(row?.id || "")}">
               <span class="material-icons-round">link_off</span> حذف
             </button>`
           : ""
@@ -302,12 +389,19 @@ export function renderDocumentDetail(detail: any, state: any) {
 
   const tagsRoot = document.getElementById("docDetailTags");
   if (tagsRoot) {
-    tagsRoot.innerHTML = renderTags(detail?.tags || [], isDeleted || !capabilities?.can_manage_tags);
+    tagsRoot.innerHTML = renderTags(
+      detail?.tags || [],
+      isDeleted || !capabilities?.can_manage_tags,
+      Array.isArray(state?.tagCatalog) ? state.tagCatalog : [],
+    );
   }
 
   const metadataRoot = document.getElementById("docDetailPanelMetadata");
   if (metadataRoot) {
-    const value = (key: string) => (isEditMode ? draft?.[key] : doc?.[key]);
+    const value = (key: string) => {
+      const locked = new Set(["doc_title_e", "doc_title_p", "phase_code", "package_code", "block", "level_code"]);
+      return isEditMode && !locked.has(String(key || "")) ? draft?.[key] : doc?.[key];
+    };
     metadataRoot.innerHTML = `
       ${panelHeader("badge", "اطلاعات مدرک", isEditMode ? "فیلدهای قابل ویرایش مدرک را اصلاح کنید." : "شناسه‌های قفل‌شده برای رهگیری نمایش داده می‌شوند.")}
       ${
@@ -394,11 +488,20 @@ export function renderDocumentDetail(detail: any, state: any) {
                       ${(Array.isArray(row?.files) ? row.files : [])
                         .map(
                           (file: any) =>
-                            `<a class="doc-mini-btn" href="/api/v1/archive/download/${Number(file?.id || 0)}" target="_blank" rel="noopener">
+                            `<button type="button" class="doc-mini-btn" data-doc-detail-action="download-file" data-file-id="${Number(file?.id || 0)}" data-file-name="${esc(file?.name || file?.filename || "download")}">
                               <span class="material-icons-round">download</span>${esc(file?.name || file?.filename || "دانلود")}
-                            </a>`,
+                            </button>
+                            ${
+                              capabilities?.can_replace_files && !isDeleted
+                                ? `<button type="button" class="doc-mini-btn" data-doc-detail-action="replace-file" data-file-id="${Number(file?.id || 0)}" data-status="${esc(file?.status || row?.status || "")}">
+                                    <span class="material-icons-round">published_with_changes</span> جایگزینی
+                                  </button>`
+                                : ""
+                            }
+                            ${publicShareButton(file, capabilities, isDeleted)}`,
                         )
                         .join("") || '<span class="text-muted">فایلی ثبت نشده</span>'}
+                      ${revisionSupplementButtons(row, capabilities, isDeleted)}
                     </div>
                   </td>
                 </tr>`,
@@ -420,23 +523,23 @@ export function renderDocumentDetail(detail: any, state: any) {
     const latestId = Number(latest?.id || latestFile?.id || 0);
     const downloadAction =
       latestId > 0
-        ? `<a class="doc-action-btn doc-action-primary" href="/api/v1/archive/download/${latestId}" target="_blank" rel="noopener">
+        ? `<button type="button" class="doc-action-btn doc-action-primary" data-doc-detail-action="download-file" data-file-id="${latestId}" data-file-name="${esc(latest?.name || latestFile?.name || "download")}">
             <span class="material-icons-round">download</span> دانلود فایل
-          </a>`
+          </button>`
         : "";
 
     if (meta?.supported && mime.includes("pdf")) {
       previewRoot.innerHTML = `
         ${panelHeader("visibility", "پیش‌نمایش", "PDF و فایل‌های تصویری پشتیبانی می‌شوند؛ آخرین فایل قابل پیش‌نمایش نمایش داده می‌شود.")}
         <div class="doc-preview-toolbar">${downloadAction}</div>
-        <iframe class="doc-preview-frame" src="${esc(documentPreviewUrl(Number(doc?.id || 0)))}"></iframe>
+        <iframe class="doc-preview-frame" data-doc-preview-frame title="preview"></iframe>
       `;
     } else if (meta?.supported && mime.startsWith("image/")) {
       previewRoot.innerHTML = `
         ${panelHeader("image", "پیش‌نمایش", "این فایل تصویری است و مستقیم در صفحه نمایش داده می‌شود.")}
         <div class="doc-preview-toolbar">${downloadAction}</div>
         <div class="doc-preview-image-wrap">
-          <img class="doc-preview-image" src="${esc(documentPreviewUrl(Number(doc?.id || 0)))}" alt="پیش‌نمایش فایل">
+          <img class="doc-preview-image" data-doc-preview-image alt="پیش‌نمایش فایل">
         </div>
       `;
     } else {
@@ -544,13 +647,23 @@ export function renderDocumentDetail(detail: any, state: any) {
     const incoming = Array.isArray(detail?.relations?.incoming) ? detail.relations.incoming : [];
     const canManageRelations = Boolean(capabilities?.can_manage_relations) && !isDeleted;
     relationsRoot.innerHTML = `
-      ${panelHeader("account_tree", "ارتباطات", "این مدرک را به مدارک مرجع، والد، فرزند یا جایگزین‌شده وصل کنید.")}
+      ${panelHeader("account_tree", "ارتباطات", "این مدرک را به مدرک، مکاتبه، صورتجلسه یا فرم مرتبط وصل کنید.")}
       ${
         canManageRelations
           ? `
         <div class="doc-relations-add">
           <div class="doc-relation-inputs">
-            <input id="docDetailRelationTarget" class="doc-form-control" placeholder="شناسه مدرک مقصد">
+            <input id="docDetailRelationTarget" class="doc-form-control" placeholder="کد مدرک / شماره مکاتبه / کد صورتجلسه / شماره فرم">
+            <select id="docDetailRelationTargetType" class="doc-form-control">
+              <option value="document">مدرک</option>
+              <option value="correspondence">مکاتبه</option>
+              <option value="meeting_minute">صورتجلسه</option>
+              <option value="rfi">RFI</option>
+              <option value="ncr">NCR</option>
+              <option value="tech">فنی/TECH</option>
+              <option value="site_log">گزارش کارگاهی</option>
+              <option value="permit_qc">Permit QC</option>
+            </select>
             <select id="docDetailRelationType" class="doc-form-control">
               <option value="related">مرتبط</option>
               <option value="supersedes">جایگزین می‌کند</option>
@@ -582,6 +695,11 @@ export function renderDocumentDetail(detail: any, state: any) {
   const editToggleBtn = document.querySelector('[data-doc-detail-action="edit-toggle"]') as HTMLButtonElement | null;
   if (editToggleBtn) {
     editToggleBtn.disabled = !capabilities?.can_edit || isDeleted;
+  }
+  const reclassifyBtn = document.querySelector('[data-doc-detail-action="open-reclassify"]') as HTMLButtonElement | null;
+  if (reclassifyBtn) {
+    reclassifyBtn.disabled = !capabilities?.can_reclassify || isDeleted;
+    reclassifyBtn.style.display = capabilities?.can_reclassify && !isDeleted ? "" : "none";
   }
   const deleteBtn = document.querySelector('[data-doc-detail-action="delete-document"]') as HTMLButtonElement | null;
   if (deleteBtn) {

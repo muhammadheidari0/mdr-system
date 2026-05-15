@@ -16,6 +16,7 @@ from app.core.organizations import (
     normalize_org_role,
     normalize_permission_category,
 )
+from app.core.access_matrix import default_permission_matrix_for_category
 from app.core.roles import ALL_ROLES, MATRIX_ROLES, ROLE_PERMISSIONS, Role
 from app.core.permission_catalog import permission_keys
 from app.db.base import Base
@@ -562,6 +563,8 @@ def _normalize_seed_org_role(system_role: str) -> str:
         return OrganizationRole.MANAGER.value
     if role_key == Role.DCC.value:
         return OrganizationRole.DCC.value
+    if role_key == Role.PROJECT_CONTROL.value:
+        return OrganizationRole.PROJECT_CONTROL.value
     if role_key == Role.USER.value:
         return OrganizationRole.USER.value
     return OrganizationRole.VIEWER.value
@@ -626,30 +629,8 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
     )
 
     perms = _permission_keys()
-    role_perm_rows = db.query(RolePermission.role, RolePermission.permission, RolePermission.allowed).all()
     role_project_rows = db.query(RoleProjectScope.role, RoleProjectScope.project_code).all()
     role_discipline_rows = db.query(RoleDisciplineScope.role, RoleDisciplineScope.discipline_code).all()
-
-    if not role_perm_rows:
-        for role in MATRIX_ROLES:
-            role_enum = Role(role)
-            role_perms = ROLE_PERMISSIONS.get(role_enum, [])
-            has_wildcard = "*" in role_perms
-            for perm in perms:
-                role_perm_rows.append(
-                    (
-                        role,
-                        perm,
-                        has_wildcard or perm in role_perms,
-                    )
-                )
-
-    role_permission_map: dict[tuple[str, str], bool] = {}
-    for role, permission, allowed in role_perm_rows:
-        role_key = str(role or "").strip().lower()
-        perm_key = str(permission or "").strip()
-        if role_key in MATRIX_ROLES and perm_key in perms:
-            role_permission_map[(role_key, perm_key)] = bool(allowed)
 
     existing_perm_rows = db.query(RoleCategoryPermission).all()
     existing_perm_map: dict[tuple[str, str, str], RoleCategoryPermission] = {}
@@ -660,28 +641,16 @@ def _seed_role_category_rules_from_base(db: Session) -> None:
         if role_key in MATRIX_ROLES and perm_key in perms:
             existing_perm_map[(cat_key, role_key, perm_key)] = row
 
-    consultant_permission_map: dict[tuple[str, str], bool] = {}
-    for (cat_key, role_key, perm_key), row in existing_perm_map.items():
-        if cat_key != OrganizationType.CONSULTANT.value:
-            continue
-        consultant_permission_map[(role_key, perm_key)] = bool(getattr(row, "allowed", False))
-
     for category in PERMISSION_CATEGORIES:
         category_key = normalize_permission_category(category)
+        baseline_matrix = default_permission_matrix_for_category(category_key)
         for role in MATRIX_ROLES:
             for permission in perms:
                 key = (category_key, role, permission)
                 existing_row = existing_perm_map.get(key)
                 if existing_row is not None:
                     continue
-
-                if category_key == OrganizationType.DCC.value:
-                    allowed = consultant_permission_map.get(
-                        (role, permission),
-                        role_permission_map.get((role, permission), False),
-                    )
-                else:
-                    allowed = role_permission_map.get((role, permission), False)
+                allowed = bool(baseline_matrix.get(role, {}).get(permission, False))
 
                 db.add(
                     RoleCategoryPermission(
@@ -838,6 +807,60 @@ def _archive_and_drop_legacy_kv(db: Session) -> None:
         db.delete(row)
 
 
+def _backfill_edms_forms_permissions(db: Session) -> None:
+    from app.db.models import RoleCategoryPermission, RolePermission, SettingsKV
+
+    marker_key = "migration.edms_forms_permissions.v1"
+    if db.query(SettingsKV).filter(SettingsKV.key == marker_key).first():
+        return
+
+    permissions = ("edms_forms:read", "module_edms_forms:read")
+    default_roles = {Role.ADMIN.value, Role.MANAGER.value, Role.DCC.value, Role.PROJECT_CONTROL.value}
+
+    for role in ALL_ROLES:
+        for permission in permissions:
+            row = (
+                db.query(RolePermission)
+                .filter(RolePermission.role == role, RolePermission.permission == permission)
+                .first()
+            )
+            allowed = role in default_roles
+            if row:
+                if allowed:
+                    row.allowed = True
+                continue
+            db.add(RolePermission(role=role, permission=permission, allowed=allowed))
+
+    for category in PERMISSION_CATEGORIES:
+        category_key = normalize_permission_category(category)
+        for role in MATRIX_ROLES:
+            for permission in permissions:
+                row = (
+                    db.query(RoleCategoryPermission)
+                    .filter(
+                        RoleCategoryPermission.category == category_key,
+                        RoleCategoryPermission.role == role,
+                        RoleCategoryPermission.permission == permission,
+                    )
+                    .first()
+                )
+                allowed = role in default_roles
+                if row:
+                    if allowed:
+                        row.allowed = True
+                    continue
+                db.add(
+                    RoleCategoryPermission(
+                        category=category_key,
+                        role=role,
+                        permission=permission,
+                        allowed=allowed,
+                    )
+                )
+
+    db.add(SettingsKV(key=marker_key, value="1", updated_at=datetime.utcnow()))
+
+
 def _run_smart_migrations() -> None:
     with SessionLocal() as db:
         _migrate_transmittal_state_from_kv(db)
@@ -852,6 +875,7 @@ def _run_smart_migrations() -> None:
         # SessionLocal has autoflush=False; flush seeded rows before backfill checks.
         db.flush()
         _backfill_permission_matrix(db)
+        _backfill_edms_forms_permissions(db)
         _seed_role_scopes_from_kv(db)
         _seed_user_scopes_from_kv(db)
         _migrate_legacy_organization_types(db)

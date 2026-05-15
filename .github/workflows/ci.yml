@@ -56,7 +56,7 @@ jobs:
       - name: Seed admin
         run: python create_admin.py
       - name: Run backend tests
-        run: pytest -q test_api.py tests/test_endpoint_fixes.py tests/test_regressions.py tests/test_services.py tests/test_schema_sanity.py tests/test_db_runtime_policy.py tests/test_ui_smoke.py tests/test_no_legacy_fallbacks.py
+        run: pytest -q test_api.py tests/test_endpoint_fixes.py tests/test_regressions.py tests/test_services.py tests/test_schema_sanity.py tests/test_db_runtime_policy.py tests/test_ui_smoke.py tests/test_no_legacy_fallbacks.py tests/test_webdav_primary_smoke.py tests/test_storage_sync_mirror_provider.py
       - name: Generate ETL + parity reports
         if: always()
         run: |

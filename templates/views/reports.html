@@ -1,105 +1,587 @@
-﻿<div id="view-reports" class="view-section" style="display: none;">
-  <div class="archive-card">
-    <div class="archive-header">
+<div id="view-reports" class="view-section" style="display: none;">
+  <div class="archive-card reports-center">
+    <div class="archive-header reports-main-header">
       <div class="archive-title">
         <span class="material-icons-round" style="color:#0ea5e9; font-size:28px;">analytics</span>
-        Reports & Analytics
+        مرکز گزارش‌ها
       </div>
-      <button class="btn-archive-icon" type="button" data-report-action="export" title="Export">
-        <span class="material-icons-round">file_download</span> Export
+      <div class="reports-header-actions">
+        <button class="btn-archive-primary" type="button" data-report-action="site-log-generate">
+          <span class="material-icons-round">manage_search</span>
+          اجرای گزارش
+        </button>
+        <button class="btn-archive-icon" type="button" data-report-action="site-log-export-xlsx">
+          <span class="material-icons-round">table_view</span>
+          خروجی Excel
+        </button>
+        <button class="btn-archive-icon" type="button" data-report-action="site-log-export-csv">
+          <span class="material-icons-round">file_download</span>
+          خروجی CSV
+        </button>
+      </div>
+    </div>
+
+    <div class="reports-tabs" role="tablist" aria-label="Reports tabs">
+      <button class="reports-tab active" type="button" data-report-tab-target="site-log">
+        <span class="material-icons-round">engineering</span>
+        گزارش کارگاهی
+      </button>
+      <button class="reports-tab" type="button" data-report-tab-target="comm">
+        <span class="material-icons-round">mail</span>
+        مکاتبات و آیتم‌ها
       </button>
     </div>
 
-    <div style="padding:20px; background:#f8fafc; border-bottom:1px solid #e2e8f0;">
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+    <section id="reports-tab-site-log" class="reports-tab-panel active" data-report-tab-panel="site-log">
+      <div class="reports-filter-band">
         <div>
-          <label class="form-label-sm">Project</label>
-          <select id="rpt-project" class="archive-search-input"><option value="">All</option></select>
+          <label class="form-label-sm">پروژه</label>
+          <select id="rpt-site-project" class="archive-search-input"><option value="">همه پروژه‌ها</option></select>
         </div>
         <div>
-          <label class="form-label-sm">Discipline</label>
-          <select id="rpt-discipline" class="archive-search-input"><option value="">All</option></select>
+          <label class="form-label-sm">دیسپلین</label>
+          <select id="rpt-site-discipline" class="archive-search-input"><option value="">همه دیسپلین‌ها</option></select>
         </div>
         <div>
-          <label class="form-label-sm">Status</label>
-          <select id="rpt-status" class="archive-search-input"><option value="">All</option></select>
+          <label class="form-label-sm">سازمان</label>
+          <select id="rpt-site-organization" class="archive-search-input"><option value="">همه سازمان‌ها</option></select>
         </div>
         <div>
-          <label class="form-label-sm">From</label>
+          <label class="form-label-sm">قرارداد</label>
+          <select id="rpt-site-contract" class="archive-search-input"><option value="">همه قراردادها</option></select>
+        </div>
+        <div>
+          <label class="form-label-sm">نوع گزارش</label>
+          <select id="rpt-site-log-type" class="archive-search-input">
+            <option value="">همه انواع</option>
+            <option value="DAILY">روزانه</option>
+            <option value="WEEKLY">هفتگی</option>
+            <option value="SAFETY_INCIDENT">حادثه ایمنی</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label-sm">وضعیت</label>
+          <select id="rpt-site-status" class="archive-search-input">
+            <option value="">همه وضعیت‌ها</option>
+            <option value="DRAFT">پیش‌نویس</option>
+            <option value="SUBMITTED">ارسال‌شده</option>
+            <option value="VERIFIED">تاییدشده</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label-sm">از تاریخ</label>
+          <input type="date" id="rpt-site-date-from" class="archive-search-input" style="direction:ltr;">
+        </div>
+        <div>
+          <label class="form-label-sm">تا تاریخ</label>
+          <input type="date" id="rpt-site-date-to" class="archive-search-input" style="direction:ltr;">
+        </div>
+        <div class="reports-filter-search">
+          <label class="form-label-sm">جستجو</label>
+          <input id="rpt-site-search" class="archive-search-input" placeholder="شماره، قرارداد، سازمان، شرح..." autocomplete="off">
+        </div>
+        <div>
+          <label class="form-label-sm">تعداد در صفحه</label>
+          <select id="rpt-site-page-size" class="archive-search-input">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="reports-subtabs" role="tablist" aria-label="Site log report types">
+        <button class="reports-subtab active" type="button" data-report-action="site-log-section" data-report-section="general">
+          <span class="material-icons-round">summarize</span>
+          عمومی
+        </button>
+        <button class="reports-subtab" type="button" data-report-action="site-log-section" data-report-section="manpower">
+          <span class="material-icons-round">groups</span>
+          نفرات
+        </button>
+        <button class="reports-subtab" type="button" data-report-action="site-log-section" data-report-section="equipment">
+          <span class="material-icons-round">construction</span>
+          تجهیزات
+        </button>
+        <button class="reports-subtab" type="button" data-report-action="site-log-section" data-report-section="material">
+          <span class="material-icons-round">inventory_2</span>
+          مصالح
+        </button>
+        <button class="reports-subtab" type="button" data-report-action="site-log-section" data-report-section="activity">
+          <span class="material-icons-round">timeline</span>
+          فعالیت
+        </button>
+      </div>
+
+      <div class="reports-toolbar">
+        <div class="reports-toolbar-title">
+          <strong id="rpt-site-section-title">گزارش عمومی کارگاهی</strong>
+          <span id="rpt-site-result-meta">آماده اجرا</span>
+        </div>
+        <div class="reports-toolbar-actions">
+          <details class="reports-column-picker">
+            <summary>
+              <span class="material-icons-round">view_column</span>
+              ستون‌ها
+            </summary>
+            <div id="rpt-site-column-menu" class="reports-column-menu"></div>
+          </details>
+        </div>
+      </div>
+
+      <div class="reports-kpi-grid">
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-total">0</div><div class="rpt-lbl" id="rpt-site-kpi-total-label">کل گزارش‌ها</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-draft">0</div><div class="rpt-lbl" id="rpt-site-kpi-draft-label">پیش‌نویس</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-submitted">0</div><div class="rpt-lbl" id="rpt-site-kpi-submitted-label">ارسال‌شده</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-verified">0</div><div class="rpt-lbl" id="rpt-site-kpi-verified-label">تاییدشده</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-manpower">0</div><div class="rpt-lbl" id="rpt-site-kpi-manpower-label">نفرات تاییدی</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-equipment">0</div><div class="rpt-lbl" id="rpt-site-kpi-equipment-label">تجهیزات تاییدی</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-progress">-</div><div class="rpt-lbl" id="rpt-site-kpi-progress-label">میانگین پیشرفت تاییدی</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-site-kpi-delta">-</div><div class="rpt-lbl" id="rpt-site-kpi-delta-label">اختلاف تایید با اعلام</div></div>
+      </div>
+
+      <div class="table-responsive reports-table-wrap">
+        <table class="archive-table reports-data-table" id="rpt-site-table">
+          <thead id="rpt-site-table-head">
+            <tr><th>در حال آماده‌سازی...</th></tr>
+          </thead>
+          <tbody id="rpt-site-table-body">
+            <tr><td class="center-text" style="padding:24px;color:#64748b;">برای بارگذاری جدول، گزارش را اجرا کنید.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="reports-pagination">
+        <button class="btn-archive-icon" type="button" data-report-action="site-log-page-prev">
+          <span class="material-icons-round">chevron_right</span>
+          قبلی
+        </button>
+        <span id="rpt-site-page-label">صفحه 1 از 1</span>
+        <button class="btn-archive-icon" type="button" data-report-action="site-log-page-next">
+          بعدی
+          <span class="material-icons-round">chevron_left</span>
+        </button>
+      </div>
+    </section>
+
+    <section id="reports-tab-comm" class="reports-tab-panel" data-report-tab-panel="comm" hidden>
+      <div class="reports-filter-band">
+        <div>
+          <label class="form-label-sm">پروژه</label>
+          <select id="rpt-project" class="archive-search-input"><option value="">همه</option></select>
+        </div>
+        <div>
+          <label class="form-label-sm">دیسپلین</label>
+          <select id="rpt-discipline" class="archive-search-input"><option value="">همه</option></select>
+        </div>
+        <div>
+          <label class="form-label-sm">وضعیت</label>
+          <select id="rpt-status" class="archive-search-input">
+            <option value="">همه</option>
+            <option value="Open">باز</option>
+            <option value="Closed">بسته</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label-sm">از تاریخ</label>
           <input type="date" id="rpt-date-start" class="archive-search-input" style="direction:ltr;">
         </div>
         <div>
-          <label class="form-label-sm">To</label>
+          <label class="form-label-sm">تا تاریخ</label>
           <input type="date" id="rpt-date-end" class="archive-search-input" style="direction:ltr;">
         </div>
-        <div style="display:flex; align-items:flex-end;">
-          <button class="btn-archive-primary" type="button" style="width:100%; justify-content:center;" data-report-action="generate">
-            <span class="material-icons-round">manage_search</span> Generate
+        <div class="reports-filter-buttons">
+          <button class="btn-archive-primary" type="button" data-report-action="comm-generate">
+            <span class="material-icons-round">manage_search</span>
+            اجرای گزارش
+          </button>
+          <button class="btn-archive-icon" type="button" data-report-action="comm-export">
+            <span class="material-icons-round">file_download</span>
+            خروجی Excel
           </button>
         </div>
       </div>
-    </div>
 
-    <div style="padding:20px; display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
-      <div class="rpt-card" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;">
-        <div class="rpt-val" id="rpt-aging-overdue">0</div>
-        <div class="rpt-lbl">Aging: Overdue Items</div>
+      <div class="reports-kpi-grid reports-kpi-grid-compact">
+        <div class="rpt-card"><div class="rpt-val" id="rpt-aging-overdue">0</div><div class="rpt-lbl">آیتم‌های سررسید گذشته</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-cycle-rfi">0</div><div class="rpt-lbl">میانگین زمان پاسخ RFI</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-impact-count">0</div><div class="rpt-lbl">آیتم‌های دارای اثر احتمالی</div></div>
+        <div class="rpt-card"><div class="rpt-val" id="rpt-correspondence-total">0</div><div class="rpt-lbl">کل مکاتبات</div></div>
       </div>
-      <div class="rpt-card" style="background:#dbeafe;color:#1e3a8a;border:1px solid #bfdbfe;">
-        <div class="rpt-val" id="rpt-cycle-rfi">0</div>
-        <div class="rpt-lbl">Cycle Time: RFI Avg Days</div>
+
+      <div class="reports-comm-grid">
+        <section class="reports-comm-wide">
+          <h4>گزارش مکاتبات</h4>
+          <div class="table-responsive">
+            <table class="archive-table" id="rpt-correspondence-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>شماره نامه</th>
+                  <th>تاریخ</th>
+                  <th>پروژه</th>
+                  <th>دیسپلین</th>
+                  <th>نوع</th>
+                  <th>جهت</th>
+                  <th>عنوان</th>
+                  <th>فرستنده</th>
+                  <th>گیرنده</th>
+                  <th>وضعیت</th>
+                  <th>موعد پاسخ</th>
+                  <th>Aging</th>
+                  <th>اقدام باز</th>
+                  <th>پیوست</th>
+                </tr>
+              </thead>
+              <tbody id="rpt-correspondence-tbody">
+                <tr><td colspan="15" class="center-text" style="padding:20px;color:#64748b;">برای بارگذاری جدول مکاتبات، گزارش را اجرا کنید.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section>
+          <h4>گزارش Aging</h4>
+          <div class="table-responsive">
+            <table class="archive-table" id="rpt-aging-table">
+              <thead>
+                <tr>
+                  <th>#</th><th>شماره آیتم</th><th>نوع</th><th>عنوان</th><th>وضعیت</th><th>موعد پاسخ</th><th>Aging</th>
+                </tr>
+              </thead>
+              <tbody id="rpt-aging-tbody">
+                <tr><td colspan="7" class="center-text" style="padding:20px;color:#64748b;">برای بارگذاری گزارش را اجرا کنید.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section>
+          <h4>Cycle Time</h4>
+          <div id="rpt-cycle-wrap" class="reports-muted-panel">
+            <div id="rpt-cycle-summary" style="color:#475569;">داده‌ای بارگذاری نشده است.</div>
+          </div>
+        </section>
+
+        <section>
+          <h4>Impact Signals</h4>
+          <div class="table-responsive">
+            <table class="archive-table" id="rpt-impact-table">
+              <thead>
+                <tr>
+                  <th>#</th><th>شماره آیتم</th><th>نوع</th><th>عنوان</th><th>وضعیت</th><th>سررسید گذشته</th><th>اثر احتمالی</th>
+                </tr>
+              </thead>
+              <tbody id="rpt-impact-tbody">
+                <tr><td colspan="7" class="center-text" style="padding:20px;color:#64748b;">برای بارگذاری گزارش را اجرا کنید.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
-      <div class="rpt-card" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;">
-        <div class="rpt-val" id="rpt-impact-count">0</div>
-        <div class="rpt-lbl">Items with Potential Impacts</div>
+    </section>
+
+  </div>
+
+  <div id="rpt-site-detail-modal" class="reports-modal" hidden>
+    <div class="reports-modal-backdrop" data-report-action="site-log-close-detail"></div>
+    <div class="reports-modal-card" role="dialog" aria-modal="true" aria-labelledby="rpt-site-detail-title">
+      <div class="reports-modal-head">
+        <div>
+          <h3 id="rpt-site-detail-title">جزئیات گزارش کارگاهی</h3>
+          <span id="rpt-site-detail-subtitle">-</span>
+        </div>
+        <button class="btn-archive-icon" type="button" data-report-action="site-log-close-detail" aria-label="Close">
+          <span class="material-icons-round">close</span>
+        </button>
       </div>
-    </div>
-
-    <div style="padding:0 20px 20px 20px; display:grid; grid-template-columns:1fr; gap:18px;">
-      <section>
-        <h4 style="margin:0 0 10px 0;">Aging Report</h4>
-        <div class="table-responsive">
-          <table class="archive-table" id="rpt-aging-table">
-            <thead>
-              <tr>
-                <th>#</th><th>Item No</th><th>Type</th><th>Title</th><th>Status</th><th>Due</th><th>Aging</th>
-              </tr>
-            </thead>
-            <tbody id="rpt-aging-tbody">
-              <tr><td colspan="7" class="center-text" style="padding:20px;color:#64748b;">Generate report to load data.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section>
-        <h4 style="margin:0 0 10px 0;">Cycle Time</h4>
-        <div id="rpt-cycle-wrap" class="archive-card" style="padding:12px; background:#f8fafc; border:1px solid #e2e8f0;">
-          <div id="rpt-cycle-summary" style="color:#475569;">No data</div>
-        </div>
-      </section>
-
-      <section>
-        <h4 style="margin:0 0 10px 0;">Impact Signals</h4>
-        <div class="table-responsive">
-          <table class="archive-table" id="rpt-impact-table">
-            <thead>
-              <tr>
-                <th>#</th><th>Item No</th><th>Type</th><th>Title</th><th>Status</th><th>Overdue</th><th>Impact</th>
-              </tr>
-            </thead>
-            <tbody id="rpt-impact-tbody">
-              <tr><td colspan="7" class="center-text" style="padding:20px;color:#64748b;">Generate report to load data.</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <div id="rpt-site-detail-body" class="reports-modal-body"></div>
     </div>
   </div>
 
   <style>
-    .rpt-card { padding: 14px; border-radius: 10px; text-align: center; }
-    .rpt-val { font-size: 1.8rem; font-weight: bold; margin-bottom: 4px; }
-    .rpt-lbl { font-size: 0.85rem; opacity: 0.9; }
+    .reports-center { overflow: visible; }
+    .reports-main-header { align-items: center; gap: 12px; }
+    .reports-header-actions,
+    .reports-toolbar-actions,
+    .reports-filter-buttons {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .reports-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      flex-wrap: wrap;
+    }
+    .reports-tab {
+      min-height: 38px;
+      padding: 8px 14px;
+      border: 1px solid #bfdbfe;
+      background: #fff;
+      color: #0f3d75;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .reports-tab.active {
+      background: linear-gradient(135deg, #2563eb, #0891b2);
+      color: #fff;
+      border-color: #2563eb;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, .16);
+    }
+    .reports-tab-panel { padding: 18px 20px 22px; }
+    .reports-filter-band {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid #dbeafe;
+      background: #f8fbff;
+      border-radius: 8px;
+    }
+    .reports-filter-search { grid-column: span 2; }
+    .reports-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 2px 8px;
+      flex-wrap: wrap;
+    }
+    .reports-subtabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 2px 4px;
+      flex-wrap: wrap;
+    }
+    .reports-subtab {
+      min-height: 36px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #0f3d75;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .reports-subtab span { font-size: 18px; }
+    .reports-subtab.active {
+      border-color: #2563eb;
+      background: #eff6ff;
+      color: #1d4ed8;
+      box-shadow: 0 6px 14px rgba(37, 99, 235, .12);
+    }
+    .reports-toolbar-title {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      flex-wrap: wrap;
+    }
+    .reports-toolbar-title span,
+    .reports-hint {
+      color: #64748b;
+      font-size: .85rem;
+    }
+    .reports-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+    .reports-kpi-grid-compact { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .rpt-card {
+      padding: 12px;
+      border: 1px solid #cfe4ff;
+      background: #f8fbff;
+      border-radius: 8px;
+      text-align: center;
+      min-height: 72px;
+    }
+    .rpt-val {
+      font-size: 1.55rem;
+      font-weight: 800;
+      color: #1d4ed8;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .rpt-lbl { font-size: .82rem; color: #475569; margin-top: 4px; }
+    .reports-table-wrap {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      max-height: 56vh;
+      overflow: auto;
+    }
+    .reports-data-table th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #eef6ff;
+      white-space: nowrap;
+    }
+    .reports-sort-btn {
+      border: 0;
+      background: transparent;
+      color: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      font-weight: 800;
+      padding: 0;
+    }
+    .reports-data-table td { white-space: nowrap; }
+    .reports-row-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .reports-mini-btn {
+      min-width: 32px;
+      min-height: 30px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #0f3d75;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .reports-mini-btn span { font-size: 18px; }
+    .reports-pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      padding-top: 12px;
+    }
+    .reports-column-picker { position: relative; }
+    .reports-column-picker summary {
+      list-style: none;
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      background: #fff;
+      color: #0f3d75;
+      font-weight: 700;
+    }
+    .reports-column-picker summary::-webkit-details-marker { display: none; }
+    .reports-column-menu {
+      position: absolute;
+      top: 42px;
+      inset-inline-end: 0;
+      width: 260px;
+      max-height: 330px;
+      overflow: auto;
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, .14);
+      border-radius: 8px;
+      padding: 8px;
+      z-index: 20;
+    }
+    .reports-column-menu label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 8px;
+      border-radius: 6px;
+      font-size: .86rem;
+      cursor: pointer;
+    }
+    .reports-column-menu label:hover { background: #f1f5f9; }
+    .reports-comm-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-top: 14px;
+    }
+    .reports-comm-wide { min-width: 0; }
+    .reports-comm-grid h4 { margin: 0 0 9px; }
+    .reports-muted-panel {
+      padding: 12px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+    }
+    .reports-modal[hidden] { display: none; }
+    .reports-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 4000;
+      display: flex;
+      justify-content: flex-start;
+      align-items: stretch;
+    }
+    .reports-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, .48);
+    }
+    .reports-modal-card {
+      position: relative;
+      width: min(560px, calc(100vw - 34px));
+      height: 100%;
+      background: #fff;
+      border-inline-end: 1px solid #dbeafe;
+      box-shadow: 18px 0 44px rgba(15, 23, 42, .24);
+      display: flex;
+      flex-direction: column;
+    }
+    .reports-modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .reports-modal-head h3 { margin: 0; font-size: 1.05rem; }
+    .reports-modal-head span { color: #64748b; font-size: .85rem; }
+    .reports-modal-body {
+      padding: 16px;
+      overflow: auto;
+      display: grid;
+      gap: 12px;
+    }
+    .reports-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .reports-detail-item {
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 9px;
+    }
+    .reports-detail-item label {
+      display: block;
+      color: #64748b;
+      font-size: .76rem;
+      margin-bottom: 4px;
+    }
+    .reports-detail-item strong { color: #0f172a; }
+    @media (max-width: 900px) {
+      .reports-filter-search { grid-column: span 1; }
+      .reports-header-actions { width: 100%; }
+    }
   </style>
 </div>

@@ -8,6 +8,18 @@ export interface TransmittalStatsPayload {
   last_created: string;
 }
 
+export interface TransmittalPartyOption {
+  code: string;
+  label: string;
+  is_active?: boolean;
+  sort_order?: number;
+}
+
+export interface TransmittalOptionsPayload {
+  direction_options: TransmittalPartyOption[];
+  recipient_options: TransmittalPartyOption[];
+}
+
 export interface TransmittalListItem {
   id?: string;
   transmittal_no?: string;
@@ -48,6 +60,7 @@ export interface TransmittalDataBridge {
   requestJson(url: string, init: RequestInit | undefined, deps: TransmittalDataHttpDeps): Promise<unknown>;
   loadStats(deps: TransmittalDataHttpDeps): Promise<TransmittalStatsPayload>;
   loadList(deps: TransmittalDataHttpDeps): Promise<TransmittalListItem[]>;
+  loadOptions(deps: TransmittalDataHttpDeps): Promise<TransmittalOptionsPayload>;
   getNextNumber(input: NextNumberInput, deps: TransmittalDataHttpDeps): Promise<string>;
   searchEligibleDocs(input: SearchEligibleInput, deps: TransmittalDataHttpDeps): Promise<EligibleDocItem[]>;
 }
@@ -103,6 +116,14 @@ async function loadList(deps: TransmittalDataHttpDeps): Promise<TransmittalListI
   return asArray<TransmittalListItem>(await requestJson("/api/v1/transmittal/", undefined, deps));
 }
 
+async function loadOptions(deps: TransmittalDataHttpDeps): Promise<TransmittalOptionsPayload> {
+  const body = asRecord(await requestJson("/api/v1/transmittal/options", undefined, deps));
+  return {
+    direction_options: asArray<TransmittalPartyOption>(body.direction_options),
+    recipient_options: asArray<TransmittalPartyOption>(body.recipient_options),
+  };
+}
+
 async function getNextNumber(input: NextNumberInput, deps: TransmittalDataHttpDeps): Promise<string> {
   const projectCode = normalizeCode(input.projectCode);
   if (!projectCode) return "";
@@ -141,6 +162,7 @@ export function createTransmittalDataBridge(): TransmittalDataBridge {
     requestJson,
     loadStats,
     loadList,
+    loadOptions,
     getNextNumber,
     searchEligibleDocs,
   };

@@ -57,7 +57,9 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
     .map((row, index) => {
       const itemId = Number(row.id || 0);
       const isOverdue = Boolean(row.is_overdue);
-      const isRfi = normalize(row.item_type) === "RFI";
+      const itemType = normalize(row.item_type);
+      const isPrintableForm = ["RFI", "NCR"].includes(itemType);
+      const isMutableItem = ["RFI", "NCR"].includes(itemType);
       const overdueBadge = isOverdue ? `<span class="module-crud-priority is-urgent">Overdue</span>` : "";
       return `
         <tr>
@@ -80,7 +82,7 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
                   <span class="material-icons-round">visibility</span>
                   <span>جزئیات</span>
                 </button>
-                ${canEdit ? `
+                ${canEdit && isMutableItem ? `
                 <button class="archive-row-menu-item" type="button" data-ci-action="open-edit" data-ci-id="${itemId}">
                   <span class="material-icons-round">edit</span>
                   <span>ویرایش</span>
@@ -93,10 +95,10 @@ function renderRows(body: HTMLElement | null, rows: Record<string, unknown>[], c
                   <span class="material-icons-round">content_copy</span>
                   <span>کپی شماره آیتم</span>
                 </button>
-                ${isRfi ? `
+                ${isPrintableForm ? `
                 <button class="archive-row-menu-item" type="button" data-ci-action="print-rfi-form" data-ci-id="${itemId}">
-                  <span class="material-icons-round">print</span>
-                  <span>پرینت فرم RFI</span>
+                  <span class="material-icons-round">preview</span>
+                  <span>پیش‌نمایش فرم ${esc(itemType)}</span>
                 </button>` : ""}
               </div>
             </div>

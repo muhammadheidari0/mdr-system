@@ -7,6 +7,7 @@ class Role(str, Enum):
     MANAGER = "manager"
     USER = "user"
     DCC = "dcc"
+    PROJECT_CONTROL = "project_control"
     VIEWER = "viewer"
 
 
@@ -14,6 +15,7 @@ ALL_ROLES: tuple[str, ...] = tuple(role.value for role in Role)
 MATRIX_ROLES: tuple[str, ...] = (
     Role.MANAGER.value,
     Role.DCC.value,
+    Role.PROJECT_CONTROL.value,
     Role.USER.value,
     Role.VIEWER.value,
 )
@@ -26,7 +28,9 @@ EFFECTIVE_ROLES: tuple[str, ...] = (
 COMMON_NAV_PERMISSIONS: List[str] = [
     "dashboard:read",
     "reports:read",
-    "module_settings:read",
+    "module_settings_edms:read",
+    "module_settings_contractor:read",
+    "module_settings_consultant:read",
     "hub_edms:read",
     "hub_reports:read",
     "hub_contractor:read",
@@ -34,12 +38,14 @@ COMMON_NAV_PERMISSIONS: List[str] = [
     "module_archive:read",
     "module_transmittal:read",
     "module_correspondence:read",
+    "module_meeting_minutes:read",
     "module_reports:read",
     "module_site_logs_contractor:read",
     "module_comm_items_contractor:read",
     "module_permit_qc_contractor:read",
     "module_site_logs_consultant:read",
     "module_comm_items_consultant:read",
+    "module_work_instructions_consultant:read",
     "module_permit_qc_consultant:read",
 ]
 
@@ -65,6 +71,15 @@ SITE_LOGS_WRITE_PERMISSIONS: List[str] = [
     "site_logs:attachment_delete",
 ]
 
+PROJECT_CONTROL_READ_PERMISSIONS: List[str] = [
+    "project_control:view",
+]
+
+PROJECT_CONTROL_WRITE_PERMISSIONS: List[str] = [
+    "project_control:measure",
+    "project_control:qc",
+]
+
 COMM_ITEMS_READ_PERMISSIONS: List[str] = [
     "comm_items:read",
     "comm_items:report_read",
@@ -78,6 +93,28 @@ COMM_ITEMS_WRITE_PERMISSIONS: List[str] = [
     "comm_items:attachment_upload",
     "comm_items:attachment_delete",
     "comm_items:relation_manage",
+]
+
+WORK_INSTRUCTIONS_READ_PERMISSIONS: List[str] = [
+    "work_instructions:read",
+    "work_instructions:report_read",
+]
+
+WORK_INSTRUCTIONS_WRITE_PERMISSIONS: List[str] = [
+    "work_instructions:create",
+    "work_instructions:update",
+    "work_instructions:transition",
+    "work_instructions:comment_create",
+    "work_instructions:attachment_upload",
+    "work_instructions:attachment_delete",
+    "work_instructions:relation_manage",
+]
+
+MEETING_MINUTES_WRITE_PERMISSIONS: List[str] = [
+    "meeting_minutes:create",
+    "meeting_minutes:update",
+    "meeting_minutes:delete",
+    "meeting_minutes:attachment",
 ]
 
 DOCUMENT_WRITE_PERMISSIONS: List[str] = [
@@ -111,9 +148,11 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "documents:read",
         "documents:create",
         "documents:update",
+        "documents:reclassify",
         *DOCUMENT_WRITE_PERMISSIONS,
         "archive:read",
         "archive:update",
+        "archive:share",
         "transmittal:read",
         "transmittal:create",
         "transmittal:update",
@@ -121,6 +160,10 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "correspondence:create",
         "correspondence:update",
         "correspondence:delete",
+        "meeting_minutes:read",
+        *MEETING_MINUTES_WRITE_PERMISSIONS,
+        "edms_forms:read",
+        "module_edms_forms:read",
         "permit_qc:read",
         "permit_qc:create",
         "permit_qc:update",
@@ -133,8 +176,12 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         *WORKBOARD_PERMISSIONS,
         *SITE_LOGS_READ_PERMISSIONS,
         *SITE_LOGS_WRITE_PERMISSIONS,
+        *PROJECT_CONTROL_READ_PERMISSIONS,
+        *PROJECT_CONTROL_WRITE_PERMISSIONS,
         *COMM_ITEMS_READ_PERMISSIONS,
         *COMM_ITEMS_WRITE_PERMISSIONS,
+        *WORK_INSTRUCTIONS_READ_PERMISSIONS,
+        *WORK_INSTRUCTIONS_WRITE_PERMISSIONS,
         *BIM_READ_PERMISSIONS,
         *BIM_WRITE_PERMISSIONS,
     ],
@@ -142,9 +189,11 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "documents:read",
         "documents:create",
         "documents:update",
+        "documents:reclassify",
         *DOCUMENT_WRITE_PERMISSIONS,
         "archive:read",
         "archive:update",
+        "archive:share",
         "transmittal:read",
         "transmittal:create",
         "transmittal:update",
@@ -154,6 +203,10 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "correspondence:create",
         "correspondence:update",
         "correspondence:delete",
+        "meeting_minutes:read",
+        *MEETING_MINUTES_WRITE_PERMISSIONS,
+        "edms_forms:read",
+        "module_edms_forms:read",
         "permit_qc:read",
         "permit_qc:create",
         "permit_qc:update",
@@ -166,8 +219,12 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         *WORKBOARD_PERMISSIONS,
         *SITE_LOGS_READ_PERMISSIONS,
         *SITE_LOGS_WRITE_PERMISSIONS,
+        *PROJECT_CONTROL_READ_PERMISSIONS,
+        *PROJECT_CONTROL_WRITE_PERMISSIONS,
         *COMM_ITEMS_READ_PERMISSIONS,
         *COMM_ITEMS_WRITE_PERMISSIONS,
+        *WORK_INSTRUCTIONS_READ_PERMISSIONS,
+        *WORK_INSTRUCTIONS_WRITE_PERMISSIONS,
         *BIM_READ_PERMISSIONS,
         *BIM_WRITE_PERMISSIONS,
     ],
@@ -182,12 +239,15 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "documents:tag_manage",
         "archive:read",
         "archive:update",
+        "archive:share",
         "transmittal:read",
         "transmittal:create",
         "correspondence:read",
         "correspondence:create",
         "correspondence:update",
         "correspondence:delete",
+        "meeting_minutes:read",
+        *MEETING_MINUTES_WRITE_PERMISSIONS,
         "permit_qc:read",
         "permit_qc:create",
         "permit_qc:update",
@@ -199,11 +259,45 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         *WORKBOARD_PERMISSIONS,
         *SITE_LOGS_READ_PERMISSIONS,
         *SITE_LOGS_WRITE_PERMISSIONS,
+        *PROJECT_CONTROL_READ_PERMISSIONS,
         *COMM_ITEMS_READ_PERMISSIONS,
         *COMM_ITEMS_WRITE_PERMISSIONS,
+        *WORK_INSTRUCTIONS_READ_PERMISSIONS,
+        *WORK_INSTRUCTIONS_WRITE_PERMISSIONS,
         *BIM_READ_PERMISSIONS,
         "bim:publish",
         "bim:schedule_ingest",
+        "bim:site_logs_sync",
+    ],
+    Role.PROJECT_CONTROL: [
+        "documents:read",
+        "archive:read",
+        "transmittal:read",
+        "correspondence:read",
+        "meeting_minutes:read",
+        "meeting_minutes:create",
+        "meeting_minutes:update",
+        "meeting_minutes:attachment",
+        "edms_forms:read",
+        "module_edms_forms:read",
+        "permit_qc:read",
+        "permit_qc:create",
+        "permit_qc:update",
+        "permit_qc:submit",
+        "permit_qc:review",
+        "permit_qc:attachment_upload",
+        "permit_qc:attachment_delete",
+        *COMMON_NAV_PERMISSIONS,
+        *WORKBOARD_PERMISSIONS,
+        *SITE_LOGS_READ_PERMISSIONS,
+        *SITE_LOGS_WRITE_PERMISSIONS,
+        *PROJECT_CONTROL_READ_PERMISSIONS,
+        *PROJECT_CONTROL_WRITE_PERMISSIONS,
+        *COMM_ITEMS_READ_PERMISSIONS,
+        *COMM_ITEMS_WRITE_PERMISSIONS,
+        *WORK_INSTRUCTIONS_READ_PERMISSIONS,
+        *WORK_INSTRUCTIONS_WRITE_PERMISSIONS,
+        *BIM_READ_PERMISSIONS,
         "bim:site_logs_sync",
     ],
     Role.VIEWER: [
@@ -211,13 +305,17 @@ ROLE_PERMISSIONS: Dict[Role, List[str]] = {
         "archive:read",
         "transmittal:read",
         "correspondence:read",
+        "meeting_minutes:read",
         "permit_qc:read",
         *COMMON_NAV_PERMISSIONS,
         "workboard:read",
         "site_logs:read",
         "site_logs:report_read",
+        *PROJECT_CONTROL_READ_PERMISSIONS,
         "comm_items:read",
         "comm_items:report_read",
+        "work_instructions:read",
+        "work_instructions:report_read",
         *BIM_READ_PERMISSIONS,
     ],
 }

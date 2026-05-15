@@ -85,6 +85,24 @@ class NextcloudAdapter:
             dav_path = f"{dav_path.rstrip('/')}{root}"
         return urlunsplit((parts.scheme, parts.netloc, dav_path.rstrip("/"), "", ""))
 
+    def build_ocs_shares_url(self, share_id: str | None = None) -> str:
+        base = self.normalize_base_url(self.base_url)
+        parts = urlsplit(base)
+        app_path = str(parts.path or "").rstrip("/")
+        for marker in ("/remote.php/", "/ocs/v2.php/"):
+            idx = app_path.find(marker)
+            if idx >= 0:
+                app_path = app_path[:idx]
+                break
+        if app_path.endswith("/remote.php"):
+            app_path = app_path[: -len("/remote.php")]
+        if app_path.endswith("/ocs/v2.php"):
+            app_path = app_path[: -len("/ocs/v2.php")]
+        ocs_path = f"{app_path.rstrip('/')}/ocs/v2.php/apps/files_sharing/api/v1/shares"
+        if share_id is not None:
+            ocs_path = f"{ocs_path.rstrip('/')}/{quote(str(share_id), safe='')}"
+        return urlunsplit((parts.scheme, parts.netloc, ocs_path, "", ""))
+
     def _request(self, method: str, url: str, **kwargs: Any) -> Response:
         if not self.tls_verify and not NextcloudAdapter._insecure_warning_suppressed:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -100,6 +118,48 @@ class NextcloudAdapter:
             headers=headers,
             **kwargs,
         )
+
+    def _ocs_request(self, method: str, share_id: str | None = None, **kwargs: Any) -> Response:
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers.setdefault("OCS-APIRequest", "true")
+        headers.setdefault("Accept", "application/json")
+        params = dict(kwargs.pop("params", {}) or {})
+        params.setdefault("format", "json")
+        return self._request(
+            method,
+            self.build_ocs_shares_url(share_id),
+            headers=headers,
+            params=params,
+            **kwargs,
+        )
+
+    def _parse_ocs_response(self, response: Response, action: str) -> dict[str, Any]:
+        status_code = int(getattr(response, "status_code", 0) or 0)
+        if status_code >= 400:
+            detail = self._response_error_detail(response)
+            message = f"Nextcloud OCS {action} failed: HTTP {status_code}"
+            if detail:
+                message = f"{message} :: {detail}"
+            raise RuntimeError(message)
+        try:
+            payload = response.json()
+        except Exception as exc:
+            raise RuntimeError(f"Nextcloud OCS {action} returned invalid JSON.") from exc
+        ocs = payload.get("ocs") if isinstance(payload, dict) else None
+        meta = ocs.get("meta") if isinstance(ocs, dict) else {}
+        data = ocs.get("data") if isinstance(ocs, dict) else payload
+        ocs_status = int(meta.get("statuscode") or 0) if isinstance(meta, dict) else 0
+        if ocs_status and ocs_status not in {100, 101, 102, 200, 201, 202, 204}:
+            message = str(meta.get("message") or f"statuscode {ocs_status}") if isinstance(meta, dict) else str(ocs_status)
+            raise RuntimeError(f"Nextcloud OCS {action} failed: {message}")
+        return data if isinstance(data, dict) else {"data": data}
+
+    def ocs_share_path_for_relative_path(self, remote_relative_path: str) -> str:
+        normalized = self.normalize_browse_path(remote_relative_path)
+        root = self.normalize_root_path(self.root_path)
+        if root and root != "/":
+            return f"{root.rstrip('/')}{normalized}"
+        return normalized
 
     def ping_raw(self) -> Response:
         url = self.build_webdav_root_url()
@@ -329,6 +389,47 @@ class NextcloudAdapter:
             return int(response.status_code or 0) in {200, 207}
         except Exception:
             return False
+
+    def create_public_share(
+        self,
+        *,
+        remote_relative_path: str,
+        password: str | None = None,
+        expire_date: str | None = None,
+        permissions: int = 1,
+    ) -> dict[str, Any]:
+        """Create a public link share through Nextcloud OCS."""
+        share_path = self.ocs_share_path_for_relative_path(remote_relative_path)
+        data: dict[str, Any] = {
+            "path": share_path,
+            "shareType": 3,
+            "permissions": int(permissions or 1),
+        }
+        if str(password or "").strip():
+            data["password"] = str(password or "").strip()
+        if str(expire_date or "").strip():
+            data["expireDate"] = str(expire_date or "").strip()
+        parsed = self._parse_ocs_response(
+            self._ocs_request("POST", data=data),
+            "create share",
+        )
+        share_id = str(parsed.get("id") or parsed.get("share_id") or parsed.get("shareId") or "").strip()
+        share_url = str(parsed.get("url") or parsed.get("share_url") or "").strip()
+        return {
+            "provider_share_id": share_id,
+            "url": share_url,
+            "token": str(parsed.get("token") or "").strip() or None,
+            "path": str(parsed.get("path") or share_path).strip() or share_path,
+            "raw": parsed,
+        }
+
+    def delete_share(self, provider_share_id: str) -> bool:
+        """Delete a public share through Nextcloud OCS."""
+        share_id = str(provider_share_id or "").strip()
+        if not share_id:
+            return False
+        self._parse_ocs_response(self._ocs_request("DELETE", share_id), "delete share")
+        return True
 
     def get_file_size(self, remote_relative_path: str) -> int:
         """Get file size via PROPFIND getcontentlength."""

@@ -70,6 +70,7 @@ async function loadUserProfileData() {
             admin: "مدیر سیستم",
             manager: "سرپرست",
             dcc: "کنترل مدارک (DCC)",
+            project_control: "کنترل پروژه",
             user: "کاربر",
             viewer: "مشاهده‌گر",
         };

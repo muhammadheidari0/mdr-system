@@ -340,6 +340,11 @@ _dict_cache: dict[str, Any] = {"data": None, "expires": 0.0}
 _DICT_TTL_SECONDS = 300  # 5 minutes
 
 
+def invalidate_dictionary_cache() -> None:
+    _dict_cache["data"] = None
+    _dict_cache["expires"] = 0.0
+
+
 @router.get("/dictionary")
 def dictionary(db: Session = Depends(get_db)):
     """

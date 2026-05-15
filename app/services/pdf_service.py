@@ -1,4 +1,5 @@
 import io
+from xml.sax.saxutils import escape as xml_escape
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
@@ -39,6 +40,14 @@ def generate_transmittal_pdf(transmittal, project_name="MDR Project", watermark_
     
     elements = []
     styles = getSampleStyleSheet()
+    link_style = ParagraphStyle(
+        "DownloadLink",
+        parent=styles["Normal"],
+        fontSize=8,
+        leading=10,
+        alignment=1,
+        textColor=colors.blue,
+    )
     
     # --- 1. Header Section ---
     # ساختار هدر: لوگو چپ، عنوان وسط، لوگو راست (فرضی)
@@ -79,25 +88,31 @@ def generate_transmittal_pdf(transmittal, project_name="MDR Project", watermark_
 
     # --- 3. Documents List ---
     # هدر جدول مدارک
-    doc_data = [['Row', 'Document Number', 'Rev', 'Status', 'Title', 'Copy']]
+    doc_data = [['Row', 'Document Number', 'Rev', 'Status', 'Title', 'Copy', 'Download']]
     
     # پر کردن جدول با مدارک
-    for idx, doc in enumerate(transmittal.documents, 1):
+    for idx, doc_item in enumerate(transmittal.documents, 1):
         copy_type = []
-        if doc.electronic_copy: copy_type.append("Elec")
-        if doc.hard_copy: copy_type.append("Hard")
+        if doc_item.electronic_copy: copy_type.append("Elec")
+        if doc_item.hard_copy: copy_type.append("Hard")
+        public_share_url = str(getattr(doc_item, "public_share_url", "") or "").strip()
+        download_cell = "-"
+        if public_share_url:
+            safe_url = xml_escape(public_share_url, {'"': "&quot;"})
+            download_cell = Paragraph(f'<link href="{safe_url}"><u>Download</u></link>', link_style)
         
         doc_data.append([
             str(idx),
-            doc.document_code,
-            doc.revision,
-            doc.status,
-            doc.document_title[:40] + "..." if len(doc.document_title or "") > 40 else (doc.document_title or ""),
-            ", ".join(copy_type)
+            doc_item.document_code,
+            doc_item.revision,
+            doc_item.status,
+            doc_item.document_title[:40] + "..." if len(doc_item.document_title or "") > 40 else (doc_item.document_title or ""),
+            ", ".join(copy_type),
+            download_cell,
         ])
 
     # تنظیم عرض ستون‌ها
-    col_widths = [1*cm, 5*cm, 1.5*cm, 2*cm, 7.5*cm, 2*cm]
+    col_widths = [0.8*cm, 4.4*cm, 1.2*cm, 1.6*cm, 6.5*cm, 1.8*cm, 2*cm]
     doc_table = Table(doc_data, colWidths=col_widths, repeatRows=1)
     
     doc_table.setStyle(TableStyle([

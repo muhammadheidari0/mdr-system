@@ -21,6 +21,7 @@ INLINE_REQUIRE_PERMISSION_RE = re.compile(
 
 PUBLIC_OR_TOKEN_ROUTE_WHITELIST = {
     "/api/v1/auth/login",
+    "/api/v1/auth/logout",
     "/api/v1/auth/me",
     "/api/v1/auth/navigation",
     "/api/v1/auth/change-password",

@@ -29,6 +29,19 @@
         </div>
       </div>
 
+      <div id="storageMirrorPolicyNotice" class="storage-mirror-policy-notice" hidden>
+        <div class="storage-mirror-policy-head">
+          <span id="storageMirrorPolicyNoticeIcon" class="material-icons-round storage-mirror-policy-icon">info</span>
+          <div class="storage-mirror-policy-copy">
+            <div class="storage-mirror-policy-topline">
+              <div id="storageMirrorPolicyNoticeTitle" class="storage-mirror-policy-title">وضعیت ترکیب استورج و میرور</div>
+              <span id="storageMirrorPolicyNoticeBadge" class="storage-mirror-policy-badge">-</span>
+            </div>
+            <div id="storageMirrorPolicyNoticeBody" class="storage-mirror-policy-body">-</div>
+          </div>
+        </div>
+      </div>
+
       <div id="storagePrimaryStatusCard" class="storage-primary-status-card" aria-live="polite">
         <div class="storage-primary-status-head">
           <div class="storage-primary-status-title">وضعیت نهایی ذخیره‌سازی</div>
@@ -95,6 +108,15 @@
           aria-controls="integrations-provider-bim"
         >
           BIM / Revit
+        </button>
+        <button
+          type="button"
+          class="integrations-provider-tab"
+          data-integrations-provider-tab="powerbi"
+          aria-selected="false"
+          aria-controls="integrations-provider-powerbi"
+        >
+          Power BI
         </button>
       </div>
 
@@ -349,6 +371,25 @@
                 >
                 <div id="storageNextcloudCredentialManagedHint" class="form-help"></div>
               </div>
+
+              <div id="storageNextcloudPublicSharePasswordWrap">
+                <div class="settings-integration-token-head">
+                  <label class="form-label-sm">Public Link Password</label>
+                  <span id="storageNextcloudPublicSharePasswordBadge" class="settings-token-source-badge">none</span>
+                </div>
+                <label class="checkbox-label">
+                  <input id="storageNextcloudPublicSharePasswordRequiredInput" type="checkbox">
+                  <span class="checkmark"></span>Require password for public links
+                </label>
+                <input
+                  id="storageNextcloudPublicSharePasswordInput"
+                  class="form-input"
+                  type="password"
+                  autocomplete="new-password"
+                  placeholder="Default password for Nextcloud public links"
+                >
+                <div class="form-help">اگر گزینه Require password روشن باشد، لینک عمومی با رمز ذخیره‌شده یا رمز تولیدی ساخته می‌شود. اگر خاموش باشد و در مودال رمز دستی وارد نشود، لینک بدون رمز ساخته می‌شود. خالی گذاشتن فیلد هنگام ذخیره، رمز قبلی را نگه می‌دارد.</div>
+              </div>
             </div>
 
             <div class="general-form-actions storage-integrations-actions">
@@ -441,8 +482,145 @@
         </div>
       </section>
 
+      <section
+        id="integrations-provider-powerbi"
+        class="integrations-provider-panel"
+        data-integrations-provider-panel="powerbi"
+        aria-hidden="true"
+      >
+        <div class="storage-openproject-shell">
+          <div class="storage-openproject-head">
+            <div class="storage-openproject-title-wrap">
+              <h4 class="storage-openproject-title">Power BI</h4>
+              <div class="form-help">کلید فقط‌خواندنی برای refresh داشبوردها. این کلید فقط روی خروجی CSV گزارش کارگاهی کار می‌کند.</div>
+            </div>
+            <div class="general-form-actions settings-inline-actions">
+              <button class="btn btn-secondary" type="button" data-integrations-action="refresh-power-bi-tokens">Refresh</button>
+              <button class="btn btn-primary" type="button" data-integrations-action="mint-power-bi-token">ساخت BI Key</button>
+            </div>
+          </div>
+
+          <div class="storage-openproject-panel active powerbi-settings-panel" style="display:block;">
+            <div class="powerbi-settings-grid">
+              <section class="powerbi-settings-card">
+                <div class="powerbi-card-head">
+                  <div>
+                    <h5>ساخت کلید اتصال</h5>
+                    <p>برای هر داشبورد یک کلید جدا بسازید تا در صورت نیاز همان کلید revoke شود.</p>
+                  </div>
+                </div>
+
+                <div class="general-form-grid powerbi-key-grid">
+                  <div>
+                    <label class="form-label-sm">نام کلید</label>
+                    <input id="powerBiTokenNameInput" class="form-input" placeholder="Power BI Main Dashboard" value="Power BI Main Dashboard">
+                  </div>
+                  <div>
+                    <label class="form-label-sm">انقضا</label>
+                    <input id="powerBiTokenExpiresInput" class="form-input" type="date">
+                    <div class="form-help">خالی بماند یعنی بدون تاریخ انقضا.</div>
+                  </div>
+                </div>
+
+                <details class="powerbi-advanced">
+                  <summary>
+                    <span class="material-icons-round">tune</span>
+                    محدودیت دسترسی اختیاری
+                  </summary>
+                  <div class="general-form-grid powerbi-advanced-grid">
+                    <div>
+                      <label class="form-label-sm">محدود به پروژه‌ها</label>
+                      <input id="powerBiTokenProjectsInput" class="form-input" placeholder="ACT100F94, ACT200">
+                      <div class="form-help">خالی = همه پروژه‌ها.</div>
+                    </div>
+                    <div>
+                      <label class="form-label-sm">محدود به IP</label>
+                      <input id="powerBiTokenIpRangesInput" class="form-input" placeholder="192.168.20.0/24">
+                      <div class="form-help">خالی = هر IP مجاز است.</div>
+                    </div>
+                    <div class="powerbi-section-limit">
+                      <label class="form-label-sm">محدود به جدول‌های گزارش</label>
+                      <div class="powerbi-check-grid">
+                        <label><input type="checkbox" data-powerbi-section-limit value="general"> خلاصه عمومی</label>
+                        <label><input type="checkbox" data-powerbi-section-limit value="manpower"> نفرات</label>
+                        <label><input type="checkbox" data-powerbi-section-limit value="equipment"> تجهیزات</label>
+                        <label><input type="checkbox" data-powerbi-section-limit value="material"> مصالح</label>
+                        <label><input type="checkbox" data-powerbi-section-limit value="activity"> فعالیت</label>
+                      </div>
+                      <div class="form-help">اگر چیزی انتخاب نشود، این کلید همه جدول‌های گزارش کارگاهی را می‌خواند.</div>
+                    </div>
+                  </div>
+                </details>
+
+                <div id="powerBiTokenPlain" class="storage-sync-result-info" style="display:none; margin-top:10px;"></div>
+                <div id="powerBiTokenCopyActions" class="general-form-actions settings-inline-actions" style="display:none; margin-top:8px;">
+                  <button class="btn btn-secondary" type="button" data-integrations-action="copy-power-bi-token">کپی BI Key</button>
+                </div>
+              </section>
+
+              <section class="powerbi-settings-card">
+                <div class="powerbi-card-head">
+                  <div>
+                    <h5>Power Query آماده</h5>
+                    <p>جدولی را که می‌خواهید در Power BI بخوانید انتخاب کنید و متن آماده را کپی کنید.</p>
+                  </div>
+                </div>
+                <div class="general-settings-note general-settings-note-info powerbi-note">
+                  <span class="material-icons-round">info</span>
+                  <div>Credential در Power BI باید Anonymous باشد. احراز هویت با BI Key داخل Header انجام می‌شود.</div>
+                </div>
+                <div class="powerbi-template-row">
+                  <div>
+                    <label class="form-label-sm">جدول خروجی</label>
+                    <select id="powerBiQuerySectionSelect" class="form-input">
+                      <option value="general">خلاصه عمومی</option>
+                      <option value="manpower">نفرات / نقش‌ها</option>
+                      <option value="equipment">تجهیزات</option>
+                      <option value="material">مصالح</option>
+                      <option value="activity">فعالیت</option>
+                    </select>
+                    <div class="form-help">این انتخاب فقط Power Query را عوض می‌کند، نه مجوز کلید را.</div>
+                  </div>
+                </div>
+                <textarea id="powerBiQueryTemplate" class="form-input powerbi-query-template" rows="16" readonly></textarea>
+                <div class="general-form-actions settings-inline-actions" style="margin-top:8px;">
+                  <button class="btn btn-secondary" type="button" data-integrations-action="copy-power-bi-query">کپی Power Query</button>
+                </div>
+              </section>
+            </div>
+
+            <section class="powerbi-settings-card powerbi-token-list-card">
+              <div class="powerbi-card-head">
+                <div>
+                  <h5>کلیدهای ساخته‌شده</h5>
+                  <p>توکن خام فقط هنگام ساخت نمایش داده می‌شود. بعد از آن فقط hint قابل مشاهده است.</p>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="powerbi-token-table" data-bulk-enabled="false">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Hint</th>
+                      <th>Access limit</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                      <th>Last used</th>
+                      <th>Expires</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="powerBiTokensBody">
+                    <tr><td colspan="8" class="center-text muted">No Power BI keys loaded.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
       <div id="storageSyncResult" class="general-settings-note" style="margin-top:10px; display:none;"></div>
     </div>
   </div>
 </div>
-

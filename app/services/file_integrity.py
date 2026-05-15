@@ -71,7 +71,8 @@ class SavedFileInfo:
     detected_mime: str
     declared_mime: str
     validation_status: str
-    validation_notes: str
+    original_name: str = ""
+    validation_notes: str = ""
 
 
 def _normalize_mime(value: str | None) -> str:
@@ -278,6 +279,7 @@ def save_upload_with_integrity(
         stored_path=str(file_path),
         size_bytes=total_size,
         sha256=sha256.hexdigest(),
+        original_name=str(new_name or getattr(file, "filename", "") or ""),
         detected_mime=outcome.detected_mime or declared_mime,
         declared_mime=declared_mime,
         validation_status=outcome.status,

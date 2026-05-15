@@ -47,7 +47,8 @@ class Settings(BaseSettings):
     # Security
     SECRET_KEY: str = Field(default="")
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200
+    AUTH_IDLE_TIMEOUT_MINUTES: int = 20
 
     # Storage Integrations
     GDRIVE_SERVICE_ACCOUNT_JSON: str = ""

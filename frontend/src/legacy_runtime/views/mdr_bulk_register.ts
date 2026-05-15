@@ -699,16 +699,16 @@ const MAX_FILE_SIZE_MB = 15;
             return { titleE: '', titleP: '' };
         }
         const pkgNames = getPackageNames(disc, pkg);
-        const isGeneral = level === 'GEN';
+        const omitLocation = block === 'T' && level === 'GEN';
         const locationPart = `${block}${level}`;
 
         let titleE = pkgNames.nameE;
-        if (!isGeneral) titleE = `${titleE}-${locationPart}`;
+        if (!omitLocation) titleE = `${titleE}-${locationPart}`;
         if (subject) {
             titleE += ` - ${subject}`;
         }
 
-        let titleP = isGeneral ? pkgNames.nameP : `${locationPart}-${pkgNames.nameP}`;
+        let titleP = omitLocation ? pkgNames.nameP : `${locationPart}-${pkgNames.nameP}`;
         if (subject) titleP += `-${subject}`;
         return { titleE, titleP };
     }

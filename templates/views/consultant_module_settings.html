@@ -34,6 +34,20 @@
             <button
                 type="button"
                 class="settings-nav-card"
+                data-consultant-settings-tab="site-log-activity"
+                role="tab"
+                aria-selected="false"
+                aria-controls="consultant-settings-tab-site-log-activity"
+            >
+                <span class="material-icons-round settings-nav-card-icon">format_list_bulleted</span>
+                <span class="settings-nav-card-copy">
+                    <span class="settings-nav-card-title">فعالیت‌های اجرایی</span>
+                    <span class="settings-nav-card-subtitle">Site Log Activity Catalog</span>
+                </span>
+            </button>
+            <button
+                type="button"
+                class="settings-nav-card"
                 data-consultant-settings-tab="permit-qc-template"
                 role="tab"
                 aria-selected="false"
@@ -277,6 +291,24 @@
                             </section>
                         </div>
                     </div>
+                </div>
+            </section>
+            <section
+                id="consultant-settings-tab-site-log-activity"
+                class="module-settings-tab-content"
+                data-consultant-settings-tab-content="site-log-activity"
+                role="tabpanel"
+                aria-hidden="true"
+            >
+                <div class="general-settings-card">
+                    <h3 class="general-settings-title">
+                        <span class="material-icons-round">format_list_bulleted</span> کاتالوگ فعالیت‌های اجرایی
+                    </h3>
+                    <div class="general-settings-note general-settings-note-info">
+                        <span class="material-icons-round">info</span>
+                        <div>این کاتالوگ توسط مشاور مدیریت می‌شود و در فرم گزارش کارگاهی پیمانکار برای پر کردن ردیف‌های فعالیت استفاده می‌شود.</div>
+                    </div>
+                    <div id="consultantSiteLogActivityCatalogRoot" class="contractor-settings-catalogs-root"></div>
                 </div>
             </section>
             <section

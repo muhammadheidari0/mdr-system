@@ -41,6 +41,7 @@ def test_site_logs_workflow_status_constraints_and_read_only_after_verify() -> N
         project_code=project_code,
         discipline_code=discipline_code,
         email_prefix="wf_contractor",
+        organization_role="manager",
     )
     consultant = create_scoped_user_and_login(
         client,
@@ -49,6 +50,7 @@ def test_site_logs_workflow_status_constraints_and_read_only_after_verify() -> N
         project_code=project_code,
         discipline_code=discipline_code,
         email_prefix="wf_consultant",
+        organization_role="manager",
     )
 
     contractor_headers = contractor["headers"]  # type: ignore[assignment]
@@ -82,6 +84,29 @@ def test_site_logs_workflow_status_constraints_and_read_only_after_verify() -> N
 
     submit_again = client.post(f"/api/v1/site-logs/{log_id}/submit", json={"note": "again"}, headers=contractor_headers)  # type: ignore[arg-type]
     assert submit_again.status_code == 409, submit_again.text
+
+    return_res = client.post(
+        f"/api/v1/site-logs/{log_id}/return",
+        json={"note": "revise manpower hours"},
+        headers=consultant_headers,  # type: ignore[arg-type]
+    )
+    assert return_res.status_code == 200, return_res.text
+    assert str(return_res.json().get("data", {}).get("status_code")) == "RETURNED"
+
+    comments_res = client.get(f"/api/v1/site-logs/{log_id}/comments", headers=consultant_headers)  # type: ignore[arg-type]
+    assert comments_res.status_code == 200, comments_res.text
+    assert any(str(item.get("comment_text") or "") == "revise manpower hours" for item in comments_res.json().get("data", []))
+
+    update_returned = client.put(
+        f"/api/v1/site-logs/{log_id}",
+        json={**_new_log_payload(project_code, discipline_code, int(contractor.get("organization_id") or 0)), "summary": "updated after return"},
+        headers=contractor_headers,  # type: ignore[arg-type]
+    )
+    assert update_returned.status_code == 200, update_returned.text
+
+    resubmit = client.post(f"/api/v1/site-logs/{log_id}/submit", json={"note": "resubmitted"}, headers=contractor_headers)  # type: ignore[arg-type]
+    assert resubmit.status_code == 200, resubmit.text
+    assert str(resubmit.json().get("data", {}).get("status_code")) == "SUBMITTED"
 
     verify_res = client.post(
         f"/api/v1/site-logs/{log_id}/verify",

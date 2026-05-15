@@ -11,6 +11,11 @@ export interface TransmittalTemplateActionDeps {
   submitDraft: () => Promise<void> | void;
   submitIssue: () => Promise<void> | void;
   downloadCover?: (id: string) => Promise<void> | void;
+  closePrintPreview?: () => Promise<void> | void;
+  printPreview?: () => Promise<void> | void;
+  downloadPreview?: () => Promise<void> | void;
+  detailItem?: (id: string) => Promise<void> | void;
+  closeDetail?: () => Promise<void> | void;
   editItem?: (id: string) => Promise<void> | void;
   issueItem?: (id: string) => Promise<void> | void;
   voidItem?: (id: string) => Promise<void> | void;
@@ -36,6 +41,15 @@ function normalizeMode(input: unknown): "list" | "create" {
 
 async function invoke(handler: () => Promise<void> | void): Promise<void> {
   await Promise.resolve(handler());
+}
+
+function shouldIgnoreRowClick(target: HTMLElement | null): boolean {
+  if (!(target instanceof HTMLElement)) return true;
+  return Boolean(
+    target.closest(
+      "button,a,input,select,textarea,label,[data-tr2-action],[data-tr2-row-menu],.archive-row-menu"
+    )
+  );
 }
 
 function closeTransmittalRowMenus(root: HTMLElement, exceptMenu: HTMLElement | null = null): void {
@@ -64,7 +78,7 @@ function setMode(mode: string, deps: TransmittalModeDeps): boolean {
 
   const isCreate = normalized === "create";
   listEl.style.display = isCreate ? "none" : "block";
-  createEl.style.display = isCreate ? "block" : "none";
+  createEl.style.display = isCreate ? "flex" : "none";
   return true;
 }
 
@@ -76,6 +90,14 @@ function bindTemplateActions(root: HTMLElement | null, deps: TransmittalTemplate
     const target = event.target as HTMLElement | null;
     const actionEl = target?.closest("[data-tr2-action]") as HTMLElement | null;
     if (!actionEl || !root.contains(actionEl)) {
+      const rowEl = target?.closest("tr[data-transmittal-id]") as HTMLElement | null;
+      const rowId = String(rowEl?.getAttribute("data-transmittal-id") || "").trim();
+      if (rowEl && root.contains(rowEl) && rowId && deps.detailItem && !shouldIgnoreRowClick(target)) {
+        event.preventDefault();
+        closeTransmittalRowMenus(root);
+        await invoke(() => deps.detailItem?.(rowId));
+        return;
+      }
       closeTransmittalRowMenus(root);
       return;
     }
@@ -115,6 +137,23 @@ function bindTemplateActions(root: HTMLElement | null, deps: TransmittalTemplate
         if (id && deps.downloadCover) await invoke(() => deps.downloadCover?.(id));
         break;
       }
+      case "close-print-preview":
+        if (deps.closePrintPreview) await invoke(deps.closePrintPreview);
+        break;
+      case "print-preview-print":
+        if (deps.printPreview) await invoke(deps.printPreview);
+        break;
+      case "print-preview-download":
+        if (deps.downloadPreview) await invoke(deps.downloadPreview);
+        break;
+      case "detail-item": {
+        const id = String(actionEl.getAttribute("data-id") || "").trim();
+        if (id && deps.detailItem) await invoke(() => deps.detailItem?.(id));
+        break;
+      }
+      case "close-detail":
+        if (deps.closeDetail) await invoke(deps.closeDetail);
+        break;
       case "edit-item": {
         const id = String(actionEl.getAttribute("data-id") || "").trim();
         if (id && deps.editItem) await invoke(() => deps.editItem?.(id));

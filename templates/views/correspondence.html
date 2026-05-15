@@ -37,8 +37,10 @@
                     type="text"
                     id="corrSearchInput"
                     class="archive-search-input"
+                    list="corrSearchSuggestions"
                     placeholder="جستجو بر اساس شماره، موضوع، فرستنده یا گیرنده"
                 >
+                <datalist id="corrSearchSuggestions"></datalist>
             </div>
 
             <div class="corr-filter-group">
@@ -47,6 +49,9 @@
                 </select>
                 <select id="corrCategoryFilter" class="archive-filter-select">
                     <option value="">همه دسته‌ها</option>
+                </select>
+                <select id="corrTagFilter" class="archive-filter-select">
+                    <option value="">همه تگ‌ها</option>
                 </select>
                 <select id="corrDirectionFilter" class="archive-filter-select">
                     <option value="">همه جهت‌ها</option>
@@ -87,6 +92,7 @@
                         <th>موضوع</th>
                         <th>مرجع صدور</th>
                         <th>دسته</th>
+                        <th>تگ</th>
                         <th>جهت</th>
                         <th>تاریخ</th>
                         <th>وضعیت</th>
@@ -165,7 +171,7 @@
                     </div>
                     <div>
                         <label class="form-label-sm">دیسیپلین (اختیاری)</label>
-                        <select id="corrDisciplineInput" class="archive-search-input">
+                        <select id="corrTagInput" class="archive-search-input">
                             <option value="">بدون دیسیپلین</option>
                         </select>
                     </div>
@@ -339,12 +345,83 @@
                 </div>
             </div>
 
+            <div class="corr-subsection" id="corrRelationsSection">
+                <div class="corr-subsection-header">ارتباطات مکاتبه</div>
+                <div class="corr-form-grid corr-form-grid-4">
+                    <div>
+                        <label class="form-label-sm">نوع مقصد</label>
+                        <select id="corrRelationTargetTypeInput" class="archive-search-input">
+                            <option value="document">مدرک</option>
+                            <option value="transmittal">ترنسمیتال</option>
+                            <option value="meeting_minute">صورتجلسه</option>
+                            <option value="correspondence">مکاتبه</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">کد مقصد</label>
+                        <input type="text" id="corrRelationTargetCodeInput" class="archive-search-input" placeholder="Doc Code / Transmittal No / Meeting No / Letter Ref">
+                    </div>
+                    <div>
+                        <label class="form-label-sm">نوع ارتباط</label>
+                        <select id="corrRelationTypeInput" class="archive-search-input">
+                            <option value="related">مرتبط</option>
+                            <option value="references">ارجاع</option>
+                            <option value="supersedes">جایگزین</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label-sm">یادداشت</label>
+                        <input type="text" id="corrRelationNotesInput" class="archive-search-input" placeholder="اختیاری">
+                    </div>
+                </div>
+                <div class="corr-action-toolbar">
+                    <button class="btn-archive-primary" type="button" data-corr-action="submit-relation">
+                        <span class="material-icons-round">add_link</span>
+                        افزودن ارتباط
+                    </button>
+                </div>
+                <div class="corr-mini-table-wrap">
+                    <table class="archive-table corr-mini-table">
+                        <thead>
+                            <tr>
+                                <th>نوع</th>
+                                <th>کد</th>
+                                <th>عنوان</th>
+                                <th>پروژه</th>
+                                <th>وضعیت</th>
+                                <th style="width:90px;">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="corrRelationsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="corr-modal-footer">
                 <button type="button" class="btn-archive-icon" data-corr-action="close-modal">انصراف</button>
                 <button type="submit" form="corrForm" class="btn-archive-primary" id="corrSaveBtn">
                     <span class="material-icons-round">save</span>
                     ذخیره مکاتبه
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="corrPreviewModal" class="am-modal-overlay corr-preview-modal" aria-hidden="true">
+        <div class="am-modal-box corr-preview-box">
+            <div class="corr-modal-header">
+                <h3 id="corrPreviewTitle" style="margin:0; color:#0f172a;">پیش‌نمایش فایل</h3>
+                <button type="button" class="btn-archive-icon" data-corr-action="close-preview" aria-label="بستن پیش‌نمایش">
+                    <span class="material-icons-round">close</span>
+                </button>
+            </div>
+            <div id="corrPreviewBody" class="corr-preview-body"></div>
+            <div class="corr-modal-footer">
+                <a id="corrPreviewDownload" class="btn-archive-icon" href="#" download>
+                    <span class="material-icons-round">download</span>
+                    دانلود
+                </a>
+                <button type="button" class="btn-archive-primary" data-corr-action="close-preview">بستن</button>
             </div>
         </div>
     </div>

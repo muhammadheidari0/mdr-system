@@ -365,6 +365,7 @@ function roleLabel(role) {
     admin: 'مدیر سیستم',
     manager: 'سرپرست',
     dcc: 'کنترل مدارک (DCC)',
+    project_control: 'کنترل پروژه',
     user: 'کاربر عادی',
     viewer: 'مشاهده‌گر',
   };
@@ -373,7 +374,7 @@ function roleLabel(role) {
 
 function roleClass(role) {
   const key = String(role || '').toLowerCase();
-  return ['admin', 'manager', 'dcc', 'user', 'viewer'].includes(key) ? key : 'user';
+  return ['admin', 'manager', 'dcc', 'project_control', 'user', 'viewer'].includes(key) ? key : 'user';
 }
 
 function organizationTypeLabel(value) {
@@ -409,6 +410,7 @@ function organizationRoleLabel(value) {
     admin: 'مدیر سیستم',
     manager: 'سرپرست',
     dcc: 'کنترل مدارک',
+    project_control: 'کنترل پروژه',
     user: 'کاربر عادی',
     viewer: 'مشاهده‌گر',
   };
@@ -418,7 +420,7 @@ function organizationRoleLabel(value) {
 
 function organizationRoleClass(value) {
   const key = String(value || '').trim().toLowerCase();
-  return ['admin', 'manager', 'dcc', 'user', 'viewer'].includes(key) ? key : 'viewer';
+  return ['admin', 'manager', 'dcc', 'project_control', 'user', 'viewer'].includes(key) ? key : 'viewer';
 }
 
 function normalizeOrgId(value) {
@@ -500,7 +502,7 @@ function syncUserOrganizationRoleField(preferredRole = '') {
   const isSystem = orgType === 'system';
   const allowedRoles = isSystem
     ? ['admin']
-    : ['manager', 'dcc', 'user', 'viewer'];
+    : ['manager', 'dcc', 'project_control', 'user', 'viewer'];
   const normalizedPreferred = String(preferredRole || '').trim().toLowerCase();
   const selectedRole = allowedRoles.includes(normalizedPreferred)
     ? normalizedPreferred
@@ -590,6 +592,9 @@ function getUserScopeStatus(user, fallbackScope = { projects: [], disciplines: [
   const summary = user && typeof user.scope_summary === 'object' && user.scope_summary
     ? user.scope_summary
     : null;
+  const hasSummaryField = (field) => Boolean(
+    summary && Object.prototype.hasOwnProperty.call(summary, field),
+  );
 
   const fallbackProjects = Array.isArray(fallbackScope.projects) ? fallbackScope.projects.length : 0;
   const fallbackDisciplines = Array.isArray(fallbackScope.disciplines) ? fallbackScope.disciplines.length : 0;
@@ -602,25 +607,44 @@ function getUserScopeStatus(user, fallbackScope = { projects: [], disciplines: [
 
   let status = summary ? String(summary.status || '').toLowerCase() : '';
   if (!status) status = isSystemAdmin ? 'admin' : (hasCustomScope ? 'restricted' : 'full');
+  const source = summary ? String(summary.source || '').toLowerCase() : (hasCustomScope ? 'user' : 'full');
+  const sourceLabelMap = {
+    admin: 'کاربر سیستمی',
+    full: 'بدون محدودیت',
+    role: 'از نقش',
+    user: 'از تنظیمات کاربر',
+    intersection: 'تقاطع نقش و کاربر',
+    empty_intersection: 'تقاطع خالی',
+  };
+  const sourceLabel = sourceLabelMap[source] || 'ترکیبی';
 
   if (status === 'admin') {
     return {
       key: 'admin',
       badge: 'مدیر سیستم',
       detail: 'دسترسی کامل',
+      note: sourceLabel,
     };
   }
   if (status === 'restricted') {
+    const effectiveProjectsCount = summary
+      ? Number((hasSummaryField('effective_projects_count') ? summary.effective_projects_count : summary.projects_count) || 0)
+      : projectsCount;
+    const effectiveDisciplinesCount = summary
+      ? Number((hasSummaryField('effective_disciplines_count') ? summary.effective_disciplines_count : summary.disciplines_count) || 0)
+      : disciplinesCount;
     return {
       key: 'restricted',
       badge: 'محدود',
-      detail: `${projectsCount} پروژه، ${disciplinesCount} دیسیپلین`,
+      detail: `${effectiveProjectsCount} پروژه، ${effectiveDisciplinesCount} دیسیپلین`,
+      note: sourceLabel,
     };
   }
   return {
     key: 'full',
     badge: 'کامل',
     detail: 'بدون محدودیت پروژه/دیسیپلین',
+    note: sourceLabel,
   };
 }
 
@@ -824,6 +848,10 @@ function bindUsersToolbar() {
           closeAllUserActionMenus();
           openUserAccessModal(Number(actionEl.dataset.userId || 0));
           break;
+        case 'open-effective-access':
+          closeAllUserActionMenus();
+          openPermissionsEffectiveAccessFromUsers(Number(actionEl.dataset.userId || 0));
+          break;
         case 'edit-user':
           closeAllUserActionMenus();
           editUser(Number(actionEl.dataset.userId || 0));
@@ -1010,6 +1038,7 @@ async function loadUsers(options = {}) {
             <div class="scope-status-cell">
               <span class="scope-badge ${scopeStatus.key}">${escapeHtml(scopeStatus.badge)}</span>
               <span class="scope-detail">${escapeHtml(scopeStatus.detail)}</span>
+              <span class="scope-subdetail">${escapeHtml(scopeStatus.note || '')}</span>
             </div>
           </td>
           <td>${formatShamsiDate(user.created_at)}</td>
@@ -1030,6 +1059,10 @@ async function loadUsers(options = {}) {
                 <button type="button" class="users-kebab-item" data-users-action="open-user-access-modal" data-user-id="${user.id}" ${isSystemAdmin ? 'disabled' : ''}>
                   <span class="material-icons-round">vpn_key</span>
                   Ù…Ø¯ÛŒØ±ÛŒØª Ø¯Ø³ØªØ±Ø³ÛŒ
+                </button>
+                <button type="button" class="users-kebab-item" data-users-action="open-effective-access" data-user-id="${user.id}">
+                  <span class="material-icons-round">shield</span>
+                  بررسی دسترسی مؤثر
                 </button>
                 <button type="button" class="users-kebab-item" data-users-action="edit-user" data-user-id="${user.id}">
                   <span class="material-icons-round">edit</span>
@@ -1360,18 +1393,69 @@ async function loadUserAccessEffective(userId) {
   return accessRequest(`${ACCESS_USER_ACCESS_ENDPOINT}/${encodeURIComponent(userId)}`);
 }
 
-function updateAccessSummary(user) {
+function permissionSourceLabel(value) {
+  const map = {
+    full_access: 'دسترسی کامل',
+    category_matrix: 'ماتریس دسته‌بندی',
+    role_matrix: 'ماتریس نقش',
+    static_fallback: 'fallback ثابت',
+  };
+  const key = String(value || '').trim().toLowerCase();
+  return map[key] || (value || '-');
+}
+
+function updateAccessComputedMeta(payload) {
+  const root = document.getElementById('accessComputedMeta');
+  if (!root) return;
+  if (!payload || !payload.user) {
+    root.innerHTML = '';
+    return;
+  }
+
+  const roleScope = payload.role_scope || {};
+  const userScope = payload.user_scope || {};
+  const effectiveScope = payload.effective_scope || {};
+  const roleProjects = normalizeList(roleScope.projects);
+  const roleDisciplines = normalizeList(roleScope.disciplines);
+  const userProjects = normalizeList(userScope.projects);
+  const userDisciplines = normalizeList(userScope.disciplines);
+  const effectiveProjects = normalizeList(effectiveScope.projects);
+  const effectiveDisciplines = normalizeList(effectiveScope.disciplines);
+
+  root.innerHTML = `
+    <div class="access-computed-card">
+      <strong>Role Scope</strong>
+      <code>${escapeHtml(roleProjects.length ? roleProjects.join(', ') : 'FULL')}</code>
+      <p>دیسیپلین: ${escapeHtml(roleDisciplines.length ? roleDisciplines.join(', ') : 'FULL')}</p>
+    </div>
+    <div class="access-computed-card">
+      <strong>User Override</strong>
+      <code>${escapeHtml(userProjects.length ? userProjects.join(', ') : 'FULL')}</code>
+      <p>دیسیپلین: ${escapeHtml(userDisciplines.length ? userDisciplines.join(', ') : 'FULL')}</p>
+    </div>
+    <div class="access-computed-card">
+      <strong>Effective Scope</strong>
+      <code>${escapeHtml(effectiveProjects.length ? effectiveProjects.join(', ') : (effectiveScope.projects_restricted ? 'NONE' : 'FULL'))}</code>
+      <p>دیسیپلین: ${escapeHtml(effectiveDisciplines.length ? effectiveDisciplines.join(', ') : (effectiveScope.disciplines_restricted ? 'NONE' : 'FULL'))}</p>
+    </div>
+  `;
+}
+
+function updateAccessSummary(user, payload = null) {
   const summary = document.getElementById('userAccessSummary');
   if (!summary || !user) return;
   const org = user && typeof user.organization === 'object' ? user.organization : null;
-  const category = normalizePermissionCategory(user.permission_category || (org ? org.org_type : null));
+  const payloadUser = payload && payload.user && typeof payload.user === 'object' ? payload.user : null;
+  const category = normalizePermissionCategory((payloadUser && payloadUser.category) || user.permission_category || (org ? org.org_type : null));
   const effectiveRole = String((user.effective_role || user.role) || '').toLowerCase();
+  const permissionSource = permissionSourceLabel((payloadUser && payloadUser.permission_source) || '');
   summary.innerHTML = `
     <div><strong>Ú©Ø§Ø±Ø¨Ø±:</strong> ${escapeHtml(user.full_name || user.email || '-')}</div>
     <div><strong>Ø§ÛŒÙ…ÛŒÙ„:</strong> ${escapeHtml(user.email || '-')}</div>
     <div><strong>Ù†Ù‚Ø´ Ù…ÙˆØ«Ø±:</strong> ${escapeHtml(roleLabel(effectiveRole))}</div>
     <div><strong>Ø¯Ø³ØªÙ‡ Ø¯Ø³ØªØ±Ø³ÛŒ:</strong> ${escapeHtml(organizationTypeLabel(category))}</div>
     <div><strong>ÙˆØ¶Ø¹ÛŒØª:</strong> ${user.is_active ? 'ÙØ¹Ø§Ù„' : 'ØºÛŒØ±ÙØ¹Ø§Ù„'}</div>
+    <div><strong>Ù…Ù†Ø¨Ø¹ Ù…Ø¬ÙˆØ²:</strong> ${escapeHtml(permissionSource)}</div>
   `;
 }
 
@@ -1457,6 +1541,11 @@ function updateAccessPreview() {
 async function refreshAccessPreviewFromServer(userId, syncTags = false) {
   try {
     const payload = await loadUserAccessEffective(userId);
+    if (payload) {
+      const user = usersCache.get(String(userId));
+      if (user) updateAccessSummary(user, payload);
+      updateAccessComputedMeta(payload);
+    }
     if (payload && payload.role_scope) {
       accessState.currentRoleScope = {
         projects: normalizeList(payload.role_scope.projects),
@@ -1632,7 +1721,8 @@ async function openUserAccessModal(userId) {
   accessState.currentCategory = normalizePermissionCategory(
     user && (user.permission_category || (user.organization ? user.organization.org_type : null)),
   );
-  updateAccessSummary(user);
+  updateAccessSummary(user, null);
+  updateAccessComputedMeta(null);
   initAccessTagInputs();
   setAccessTags('projects', []);
   setAccessTags('disciplines', []);
@@ -1666,6 +1756,10 @@ async function openUserAccessModal(userId) {
     }
 
     const scope = (effectivePayload && effectivePayload.user_scope) || accessState.userScope[String(userId)] || { projects: [], disciplines: [] };
+    if (effectivePayload) {
+      updateAccessSummary(user, effectivePayload);
+      updateAccessComputedMeta(effectivePayload);
+    }
     setAccessTags('projects', scope.projects || []);
     setAccessTags('disciplines', scope.disciplines || []);
   } catch (error) {
@@ -1676,6 +1770,21 @@ async function openUserAccessModal(userId) {
     accessNotify('error', message);
   } finally {
     setAccessLoading(false);
+  }
+}
+
+function openPermissionsEffectiveAccessFromUsers(userId) {
+  const user = usersCache.get(String(userId));
+  if (!user) {
+    UI.error('اطلاعات کاربر برای بررسی دسترسی مؤثر یافت نشد.');
+    return;
+  }
+  if (typeof window.openPermissionsEffectiveAccessUser === 'function') {
+    window.openPermissionsEffectiveAccessUser(userId, user.full_name || user.email || '');
+    return;
+  }
+  if (typeof window.openSettingsTab === 'function') {
+    window.openSettingsTab('permissions');
   }
 }
 
@@ -1764,6 +1873,9 @@ function initSettingsUsers(forceReload = false) {
 
 window.loadUsers = loadUsers;
 window.initSettingsUsers = initSettingsUsers;
+window.openSettingsUserAccessModal = function openSettingsUserAccessModal(userId) {
+  return openUserAccessModal(Number(userId || 0));
+};
 
 
 

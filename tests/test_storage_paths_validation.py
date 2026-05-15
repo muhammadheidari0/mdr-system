@@ -30,6 +30,7 @@ def _restore_paths(headers: dict[str, str], before: dict) -> None:
         "correspondence_storage_path": str(
             before.get("correspondence_storage_path") or "./files/correspondence"
         ),
+        "site_log_storage_path": str(before.get("site_log_storage_path") or ""),
     }
     response = client.post("/api/v1/settings/storage-paths", json=payload, headers=headers)
     assert response.status_code == 200, response.text
@@ -164,6 +165,68 @@ def test_storage_paths_accept_absolute_writable_under_allowed_roots(monkeypatch,
         assert body.get("ok") is True
         assert str(body.get("mdr_storage_path") or "") == str(mdr_path)
         assert str(body.get("correspondence_storage_path") or "") == str(corr_path)
+    finally:
+        monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", False)
+        monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", False)
+        monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", "")
+        _restore_paths(headers, before)
+
+
+def test_storage_paths_site_log_path_is_optional_and_preserved(monkeypatch, tmp_path: Path) -> None:
+    headers = _admin_headers()
+    before = _read_paths(headers)
+    allowed_root = (tmp_path / "allowed").resolve()
+    allowed_root.mkdir(parents=True, exist_ok=True)
+    mdr_path = (allowed_root / "technical").resolve()
+    corr_path = (allowed_root / "correspondence").resolve()
+    corr_path_2 = (allowed_root / "correspondence_2").resolve()
+    site_log_path = (allowed_root / "site_logs").resolve()
+
+    monkeypatch.setattr(settings, "STORAGE_ALLOWED_ROOTS", str(allowed_root))
+    monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", True)
+    monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", False)
+
+    try:
+        set_explicit = client.post(
+            "/api/v1/settings/storage-paths",
+            json={
+                "mdr_storage_path": str(mdr_path),
+                "correspondence_storage_path": str(corr_path),
+                "site_log_storage_path": str(site_log_path),
+            },
+            headers=headers,
+        )
+        assert set_explicit.status_code == 200, set_explicit.text
+        explicit_body = set_explicit.json()
+        assert explicit_body.get("site_log_storage_path") == str(site_log_path)
+        assert explicit_body.get("site_log_storage_path_effective") == str(site_log_path)
+
+        old_client_update = client.post(
+            "/api/v1/settings/storage-paths",
+            json={
+                "mdr_storage_path": str(mdr_path),
+                "correspondence_storage_path": str(corr_path_2),
+            },
+            headers=headers,
+        )
+        assert old_client_update.status_code == 200, old_client_update.text
+        old_client_body = old_client_update.json()
+        assert old_client_body.get("site_log_storage_path") == str(site_log_path)
+        assert old_client_body.get("site_log_storage_path_effective") == str(site_log_path)
+
+        clear_explicit = client.post(
+            "/api/v1/settings/storage-paths",
+            json={
+                "mdr_storage_path": str(mdr_path),
+                "correspondence_storage_path": str(corr_path_2),
+                "site_log_storage_path": "",
+            },
+            headers=headers,
+        )
+        assert clear_explicit.status_code == 200, clear_explicit.text
+        clear_body = clear_explicit.json()
+        assert clear_body.get("site_log_storage_path") == ""
+        assert clear_body.get("site_log_storage_path_effective") == str(corr_path_2)
     finally:
         monkeypatch.setattr(settings, "STORAGE_REQUIRE_ABSOLUTE_PATHS", False)
         monkeypatch.setattr(settings, "STORAGE_VALIDATE_WRITABLE_ON_SAVE", False)

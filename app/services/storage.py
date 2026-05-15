@@ -26,6 +26,7 @@ class StorageManager:
 
     MDR_STORAGE_KEY = "mdr_storage_path"
     CORRESPONDENCE_STORAGE_KEY = "correspondence_storage_path"
+    SITE_LOG_STORAGE_KEY = "site_log_storage_path"
     DEFAULT_MDR_STORAGE_PATH = "./files/technical"
     DEFAULT_CORRESPONDENCE_STORAGE_PATH = "./files/correspondence"
 
@@ -414,6 +415,12 @@ class StorageManager:
         )
         return self._resolve_path(raw)
 
+    def get_site_log_base_path(self) -> Path:
+        raw = self._get_setting(self.SITE_LOG_STORAGE_KEY, "")
+        if not raw:
+            return self.get_correspondence_base_path()
+        return self._resolve_path(raw)
+
     def get_mdr_webdav_base(self) -> str:
         """Get MDR base path normalized for WebDAV (absolute remote path)."""
         raw = self._get_setting(self.MDR_STORAGE_KEY, self.DEFAULT_MDR_STORAGE_PATH)
@@ -425,6 +432,13 @@ class StorageManager:
             self.CORRESPONDENCE_STORAGE_KEY,
             self.DEFAULT_CORRESPONDENCE_STORAGE_PATH,
         )
+        return self._normalize_remote_path(raw)
+
+    def get_site_log_webdav_base(self) -> str:
+        """Get Site Log base path normalized for WebDAV, falling back to Correspondence."""
+        raw = self._get_setting(self.SITE_LOG_STORAGE_KEY, "")
+        if not raw:
+            return self.get_correspondence_webdav_base()
         return self._normalize_remote_path(raw)
 
     @classmethod

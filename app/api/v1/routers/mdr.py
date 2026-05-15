@@ -100,18 +100,25 @@ def _get_project(db: Session, project_code: str) -> Project:
     return proj
 
 def _get_mdr_code(req: DocumentRequest, db: Session) -> str:
-    if req.mdr_code:
-        code = req.mdr_code.strip().upper()
-        exists = db.query(MdrCategory).filter(MdrCategory.code == code).first()
+    def ensure_active(code_value: str) -> str:
+        code = code_value.strip().upper()
+        exists = (
+            db.query(MdrCategory)
+            .filter(MdrCategory.code == code, MdrCategory.is_active.is_(True))
+            .first()
+        )
         if not exists:
-            raise HTTPException(status_code=400, detail=f"Invalid MDR Code: {code}")
+            raise HTTPException(status_code=400, detail=f"Invalid or inactive MDR Code: {code}")
         return code
+
+    if req.mdr_code:
+        return ensure_active(req.mdr_code)
     
     s = (req.sheetName or "").lower()
-    if "engineering" in s: return "E"
-    if "procurement" in s: return "P"
-    if "construction" in s: return "C"
-    return "E" 
+    if "engineering" in s: return ensure_active("E")
+    if "procurement" in s: return ensure_active("P")
+    if "construction" in s: return ensure_active("C")
+    return ensure_active("E") 
 
 def _resolve_phase(db: Session, phase_value: str) -> tuple[str, str]:
     v = (phase_value or "").strip()

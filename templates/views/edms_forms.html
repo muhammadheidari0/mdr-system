@@ -1,0 +1,119 @@
+<div id="view-edms-forms" class="view-section edms-forms-view" style="display: none;">
+    <div class="archive-card edms-forms-card">
+        <div class="archive-header">
+            <div class="header-content">
+                <h3 class="archive-title">
+                    <span class="material-icons-round">assignment</span>
+                    فرم‌ها
+                </h3>
+                <p class="archive-subtitle">نمای خواندنی وضعیت فرم‌های کارگاهی، RFI، NCR، دستورکار و Permit/QC</p>
+            </div>
+            <div class="header-actions">
+                <button type="button" class="btn-archive-icon" data-edms-forms-action="refresh" title="به‌روزرسانی">
+                    <span class="material-icons-round">refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="edms-forms-summary" aria-label="خلاصه فرم‌ها">
+            <div class="edms-forms-summary-card">
+                <strong id="edmsFormsTotal">0</strong>
+                <span>کل فرم‌ها</span>
+            </div>
+            <div class="edms-forms-summary-card is-open">
+                <strong id="edmsFormsOpen">0</strong>
+                <span>باز</span>
+            </div>
+            <div class="edms-forms-summary-card is-overdue">
+                <strong id="edmsFormsOverdue">0</strong>
+                <span>سررسید گذشته</span>
+            </div>
+            <div class="edms-forms-summary-card is-contractor">
+                <strong id="edmsFormsContractor">0</strong>
+                <span>دست پیمانکار</span>
+            </div>
+            <div class="edms-forms-summary-card is-consultant">
+                <strong id="edmsFormsConsultant">0</strong>
+                <span>دست مشاور / کنترل</span>
+            </div>
+        </div>
+
+        <div class="archive-toolbar edms-forms-toolbar">
+            <input id="edmsFormsSearch" class="archive-search-input" type="text" placeholder="جستجو شماره، موضوع یا شرح..." autocomplete="off">
+            <select id="edmsFormsType" class="archive-filter-select">
+                <option value="">همه فرم‌ها</option>
+                <option value="SITE_LOG">گزارش کارگاهی</option>
+                <option value="RFI">RFI</option>
+                <option value="NCR">NCR</option>
+                <option value="WORK_INSTRUCTION">دستورکار</option>
+                <option value="PERMIT_QC">Permit/QC</option>
+            </select>
+            <select id="edmsFormsOwner" class="archive-filter-select">
+                <option value="all">همه مسئولیت‌ها</option>
+                <option value="contractor">دست پیمانکار</option>
+                <option value="consultant">دست مشاور / کنترل</option>
+                <option value="closed">بسته‌شده</option>
+            </select>
+            <input id="edmsFormsProject" class="archive-filter-select" type="text" placeholder="پروژه">
+            <input id="edmsFormsDiscipline" class="archive-filter-select" type="text" placeholder="دیسیپلین">
+            <input id="edmsFormsStatus" class="archive-filter-select" type="text" placeholder="وضعیت">
+            <input id="edmsFormsDateFrom" class="archive-filter-date" type="date" title="از تاریخ">
+            <input id="edmsFormsDateTo" class="archive-filter-date" type="date" title="تا تاریخ">
+            <label class="edms-forms-check">
+                <input id="edmsFormsOverdueOnly" type="checkbox">
+                <span>فقط سررسید گذشته</span>
+            </label>
+            <button type="button" class="btn-archive-icon" data-edms-forms-action="reset" title="پاک کردن فیلترها">
+                <span class="material-icons-round">filter_alt_off</span>
+            </button>
+        </div>
+
+        <div class="edms-forms-table-wrap">
+            <table class="archive-table edms-forms-table">
+                <thead>
+                    <tr>
+                        <th>نوع</th>
+                        <th>شماره</th>
+                        <th>موضوع / عنوان</th>
+                        <th>پروژه</th>
+                        <th>دیسیپلین</th>
+                        <th>وضعیت</th>
+                        <th>مسئول فعلی</th>
+                        <th>تاریخ</th>
+                        <th>سررسید</th>
+                        <th>پیوست</th>
+                        <th>اقدام</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="edmsFormsTableBody">
+                    <tr><td colspan="12" class="archive-empty">در حال بارگذاری...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="edms-forms-footer">
+            <div id="edmsFormsPaginationInfo">-</div>
+            <div class="edms-forms-pagination-actions">
+                <button type="button" class="btn-archive-icon" data-edms-forms-action="prev">قبلی</button>
+                <button type="button" class="btn-archive-icon" data-edms-forms-action="next">بعدی</button>
+            </div>
+        </div>
+
+        <div id="edmsFormsDrawer" class="edms-forms-drawer" hidden>
+            <div class="edms-forms-drawer-backdrop" data-edms-forms-action="close-detail"></div>
+            <aside class="edms-forms-drawer-panel" aria-label="جزئیات فرم">
+                <div class="edms-forms-drawer-header">
+                    <div>
+                        <h3 id="edmsFormsDrawerTitle">جزئیات فرم</h3>
+                        <p id="edmsFormsDrawerMeta">-</p>
+                    </div>
+                    <button type="button" class="btn-archive-icon" data-edms-forms-action="close-detail" title="بستن">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div id="edmsFormsDrawerBody" class="edms-forms-drawer-body"></div>
+            </aside>
+        </div>
+    </div>
+</div>

@@ -28,6 +28,7 @@
           <option value="admin">مدیر سیستم</option>
           <option value="manager">سرپرست</option>
           <option value="dcc">کنترل مدارک (DCC)</option>
+          <option value="project_control">کنترل پروژه</option>
           <option value="user">کاربر عادی</option>
           <option value="viewer">مشاهده‌گر</option>
         </select>
@@ -144,6 +145,7 @@
         <select id="userOrganizationRole" class="form-input">
           <option value="manager">سرپرست</option>
           <option value="dcc">کنترل مدارک (DCC)</option>
+          <option value="project_control">کنترل پروژه</option>
           <option value="user">کاربر عادی</option>
           <option value="viewer">مشاهده‌گر</option>
           <option value="admin">مدیر سیستم</option>
@@ -229,6 +231,12 @@
         </div>
 
         <div id="accessSourceStatus" class="form-help access-source-status" data-tone="info"></div>
+        <div class="access-scope-note">
+          <strong>منطق محاسبه:</strong>
+          محدوده نقش از ماتریس دسترسی می‌آید، محدوده کاربر از همین پنجره ذخیره می‌شود، و دسترسی نهایی از تقاطع این دو
+          به دست می‌آید.
+        </div>
+        <div id="accessComputedMeta" class="access-computed-meta"></div>
 
         <div class="access-preview">
           <div class="access-preview-header">

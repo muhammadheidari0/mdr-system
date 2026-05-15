@@ -3,22 +3,38 @@ from __future__ import annotations
 
 import os
 import re
+import io
+import secrets
 from typing import Any
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import desc
+from sqlalchemy import desc, func, or_
 from fastapi import UploadFile, HTTPException
 
 from app.api.dependencies import enforce_scope_access, has_permission_for_user
 from app.db.models import (
     ArchiveFile,
+    ArchiveFilePublicShare,
+    Block,
+    CommItem,
+    Correspondence,
+    Discipline,
     DocumentActivity,
     DocumentComment,
+    DocumentExternalRelation,
     DocumentRelation,
     DocumentRevision,
     DocumentTag,
     DocumentTagAssignment,
+    Level,
+    MeetingMinute,
+    MdrCategory,
     MdrDocument,
+    Package,
+    PermitQcPermit,
+    Phase,
+    Project,
+    SiteLog,
     Transmittal,
     TransmittalDoc,
 )
@@ -35,6 +51,11 @@ from app.services.storage_sync import (
     resolve_mirror_enqueue_plan,
     resolve_nextcloud_runtime,
 )
+from app.services.nextcloud_adapter import NextcloudAdapter
+
+PUBLIC_SHARE_UNAVAILABLE_DETAIL = "این فایل هنوز در Nextcloud قابل اشتراک‌گذاری نیست."
+PUBLIC_SHARE_DEFAULT_EXPIRY_DAYS = 60
+PUBLIC_SHARE_READY_MIRROR_STATUSES = {"mirrored"}
 
 # ---------------------------------------------------------
 # 1. Helper: Calculate Next Revision
@@ -114,6 +135,533 @@ def _normalize_archive_file_kind(value: str | None) -> str:
     return "pdf"
 
 
+def _normalize_lookup_code(value: Any, default: str = "") -> str:
+    text = str(value or "").strip().upper()
+    return text or str(default or "").strip().upper()
+
+
+def _archive_file_name_for_document(
+    document: MdrDocument,
+    *,
+    revision_code: str,
+    extension: str,
+) -> str:
+    raw_title = document.doc_title_e or document.subject or "Untitled"
+    safe_title = folder_service.safe_name(raw_title)
+    if len(safe_title) > 100:
+        safe_title = safe_title[:100]
+    clean_extension = str(extension or "").strip()
+    if clean_extension and not clean_extension.startswith("."):
+        clean_extension = f".{clean_extension}"
+    return f"{document.doc_number}_{safe_title}_Rev{revision_code}{clean_extension}"
+
+
+def _document_project_folder(document: MdrDocument) -> str:
+    safe_project_code = folder_service.safe_name(document.project_code or "project") or "project"
+    project_name = ""
+    if document.project:
+        project_name = document.project.name_e or document.project.name_p or ""
+    safe_project_name = folder_service.safe_name(project_name)
+    if safe_project_name and safe_project_name.lower() != "unk":
+        return folder_service.safe_name(f"{safe_project_code} - {safe_project_name}") or safe_project_code
+    return safe_project_code
+
+
+def _join_webdav_absolute_path(*segments: str | None) -> str:
+    cleaned: list[str] = []
+    for segment in segments:
+        text = str(segment or "").strip().replace("\\", "/").strip("/")
+        if text:
+            cleaned.append(text)
+    return f"/{'/'.join(cleaned)}"
+
+
+def _archive_storage_target(
+    db: Session,
+    document: MdrDocument,
+    *,
+    revision_code: str,
+    extension: str,
+    file_kind: str,
+    prefer_webdav: bool | None = None,
+) -> tuple[StorageManager, str, str]:
+    storage = StorageManager(db)
+    normalized_kind = _normalize_archive_file_kind(file_kind)
+    clean_name = _archive_file_name_for_document(
+        document,
+        revision_code=str(revision_code or "00").strip() or "00",
+        extension=extension,
+    )
+
+    proj_name = document.project.name_e if document.project else document.project_code
+    mdr_folder = folder_service.get_mdr_folder_name(db, document.mdr_code)
+
+    phase_name = document.phase_code
+    if document.phase:
+        phase_name = document.phase.name_e or document.phase_code
+
+    disc_name = "General"
+    disc_code = document.discipline_code or "GN"
+    if document.discipline:
+        disc_name = document.discipline.name_e
+
+    pkg_name = "General"
+    pkg_code = document.package_code or "00"
+    if document.package:
+        pkg_name = document.package.name_e or document.package.name_p or document.package_code
+
+    use_webdav = storage._is_webdav_primary_mode() if prefer_webdav is None else bool(prefer_webdav)
+    if use_webdav:
+        integrations = get_storage_integrations(db)
+        runtime = resolve_nextcloud_runtime(integrations)
+        root_path = str(runtime.get("root_path") or "")
+        mdr_base = storage.get_mdr_webdav_base()
+        pkg_folder = folder_service.safe_name(f"{pkg_code} - {pkg_name}") or folder_service.safe_name(pkg_code) or "00"
+        absolute_path = _join_webdav_absolute_path(
+            mdr_base,
+            _document_project_folder(document),
+            folder_service.safe_name(phase_name) or "Phase",
+            folder_service.safe_name(disc_code) or "GN",
+            pkg_folder,
+            normalized_kind,
+            clean_name,
+        )
+        relative_path = StorageManager.relativize_webdav_path(absolute_path, root_path)
+        return storage, clean_name, f"webdav://{relative_path}"
+
+    target_folder = storage.get_mdr_path(
+        project_code=document.project_code,
+        project_name=proj_name,
+        mdr_folder_name=mdr_folder,
+        phase_name=phase_name,
+        phase_code=document.phase_code or phase_name,
+        disc_name=disc_name,
+        disc_code=disc_code,
+        pkg_name=pkg_name,
+        pkg_code=pkg_code,
+        package_name=pkg_name,
+        file_kind=normalized_kind,
+    )
+    return storage, clean_name, os.path.join(target_folder, folder_service.safe_name(clean_name))
+
+
+def _nextcloud_adapter(db: Session) -> NextcloudAdapter:
+    integrations = get_storage_integrations(db)
+    runtime = resolve_nextcloud_runtime(integrations)
+    if not runtime.get("enabled") or runtime.get("mode") != "webdav":
+        raise HTTPException(status_code=503, detail="WebDAV storage not configured.")
+    return NextcloudAdapter(
+        base_url=str(runtime.get("base_url") or ""),
+        username=str(runtime.get("username") or ""),
+        app_password=str(runtime.get("app_password") or ""),
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 10),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+
+
+def _webdav_relative_path(stored_path: str) -> str:
+    return str(stored_path or "").strip().replace("webdav://", "", 1)
+
+
+def _normalize_nextcloud_share_path(path: str | None) -> str:
+    raw = str(path or "").strip().replace("\\", "/")
+    if not raw:
+        return ""
+    try:
+        return NextcloudAdapter.normalize_browse_path(raw)
+    except ValueError:
+        return ""
+
+
+def _resolve_nextcloud_share_path(file_record: ArchiveFile | None) -> dict[str, Any]:
+    if not file_record:
+        return {
+            "path": None,
+            "source": None,
+            "status": "missing_remote_path",
+            "supported": False,
+        }
+
+    stored_path = str(getattr(file_record, "stored_path", "") or "").strip()
+    if stored_path.startswith("webdav://"):
+        relative_path = _normalize_nextcloud_share_path(_webdav_relative_path(stored_path))
+        if relative_path:
+            return {
+                "path": relative_path,
+                "source": "primary_nextcloud",
+                "status": "available",
+                "supported": True,
+            }
+        return {
+            "path": None,
+            "source": None,
+            "status": "missing_remote_path",
+            "supported": False,
+        }
+
+    mirror_provider = str(getattr(file_record, "mirror_provider", "") or "").strip().lower()
+    if mirror_provider == "nextcloud":
+        mirror_status = str(getattr(file_record, "mirror_status", "") or "").strip().lower()
+        remote_id = _normalize_nextcloud_share_path(getattr(file_record, "mirror_remote_id", None))
+        if mirror_status not in PUBLIC_SHARE_READY_MIRROR_STATUSES:
+            return {
+                "path": remote_id or None,
+                "source": "mirror_nextcloud" if remote_id else None,
+                "status": "mirror_not_ready",
+                "supported": False,
+            }
+        if not remote_id:
+            return {
+                "path": None,
+                "source": None,
+                "status": "missing_remote_path",
+                "supported": False,
+            }
+        return {
+            "path": remote_id,
+            "source": "mirror_nextcloud",
+            "status": "available",
+            "supported": True,
+        }
+
+    return {
+        "path": None,
+        "source": None,
+        "status": "not_nextcloud",
+        "supported": False,
+    }
+
+
+def public_share_support_payload(file_record: ArchiveFile | None) -> dict[str, Any]:
+    resolved = _resolve_nextcloud_share_path(file_record)
+    return {
+        "public_share_supported": bool(resolved.get("supported")),
+        "public_share_source": resolved.get("source") if resolved.get("supported") else None,
+        "public_share_status": str(resolved.get("status") or "missing_remote_path"),
+    }
+
+
+def _active_archive_public_share(db: Session, file_id: int) -> ArchiveFilePublicShare | None:
+    now = datetime.utcnow()
+    return (
+        db.query(ArchiveFilePublicShare)
+        .filter(
+            ArchiveFilePublicShare.file_id == int(file_id or 0),
+            ArchiveFilePublicShare.provider == "nextcloud",
+            ArchiveFilePublicShare.revoked_at.is_(None),
+            or_(ArchiveFilePublicShare.expires_at.is_(None), ArchiveFilePublicShare.expires_at > now),
+        )
+        .order_by(ArchiveFilePublicShare.created_at.desc(), ArchiveFilePublicShare.id.desc())
+        .first()
+    )
+
+
+def serialize_archive_public_share(
+    row: ArchiveFilePublicShare | None,
+    *,
+    password: str | None = None,
+) -> dict[str, Any] | None:
+    if not row:
+        return None
+    payload = {
+        "id": int(row.id or 0),
+        "file_id": int(row.file_id or 0),
+        "provider": row.provider,
+        "provider_share_id": row.provider_share_id,
+        "token": row.token,
+        "url": row.share_url,
+        "resolved_path": row.resolved_path,
+        "source": row.source,
+        "permissions": int(row.permissions or 1),
+        "password_set": bool(row.password_set),
+        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
+    }
+    if password is not None:
+        payload["password"] = password
+    return payload
+
+
+def _load_archive_file_for_public_share(
+    db: Session,
+    file_id: int,
+    user: Any,
+) -> tuple[ArchiveFile, MdrDocument]:
+    row = (
+        db.query(ArchiveFile)
+        .options(joinedload(ArchiveFile.document_revision).joinedload(DocumentRevision.document))
+        .filter(ArchiveFile.id == int(file_id or 0), ArchiveFile.deleted_at.is_(None))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="File not found.")
+    revision = row.document_revision
+    document = revision.document if revision else None
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    enforce_scope_access(
+        db,
+        user,
+        project_code=document.project_code,
+        discipline_code=document.discipline_code,
+    )
+    if document.deleted_at:
+        raise HTTPException(status_code=409, detail="Deleted document is read-only.")
+    return row, document
+
+
+def _parse_public_share_expire_date(value: Any) -> date:
+    if isinstance(value, datetime):
+        day = value.date()
+    elif isinstance(value, date):
+        day = value
+    else:
+        raw = str(value or "").strip()
+        if raw:
+            try:
+                day = date.fromisoformat(raw[:10])
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="Invalid expire_date format (YYYY-MM-DD expected).") from exc
+        else:
+            day = date.today() + timedelta(days=PUBLIC_SHARE_DEFAULT_EXPIRY_DAYS)
+    if day < date.today():
+        raise HTTPException(status_code=422, detail="expire_date cannot be in the past.")
+    return day
+
+
+def _generate_public_share_password() -> str:
+    return secrets.token_urlsafe(15)
+
+
+def _configured_public_share_password(db: Session) -> str:
+    integrations = get_storage_integrations(db)
+    return str((integrations.get("nextcloud") or {}).get("public_share_password") or "").strip()
+
+
+def _public_share_password_required(db: Session) -> bool:
+    integrations = get_storage_integrations(db)
+    return bool((integrations.get("nextcloud") or {}).get("public_share_password_required", True))
+
+
+def get_archive_file_public_share(
+    db: Session,
+    file_id: int,
+    user: Any,
+) -> dict[str, Any]:
+    file_record, _document = _load_archive_file_for_public_share(db, file_id, user)
+    support = public_share_support_payload(file_record)
+    return {
+        "ok": True,
+        "file_id": int(file_record.id or 0),
+        **support,
+        "public_share": serialize_archive_public_share(
+            _active_archive_public_share(db, int(file_record.id or 0))
+        ),
+    }
+
+
+def create_archive_file_public_share(
+    db: Session,
+    file_id: int,
+    user: Any,
+    *,
+    expire_date: Any = None,
+    password: str | None = None,
+    regenerate: bool = False,
+) -> dict[str, Any]:
+    file_record, document = _load_archive_file_for_public_share(db, file_id, user)
+    resolved = _resolve_nextcloud_share_path(file_record)
+    support = public_share_support_payload(file_record)
+    if not resolved.get("supported") or not resolved.get("path"):
+        raise HTTPException(status_code=409, detail=PUBLIC_SHARE_UNAVAILABLE_DETAIL)
+
+    adapter = _nextcloud_adapter(db)
+    remote_path = str(resolved.get("path") or "").strip()
+    if not adapter.file_exists(remote_path):
+        raise HTTPException(status_code=409, detail=PUBLIC_SHARE_UNAVAILABLE_DETAIL)
+
+    active = _active_archive_public_share(db, int(file_record.id or 0))
+    if active and not regenerate:
+        return {
+            "ok": True,
+            "file_id": int(file_record.id or 0),
+            **support,
+            "public_share": serialize_archive_public_share(active),
+        }
+
+    if active and regenerate:
+        try:
+            adapter.delete_share(active.provider_share_id)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Failed to revoke existing Nextcloud share.") from exc
+        active.revoked_at = datetime.utcnow()
+        active.revoked_by_id = getattr(user, "id", None)
+
+    expires_day = _parse_public_share_expire_date(expire_date)
+    expires_at = datetime.combine(expires_day, time.max.replace(microsecond=0))
+    manual_password = str(password or "").strip()
+    if manual_password:
+        share_password: str | None = manual_password
+    elif _public_share_password_required(db):
+        share_password = _configured_public_share_password(db) or _generate_public_share_password()
+    else:
+        share_password = None
+    try:
+        created = adapter.create_public_share(
+            remote_relative_path=remote_path,
+            password=share_password,
+            expire_date=expires_day.isoformat(),
+            permissions=1,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Failed to create Nextcloud public share.") from exc
+
+    provider_share_id = str(created.get("provider_share_id") or "").strip()
+    share_url = str(created.get("url") or "").strip()
+    if not provider_share_id or not share_url:
+        raise HTTPException(status_code=502, detail="Nextcloud did not return a valid public share.")
+
+    row = ArchiveFilePublicShare(
+        file_id=int(file_record.id or 0),
+        provider="nextcloud",
+        provider_share_id=provider_share_id,
+        token=created.get("token"),
+        share_url=share_url,
+        resolved_path=remote_path,
+        source=str(resolved.get("source") or ""),
+        permissions=1,
+        password_set=bool(share_password),
+        expires_at=expires_at,
+        created_by_id=getattr(user, "id", None),
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(row)
+    db.flush()
+    log_document_activity(
+        db,
+        int(document.id or 0),
+        "public_share_renewed" if active and regenerate else "public_share_created",
+        user,
+        detail=f"Public share created for {file_record.original_name}",
+        after_data={
+            "file_id": int(file_record.id or 0),
+            "source": row.source,
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+            "provider_share_id": row.provider_share_id,
+        },
+    )
+    db.commit()
+    db.refresh(row)
+    return {
+        "ok": True,
+        "file_id": int(file_record.id or 0),
+        **support,
+        "public_share": serialize_archive_public_share(row, password=share_password),
+    }
+
+
+def revoke_archive_file_public_share(
+    db: Session,
+    file_id: int,
+    user: Any,
+) -> dict[str, Any]:
+    file_record, document = _load_archive_file_for_public_share(db, file_id, user)
+    row = _active_archive_public_share(db, int(file_record.id or 0))
+    if not row:
+        raise HTTPException(status_code=404, detail="Public share not found.")
+    adapter = _nextcloud_adapter(db)
+    try:
+        adapter.delete_share(row.provider_share_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Failed to revoke Nextcloud public share.") from exc
+    row.revoked_at = datetime.utcnow()
+    row.revoked_by_id = getattr(user, "id", None)
+    row.updated_at = datetime.utcnow()
+    log_document_activity(
+        db,
+        int(document.id or 0),
+        "public_share_revoked",
+        user,
+        detail=f"Public share revoked for {file_record.original_name}",
+        before_data={
+            "file_id": int(file_record.id or 0),
+            "source": row.source,
+            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+            "provider_share_id": row.provider_share_id,
+        },
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "file_id": int(file_record.id or 0),
+        **public_share_support_payload(file_record),
+        "public_share": None,
+        "revoked_share": serialize_archive_public_share(row),
+    }
+
+
+def _delete_physical_file(db: Session, stored_path: str | None) -> None:
+    path_value = str(stored_path or "").strip()
+    if not path_value:
+        return
+    if path_value.startswith("webdav://"):
+        adapter = _nextcloud_adapter(db)
+        relative_path = _webdav_relative_path(path_value)
+        if not adapter.file_exists(relative_path):
+            return
+        if not adapter.delete_file(relative_path):
+            raise HTTPException(status_code=500, detail="Failed to delete file from WebDAV storage.")
+        return
+    if os.path.exists(path_value):
+        os.remove(path_value)
+
+
+def _move_physical_file(db: Session, source_path: str, target_path: str) -> None:
+    source = str(source_path or "").strip()
+    target = str(target_path or "").strip()
+    if not source or not target or source == target:
+        return
+    if source.startswith("webdav://") or target.startswith("webdav://"):
+        if not source.startswith("webdav://") or not target.startswith("webdav://"):
+            raise HTTPException(status_code=500, detail="Cannot move file across local and WebDAV storage modes.")
+        adapter = _nextcloud_adapter(db)
+        source_relative = _webdav_relative_path(source)
+        target_relative = _webdav_relative_path(target)
+        if not adapter.file_exists(source_relative):
+            raise HTTPException(status_code=404, detail="Source file not found in WebDAV storage.")
+        if adapter.file_exists(target_relative):
+            raise HTTPException(status_code=409, detail="Target archive file already exists.")
+        payload = b"".join(adapter.download_file_stream(source_relative))
+        target_folder = "/".join(target_relative.strip("/").split("/")[:-1])
+        if target_folder:
+            adapter.ensure_path(target_folder)
+        uploaded = False
+        try:
+            adapter.upload_file_from_stream(file_stream=io.BytesIO(payload), remote_relative_path=target_relative)
+            uploaded = True
+            if not adapter.delete_file(source_relative):
+                raise HTTPException(status_code=500, detail="Failed to delete old WebDAV file after move.")
+        except Exception:
+            if uploaded:
+                try:
+                    adapter.delete_file(target_relative)
+                except Exception:
+                    pass
+            raise
+        return
+
+    if not os.path.exists(source):
+        raise HTTPException(status_code=404, detail="Source archive file not found on disk.")
+    if os.path.exists(target):
+        raise HTTPException(status_code=409, detail="Target archive file already exists.")
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    os.replace(source, target)
+
+
 def _canonical_subject_text(subject_e: str | None, subject_p: str | None) -> str:
     p = str(subject_p or "").strip()
     if p:
@@ -126,8 +674,61 @@ def _subject_pair_for_titles(subject_e: str | None, subject_p: str | None) -> tu
     return subject_value, subject_value
 
 
+def _active_mdr_code_or_422(db: Session, value: Any) -> str:
+    code = str(value or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=422, detail="MDR code is required.")
+    exists = (
+        db.query(MdrCategory.code)
+        .filter(MdrCategory.code == code, MdrCategory.is_active.is_(True))
+        .first()
+    )
+    if not exists:
+        raise HTTPException(status_code=422, detail="MDR code is not active or does not exist.")
+    return code
+
+
 def _subject_storage(subject_e: str | None, subject_p: str | None) -> str:
     return _canonical_subject_text(subject_e, subject_p)
+
+
+def _find_subject_conflict(
+    db: Session,
+    *,
+    project_code: str | None,
+    subject: str | None,
+    exclude_document_id: int,
+) -> MdrDocument | None:
+    target = mdr_service._normalize_subject_for_key(subject)
+    if not target:
+        return None
+    rows = (
+        db.query(MdrDocument)
+        .filter(MdrDocument.project_code == str(project_code or "").strip().upper())
+        .filter(MdrDocument.id != int(exclude_document_id or 0))
+        .filter(MdrDocument.deleted_at.is_(None))
+        .all()
+    )
+    for row in rows:
+        if mdr_service._normalize_subject_for_key(row.subject) == target:
+            return row
+    return None
+
+
+def _set_subject_and_rebuild_titles(doc: MdrDocument, db: Session, subject: str | None) -> None:
+    subject_value = str(subject or "").strip()
+    full_e, full_p = mdr_service.build_document_titles(
+        db,
+        discipline_code=str(doc.discipline_code or "").strip().upper(),
+        package_code=str(doc.package_code or "").strip().upper(),
+        block_code=str(doc.block or "").strip().upper(),
+        level_code=str(doc.level_code or "").strip().upper(),
+        subject_e=subject_value,
+        subject_p=subject_value,
+    )
+    doc.doc_title_e = full_e
+    doc.doc_title_p = full_p
+    doc.subject = subject_value
 
 
 def _refresh_doc_titles_from_subjects(doc: MdrDocument, db: Session, subject_e: str | None, subject_p: str | None) -> None:
@@ -375,6 +976,9 @@ def _document_capabilities(db: Session, document: MdrDocument, user: Any) -> dic
             has_permission_for_user(db, user, "documents:relation_manage") and not is_deleted
         ),
         "can_manage_tags": bool(has_permission_for_user(db, user, "documents:tag_manage") and not is_deleted),
+        "can_reclassify": bool(has_permission_for_user(db, user, "documents:reclassify") and not is_deleted),
+        "can_replace_files": bool(has_permission_for_user(db, user, "archive:update") and not is_deleted),
+        "can_share_public": bool(has_permission_for_user(db, user, "archive:share") and not is_deleted),
     }
 
 
@@ -410,6 +1014,12 @@ def get_document_detail(db: Session, document_id: int, user: Any) -> dict[str, A
     latest_revision = resolve_document_latest_revision(document)
     preview_file = resolve_document_preview_file(document)
     latest_file = _latest_live_file(document)
+    external_relations = (
+        db.query(DocumentExternalRelation)
+        .filter(DocumentExternalRelation.source_document_id == int(document.id or 0))
+        .order_by(DocumentExternalRelation.created_at.desc(), DocumentExternalRelation.id.desc())
+        .all()
+    )
     revisions = sorted(
         list(document.revisions or []),
         key=lambda row: (
@@ -442,6 +1052,10 @@ def get_document_detail(db: Session, document_id: int, user: Any) -> dict[str, A
                         "status": row.status,
                         "is_primary": bool(row.is_primary),
                         "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
+                        **public_share_support_payload(row),
+                        "public_share": serialize_archive_public_share(
+                            _active_archive_public_share(db, int(row.id or 0))
+                        ),
                     }
                     for row in files
                 ],
@@ -466,7 +1080,9 @@ def get_document_detail(db: Session, document_id: int, user: Any) -> dict[str, A
             "revisions": len(revisions),
             "comments": len(document.comments or []),
             "activities": len(document.activities or []),
-            "relations": len(document.outgoing_relations or []) + len(document.incoming_relations or []),
+            "relations": len(document.outgoing_relations or [])
+            + len(document.incoming_relations or [])
+            + len(external_relations),
             "tags": len(document.tag_assignments or []),
         },
         "capabilities": _document_capabilities(db, document, user),
@@ -484,7 +1100,7 @@ def get_document_detail(db: Session, document_id: int, user: Any) -> dict[str, A
         "relations": {
             "outgoing": [
                 row for row in document.outgoing_relations or [] if getattr(row.target_document, "deleted_at", None) is None
-            ],
+            ] + external_relations,
             "incoming": [
                 row for row in document.incoming_relations or [] if getattr(row.source_document, "deleted_at", None) is None
             ],
@@ -506,21 +1122,30 @@ def update_document_metadata(db: Session, document_id: int, updates: dict[str, A
         project_code=document.project_code,
         discipline_code=document.discipline_code,
     )
-    allowed_fields = {
-        "doc_title_e",
-        "doc_title_p",
-        "subject",
-        "phase_code",
-        "package_code",
-        "block",
-        "level_code",
-        "notes",
-    }
+    allowed_fields = {"subject", "notes"}
+    unexpected = sorted(str(key) for key in (updates or {}) if key not in allowed_fields)
+    if unexpected:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Fields are not editable here: {', '.join(unexpected)}",
+        )
     before = serialize_document_snapshot(document)
-    for key, value in (updates or {}).items():
-        if key not in allowed_fields:
-            continue
-        setattr(document, key, str(value).strip() if isinstance(value, str) else value)
+    if "subject" in (updates or {}):
+        subject_value = str((updates or {}).get("subject") or "").strip()
+        conflict = _find_subject_conflict(
+            db,
+            project_code=document.project_code,
+            subject=subject_value,
+            exclude_document_id=int(document.id or 0),
+        )
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Subject already exists for document {conflict.doc_number}.",
+            )
+        _set_subject_and_rebuild_titles(document, db, subject_value)
+    if "notes" in (updates or {}):
+        document.notes = str((updates or {}).get("notes") or "").strip()
     document.updated_at = datetime.utcnow()
     document.updated_by_id = getattr(user, "id", None)
     after = serialize_document_snapshot(document)
@@ -535,6 +1160,400 @@ def update_document_metadata(db: Session, document_id: int, updates: dict[str, A
     db.commit()
     db.refresh(document)
     return document
+
+
+def _extract_serial_from_scope(doc_number: str, prefix: str, suffix: str) -> int | None:
+    value = str(doc_number or "").strip().upper()
+    if not value.startswith(prefix):
+        return None
+    middle = value[len(prefix) :]
+    if suffix and middle.endswith(suffix):
+        middle = middle[: -len(suffix)]
+    if not re.fullmatch(r"\d+", middle or ""):
+        return None
+    return int(middle)
+
+
+def _validate_reclassification_payload(db: Session, payload: dict[str, Any]) -> dict[str, str]:
+    target = {
+        "project_code": _normalize_lookup_code(payload.get("project_code")),
+        "mdr_code": _normalize_lookup_code(payload.get("mdr_code")),
+        "phase_code": _normalize_lookup_code(payload.get("phase_code"), "X"),
+        "discipline_code": _normalize_lookup_code(payload.get("discipline_code")),
+        "package_code": _normalize_lookup_code(payload.get("package_code"), "00"),
+        "block": _normalize_lookup_code(payload.get("block")),
+        "level_code": _normalize_lookup_code(payload.get("level_code"), "GEN"),
+    }
+    missing = [key for key, value in target.items() if not value]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Missing required coding fields: {', '.join(missing)}")
+
+    project = (
+        db.query(Project)
+        .filter(Project.code == target["project_code"], Project.is_active == True)
+        .first()
+    )
+    if not project:
+        raise HTTPException(status_code=422, detail="Project code is not valid.")
+
+    category = (
+        db.query(MdrCategory)
+        .filter(MdrCategory.code == target["mdr_code"], MdrCategory.is_active == True)
+        .first()
+    )
+    if not category:
+        raise HTTPException(status_code=422, detail="MDR code is not valid.")
+
+    phase = db.query(Phase).filter(Phase.ph_code == target["phase_code"]).first()
+    if not phase:
+        raise HTTPException(status_code=422, detail="Phase code is not valid.")
+
+    discipline = db.query(Discipline).filter(Discipline.code == target["discipline_code"]).first()
+    if not discipline:
+        raise HTTPException(status_code=422, detail="Discipline code is not valid.")
+
+    package_row, resolved_package_code = mdr_service._resolve_package_row(
+        db,
+        target["discipline_code"],
+        target["package_code"],
+    )
+    if not package_row:
+        raise HTTPException(status_code=422, detail="Package code is not valid for selected discipline.")
+    target["package_code"] = resolved_package_code
+
+    block = (
+        db.query(Block)
+        .filter(
+            Block.project_code == target["project_code"],
+            Block.code == target["block"],
+            Block.is_active == True,
+        )
+        .first()
+    )
+    if not block:
+        raise HTTPException(status_code=422, detail="Block code is not valid for selected project.")
+
+    level = db.query(Level).filter(Level.code == target["level_code"]).first()
+    if not level:
+        raise HTTPException(status_code=422, detail="Level code is not valid.")
+
+    return target
+
+
+def _preview_reclassification_for_document(
+    db: Session,
+    document: MdrDocument,
+    payload: dict[str, Any],
+    user: Any,
+) -> dict[str, Any]:
+    if document.deleted_at:
+        raise HTTPException(status_code=409, detail="Deleted document is read-only")
+    target = _validate_reclassification_payload(db, payload)
+    enforce_scope_access(
+        db,
+        user,
+        project_code=document.project_code,
+        discipline_code=document.discipline_code,
+    )
+    enforce_scope_access(
+        db,
+        user,
+        project_code=target["project_code"],
+        discipline_code=target["discipline_code"],
+    )
+
+    conflict = _find_subject_conflict(
+        db,
+        project_code=target["project_code"],
+        subject=document.subject,
+        exclude_document_id=int(document.id or 0),
+    )
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Subject already exists for document {conflict.doc_number}.",
+        )
+
+    prefix, suffix = docnum_service.build_doc_number_parts(
+        project_code=target["project_code"],
+        mdr_code=target["mdr_code"],
+        phase_code=target["phase_code"],
+        discipline_code=target["discipline_code"],
+        pkg_code=target["package_code"],
+        block=target["block"],
+        level=target["level_code"],
+    )
+    serial = _extract_serial_from_scope(str(document.doc_number or ""), prefix, suffix)
+    if serial is None:
+        rows = (
+            db.query(MdrDocument.doc_number)
+            .filter(MdrDocument.id != int(document.id or 0))
+            .filter(MdrDocument.doc_number.like(f"{prefix}%{suffix}"))
+            .all()
+        )
+        max_serial = 0
+        for (doc_number,) in rows:
+            parsed = _extract_serial_from_scope(str(doc_number or ""), prefix, suffix)
+            if parsed is not None and parsed > max_serial:
+                max_serial = parsed
+        serial = max_serial + 1
+    serial_str = f"{serial:02d}"
+    doc_number = f"{prefix}{serial_str}{suffix}"
+    existing = (
+        db.query(MdrDocument)
+        .filter(MdrDocument.doc_number == doc_number, MdrDocument.id != int(document.id or 0))
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Document number conflict: {doc_number}")
+
+    subject_value = str(document.subject or "").strip()
+    title_e, title_p = mdr_service.build_document_titles(
+        db,
+        discipline_code=target["discipline_code"],
+        package_code=target["package_code"],
+        block_code=target["block"],
+        level_code=target["level_code"],
+        subject_e=subject_value,
+        subject_p=subject_value,
+    )
+    return {
+        "target": target,
+        "doc_number": doc_number,
+        "serial": serial_str,
+        "doc_title_e": title_e,
+        "doc_title_p": title_p,
+    }
+
+
+def preview_document_reclassification(
+    db: Session,
+    document_id: int,
+    payload: dict[str, Any],
+    user: Any,
+) -> dict[str, Any]:
+    document = db.query(MdrDocument).filter(MdrDocument.id == int(document_id)).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return _preview_reclassification_for_document(db, document, payload, user)
+
+
+def _active_archive_files(document: MdrDocument) -> list[ArchiveFile]:
+    rows: list[ArchiveFile] = []
+    for revision in document.revisions or []:
+        for archive_file in revision.archive_files or []:
+            if archive_file.deleted_at is None:
+                rows.append(archive_file)
+    return rows
+
+
+def _sync_archive_files_after_reclassification(db: Session, document: MdrDocument) -> list[dict[str, Any]]:
+    moved: list[tuple[str, str]] = []
+    updates: list[dict[str, Any]] = []
+    try:
+        for archive_file in _active_archive_files(document):
+            old_path = str(archive_file.stored_path or "").strip()
+            old_name = str(archive_file.original_name or "").strip()
+            _, extension = os.path.splitext(old_name or old_path)
+            _, clean_name, target_path = _archive_storage_target(
+                db,
+                document,
+                revision_code=str(archive_file.revision or "00").strip() or "00",
+                extension=extension,
+                file_kind=archive_file.file_kind,
+                prefer_webdav=old_path.startswith("webdav://"),
+            )
+            if old_path != target_path:
+                _move_physical_file(db, old_path, target_path)
+                moved.append((old_path, target_path))
+            archive_file.original_name = clean_name
+            archive_file.stored_path = target_path
+            archive_file.storage_backend = (
+                "nextcloud"
+                if target_path.startswith("webdav://")
+                else StorageManager(db).resolve_storage_backend_for_path(target_path)
+            )
+            revision = archive_file.document_revision
+            if revision and (
+                str(revision.file_path or "").strip() == old_path
+                or archive_file.is_primary
+                or _normalize_archive_file_kind(archive_file.file_kind) == "pdf"
+            ):
+                revision.file_path = target_path
+                revision.file_name = clean_name
+            updates.append(
+                {
+                    "file_id": int(archive_file.id or 0),
+                    "before_path": old_path,
+                    "after_path": target_path,
+                    "before_name": old_name,
+                    "after_name": clean_name,
+                }
+            )
+        return updates
+    except Exception:
+        for source_path, target_path in reversed(moved):
+            try:
+                _move_physical_file(db, target_path, source_path)
+            except Exception:
+                pass
+        raise
+
+
+def reclassify_document(
+    db: Session,
+    document_id: int,
+    payload: dict[str, Any],
+    user: Any,
+) -> MdrDocument:
+    document = (
+        db.query(MdrDocument)
+        .options(
+            joinedload(MdrDocument.project),
+            joinedload(MdrDocument.phase),
+            joinedload(MdrDocument.discipline),
+            joinedload(MdrDocument.package),
+            joinedload(MdrDocument.level),
+            joinedload(MdrDocument.revisions).joinedload(DocumentRevision.archive_files),
+        )
+        .filter(MdrDocument.id == int(document_id))
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    moved: list[tuple[str, str]] = []
+    try:
+        before = serialize_document_snapshot(document)
+        preview = _preview_reclassification_for_document(db, document, payload, user)
+        target = preview["target"]
+        document.project_code = target["project_code"]
+        document.mdr_code = target["mdr_code"]
+        document.phase_code = target["phase_code"]
+        document.discipline_code = target["discipline_code"]
+        document.package_code = target["package_code"]
+        document.block = target["block"]
+        document.level_code = target["level_code"]
+        document.doc_number = preview["doc_number"]
+        document.doc_title_e = preview["doc_title_e"]
+        document.doc_title_p = preview["doc_title_p"]
+        document.updated_at = datetime.utcnow()
+        document.updated_by_id = getattr(user, "id", None)
+        db.flush()
+        db.expire(document, ["project", "phase", "discipline", "package", "level", "mdr_category"])
+        file_updates = _sync_archive_files_after_reclassification(db, document)
+        moved = [(row["before_path"], row["after_path"]) for row in file_updates if row["before_path"] != row["after_path"]]
+        after = serialize_document_snapshot(document)
+        log_document_activity(
+            db,
+            int(document.id or 0),
+            "document_reclassified",
+            user,
+            before_data=before,
+            after_data={
+                **after,
+                "archive_files": file_updates,
+            },
+        )
+        db.commit()
+        db.refresh(document)
+        return document
+    except Exception:
+        db.rollback()
+        for source_path, target_path in reversed(moved):
+            try:
+                _move_physical_file(db, target_path, source_path)
+            except Exception:
+                pass
+        raise
+
+
+def replace_archive_file(
+    db: Session,
+    file_id: int,
+    file: UploadFile,
+    user: Any,
+    *,
+    status_code: str | None = None,
+) -> ArchiveFile:
+    old_file = (
+        db.query(ArchiveFile)
+        .options(joinedload(ArchiveFile.document_revision).joinedload(DocumentRevision.document))
+        .filter(ArchiveFile.id == int(file_id), ArchiveFile.deleted_at.is_(None))
+        .first()
+    )
+    if not old_file or not old_file.document_revision or not old_file.document_revision.document:
+        raise HTTPException(status_code=404, detail="File not found")
+    revision = old_file.document_revision
+    document = revision.document
+    if document.deleted_at:
+        raise HTTPException(status_code=409, detail="Deleted document is read-only")
+    enforce_scope_access(
+        db,
+        user,
+        project_code=document.project_code,
+        discipline_code=document.discipline_code,
+    )
+
+    old_path = str(old_file.stored_path or "").strip()
+    new_file: ArchiveFile | None = None
+    try:
+        new_file = save_upload_file(
+            db=db,
+            file=file,
+            document_id=int(document.id or 0),
+            revision_code=str(old_file.revision or revision.revision or "00").strip() or "00",
+            status_code=str(status_code or old_file.status or revision.status or "IFA").strip() or "IFA",
+            file_kind=old_file.file_kind,
+            is_primary=True if old_file.is_primary is None else bool(old_file.is_primary),
+            companion_file_id=old_file.companion_file_id,
+            commit=False,
+            actor=user,
+            log_revision=False,
+        )
+        now = datetime.utcnow()
+        old_file.deleted_at = now
+        companions = (
+            db.query(ArchiveFile)
+            .filter(ArchiveFile.companion_file_id == int(old_file.id or 0), ArchiveFile.deleted_at.is_(None))
+            .all()
+        )
+        for companion in companions:
+            companion.companion_file_id = int(new_file.id or 0)
+        if revision.file_path == old_path or old_file.is_primary:
+            revision.file_path = new_file.stored_path
+            revision.file_name = new_file.original_name
+        log_document_activity(
+            db,
+            int(document.id or 0),
+            "revision_file_replaced",
+            user,
+            detail=f"file:{int(old_file.id or 0)}",
+            before_data={
+                "file_id": int(old_file.id or 0),
+                "stored_path": old_file.stored_path,
+                "name": old_file.original_name,
+            },
+            after_data={
+                "file_id": int(new_file.id or 0),
+                "stored_path": new_file.stored_path,
+                "name": new_file.original_name,
+                "revision": new_file.revision,
+            },
+        )
+        if old_path and old_path != str(new_file.stored_path or "").strip():
+            _delete_physical_file(db, old_path)
+        db.commit()
+        db.refresh(new_file)
+        return new_file
+    except Exception:
+        db.rollback()
+        if new_file is not None:
+            try:
+                _delete_physical_file(db, new_file.stored_path)
+            except Exception:
+                pass
+        raise
 
 
 def soft_delete_document(db: Session, document_id: int, user: Any) -> MdrDocument:
@@ -813,7 +1832,204 @@ def delete_document_comment(db: Session, document_id: int, comment_id: int, user
     return row
 
 
-def list_document_relations(db: Session, document_id: int, user: Any) -> dict[str, list[DocumentRelation]]:
+def _normalize_relation_target_type(value: Any) -> str:
+    raw = str(value or "document").strip().lower().replace("-", "_")
+    aliases = {
+        "doc": "document",
+        "mdr": "document",
+        "mdr_document": "document",
+        "document": "document",
+        "corr": "correspondence",
+        "correspondence": "correspondence",
+        "letter": "correspondence",
+        "mail": "correspondence",
+        "meeting": "meeting_minute",
+        "meeting_minute": "meeting_minute",
+        "meeting_minutes": "meeting_minute",
+        "minute": "meeting_minute",
+        "mom": "meeting_minute",
+        "comm_item": "comm_item",
+        "communication_item": "comm_item",
+        "communication_items": "comm_item",
+        "form": "comm_item",
+        "forms": "comm_item",
+        "form_item": "comm_item",
+        "rfi": "rfi",
+        "ncr": "ncr",
+        "tech": "tech",
+        "technical": "tech",
+        "site_log": "site_log",
+        "site_logs": "site_log",
+        "daily_report": "site_log",
+        "work_report": "site_log",
+        "workshop_report": "site_log",
+        "workshop_log": "site_log",
+        "permit": "permit_qc",
+        "pqc": "permit_qc",
+        "permit_qc": "permit_qc",
+        "permit_qc_permit": "permit_qc",
+    }
+    normalized = aliases.get(raw)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Invalid relation target type")
+    return normalized
+
+
+def _normalize_relation_code(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _relation_comm_item_type_filter(target_entity_type: str) -> str | None:
+    mapping = {
+        "rfi": "RFI",
+        "ncr": "NCR",
+        "tech": "TECH",
+    }
+    return mapping.get(str(target_entity_type or "").strip().lower())
+
+
+def _resolve_target_document(
+    db: Session,
+    *,
+    target_document_id: int | None,
+    target_code: str | None,
+) -> MdrDocument | None:
+    if int(target_document_id or 0) > 0:
+        return db.query(MdrDocument).filter(MdrDocument.id == int(target_document_id or 0)).first()
+    code = _normalize_relation_code(target_code)
+    if not code:
+        return None
+    if code.isdigit():
+        row = db.query(MdrDocument).filter(MdrDocument.id == int(code)).first()
+        if row:
+            return row
+    return (
+        db.query(MdrDocument)
+        .filter(func.lower(MdrDocument.doc_number) == code.lower())
+        .first()
+    )
+
+
+def _resolve_external_relation_target(
+    db: Session,
+    *,
+    target_entity_type: str,
+    target_entity_id: int | None,
+    target_code: str | None,
+) -> dict[str, Any]:
+    code = _normalize_relation_code(target_code)
+    entity_id = int(target_entity_id or 0)
+
+    if target_entity_type == "correspondence":
+        query = db.query(Correspondence)
+        if entity_id > 0:
+            row = query.filter(Correspondence.id == entity_id).first()
+        elif code:
+            row = query.filter(func.lower(Correspondence.reference_no) == code.lower()).first()
+        else:
+            row = None
+        if not row:
+            raise HTTPException(status_code=404, detail="Target correspondence not found")
+        return {
+            "entity_type": "correspondence",
+            "entity_id": int(row.id or 0),
+            "code": str(row.reference_no or "").strip() or f"CORR-{int(row.id or 0)}",
+            "title": str(row.subject or "").strip() or None,
+            "project_code": row.project_code,
+            "discipline_code": row.discipline_code,
+            "status": row.status,
+        }
+
+    if target_entity_type == "meeting_minute":
+        query = db.query(MeetingMinute).filter(MeetingMinute.deleted_at.is_(None))
+        if entity_id > 0:
+            row = query.filter(MeetingMinute.id == entity_id).first()
+        elif code:
+            row = query.filter(func.lower(MeetingMinute.meeting_no) == code.lower()).first()
+        else:
+            row = None
+        if not row:
+            raise HTTPException(status_code=404, detail="Target meeting minute not found")
+        return {
+            "entity_type": "meeting_minute",
+            "entity_id": int(row.id or 0),
+            "code": str(row.meeting_no or "").strip() or f"MOM-{int(row.id or 0)}",
+            "title": str(row.title or "").strip() or None,
+            "project_code": row.project_code,
+            "discipline_code": None,
+            "status": row.status,
+        }
+
+    if target_entity_type in {"comm_item", "rfi", "ncr", "tech"}:
+        item_type_filter = _relation_comm_item_type_filter(target_entity_type)
+        query = db.query(CommItem)
+        if item_type_filter:
+            query = query.filter(func.upper(CommItem.item_type) == item_type_filter)
+        if entity_id > 0:
+            row = query.filter(CommItem.id == entity_id).first()
+        elif code:
+            row = query.filter(func.lower(CommItem.item_no) == code.lower()).first()
+        else:
+            row = None
+        if not row:
+            raise HTTPException(status_code=404, detail="Target form item not found")
+        resolved_type = str(row.item_type or "").strip().lower()
+        if resolved_type not in {"rfi", "ncr", "tech"}:
+            resolved_type = "comm_item"
+        return {
+            "entity_type": resolved_type,
+            "entity_id": int(row.id or 0),
+            "code": str(row.item_no or "").strip() or f"ITEM-{int(row.id or 0)}",
+            "title": str(row.title or "").strip() or None,
+            "project_code": row.project_code,
+            "discipline_code": row.discipline_code,
+            "status": row.status_code,
+        }
+
+    if target_entity_type == "site_log":
+        query = db.query(SiteLog)
+        if entity_id > 0:
+            row = query.filter(SiteLog.id == entity_id).first()
+        elif code:
+            row = query.filter(func.lower(SiteLog.log_no) == code.lower()).first()
+        else:
+            row = None
+        if not row:
+            raise HTTPException(status_code=404, detail="Target site log not found")
+        return {
+            "entity_type": "site_log",
+            "entity_id": int(row.id or 0),
+            "code": str(row.log_no or "").strip() or f"SLOG-{int(row.id or 0)}",
+            "title": str(row.current_work_summary or row.summary or "").strip() or None,
+            "project_code": row.project_code,
+            "discipline_code": row.discipline_code,
+            "status": row.status_code,
+        }
+
+    if target_entity_type == "permit_qc":
+        query = db.query(PermitQcPermit)
+        if entity_id > 0:
+            row = query.filter(PermitQcPermit.id == entity_id).first()
+        elif code:
+            row = query.filter(func.lower(PermitQcPermit.permit_no) == code.lower()).first()
+        else:
+            row = None
+        if not row:
+            raise HTTPException(status_code=404, detail="Target permit QC not found")
+        return {
+            "entity_type": "permit_qc",
+            "entity_id": int(row.id or 0),
+            "code": str(row.permit_no or "").strip() or f"PQC-{int(row.id or 0)}",
+            "title": str(row.title or "").strip() or None,
+            "project_code": row.project_code,
+            "discipline_code": row.discipline_code,
+            "status": row.status_code,
+        }
+
+    raise HTTPException(status_code=400, detail="Invalid relation target type")
+
+
+def list_document_relations(db: Session, document_id: int, user: Any) -> dict[str, list[Any]]:
     document = (
         db.query(MdrDocument)
         .options(
@@ -831,10 +2047,16 @@ def list_document_relations(db: Session, document_id: int, user: Any) -> dict[st
         project_code=document.project_code,
         discipline_code=document.discipline_code,
     )
+    external_rows = (
+        db.query(DocumentExternalRelation)
+        .filter(DocumentExternalRelation.source_document_id == int(document_id))
+        .order_by(DocumentExternalRelation.created_at.desc(), DocumentExternalRelation.id.desc())
+        .all()
+    )
     return {
         "outgoing": [
             row for row in document.outgoing_relations or [] if getattr(row.target_document, "deleted_at", None) is None
-        ],
+        ] + external_rows,
         "incoming": [
             row for row in document.incoming_relations or [] if getattr(row.source_document, "deleted_at", None) is None
         ],
@@ -844,39 +2066,108 @@ def list_document_relations(db: Session, document_id: int, user: Any) -> dict[st
 def create_document_relation(
     db: Session,
     document_id: int,
-    target_document_id: int,
+    target_document_id: int | None,
     relation_type: str,
     notes: str | None,
     user: Any,
-) -> DocumentRelation:
+    *,
+    target_entity_type: str = "document",
+    target_entity_id: int | None = None,
+    target_code: str | None = None,
+) -> DocumentRelation | DocumentExternalRelation:
     source_document = db.query(MdrDocument).filter(MdrDocument.id == int(document_id)).first()
     if not source_document:
         raise HTTPException(status_code=404, detail="Document not found")
-    target_document = db.query(MdrDocument).filter(MdrDocument.id == int(target_document_id)).first()
-    if not target_document or target_document.deleted_at:
-        raise HTTPException(status_code=404, detail="Target document not found")
     enforce_scope_access(
         db,
         user,
         project_code=source_document.project_code,
         discipline_code=source_document.discipline_code,
     )
+    if source_document.deleted_at:
+        raise HTTPException(status_code=409, detail="Deleted document is read-only")
+
+    normalized_target_type = _normalize_relation_target_type(target_entity_type)
+    normalized_type = str(relation_type or "").strip().lower() or "related"
+
+    if normalized_target_type != "document":
+        target = _resolve_external_relation_target(
+            db,
+            target_entity_type=normalized_target_type,
+            target_entity_id=target_entity_id,
+            target_code=target_code,
+        )
+        enforce_scope_access(
+            db,
+            user,
+            project_code=target.get("project_code"),
+            discipline_code=target.get("discipline_code"),
+        )
+        stored_target_type = str(target.get("entity_type") or normalized_target_type).strip().lower()
+        existing_external = (
+            db.query(DocumentExternalRelation)
+            .filter(
+                DocumentExternalRelation.source_document_id == int(document_id),
+                DocumentExternalRelation.target_entity_type == stored_target_type,
+                DocumentExternalRelation.target_entity_id == int(target["entity_id"]),
+                DocumentExternalRelation.relation_type == normalized_type,
+            )
+            .first()
+        )
+        if existing_external:
+            raise HTTPException(status_code=409, detail="Relation already exists")
+        row = DocumentExternalRelation(
+            source_document_id=int(document_id),
+            target_entity_type=stored_target_type,
+            target_entity_id=int(target["entity_id"]),
+            target_code=str(target["code"]),
+            target_title=target.get("title"),
+            target_project_code=target.get("project_code"),
+            target_status=target.get("status"),
+            relation_type=normalized_type,
+            notes=str(notes or "").strip() or None,
+            created_by_id=getattr(user, "id", None),
+            created_at=datetime.utcnow(),
+        )
+        db.add(row)
+        db.flush()
+        log_document_activity(
+            db,
+            int(document_id),
+            "relation_added",
+            user,
+            detail=f"external_relation:{stored_target_type}:{int(row.id or 0)}",
+            after_data={
+                "target_entity_type": stored_target_type,
+                "target_entity_id": int(target["entity_id"]),
+                "target_code": str(target["code"]),
+                "relation_type": normalized_type,
+            },
+        )
+        db.commit()
+        db.refresh(row)
+        return row
+
+    target_document = _resolve_target_document(
+        db,
+        target_document_id=target_document_id,
+        target_code=target_code,
+    )
+    if not target_document or target_document.deleted_at:
+        raise HTTPException(status_code=404, detail="Target document not found")
     enforce_scope_access(
         db,
         user,
         project_code=target_document.project_code,
         discipline_code=target_document.discipline_code,
     )
-    if source_document.deleted_at:
-        raise HTTPException(status_code=409, detail="Deleted document is read-only")
-    if int(document_id) == int(target_document_id):
+    if int(document_id) == int(target_document.id or 0):
         raise HTTPException(status_code=400, detail="Cannot relate a document to itself")
-    normalized_type = str(relation_type or "").strip().lower() or "related"
     existing = (
         db.query(DocumentRelation)
         .filter(
             DocumentRelation.source_document_id == int(document_id),
-            DocumentRelation.target_document_id == int(target_document_id),
+            DocumentRelation.target_document_id == int(target_document.id or 0),
             DocumentRelation.relation_type == normalized_type,
         )
         .first()
@@ -885,7 +2176,7 @@ def create_document_relation(
         raise HTTPException(status_code=409, detail="Relation already exists")
     row = DocumentRelation(
         source_document_id=int(document_id),
-        target_document_id=int(target_document_id),
+        target_document_id=int(target_document.id or 0),
         relation_type=normalized_type,
         notes=str(notes or "").strip() or None,
         created_by_id=getattr(user, "id", None),
@@ -899,17 +2190,60 @@ def create_document_relation(
         "relation_added",
         user,
         detail=f"relation:{int(row.id or 0)}",
-        after_data={"target_document_id": int(target_document_id), "relation_type": normalized_type},
+        after_data={"target_document_id": int(target_document.id or 0), "relation_type": normalized_type},
     )
     db.commit()
     db.refresh(row)
     return row
 
 
-def delete_document_relation(db: Session, document_id: int, relation_id: int, user: Any) -> None:
+def delete_document_relation(db: Session, document_id: int, relation_id: int | str, user: Any) -> None:
+    relation_key = str(relation_id or "").strip()
+    is_external = relation_key.lower().startswith("external:")
+    if is_external:
+        try:
+            external_id = int(relation_key.split(":", 1)[1])
+        except Exception as exc:
+            raise HTTPException(status_code=404, detail="Relation not found") from exc
+        external_row = (
+            db.query(DocumentExternalRelation)
+            .filter(
+                DocumentExternalRelation.id == external_id,
+                DocumentExternalRelation.source_document_id == int(document_id),
+            )
+            .first()
+        )
+        if not external_row:
+            raise HTTPException(status_code=404, detail="Relation not found")
+        source_document = db.query(MdrDocument).filter(MdrDocument.id == int(document_id)).first()
+        if not source_document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        enforce_scope_access(
+            db,
+            user,
+            project_code=source_document.project_code,
+            discipline_code=source_document.discipline_code,
+        )
+        if source_document.deleted_at:
+            raise HTTPException(status_code=409, detail="Deleted document is read-only")
+        db.delete(external_row)
+        log_document_activity(
+            db,
+            int(document_id),
+            "relation_removed",
+            user,
+            detail=f"external_relation:{external_id}",
+        )
+        db.commit()
+        return
+
+    try:
+        numeric_relation_id = int(relation_key)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Relation not found") from exc
     row = (
         db.query(DocumentRelation)
-        .filter(DocumentRelation.id == int(relation_id), DocumentRelation.source_document_id == int(document_id))
+        .filter(DocumentRelation.id == numeric_relation_id, DocumentRelation.source_document_id == int(document_id))
         .first()
     )
     if not row:
@@ -931,7 +2265,7 @@ def delete_document_relation(db: Session, document_id: int, relation_id: int, us
         int(document_id),
         "relation_removed",
         user,
-        detail=f"relation:{int(relation_id)}",
+        detail=f"relation:{numeric_relation_id}",
     )
     db.commit()
 
@@ -1075,6 +2409,8 @@ def save_upload_file(
     is_admin: bool = False,
     actor: Any | None = None,
     log_revision: bool = True,
+    touch_revision: bool = True,
+    update_revision_pointer: bool = True,
 ) -> ArchiveFile:
     del is_admin
     storage = StorageManager(db)
@@ -1089,7 +2425,8 @@ def save_upload_file(
     ).first()
     if rev:
         rev.status = status_code
-        rev.created_at = datetime.utcnow()
+        if touch_revision:
+            rev.created_at = datetime.utcnow()
     else:
         rev = DocumentRevision(
             document_id=document_id,
@@ -1120,33 +2457,19 @@ def save_upload_file(
         pkg_name = doc.package.name_e or doc.package.name_p or doc.package_code
 
     _, file_extension = os.path.splitext(file.filename)
-    raw_title = doc.doc_title_e or doc.subject or "Untitled"
-    safe_title = folder_service.safe_name(raw_title)
-    if len(safe_title) > 100:
-        safe_title = safe_title[:100]
-
-    clean_name = f"{doc.doc_number}_{safe_title}_Rev{revision_code}{file_extension}"
+    storage, clean_name, target_path = _archive_storage_target(
+        db,
+        doc,
+        revision_code=revision_code,
+        extension=file_extension,
+        file_kind=normalized_kind,
+    )
 
     # Check if WebDAV mode
-    if storage._is_webdav_primary_mode():
-        # WebDAV mode: use mdr_storage_path as base and relativize to root
-        integrations = get_storage_integrations(db)
-        runtime = resolve_nextcloud_runtime(integrations)
-        root_path = str(runtime.get("root_path") or "")
-
-        # Get MDR base path from settings (e.g., "/ARCA-NTN/MDR")
-        mdr_base = storage.get_mdr_webdav_base()
-
-        # Build complete absolute path
-        pkg_folder = f"{pkg_code} - {pkg_name}"
-        absolute_path = f"{mdr_base}/{phase_name}/{disc_code}/{pkg_folder}/{normalized_kind}/{clean_name}"
-
-        # Relativize to root (e.g., "/ARCA-NTN/MDR/..." → "/MDR/...")
-        relative_path = StorageManager.relativize_webdav_path(absolute_path, root_path)
-
+    if target_path.startswith("webdav://"):
         saved = storage.save_upload_to_webdav(
             file=file,
-            remote_relative_path=relative_path,
+            remote_relative_path=_webdav_relative_path(target_path),
             file_kind=normalized_kind,
         )
     else:
@@ -1171,8 +2494,9 @@ def save_upload_file(
             file_kind=normalized_kind,
         )
 
-    rev.file_path = saved.stored_path
-    rev.file_name = clean_name
+    if update_revision_pointer:
+        rev.file_path = saved.stored_path
+        rev.file_name = clean_name
 
     integrations = get_storage_integrations(db)
     mirror_plan = resolve_mirror_enqueue_plan(integrations)
@@ -1232,6 +2556,98 @@ def save_upload_file(
         db.refresh(archive_entry)
 
     return archive_entry
+
+
+def add_revision_file(
+    db: Session,
+    revision_id: int,
+    file: UploadFile,
+    user: Any,
+    *,
+    file_kind: str = "pdf",
+    status_code: str | None = None,
+) -> ArchiveFile:
+    revision = (
+        db.query(DocumentRevision)
+        .options(
+            joinedload(DocumentRevision.document),
+            joinedload(DocumentRevision.archive_files),
+        )
+        .filter(DocumentRevision.id == int(revision_id))
+        .first()
+    )
+    if not revision or not revision.document:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    document = revision.document
+    if document.deleted_at:
+        raise HTTPException(status_code=409, detail="Deleted document is read-only")
+    enforce_scope_access(
+        db,
+        user,
+        project_code=document.project_code,
+        discipline_code=document.discipline_code,
+    )
+
+    normalized_kind = _normalize_archive_file_kind(file_kind)
+    live_files = [row for row in (revision.archive_files or []) if row.deleted_at is None]
+    same_kind = [row for row in live_files if _normalize_archive_file_kind(row.file_kind) == normalized_kind]
+    if same_kind:
+        label = "Native" if normalized_kind == "native" else "PDF/خروجی"
+        raise HTTPException(status_code=409, detail=f"برای این Revision فایل {label} از قبل ثبت شده است.")
+
+    companion_kind = "pdf" if normalized_kind == "native" else "native"
+    companion = next((row for row in live_files if _normalize_archive_file_kind(row.file_kind) == companion_kind), None)
+    new_file: ArchiveFile | None = None
+    try:
+        new_file = save_upload_file(
+            db=db,
+            file=file,
+            document_id=int(document.id or 0),
+            revision_code=str(revision.revision or "00").strip() or "00",
+            status_code=str(status_code or revision.status or "IFA").strip() or "IFA",
+            file_kind=normalized_kind,
+            is_primary=normalized_kind == "pdf",
+            companion_file_id=int(companion.id or 0) if companion else None,
+            commit=False,
+            actor=user,
+            log_revision=False,
+            touch_revision=False,
+            update_revision_pointer=normalized_kind == "pdf",
+        )
+        if companion:
+            companion.companion_file_id = int(new_file.id or 0)
+        if normalized_kind == "pdf":
+            revision.file_path = new_file.stored_path
+            revision.file_name = new_file.original_name
+        if status_code:
+            revision.status = str(status_code).strip() or revision.status
+        log_document_activity(
+            db,
+            int(document.id or 0),
+            "revision_file_added",
+            user,
+            detail=f"revision:{revision.revision}",
+            after_data={
+                "revision_id": int(revision.id or 0),
+                "revision": revision.revision,
+                "file_id": int(new_file.id or 0),
+                "file_kind": normalized_kind,
+                "status": new_file.status,
+                "companion_file_id": int(companion.id or 0) if companion else None,
+            },
+        )
+        db.commit()
+        db.refresh(new_file)
+        return new_file
+    except Exception:
+        db.rollback()
+        if new_file is not None:
+            try:
+                _delete_physical_file(db, new_file.stored_path)
+            except Exception:
+                pass
+        raise
+
 
 def save_dual_upload_files(
     db: Session,
@@ -1386,6 +2802,7 @@ def register_and_upload_document(
         )
     else:
         # ساخت سند جدید
+        meta_data["mdr_code"] = _active_mdr_code_or_422(db, meta_data.get("mdr_code"))
         doc = mdr_service.create_mdr_document(
             db,
             doc_number=meta_data['doc_number'],
@@ -1461,11 +2878,12 @@ def register_document_metadata(
                 detail=f"برای مدرک بدون Subject سریال باید از 01 شروع شود. کد صحیح: {expected_doc_number}",
             )
 
+    active_mdr_code = _active_mdr_code_or_422(db, meta_data.get("mdr_code"))
     doc = mdr_service.create_mdr_document(
         db,
         doc_number=doc_number,
         project_code=str(meta_data.get("project_code") or "").strip().upper(),
-        mdr_code=str(meta_data.get("mdr_code") or "X").strip().upper() or "X",
+        mdr_code=active_mdr_code,
         phase_code=str(meta_data.get("phase") or "X").strip().upper() or "X",
         discipline_code=str(meta_data.get("discipline") or "XX").strip().upper() or "XX",
         package_code=str(meta_data.get("package") or "").strip().upper(),
@@ -1544,6 +2962,7 @@ def register_and_upload_dual_document(
             subject_p,
         )
     else:
+        meta_data["mdr_code"] = _active_mdr_code_or_422(db, meta_data.get("mdr_code"))
         doc = mdr_service.create_mdr_document(
             db,
             doc_number=meta_data["doc_number"],
@@ -1581,5 +3000,3 @@ def register_and_upload_dual_document(
         is_admin=is_admin,
         actor=actor,
     )
-
-

@@ -24,7 +24,7 @@
       <div class="users-toolbar-filters">
         <div class="users-input-wrap">
           <span class="material-icons-round">search</span>
-          <input id="organizationsSearchInput" type="text" class="users-toolbar-input" placeholder="جستجو بر اساس نام، کد یا والد">
+          <input id="organizationsSearchInput" type="text" class="users-toolbar-input" placeholder="جستجو بر اساس نام، کد، والد یا قرارداد">
         </div>
 
         <select id="organizationsTypeFilter" class="users-toolbar-select" aria-label="فیلتر دسته سازمان">
@@ -61,6 +61,7 @@
             <th>شناسه</th>
             <th>کد</th>
             <th>نام سازمان</th>
+            <th>قراردادها</th>
             <th>نوع</th>
             <th>والد</th>
             <th>کاربران</th>
@@ -71,7 +72,7 @@
         </thead>
         <tbody id="organizationsTableBody">
           <tr>
-            <td colspan="9" class="center-text muted" style="padding: 36px;">در حال بارگذاری سازمان‌ها...</td>
+            <td colspan="10" class="center-text muted" style="padding: 36px;">در حال بارگذاری سازمان‌ها...</td>
           </tr>
         </tbody>
       </table>
@@ -89,7 +90,7 @@
 </div>
 
 <div id="organizationModal" class="modal" style="display: none;">
-  <div class="modal-content">
+  <div class="modal-content modal-lg">
     <div class="modal-header">
       <h3 id="organizationModalTitle">ایجاد سازمان جدید</h3>
       <button class="modal-close" type="button" data-org-action="close-organization-modal">
@@ -135,6 +136,20 @@
           سازمان فعال است
         </label>
       </div>
+
+      <section class="organization-contracts-section">
+        <div class="organization-contracts-header">
+          <div>
+            <label class="form-label-sm">اطلاعات قراردادی</label>
+            <small class="form-help">برای هر سازمان می‌توانید چند قرارداد ثبت کنید.</small>
+          </div>
+          <button type="button" class="btn-secondary" data-org-action="add-contract-row">
+            <span class="material-icons-round">add</span>
+            افزودن قرارداد
+          </button>
+        </div>
+        <div id="organizationContractsList" class="organization-contracts-list"></div>
+      </section>
     </form>
 
     <div class="modal-footer">

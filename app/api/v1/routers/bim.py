@@ -620,7 +620,7 @@ def _site_log_has_verified_data(row: SiteLog) -> bool:
         for item in (row.manpower_rows or [])
     )
     equipment_ok = any(
-        (_norm(item.verified_status) or item.verified_hours is not None)
+        (item.verified_count is not None or _norm(item.verified_status) or item.verified_hours is not None)
         for item in (row.equipment_rows or [])
     )
     activity_ok = any(
@@ -646,11 +646,12 @@ def _site_log_hash(row: SiteLog) -> str:
         "equipment": [
             {
                 "id": int(item.id or 0),
+                "verified_count": item.verified_count,
                 "verified_status": _upper(item.verified_status),
                 "verified_hours": item.verified_hours,
             }
             for item in sorted(row.equipment_rows or [], key=lambda x: int(x.id or 0))
-            if _norm(item.verified_status) or item.verified_hours is not None
+            if item.verified_count is not None or _norm(item.verified_status) or item.verified_hours is not None
         ],
         "activity": [
             {
@@ -2488,7 +2489,7 @@ def pull_site_log_rows(
                 )
 
             for child in sorted(row.equipment_rows or [], key=lambda x: int(x.id or 0)):
-                if not _norm(child.verified_status) and child.verified_hours is None:
+                if child.verified_count is None and not _norm(child.verified_status) and child.verified_hours is None:
                     continue
                 fields = _site_log_base_fields(
                     row=row,
@@ -2500,6 +2501,7 @@ def pull_site_log_rows(
                     {
                         "MDR_EQUIPMENT_CODE": child.equipment_code,
                         "MDR_EQUIPMENT_LABEL": child.equipment_label,
+                        "MDR_VERIFIED_COUNT": child.verified_count,
                         "MDR_VERIFIED_STATUS": child.verified_status,
                         "MDR_VERIFIED_HOURS": child.verified_hours,
                         "MDR_NOTE": child.note,

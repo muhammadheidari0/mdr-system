@@ -26,6 +26,13 @@ class UserScopeSummary(BaseModel):
     disciplines_count: int = 0
     has_custom_scope: bool = False
     status: str = "full"
+    source: str = "full"
+    role_projects_count: int = 0
+    role_disciplines_count: int = 0
+    user_projects_count: int = 0
+    user_disciplines_count: int = 0
+    effective_projects_count: int = 0
+    effective_disciplines_count: int = 0
 
 
 class UserResponse(BaseModel):
@@ -45,6 +52,11 @@ class UserResponse(BaseModel):
     scope_summary: Optional[UserScopeSummary] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AuthMeResponse(UserResponse):
+    idle_timeout_minutes: int = 20
+    heartbeat_interval_seconds: int = 300
 
 
 class PaginationResponse(BaseModel):
@@ -97,3 +109,4 @@ class OrganizationRef(BaseModel):
 
 
 UserResponse.model_rebuild()
+AuthMeResponse.model_rebuild()

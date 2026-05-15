@@ -22,6 +22,9 @@ export interface CorrespondenceListItem {
   direction?: string | null;
   corr_date?: string | null;
   status?: string | null;
+  tag_id?: number | null;
+  tag_ids?: number[] | null;
+  tags?: Array<{ id?: number | null; name?: string | null; color?: string | null }> | null;
   open_actions_count?: number | null;
   attachments_count?: number | null;
 }
@@ -49,6 +52,21 @@ export interface CorrespondenceAttachmentItem {
   openproject_sync_status?: string | null;
   mirror_updated_at?: string | null;
   is_pinned?: boolean | null;
+  preview_supported?: boolean | null;
+}
+
+export interface CorrespondenceRelationItem {
+  id?: string | number | null;
+  target_entity_type?: string | null;
+  target_code?: string | null;
+  target_title?: string | null;
+  target_project_code?: string | null;
+  target_status?: string | null;
+  relation_type?: string | null;
+  notes?: string | null;
+  revision?: string | null;
+  inferred?: boolean | null;
+  direction?: string | null;
 }
 
 export interface CorrespondenceCatalogItem {
@@ -90,6 +108,10 @@ export interface CorrespondenceStateBridge {
   renderAttachments(
     attachments: CorrespondenceAttachmentItem[] | null | undefined,
     actions: CorrespondenceActionItem[] | null | undefined,
+    deps: CorrespondenceStateDeps
+  ): boolean;
+  renderRelations(
+    relations: CorrespondenceRelationItem[] | null | undefined,
     deps: CorrespondenceStateDeps
   ): boolean;
 }
@@ -138,6 +160,23 @@ function kindFa(kind: unknown): string {
   if (normalized === "letter") return "فایل نامه";
   if (normalized === "original") return "فایل اصلی";
   return "پیوست";
+}
+
+function relationTargetFa(type: unknown): string {
+  const normalized = String(type || "").toLowerCase();
+  if (normalized === "document") return "مدرک";
+  if (normalized === "transmittal") return "ترنسمیتال";
+  if (normalized === "meeting_minute") return "صورتجلسه";
+  if (normalized === "correspondence") return "مکاتبه";
+  return normalized || "-";
+}
+
+function relationTypeFa(type: unknown): string {
+  const normalized = String(type || "").toLowerCase();
+  if (normalized === "references") return "ارجاع";
+  if (normalized === "supersedes") return "جایگزین";
+  if (normalized === "contains_document") return "از روی مدرک";
+  return "مرتبط";
 }
 
 function storageBadge(label: string, cssClass: string): string {
@@ -258,6 +297,16 @@ function renderRows(state: CorrespondenceRowsState, deps: CorrespondenceStateDep
       const subject = esc(item?.subject || "-");
       const issuing = esc(item?.issuing_name || item?.issuing_code || "-");
       const category = esc(item?.category_name || item?.category_code || "-");
+      const tags = Array.isArray(item?.tags) ? item.tags : [];
+      const tagHtml = tags.length
+        ? tags
+            .map((tag) => {
+              const color = esc(tag?.color || "#2563eb");
+              const name = esc(tag?.name || "Tag");
+              return `<span class="doc-tag-chip" style="--tag-color:${color}"><span class="doc-tag-dot"></span><span>${name}</span></span>`;
+            })
+            .join("")
+        : '<span class="doc-muted-pill">-</span>';
       const direction = esc(dirFa(item?.direction));
       const corrDate = dFa(item?.corr_date);
       const status = esc(item?.status || "-");
@@ -266,7 +315,7 @@ function renderRows(state: CorrespondenceRowsState, deps: CorrespondenceStateDep
       return `
       <tr>
         <td>${offset + index + 1}</td><td style="font-family:monospace;">${ref}</td><td>${subject}</td>
-        <td>${issuing}</td><td>${category}</td><td>${direction}</td>
+        <td>${issuing}</td><td>${category}</td><td>${tagHtml}</td><td>${direction}</td>
         <td>${corrDate}</td><td><span class="corr-status-badge ${statusClass(item?.status)}">${status}</span></td><td>${openActions}</td><td>${attachments}</td>
         <td class="corr-row-actions-cell">
           <div class="archive-row-menu corr-row-menu" data-corr-row-menu>
@@ -384,7 +433,45 @@ function renderAttachments(
       const pinClass = isPinned
         ? "btn-archive-icon archive-pin-btn is-pinned"
         : "btn-archive-icon archive-pin-btn";
-      return `<tr><td>${fileName}</td><td>${fileKind}</td><td>${relatedTitle}</td><td>${syncHtml}</td><td>${uploadedAt}</td><td><button class="${pinClass}" type="button" data-corr-action="toggle-attachment-pin" data-attachment-id="${attachmentId}" data-pinned="${isPinned ? "1" : "0"}"><span class="material-icons-round">${pinIcon}</span></button></td><td><div class="corr-row-actions"><button class="btn-archive-icon" type="button" data-corr-action="download-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">download</span></button><button class="btn-archive-icon" type="button" data-corr-action="delete-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">delete</span></button></div></td></tr>`;
+      const previewButton = attachment?.preview_supported
+        ? `<button class="btn-archive-icon" type="button" data-corr-action="preview-attachment" data-attachment-id="${attachmentId}" title="پیش‌نمایش"><span class="material-icons-round">visibility</span></button>`
+        : `<button class="btn-archive-icon" type="button" data-corr-action="preview-unsupported" title="پیش‌نمایش فقط برای PDF و تصویر پشتیبانی می‌شود"><span class="material-icons-round">visibility_off</span></button>`;
+      return `<tr><td>${fileName}</td><td>${fileKind}</td><td>${relatedTitle}</td><td>${syncHtml}</td><td>${uploadedAt}</td><td><button class="${pinClass}" type="button" data-corr-action="toggle-attachment-pin" data-attachment-id="${attachmentId}" data-pinned="${isPinned ? "1" : "0"}"><span class="material-icons-round">${pinIcon}</span></button></td><td><div class="corr-row-actions">${previewButton}<button class="btn-archive-icon" type="button" data-corr-action="download-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">download</span></button><button class="btn-archive-icon" type="button" data-corr-action="delete-attachment" data-attachment-id="${attachmentId}"><span class="material-icons-round">delete</span></button></div></td></tr>`;
+    })
+    .join("");
+  return true;
+}
+
+function renderRelations(
+  relations: CorrespondenceRelationItem[] | null | undefined,
+  deps: CorrespondenceStateDeps
+): boolean {
+  const body = deps.getElementById("corrRelationsBody");
+  if (!(body instanceof HTMLElement)) return false;
+
+  const list = Array.isArray(relations) ? relations : [];
+  if (!list.length) {
+    body.innerHTML = `<tr><td colspan="6" class="corr-empty-row">ارتباطی ثبت نشده است.</td></tr>`;
+    return true;
+  }
+
+  body.innerHTML = list
+    .map((relation) => {
+      const relationId = esc(relation?.id || "");
+      const targetType = esc(relationTargetFa(relation?.target_entity_type));
+      const relationType = esc(relationTypeFa(relation?.relation_type));
+      const code = esc(relation?.target_code || "-");
+      const title = esc(relation?.target_title || relation?.notes || "-");
+      const project = esc(relation?.target_project_code || "-");
+      const status = esc(relation?.target_status || relation?.revision || "-");
+      const inferred = Boolean(relation?.inferred);
+      const direction = String(relation?.direction || "").toLowerCase();
+      const actions = inferred
+        ? `<span class="doc-muted-pill">خودکار</span>`
+        : direction === "incoming"
+          ? `<span class="doc-muted-pill">ورودی</span>`
+        : `<button class="btn-archive-icon" type="button" data-corr-action="delete-relation" data-relation-id="${relationId}"><span class="material-icons-round">link_off</span></button>`;
+      return `<tr><td>${targetType}</td><td style="font-family:monospace;">${code}</td><td>${title}</td><td>${project}</td><td><span class="corr-status-badge is-open">${relationType} / ${status}</span></td><td>${actions}</td></tr>`;
     })
     .join("");
   return true;
@@ -399,5 +486,6 @@ export function createCorrespondenceStateBridge(): CorrespondenceStateBridge {
     fillActionOptions,
     renderActions,
     renderAttachments,
+    renderRelations,
   };
 }

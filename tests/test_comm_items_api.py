@@ -68,18 +68,16 @@ def _ensure_context(headers: dict[str, str]) -> tuple[str, str, int]:
     return project_code, discipline_code, org_id
 
 
-def _create_tech_item(headers: dict[str, str], project_code: str, discipline_code: str) -> int:
+def _create_rfi_item(headers: dict[str, str], project_code: str, discipline_code: str) -> int:
     payload = {
-        "item_type": "TECH",
+        "item_type": "RFI",
         "project_code": project_code,
         "discipline_code": discipline_code,
-        "title": f"TECH relation {uuid4().hex[:6]}",
+        "title": f"RFI relation {uuid4().hex[:6]}",
         "status_code": "DRAFT",
         "priority": "NORMAL",
-        "tech": {
-            "tech_subtype_code": "INSTRUCTION",
-            "document_no": f"DOC-{uuid4().hex[:4].upper()}",
-            "revision": "A",
+        "rfi": {
+            "question_text": "Please clarify linked reference item for relation validation.",
         },
     }
     res = client.post("/api/v1/comm-items/create", json=payload, headers=headers)
@@ -87,6 +85,22 @@ def _create_tech_item(headers: dict[str, str], project_code: str, discipline_cod
     body = res.json()
     assert body.get("ok") is True
     return int(body.get("data", {}).get("id"))
+
+
+def test_comm_items_catalog_allows_rfi_in_consultant_defects() -> None:
+    headers = _admin_headers()
+    res = client.get("/api/v1/comm-items/catalog", headers=headers)
+    assert res.status_code == 200, res.text
+    rules = res.json().get("tab_rules", [])
+    defects_rule = next(
+        (
+            row.get("rule", {})
+            for row in rules
+            if row.get("module_key") == "consultant" and row.get("tab_key") == "defects"
+        ),
+        {},
+    )
+    assert set(defects_rule.get("item_types", [])) == {"RFI", "NCR"}
 
 
 def test_comm_items_crud_relation_and_attachment_flow() -> None:
@@ -177,7 +191,7 @@ def test_comm_items_crud_relation_and_attachment_flow() -> None:
     )
     assert delete_attachment.status_code == 200, delete_attachment.text
 
-    second_item_id = _create_tech_item(headers, project_code, discipline_code)
+    second_item_id = _create_rfi_item(headers, project_code, discipline_code)
 
     relation_create = client.post(
         f"/api/v1/comm-items/{item_id}/relations",
@@ -399,28 +413,24 @@ def test_comm_items_alias_params_precedence_and_impact_alias_endpoint() -> None:
     project_code, discipline_code, _recipient_org_id = _ensure_context(headers)
 
     plain_payload = {
-        "item_type": "TECH",
+        "item_type": "RFI",
         "project_code": project_code,
         "discipline_code": discipline_code,
-        "title": f"TECH plain {uuid4().hex[:6]}",
+        "title": f"RFI plain {uuid4().hex[:6]}",
         "status_code": "DRAFT",
-        "tech": {
-            "tech_subtype_code": "INSTRUCTION",
-            "document_no": f"DOC-{uuid4().hex[:4].upper()}",
-            "revision": "A",
+        "rfi": {
+            "question_text": "Please clarify plain request for alias precedence validation.",
         },
     }
     impact_payload = {
-        "item_type": "TECH",
+        "item_type": "RFI",
         "project_code": project_code,
         "discipline_code": discipline_code,
-        "title": f"TECH impact {uuid4().hex[:6]}",
+        "title": f"RFI impact {uuid4().hex[:6]}",
         "status_code": "DRAFT",
         "potential_impact_time": True,
-        "tech": {
-            "tech_subtype_code": "INSTRUCTION",
-            "document_no": f"DOC-{uuid4().hex[:4].upper()}",
-            "revision": "A",
+        "rfi": {
+            "question_text": "Please clarify impact request for alias endpoint validation.",
         },
     }
     plain_res = client.post("/api/v1/comm-items/create", json=plain_payload, headers=headers)
@@ -434,7 +444,7 @@ def test_comm_items_alias_params_precedence_and_impact_alias_endpoint() -> None:
     assert impact_id > 0
 
     claim_only_res = client.get(
-        f"/api/v1/comm-items/list?project_code={project_code}&discipline_code={discipline_code}&item_type=TECH&claim_only=true",
+        f"/api/v1/comm-items/list?project_code={project_code}&discipline_code={discipline_code}&item_type=RFI&claim_only=true",
         headers=headers,
     )
     assert claim_only_res.status_code == 200, claim_only_res.text
@@ -442,7 +452,7 @@ def test_comm_items_alias_params_precedence_and_impact_alias_endpoint() -> None:
     assert any(int(row.get("id", 0)) == impact_id for row in claim_rows)
 
     alias_precedence_res = client.get(
-        f"/api/v1/comm-items/list?project_code={project_code}&discipline_code={discipline_code}&item_type=TECH&claim_only=true&impact_only=false",
+        f"/api/v1/comm-items/list?project_code={project_code}&discipline_code={discipline_code}&item_type=RFI&claim_only=true&impact_only=false",
         headers=headers,
     )
     assert alias_precedence_res.status_code == 200, alias_precedence_res.text
@@ -450,17 +460,17 @@ def test_comm_items_alias_params_precedence_and_impact_alias_endpoint() -> None:
     assert any(int(row.get("id", 0)) == plain_id for row in alias_rows)
 
     control_default_res = client.get(
-        f"/api/v1/comm-items/list?module_key=consultant&tab_key=control&project_code={project_code}&discipline_code={discipline_code}&item_type=TECH",
+        f"/api/v1/comm-items/list?module_key=consultant&tab_key=defects&project_code={project_code}&discipline_code={discipline_code}&item_type=RFI",
         headers=headers,
     )
     assert control_default_res.status_code == 200, control_default_res.text
     control_default_rows = control_default_res.json().get("data", [])
-    assert all(int(row.get("id", 0)) != plain_id for row in control_default_rows)
+    assert any(int(row.get("id", 0)) == plain_id for row in control_default_rows)
 
     control_alias_res = client.get(
         "/api/v1/comm-items/list"
-        f"?module_key=consultant&tab_key=control&project_code={project_code}&discipline_code={discipline_code}"
-        "&item_type=TECH&include_non_claim_control=false&include_non_impact_control=true",
+        f"?module_key=consultant&tab_key=defects&project_code={project_code}&discipline_code={discipline_code}"
+        "&item_type=RFI&include_non_claim_control=false&include_non_impact_control=true",
         headers=headers,
     )
     assert control_alias_res.status_code == 200, control_alias_res.text
@@ -468,11 +478,11 @@ def test_comm_items_alias_params_precedence_and_impact_alias_endpoint() -> None:
     assert any(int(row.get("id", 0)) == plain_id for row in control_alias_rows)
 
     alias_endpoint_res = client.get(
-        f"/api/v1/comm-items/reports/impact-signals?project_code={project_code}&discipline_code={discipline_code}&item_type=TECH",
+        f"/api/v1/comm-items/reports/impact-signals?project_code={project_code}&discipline_code={discipline_code}&item_type=RFI",
         headers=headers,
     )
     legacy_endpoint_res = client.get(
-        f"/api/v1/comm-items/reports/claim-candidates?project_code={project_code}&discipline_code={discipline_code}&item_type=TECH",
+        f"/api/v1/comm-items/reports/claim-candidates?project_code={project_code}&discipline_code={discipline_code}&item_type=RFI",
         headers=headers,
     )
     assert alias_endpoint_res.status_code == 200, alias_endpoint_res.text
@@ -485,15 +495,13 @@ def test_comm_items_lite_mode_allows_impact_update_without_hard_lock() -> None:
     project_code, discipline_code, _recipient_org_id = _ensure_context(headers)
 
     create_payload = {
-        "item_type": "TECH",
+        "item_type": "RFI",
         "project_code": project_code,
         "discipline_code": discipline_code,
-        "title": f"TECH policy {uuid4().hex[:6]}",
+        "title": f"RFI policy {uuid4().hex[:6]}",
         "status_code": "DRAFT",
-        "tech": {
-            "tech_subtype_code": "INSTRUCTION",
-            "document_no": f"DOC-{uuid4().hex[:4].upper()}",
-            "revision": "A",
+        "rfi": {
+            "question_text": "Please clarify impact policy update behavior for RFI.",
         },
     }
     create_res = client.post("/api/v1/comm-items/create", json=create_payload, headers=headers)

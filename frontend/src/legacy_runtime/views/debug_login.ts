@@ -30,6 +30,8 @@ if (logDiv && debugForm) {
       if (res.ok) {
         log("LOGIN SUCCESS! Token received.");
         localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem("auth_last_activity_at", String(Date.now()));
+        localStorage.setItem("auth_last_heartbeat_at", "0");
         log("Token saved to localStorage.");
         log("No auto redirect (debug mode).");
       } else {

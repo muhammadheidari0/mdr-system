@@ -17,8 +17,13 @@ export interface CorrespondenceUiDeps {
   openEdit: (id: number) => Promise<void> | void;
   openWorkflow: (id: number) => Promise<void> | void;
   previewCorrespondence: (id: number) => Promise<void> | void;
+  previewAttachment: (id: number) => Promise<void> | void;
+  previewUnsupported: () => Promise<void> | void;
+  closePreview: () => Promise<void> | void;
   deleteCorrespondence: (id: number) => Promise<void> | void;
   copyRef: (value: string) => Promise<void> | void;
+  submitRelation: () => Promise<void> | void;
+  deleteRelation: (id: string) => Promise<void> | void;
   editAction: (id: number) => Promise<void> | void;
   deleteAction: (id: number) => Promise<void> | void;
   downloadAttachment: (id: number) => Promise<void> | void;
@@ -180,11 +185,26 @@ function bindEvents(root: HTMLElement | null, deps: CorrespondenceUiDeps): boole
       case "preview-correspondence":
         void invoke(() => deps.previewCorrespondence(toInt(actionEl.getAttribute("data-corr-id"))));
         break;
+      case "preview-attachment":
+        void invoke(() => deps.previewAttachment(toInt(actionEl.getAttribute("data-attachment-id"))));
+        break;
+      case "preview-unsupported":
+        void invoke(deps.previewUnsupported);
+        break;
+      case "close-preview":
+        void invoke(deps.closePreview);
+        break;
       case "delete-correspondence":
         void invoke(() => deps.deleteCorrespondence(toInt(actionEl.getAttribute("data-corr-id"))));
         break;
       case "copy-ref":
         void invoke(() => deps.copyRef(String(actionEl.getAttribute("data-corr-ref") || "")));
+        break;
+      case "submit-relation":
+        void invoke(deps.submitRelation);
+        break;
+      case "delete-relation":
+        void invoke(() => deps.deleteRelation(String(actionEl.getAttribute("data-relation-id") || "")));
         break;
       case "edit-action":
         void invoke(() => deps.editAction(toInt(actionEl.getAttribute("data-action-id"))));
@@ -238,6 +258,14 @@ function bindEvents(root: HTMLElement | null, deps: CorrespondenceUiDeps): boole
     modal.addEventListener("click", (event) => {
       if (event.target === modal) {
         void invoke(deps.closeModal);
+      }
+    });
+  }
+  const previewModal = document.getElementById("corrPreviewModal");
+  if (previewModal instanceof HTMLElement) {
+    previewModal.addEventListener("click", (event) => {
+      if (event.target === previewModal) {
+        void invoke(deps.closePreview);
       }
     });
   }

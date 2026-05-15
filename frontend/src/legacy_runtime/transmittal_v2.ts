@@ -22,10 +22,22 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         bulkRegistered: false,
         createReady: false,
         editingId: null,
+        activeDetailId: null,
+        printPreviewId: null,
+        printPreviewUrl: "",
+        directionOptions: [],
+        recipientOptions: [],
     };
 
     const TR2_BULK_ACTION_ISSUE = 'tr2-bulk-issue';
     const TR2_BULK_ACTION_VOID = 'tr2-bulk-void';
+    const DEFAULT_DIRECTION_OPTIONS = [
+        { code: "O", label: "صادره", is_active: true, sort_order: 10 },
+        { code: "I", label: "وارده", is_active: true, sort_order: 20 },
+    ];
+    const DEFAULT_RECIPIENT_OPTIONS = [
+        { code: "C", label: "مشاور", is_active: true, sort_order: 10 },
+    ];
 
     function notify(type, message) {
         if (window.UI && typeof window.UI[type] === "function") {
@@ -87,6 +99,73 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         if (status === "issued") return "صادر شده";
         if (status === "void") return "باطل";
         return String(value || "-");
+    }
+
+    function normalizePartyOption(item, fallbackIndex = 0) {
+        const code = String(item?.code || "").trim().toUpperCase();
+        if (!code) return null;
+        return {
+            code,
+            label: String(item?.label || code).trim() || code,
+            is_active: item?.is_active !== false,
+            sort_order: Number(item?.sort_order ?? ((fallbackIndex + 1) * 10)),
+        };
+    }
+
+    function normalizePartyOptions(items, fallback) {
+        const source = Array.isArray(items) && items.length ? items : fallback;
+        const seen = new Set();
+        return source
+            .map((item, index) => normalizePartyOption(item, index))
+            .filter((item) => item && !seen.has(item.code) && seen.add(item.code))
+            .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+    }
+
+    function directionOptions() {
+        return normalizePartyOptions(state.directionOptions, DEFAULT_DIRECTION_OPTIONS);
+    }
+
+    function recipientOptions() {
+        return normalizePartyOptions(state.recipientOptions, DEFAULT_RECIPIENT_OPTIONS);
+    }
+
+    function partyLabel(group, code, fallbackLabel = "") {
+        const normalized = String(code || "").trim().toUpperCase();
+        const fallback = String(fallbackLabel || "").trim();
+        if (fallback) return fallback;
+        const options = group === "recipient" ? recipientOptions() : directionOptions();
+        const found = options.find((item) => item.code === normalized);
+        return found?.label || normalized || "-";
+    }
+
+    function renderPartySelectOptions(selectEl, options, selectedCode) {
+        if (!selectEl) return;
+        const selected = String(selectedCode || "").trim().toUpperCase();
+        selectEl.innerHTML = options.map((option) => {
+            const code = String(option.code || "").trim().toUpperCase();
+            const label = String(option.label || code).trim();
+            return `<option value="${escapeHtml(code)}" ${code === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
+        }).join("");
+        if (selected && options.some((option) => option.code === selected)) {
+            selectEl.value = selected;
+        } else if (options[0]) {
+            selectEl.value = options[0].code;
+        }
+    }
+
+    function renderPartySelects(senderValue = "O", receiverValue = "C") {
+        renderPartySelectOptions(document.getElementById("tr2-sender"), directionOptions(), senderValue);
+        renderPartySelectOptions(document.getElementById("tr2-receiver"), recipientOptions(), receiverValue);
+    }
+
+    function currentSenderCode() {
+        const fallback = directionOptions()[0]?.code || "O";
+        return String(document.getElementById("tr2-sender")?.value || fallback).trim().toUpperCase() || fallback;
+    }
+
+    function currentReceiverCode() {
+        const fallback = recipientOptions()[0]?.code || "C";
+        return String(document.getElementById("tr2-receiver")?.value || fallback).trim().toUpperCase() || fallback;
     }
 
     async function runTransmittalBulkAction(actionId, selectedKeys) {
@@ -238,13 +317,16 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     function setEditBanner(id = null, status = "draft") {
         const el = document.getElementById("tr2-edit-status");
         const idEl = document.getElementById("tr2-edit-id");
+        const titleEl = document.getElementById("tr2-editor-title");
         if (!el || !idEl) return;
         if (id) {
             idEl.textContent = id;
             el.textContent = formatStatusLabel(status);
+            if (titleEl) titleEl.textContent = "ویرایش ترنسمیتال";
         } else {
             idEl.textContent = "جدید";
             el.textContent = formatStatusLabel("draft");
+            if (titleEl) titleEl.textContent = "ترنسمیتال جدید";
         }
     }
 
@@ -257,13 +339,14 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         const senderEl = document.getElementById("tr2-sender");
         const receiverEl = document.getElementById("tr2-receiver");
         const subjectEl = document.getElementById("tr2-subject");
+        const notesEl = document.getElementById("tr2-notes");
         const searchEl = document.getElementById("tr2-doc-search");
         const nextNoEl = document.getElementById("tr2-next-number");
         if (projectEl) projectEl.disabled = false;
         if (disciplineEl) disciplineEl.value = "";
-        if (senderEl) senderEl.value = "O";
-        if (receiverEl) receiverEl.value = "C";
+        renderPartySelects("O", "C");
         if (subjectEl) subjectEl.value = "";
+        if (notesEl) notesEl.value = "";
         if (searchEl) searchEl.value = "";
         if (nextNoEl) nextNoEl.value = "";
         setEditBanner(null, "draft");
@@ -334,6 +417,201 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         return `<span title="${escapeHtml(tooltip)}" style="cursor: help;">${escapeHtml(statusLabel)}</span>`;
     }
 
+    function relationTypeLabel(value) {
+        const normalized = String(value || "related").trim().toLowerCase();
+        if (normalized === "references") return "ارجاع";
+        if (normalized === "supersedes") return "جایگزین";
+        if (normalized === "contains_document") return "شامل مدرک";
+        return "مرتبط";
+    }
+
+    function renderDetailDocuments(documents) {
+        const rows = Array.isArray(documents) ? documents : [];
+        if (!rows.length) {
+            return '<p class="center-text muted" style="margin:12px 0;">مدرکی در این ترنسمیتال ثبت نشده است.</p>';
+        }
+        return `
+            <div class="table-responsive" style="margin-top:10px;">
+                <table class="archive-table">
+                    <thead>
+                        <tr>
+                            <th>Doc No</th>
+                            <th>Title</th>
+                            <th>Revision</th>
+                            <th>Status</th>
+                            <th>E-Copy</th>
+                            <th>Hard</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map((doc) => `
+                            <tr>
+                                <td style="font-family: monospace; font-weight: 700;">${escapeHtml(doc?.document_code || "-")}</td>
+                                <td>${escapeHtml(doc?.document_title || "-")}</td>
+                                <td>${escapeHtml(doc?.revision || "-")}</td>
+                                <td>${escapeHtml(doc?.status || "-")}</td>
+                                <td>${doc?.electronic_copy ? "دارد" : "ندارد"}</td>
+                                <td>${doc?.hard_copy ? "دارد" : "ندارد"}</td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function renderDetailCorrespondenceRelations(relations) {
+        const rows = Array.isArray(relations) ? relations : [];
+        if (!rows.length) {
+            return '<p class="center-text muted" style="margin:12px 0;">مکاتبه‌ای به این ترنسمیتال لینک نشده است.</p>';
+        }
+        return `
+            <div class="table-responsive" style="margin-top:10px;">
+                <table class="archive-table">
+                    <thead>
+                        <tr>
+                            <th>شماره مکاتبه</th>
+                            <th>موضوع</th>
+                            <th>نوع ارتباط</th>
+                            <th>وضعیت</th>
+                            <th>تاریخ لینک</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map((relation) => `
+                            <tr>
+                                <td style="font-family: monospace; font-weight: 700;">${escapeHtml(relation?.reference_no || "-")}</td>
+                                <td>${escapeHtml(relation?.subject || "-")}</td>
+                                <td>${escapeHtml(relationTypeLabel(relation?.relation_type))}</td>
+                                <td>${escapeHtml(relation?.status || "-")}</td>
+                                <td>${formatShamsiDate(relation?.created_at)}</td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function renderDetailActions(detail) {
+        const id = String(detail?.id || detail?.transmittal_no || "").trim();
+        const status = normalizeTransmittalStatus(detail?.status);
+        if (!id) return "";
+        return `
+            <div class="tr2-detail-actions">
+                ${status === "draft" ? `<button class="btn btn-primary" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(id)}"><span class="material-icons-round">edit</span>ویرایش کامل</button>` : ""}
+                <button class="btn btn-secondary" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(id)}"><span class="material-icons-round">preview</span>پیش‌نمایش چاپ</button>
+                ${status === "draft" ? `<button class="btn btn-primary" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(id)}"><span class="material-icons-round">send</span>صدور</button>` : ""}
+                ${status === "draft" || status === "issued" ? `<button class="btn btn-secondary" type="button" data-tr2-action="void-item" data-id="${escapeHtml(id)}"><span class="material-icons-round">cancel</span>ابطال</button>` : ""}
+            </div>
+        `;
+    }
+
+    function renderTransmittalDetail(detail) {
+        const drawer = document.getElementById("tr2-detail-drawer");
+        const content = document.getElementById("tr2-detail-content");
+        const meta = document.getElementById("tr2-detail-drawer-meta");
+        if (!drawer || !content) return;
+        const relations = Array.isArray(detail?.correspondence_relations) ? detail.correspondence_relations : [];
+        const senderLabel = partyLabel("direction", detail?.sender, detail?.sender_label);
+        const receiverLabel = partyLabel("recipient", detail?.receiver, detail?.receiver_label);
+        if (meta) {
+            meta.innerHTML = `
+                <span class="ci-form-badge ci-form-status-badge">${escapeHtml(formatStatusLabel(detail?.status))}</span>
+            `;
+        }
+        content.innerHTML = `
+            <div class="tr2-detail-hero">
+                <div>
+                    <div class="tr2-detail-kicker">شماره ترنسمیتال</div>
+                    <div class="tr2-detail-number">${escapeHtml(detail?.transmittal_no || detail?.id || "-")}</div>
+                    <div class="tr2-detail-subject">${escapeHtml(detail?.subject || "-")}</div>
+                </div>
+                ${renderDetailActions(detail)}
+            </div>
+            <div class="general-overview-grid" style="margin-bottom: 12px;">
+                <div class="general-overview-card">
+                    <div class="general-overview-value">${escapeHtml(senderLabel)}</div>
+                    <div class="general-overview-label">جهت</div>
+                </div>
+                <div class="general-overview-card">
+                    <div class="general-overview-value">${escapeHtml(receiverLabel)}</div>
+                    <div class="general-overview-label">طرف مقابل</div>
+                </div>
+                <div class="general-overview-card">
+                    <div class="general-overview-value">${escapeHtml(formatStatusLabel(detail?.status))}</div>
+                    <div class="general-overview-label">وضعیت</div>
+                </div>
+                <div class="general-overview-card">
+                    <div class="general-overview-value">${escapeHtml(Array.isArray(detail?.documents) ? detail.documents.length : 0)}</div>
+                    <div class="general-overview-label">مدارک</div>
+                </div>
+                <div class="general-overview-card">
+                    <div class="general-overview-value">${escapeHtml(relations.length)}</div>
+                    <div class="general-overview-label">مکاتبات مرتبط</div>
+                </div>
+                <div class="general-overview-card">
+                    <div class="general-overview-value">${formatShamsiDate(detail?.created_at)}</div>
+                    <div class="general-overview-label">تاریخ ایجاد</div>
+                </div>
+            </div>
+            <div style="margin-bottom: 14px;">
+                <h4 class="general-settings-title" style="font-size:0.9rem; margin-bottom:6px;">
+                    <span class="material-icons-round">description</span>
+                    مدارک ترنسمیتال
+                </h4>
+                ${renderDetailDocuments(detail?.documents)}
+            </div>
+            <div>
+                <h4 class="general-settings-title" style="font-size:0.9rem; margin-bottom:6px;">
+                    <span class="material-icons-round">mail</span>
+                    مکاتبات لینک‌شده به این ترنسمیتال
+                </h4>
+                ${renderDetailCorrespondenceRelations(relations)}
+            </div>
+        `;
+        drawer.hidden = false;
+        drawer.classList.add("is-open");
+        document.body.classList.add("ci-drawer-open");
+    }
+
+    window.closeTransmittalDetail = function closeTransmittalDetail() {
+        state.activeDetailId = null;
+        const drawer = document.getElementById("tr2-detail-drawer");
+        const content = document.getElementById("tr2-detail-content");
+        const meta = document.getElementById("tr2-detail-drawer-meta");
+        if (drawer) {
+            drawer.classList.remove("is-open");
+            drawer.hidden = true;
+        }
+        if (content) content.innerHTML = "";
+        if (meta) meta.innerHTML = "";
+        if (!document.querySelector(".ci-drawer.is-open")) {
+            document.body.classList.remove("ci-drawer-open");
+        }
+    };
+
+    window.openTransmittalDetail = async function openTransmittalDetail(transmittalId) {
+        const id = String(transmittalId || "").trim();
+        if (!id) return;
+        try {
+            const drawer = document.getElementById("tr2-detail-drawer");
+            const content = document.getElementById("tr2-detail-content");
+            if (drawer) {
+                drawer.hidden = false;
+                drawer.classList.add("is-open");
+                document.body.classList.add("ci-drawer-open");
+            }
+            if (content) content.innerHTML = '<p class="center-text muted" style="margin:12px 0;">در حال بارگذاری جزئیات...</p>';
+            const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
+            const detail = await mutationBridge.getDetail(id, { fetch: getTransmittalFetchFn() });
+            state.activeDetailId = id;
+            renderTransmittalDetail(detail);
+        } catch (error) {
+            notify("error", error.message || "بارگذاری جزئیات ترنسمیتال ناموفق بود");
+        }
+    };
+
     function renderSearchResults(items) {
         const tbody = document.getElementById("tr2-search-body");
         if (!tbody) return;
@@ -363,8 +641,24 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         }).join("");
     }
 
+    async function loadTransmittalOptions() {
+        try {
+            const dataBridge = requireBridge(TS_TRANSMITTAL_DATA, "Transmittal data");
+            const options = await dataBridge.loadOptions({ fetch: getTransmittalFetchFn() });
+            state.directionOptions = normalizePartyOptions(options?.direction_options, DEFAULT_DIRECTION_OPTIONS);
+            state.recipientOptions = normalizePartyOptions(options?.recipient_options, DEFAULT_RECIPIENT_OPTIONS);
+        } catch (_) {
+            state.directionOptions = DEFAULT_DIRECTION_OPTIONS;
+            state.recipientOptions = DEFAULT_RECIPIENT_OPTIONS;
+        }
+    }
+
     async function loadCreateFormData() {
-        state.formData = await request("/api/v1/archive/form-data");
+        const [formData] = await Promise.all([
+            request("/api/v1/archive/form-data"),
+            loadTransmittalOptions(),
+        ]);
+        state.formData = formData;
         const projects = Array.isArray(state.formData.projects) ? state.formData.projects : [];
         const disciplines = Array.isArray(state.formData.disciplines) ? state.formData.disciplines : [];
 
@@ -377,14 +671,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 return `<option value="${escapeHtml(code)}">${escapeHtml(label)}</option>`;
             }).join("");
         }
+        renderPartySelects("O", "C");
         if (disciplineEl) {
             disciplineEl.innerHTML = `<option value="">همه دیسیپلین‌ها</option>` + disciplines.map((d) => {
-                const code = (d.code || "").toUpperCase();
-                const label = `${code} - ${d.name || code}`;
-                return `<option value="${escapeHtml(code)}">${escapeHtml(label)}</option>`;
-            }).join("");
-            return;
-            disciplineEl.innerHTML = `<option value="">Ù‡Ù…Ù‡ Ø¯ÛŒØ³ÛŒÙ¾Ù„ÛŒÙ†â€ŒÙ‡Ø§</option>` + disciplines.map((d) => {
                 const code = (d.code || "").toUpperCase();
                 const label = `${code} - ${d.name || code}`;
                 return `<option value="${escapeHtml(code)}">${escapeHtml(label)}</option>`;
@@ -418,10 +707,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     window.loadTransmittals = async function loadTransmittals() {
         const tbody = document.getElementById("tr2-list-body");
         if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="center-text muted" style="padding: 26px;">Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...</td></tr>';
-        }
-        if (tbody) {
-            tbody.innerHTML = '<tr><td colspan="6" class="center-text muted" style="padding: 26px;">در حال بارگذاری...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="center-text muted" style="padding: 26px;">در حال بارگذاری...</td></tr>';
         }
         try {
             const dataBridge = requireBridge(TS_TRANSMITTAL_DATA, "Transmittal data");
@@ -431,48 +717,20 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             ]);
             state.listItems = Array.isArray(items) ? items : [];
             if (!tbody) return;
-            if (Array.isArray(items)) {
-                if (!items.length) {
-                    state.listItems = [];
-                    tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">ترنسمیتالی یافت نشد</td></tr>';
-                    return;
-                }
-                tbody.innerHTML = items.map((t) => `
-                    <tr data-bulk-key="${escapeHtml(String(t.id || '').trim())}" data-transmittal-id="${escapeHtml(String(t.id || '').trim())}" data-transmittal-status="${escapeHtml(normalizeTransmittalStatus(t.status))}">
-                        <td style="font-family: monospace; font-weight: 700;">${escapeHtml(t.transmittal_no || t.id)}</td>
-                        <td>${escapeHtml(t.subject || "-")}</td>
-                        <td>${escapeHtml(t.doc_count)}</td>
-                        <td>${renderStatusCell(t)}</td>
-                        <td>${formatShamsiDate(t.created_at)}</td>
-                        <td>
-                            <div class="archive-row-menu" data-tr2-row-menu>
-                                <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="عملیات" data-tr2-action="toggle-row-menu" aria-expanded="false">
-                                    <span class="material-icons-round">more_vert</span>
-                                </button>
-                                <div class="archive-row-menu-dropdown">
-                                    <button class="archive-row-menu-item" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(t.id)}">
-                                        <span class="material-icons-round">picture_as_pdf</span>
-                                        <span>دانلود PDF</span>
-                                    </button>
-                                    ${normalizeTransmittalStatus(t.status) === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">edit</span><span>ویرایش</span></button>` : ""}
-                                    ${normalizeTransmittalStatus(t.status) === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">send</span><span>ارسال</span></button>` : ""}
-                                    ${canVoidTransmittal(t) ? `<button class="archive-row-menu-item" type="button" data-tr2-action="void-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">cancel</span><span>ابطال</span></button>` : ""}
-                                </div>
-                            </div>
-                        </td>
-                    </tr>
-                `).join("");
+            if (!state.listItems.length) {
+                tbody.innerHTML = '<tr><td colspan="8" class="center-text muted">ترنسمیتالی یافت نشد</td></tr>';
                 return;
             }
-            if (!Array.isArray(items) || !items.length) {
-                state.listItems = [];
-                tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ÛŒ ÛŒØ§ÙØª Ù†Ø´Ø¯</td></tr>';
-                return;
-            }
-            tbody.innerHTML = items.map((t) => `
-                <tr data-bulk-key="${escapeHtml(String(t.id || '').trim())}" data-transmittal-id="${escapeHtml(String(t.id || '').trim())}" data-transmittal-status="${escapeHtml(String(t.status || '').trim().toLowerCase())}">
+            tbody.innerHTML = state.listItems.map((t) => {
+                const status = normalizeTransmittalStatus(t.status);
+                const senderLabel = partyLabel("direction", t.sender, t.sender_label);
+                const receiverLabel = partyLabel("recipient", t.receiver, t.receiver_label);
+                return `
+                <tr class="tr2-list-row" data-bulk-key="${escapeHtml(String(t.id || '').trim())}" data-transmittal-id="${escapeHtml(String(t.id || '').trim())}" data-transmittal-status="${escapeHtml(status)}">
                     <td style="font-family: monospace; font-weight: 700;">${escapeHtml(t.transmittal_no || t.id)}</td>
                     <td>${escapeHtml(t.subject || "-")}</td>
+                    <td>${escapeHtml(senderLabel)}</td>
+                    <td>${escapeHtml(receiverLabel)}</td>
                     <td>${escapeHtml(t.doc_count)}</td>
                     <td>${renderStatusCell(t)}</td>
                     <td>${formatShamsiDate(t.created_at)}</td>
@@ -482,29 +740,37 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                                 <span class="material-icons-round">more_vert</span>
                             </button>
                             <div class="archive-row-menu-dropdown">
-                                <button class="archive-row-menu-item" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(t.id)}">
-                                    <span class="material-icons-round">picture_as_pdf</span>
-                                    <span>PDF</span>
+                                <button class="archive-row-menu-item" type="button" data-tr2-action="detail-item" data-id="${escapeHtml(t.id)}">
+                                    <span class="material-icons-round">visibility</span>
+                                    <span>جزئیات</span>
                                 </button>
-                                ${t.status === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">edit</span><span>ویرایش</span></button>` : ""}
-                                ${t.status === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">send</span><span>ارسال</span></button>` : ""}
-                                ${t.status === "draft" || t.status === "issued" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="void-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">cancel</span><span>ابطال</span></button>` : ""}
+                                <button class="archive-row-menu-item" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(t.id)}">
+                                    <span class="material-icons-round">preview</span>
+                                    <span>پیش‌نمایش چاپ</span>
+                                </button>
+                                ${status === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">edit</span><span>ویرایش</span></button>` : ""}
+                                ${status === "draft" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">send</span><span>ارسال</span></button>` : ""}
+                                ${status === "draft" || status === "issued" ? `<button class="archive-row-menu-item" type="button" data-tr2-action="void-item" data-id="${escapeHtml(t.id)}"><span class="material-icons-round">cancel</span><span>ابطال</span></button>` : ""}
                             </div>
                         </div>
                     </td>
                 </tr>
-            `).join("");
+            `;
+            }).join("");
         } catch (error) {
             state.listItems = [];
             if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="6" class="center-text text-danger">Ø®Ø·Ø§ Ø¯Ø± Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="center-text text-danger">خطا در بارگذاری</td></tr>';
             }
-            notify("error", error.message || "Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯");
+            notify("error", error.message || "بارگذاری ترنسمیتال ناموفق بود");
         }
     };
 
     window.showCreateMode = async function showCreateMode() {
         setTransmittalMode("create");
+        if (typeof window.closeTransmittalDetail === "function") {
+            window.closeTransmittalDetail();
+        }
         if (!state.createReady) {
             await loadCreateFormData();
         }
@@ -558,6 +824,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 return;
             }
 
+            if (typeof window.closeTransmittalDetail === "function") {
+                window.closeTransmittalDetail();
+            }
             setTransmittalMode("create");
 
             state.editingId = detail.id;
@@ -568,14 +837,15 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             const senderEl = document.getElementById("tr2-sender");
             const receiverEl = document.getElementById("tr2-receiver");
             const subjectEl = document.getElementById("tr2-subject");
+            const notesEl = document.getElementById("tr2-notes");
             if (projectEl) {
                 projectEl.value = (detail.project_code || "").toUpperCase();
                 projectEl.disabled = true;
             }
             if (disciplineEl) disciplineEl.value = "";
-            if (senderEl) senderEl.value = detail.sender || "O";
-            if (receiverEl) receiverEl.value = detail.receiver || "C";
+            renderPartySelects(detail.sender || "O", detail.receiver || "C");
             if (subjectEl) subjectEl.value = "";
+            if (notesEl) notesEl.value = detail.notes || "";
 
             state.selectedDocs = Array.isArray(detail.documents) ? detail.documents.map((d) => ({
                 document_code: d.document_code,
@@ -594,8 +864,8 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
 
     async function refreshTransmittalNumber() {
         const project = currentProjectCode();
-        const sender = String(document.getElementById("tr2-sender")?.value || "O").trim().toUpperCase() || "O";
-        const receiver = String(document.getElementById("tr2-receiver")?.value || "C").trim().toUpperCase() || "C";
+        const sender = currentSenderCode();
+        const receiver = currentReceiverCode();
         const output = document.getElementById("tr2-next-number");
         if (!project) {
             if (output) output.value = "";
@@ -680,9 +950,10 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
 
     async function submitTransmittal(issueNow = false) {
         const project = currentProjectCode();
-        const sender = String(document.getElementById("tr2-sender")?.value || "O").trim().toUpperCase() || "O";
-        const receiver = String(document.getElementById("tr2-receiver")?.value || "C").trim().toUpperCase() || "C";
+        const sender = currentSenderCode();
+        const receiver = currentReceiverCode();
         const subject = String(document.getElementById("tr2-subject")?.value || "").trim();
+        const notes = String(document.getElementById("tr2-notes")?.value || "").trim();
         const btn = document.getElementById("tr2-submit-btn");
 
         if (!project) {
@@ -691,6 +962,10 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         }
         if (!state.selectedDocs.length) {
             notify("error", "Ø­Ø¯Ø§Ù‚Ù„ ÛŒÚ© Ù…Ø¯Ø±Ú© Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯");
+            return;
+        }
+        if (!sender || !receiver) {
+            notify("error", "جهت و طرف مقابل ترنسمیتال الزامی است");
             return;
         }
 
@@ -703,7 +978,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 sender,
                 receiver,
                 subject,
-                notes: "",
+                notes,
                 issue_now: issueNow,
                 documents: state.selectedDocs.map((d) => ({
                     document_code: d.document_code,
@@ -743,6 +1018,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             await mutationBridge.issue(String(id), { fetch: getTransmittalFetchFn() });
             notify("success", "ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ ØµØ§Ø¯Ø± Ø´Ø¯");
             await loadTransmittals();
+            if (state.activeDetailId === String(id) && typeof window.openTransmittalDetail === "function") {
+                await window.openTransmittalDetail(String(id));
+            }
         } catch (error) {
             notify("error", error.message || "ØµØ¯ÙˆØ± ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯");
         }
@@ -761,26 +1039,94 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             await mutationBridge.voidItem(String(id), reason, { fetch: getTransmittalFetchFn() });
             notify("success", "ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ Ø¨Ø§Ø·Ù„ Ø´Ø¯");
             await loadTransmittals();
+            if (state.activeDetailId === String(id) && typeof window.openTransmittalDetail === "function") {
+                await window.openTransmittalDetail(String(id));
+            }
         } catch (error) {
             notify("error", error.message || "Ø§Ø¨Ø·Ø§Ù„ ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯");
+        }
+    };
+
+    function closeTransmittalPrintPreview() {
+        const modal = document.getElementById("tr2-print-preview-modal");
+        const body = document.getElementById("tr2-print-preview-body");
+        const meta = document.getElementById("tr2-print-preview-meta");
+        if (modal) {
+            modal.style.display = "none";
+            modal.setAttribute("aria-hidden", "true");
+        }
+        if (body) body.innerHTML = "";
+        if (meta) meta.textContent = "-";
+        if (state.printPreviewUrl) {
+            window.URL.revokeObjectURL(state.printPreviewUrl);
+        }
+        state.printPreviewUrl = "";
+        state.printPreviewId = null;
+    }
+
+    function downloadBlob(blob, fileName) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    }
+
+    window.closeTransmittalPrintPreview = function closeTransmittalPrintPreviewWindow() {
+        closeTransmittalPrintPreview();
+    };
+
+    window.printTransmittalPreview = function printTransmittalPreview() {
+        const frame = document.querySelector("#tr2-print-preview-body iframe");
+        const frameWindow = frame?.contentWindow;
+        if (!frameWindow) {
+            notify("error", "پیش‌نمایش چاپ هنوز آماده نیست");
+            return;
+        }
+        frameWindow.focus();
+        frameWindow.print();
+    };
+
+    window.downloadTransmittalPreviewPdf = async function downloadTransmittalPreviewPdf() {
+        const id = String(state.printPreviewId || "").trim();
+        if (!id) {
+            notify("error", "ترنسمیتال برای دانلود مشخص نیست");
+            return;
+        }
+        try {
+            const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
+            const blob = await mutationBridge.downloadCover(id, { fetch: getTransmittalFetchFn() });
+            downloadBlob(blob, `Transmittal_${id}.pdf`);
+            notify("success", "فایل PDF دانلود شد");
+        } catch (error) {
+            notify("error", error.message || "دانلود PDF ناموفق بود");
         }
     };
 
     window.downloadTransmittalCover = async function downloadTransmittalCover(id) {
         try {
             const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
-            const blob = await mutationBridge.downloadCover(String(id), { fetch: getTransmittalFetchFn() });
+            const result = await mutationBridge.previewCover(String(id), { fetch: getTransmittalFetchFn() });
+            closeTransmittalPrintPreview();
+            const modal = document.getElementById("tr2-print-preview-modal");
+            const body = document.getElementById("tr2-print-preview-body");
+            const meta = document.getElementById("tr2-print-preview-meta");
+            if (!modal || !body) {
+                throw new Error("پنجره پیش‌نمایش چاپ در صفحه پیدا نشد");
+            }
+            const blob = new Blob([result.html || ""], { type: "text/html;charset=utf-8" });
             const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `Transmittal_${id}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
-            notify("success", "ÙØ§ÛŒÙ„ PDF Ø¯Ø§Ù†Ù„ÙˆØ¯ Ø´Ø¯");
+            state.printPreviewUrl = url;
+            state.printPreviewId = String(id);
+            if (meta) meta.textContent = `ترنسمیتال ${String(id)}`;
+            body.innerHTML = `<iframe class="tr2-print-preview-frame" src="${url}" title="پیش‌نمایش چاپ ترنسمیتال"></iframe>`;
+            modal.style.display = "flex";
+            modal.setAttribute("aria-hidden", "false");
         } catch (error) {
-            notify("error", error.message || "Ø¯Ø§Ù†Ù„ÙˆØ¯ PDF Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯");
+            notify("error", error.message || "پیش‌نمایش چاپ ترنسمیتال ناموفق بود");
         }
     };
 
@@ -798,6 +1144,11 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             submitDraft: () => window.submitTransmittal(),
             submitIssue: () => window.submitAndIssueTransmittal(),
             downloadCover: (id) => window.downloadTransmittalCover(id),
+            closePrintPreview: () => window.closeTransmittalPrintPreview(),
+            printPreview: () => window.printTransmittalPreview(),
+            downloadPreview: () => window.downloadTransmittalPreviewPdf(),
+            detailItem: (id) => window.openTransmittalDetail(id),
+            closeDetail: () => window.closeTransmittalDetail(),
             editItem: (id) => window.openEditTransmittal(id),
             issueItem: (id) => window.issueTransmittal(id),
             voidItem: (id) => window.voidTransmittal(id),

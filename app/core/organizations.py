@@ -14,6 +14,7 @@ class OrganizationRole(str, Enum):
     ADMIN = "admin"
     MANAGER = "manager"
     DCC = "dcc"
+    PROJECT_CONTROL = "project_control"
     USER = "user"
     VIEWER = "viewer"
 

@@ -482,7 +482,7 @@ def _build_full_titles(
 ) -> tuple[str, str]:
     block_code = str(block or "").strip().upper() or "G"
     level_code = str(level or "").strip().upper() or "GEN"
-    is_general = level_code == "GEN"
+    omit_location = block_code == "T" and level_code == "GEN"
     safe_subject = str(subject or "").strip()
 
     base_e = str(pkg_name_e or pkg_code or "00").strip() or "00"
@@ -491,12 +491,12 @@ def _build_full_titles(
 
     location = f"{block_code}{level_code}"
     title_e = base_e
-    if not is_general:
+    if not omit_location:
         title_e = f"{title_e}-{location}"
     if safe_subject:
         title_e = f"{title_e} - {safe_subject}"
 
-    title_p = base_p if is_general else f"{location}-{base_p}"
+    title_p = base_p if omit_location else f"{location}-{base_p}"
     if safe_subject:
         title_p = f"{title_p}-{safe_subject}"
     return title_e, title_p

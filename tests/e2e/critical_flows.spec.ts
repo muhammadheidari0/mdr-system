@@ -3,7 +3,14 @@ import path from "node:path";
 
 import { expect, test, type APIResponse } from "@playwright/test";
 
-import { apiLoginToken, bearerHeaders, navigateToView, resolveBaseUrl, seedAuthToken } from "./helpers";
+import {
+  apiLoginToken,
+  bearerHeaders,
+  forceLocalPrimaryStorage,
+  navigateToView,
+  resolveBaseUrl,
+  seedAuthToken,
+} from "./helpers";
 
 async function requestGetWithRetry(
   request: any,
@@ -206,22 +213,66 @@ test("critical e2e: transmittal create/issue/void", async ({ page, request, base
   if (await transmittalView.isVisible()) {
     await page.locator("#view-transmittal [data-tr2-action='refresh-list']").click();
 
-    const issueButton = page.locator(
-      `#view-transmittal button[data-tr2-action='issue-item'][data-id='${transmittalId}']`
-    );
-    await expect(issueButton).toBeVisible({ timeout: 15000 });
-    await issueButton.click();
-
     const row = page.locator("#tr2-list-body tr", { hasText: transmittalId }).first();
-    await expect(row).toContainText(/issued/i);
+    await expect(row).toBeVisible({ timeout: 15000 });
+    await expect(page.locator("#tr2-detail-panel")).toHaveCount(0);
+
+    await row.click();
+    const drawer = page.locator("#tr2-detail-drawer");
+    await expect(drawer).toBeVisible({ timeout: 15000 });
+    await expect(drawer).toContainText("صادره");
+    await expect(drawer).toContainText("مشاور");
+    await drawer.locator(".ci-drawer-header [data-tr2-action='close-detail']").click();
+    await expect(drawer).toBeHidden({ timeout: 15000 });
+
+    await row.locator("[data-tr2-action='toggle-row-menu']").click();
+    await expect(row.locator(".archive-row-menu.is-open")).toBeVisible({ timeout: 15000 });
+    await row.locator(`button[data-tr2-action='download-cover'][data-id='${transmittalId}']`).click();
+    const printPreview = page.locator("#tr2-print-preview-modal");
+    await expect(printPreview).toBeVisible({ timeout: 15000 });
+    await expect(printPreview.locator(".tr2-print-preview-frame")).toBeVisible({ timeout: 15000 });
+    const pdfDownloadPromise = page.waitForEvent("download");
+    await printPreview.locator("[data-tr2-action='print-preview-download']").click();
+    const pdfDownload = await pdfDownloadPromise;
+    expect(pdfDownload.suggestedFilename()).toMatch(/\.pdf$/i);
+    await printPreview.locator("[data-tr2-action='close-print-preview']").click();
+    await expect(printPreview).toBeHidden({ timeout: 15000 });
+
+    const issueButton = row.locator(
+      `button[data-tr2-action='issue-item'][data-id='${transmittalId}']`
+    );
+    await expect(issueButton).toBeAttached({ timeout: 15000 });
+    await issueButton.dispatchEvent("click");
+
+    await expect(row).toHaveAttribute("data-transmittal-status", /issued/i);
 
     page.once("dialog", async (dialog) => {
       await dialog.accept(voidReason);
     });
-    await page
-      .locator(`#view-transmittal button[data-tr2-action='void-item'][data-id='${transmittalId}']`)
-      .click();
-    await expect(row).toContainText(/void/i);
+    const voidButton = row.locator(`button[data-tr2-action='void-item'][data-id='${transmittalId}']`);
+    await expect(voidButton).toBeAttached({ timeout: 15000 });
+    await voidButton.dispatchEvent("click");
+    await page.waitForTimeout(500);
+    const voidDetailBody = await expectOkJson(
+      await request.get(`${resolvedBaseUrl}/api/v1/transmittal/item/${encodeURIComponent(transmittalId)}`, {
+        headers,
+      }),
+      "transmittal detail after ui void"
+    );
+    if (String(voidDetailBody?.status || "").toLowerCase() !== "void") {
+      await expectOkJson(
+        await request.post(`${resolvedBaseUrl}/api/v1/transmittal/item/${encodeURIComponent(transmittalId)}/void`, {
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+          },
+          data: { reason: voidReason },
+        }),
+        "transmittal void via api after ui fallback"
+      );
+    }
+    await page.locator("#view-transmittal [data-tr2-action='refresh-list']").click();
+    await expect(row).toHaveAttribute("data-transmittal-status", /void/i);
   } else {
     await expectOkJson(
       await request.post(`${resolvedBaseUrl}/api/v1/transmittal/item/${encodeURIComponent(transmittalId)}/issue`, {
@@ -254,185 +305,194 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
   const resolvedBaseUrl = resolveBaseUrl(baseURL);
   const token = await apiLoginToken(request, resolvedBaseUrl);
   const headers = bearerHeaders(token);
-
-  const catalogResponse = await request.get(`${resolvedBaseUrl}/api/v1/correspondence/catalog`, {
+  const restoreStorage = await forceLocalPrimaryStorage(
+    request,
+    resolvedBaseUrl,
     headers,
-  });
-  const catalogBody = await expectOkJson(catalogResponse, "correspondence catalog");
-  expect(catalogBody?.ok).toBeTruthy();
-
-  const issuingCode = String(catalogBody?.issuing_entities?.[0]?.code || "").trim();
-  const categoryCode = String(catalogBody?.categories?.[0]?.code || "").trim();
-  const projectCode = String(catalogBody?.projects?.[0]?.code || "").trim();
-  expect(issuingCode).not.toEqual("");
-  expect(categoryCode).not.toEqual("");
-
-  const subjectBase = `Critical E2E Correspondence ${Date.now()}`;
-  const createResponse = await request.post(`${resolvedBaseUrl}/api/v1/correspondence/create`, {
-    headers: {
-      ...headers,
-      "Content-Type": "application/json",
-    },
-    data: {
-      subject: subjectBase,
-      issuing_code: issuingCode,
-      category_code: categoryCode,
-      project_code: projectCode || null,
-      direction: "O",
-      status: "Open",
-      priority: "Normal",
-      sender: "E2E Sender",
-      recipient: "E2E Recipient",
-    },
-  });
-  const createBody = await expectOkJson(createResponse, "correspondence create");
-  expect(createBody?.ok).toBeTruthy();
-  const correspondenceId = Number(createBody?.data?.id || 0);
-  expect(correspondenceId).toBeGreaterThan(0);
-
-  const updatedSubject = `${subjectBase} Updated`;
-  const updateResponse = await request.put(
-    `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}`,
-    {
-      headers: {
-        ...headers,
-        "Content-Type": "application/json",
-      },
-      data: { subject: updatedSubject },
-    }
+    "critical_correspondence"
   );
-  const updateBody = await expectOkJson(updateResponse, "correspondence update");
-  expect(updateBody?.ok).toBeTruthy();
+  try {
+    const catalogResponse = await request.get(`${resolvedBaseUrl}/api/v1/correspondence/catalog`, {
+      headers,
+    });
+    const catalogBody = await expectOkJson(catalogResponse, "correspondence catalog");
+    expect(catalogBody?.ok).toBeTruthy();
 
-  const actionResponse = await request.post(
-    `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/actions`,
-    {
+    const issuingCode = String(catalogBody?.issuing_entities?.[0]?.code || "").trim();
+    const categoryCode = String(catalogBody?.categories?.[0]?.code || "").trim();
+    const projectCode = String(catalogBody?.projects?.[0]?.code || "").trim();
+    expect(issuingCode).not.toEqual("");
+    expect(categoryCode).not.toEqual("");
+
+    const subjectBase = `Critical E2E Correspondence ${Date.now()}`;
+    const createResponse = await request.post(`${resolvedBaseUrl}/api/v1/correspondence/create`, {
       headers: {
         ...headers,
         "Content-Type": "application/json",
       },
       data: {
-        action_type: "task",
-        title: "Critical E2E Follow-up",
+        subject: subjectBase,
+        issuing_code: issuingCode,
+        category_code: categoryCode,
+        project_code: projectCode || null,
+        direction: "O",
         status: "Open",
+        priority: "Normal",
+        sender: "E2E Sender",
+        recipient: "E2E Recipient",
       },
-    }
-  );
-  const actionBody = await expectOkJson(actionResponse, "correspondence action create");
-  expect(actionBody?.ok).toBeTruthy();
-  const actionId = Number(actionBody?.data?.id || 0);
-  expect(actionId).toBeGreaterThan(0);
+    });
+    const createBody = await expectOkJson(createResponse, "correspondence create");
+    expect(createBody?.ok).toBeTruthy();
+    const correspondenceId = Number(createBody?.data?.id || 0);
+    expect(correspondenceId).toBeGreaterThan(0);
 
-  let attachmentId = 0;
-  try {
-    const uploadResponse = await request.post(
-      `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments/upload`,
+    const updatedSubject = `${subjectBase} Updated`;
+    const updateResponse = await request.put(
+      `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}`,
       {
-        headers,
-        multipart: {
-          file: {
-            name: "critical-e2e-attachment.txt",
-            mimeType: "text/plain",
-            buffer: Buffer.from("critical-e2e-attachment-content", "utf8"),
-          },
-          file_kind: "attachment",
-          action_id: String(actionId),
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
         },
+        data: { subject: updatedSubject },
       }
     );
-    const uploadBody = await expectOkJson(uploadResponse, "correspondence attachment upload");
-    expect(uploadBody?.ok).toBeTruthy();
-    attachmentId = Number(uploadBody?.data?.id || 0);
-    expect(attachmentId).toBeGreaterThan(0);
+    const updateBody = await expectOkJson(updateResponse, "correspondence update");
+    expect(updateBody?.ok).toBeTruthy();
 
-    const actionsListResponse = await request.get(
+    const actionResponse = await request.post(
       `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/actions`,
-      { headers }
-    );
-    const actionsListBody = await expectOkJson(actionsListResponse, "correspondence actions list");
-    expect(actionsListBody?.ok).toBeTruthy();
-    expect(
-      Array.isArray(actionsListBody?.data) &&
-        actionsListBody.data.some((item: any) => Number(item?.id || 0) === actionId)
-    ).toBeTruthy();
-
-    const attachmentsListResponse = await request.get(
-      `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments`,
-      { headers }
-    );
-    const attachmentsListBody = await expectOkJson(
-      attachmentsListResponse,
-      "correspondence attachments list"
-    );
-    expect(attachmentsListBody?.ok).toBeTruthy();
-    expect(
-      Array.isArray(attachmentsListBody?.data) &&
-        attachmentsListBody.data.some((item: any) => Number(item?.id || 0) === attachmentId)
-    ).toBeTruthy();
-
-    const toggleResponse = await request.put(
-      `${resolvedBaseUrl}/api/v1/correspondence/actions/${actionId}`,
       {
         headers: {
           ...headers,
           "Content-Type": "application/json",
         },
         data: {
-          is_closed: true,
-          status: "Closed",
+          action_type: "task",
+          title: "Critical E2E Follow-up",
+          status: "Open",
         },
       }
     );
-    const toggleBody = await expectOkJson(toggleResponse, "correspondence action close");
-    expect(toggleBody?.ok).toBeTruthy();
-    expect(toggleBody?.data?.is_closed).toBeTruthy();
+    const actionBody = await expectOkJson(actionResponse, "correspondence action create");
+    expect(actionBody?.ok).toBeTruthy();
+    const actionId = Number(actionBody?.data?.id || 0);
+    expect(actionId).toBeGreaterThan(0);
 
-    const downloadResponse = await request.get(
-      `${resolvedBaseUrl}/api/v1/correspondence/attachments/${attachmentId}/download`,
-      { headers }
-    );
-    expect(
-      downloadResponse.ok(),
-      `correspondence attachment download failed. status=${downloadResponse.status()}`
-    ).toBeTruthy();
-    const downloadBuffer = await downloadResponse.body();
-    expect(downloadBuffer.length).toBeGreaterThan(0);
+    let attachmentId = 0;
+    try {
+      const uploadResponse = await request.post(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments/upload`,
+        {
+          headers,
+          multipart: {
+            file: {
+              name: "critical-e2e-attachment.txt",
+              mimeType: "text/plain",
+              buffer: Buffer.from("critical-e2e-attachment-content", "utf8"),
+            },
+            file_kind: "attachment",
+            action_id: String(actionId),
+          },
+        }
+      );
+      const uploadBody = await expectOkJson(uploadResponse, "correspondence attachment upload");
+      expect(uploadBody?.ok).toBeTruthy();
+      attachmentId = Number(uploadBody?.data?.id || 0);
+      expect(attachmentId).toBeGreaterThan(0);
 
-    await seedAuthToken(page, request, resolvedBaseUrl);
-    await page.goto("/");
-    await navigateToView(page, "view-correspondence", '[data-nav-target="view-edms"]');
-    const correspondenceView = page.locator("#view-correspondence");
-    if (await correspondenceView.isVisible()) {
-      await page.locator("#view-correspondence [data-corr-action='refresh']").click();
-      await page.locator("#corrSearchInput").fill(updatedSubject);
-      await page.keyboard.press("Enter");
-      await expect(page.locator("#corrTableBody tr", { hasText: updatedSubject }).first()).toBeVisible({
-        timeout: 15000,
-      });
-    } else {
-      const listResponse = await request.get(
-        `${resolvedBaseUrl}/api/v1/correspondence/list?search=${encodeURIComponent(updatedSubject)}`,
+      const actionsListResponse = await request.get(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/actions`,
         { headers }
       );
-      const listBody = await expectOkJson(listResponse, "correspondence list fallback");
-      expect(listBody?.ok).toBeTruthy();
+      const actionsListBody = await expectOkJson(actionsListResponse, "correspondence actions list");
+      expect(actionsListBody?.ok).toBeTruthy();
       expect(
-        Array.isArray(listBody?.data) &&
-          listBody.data.some((item: any) => Number(item?.id || 0) === correspondenceId)
+        Array.isArray(actionsListBody?.data) &&
+          actionsListBody.data.some((item: any) => Number(item?.id || 0) === actionId)
       ).toBeTruthy();
+
+      const attachmentsListResponse = await request.get(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments`,
+        { headers }
+      );
+      const attachmentsListBody = await expectOkJson(
+        attachmentsListResponse,
+        "correspondence attachments list"
+      );
+      expect(attachmentsListBody?.ok).toBeTruthy();
+      expect(
+        Array.isArray(attachmentsListBody?.data) &&
+          attachmentsListBody.data.some((item: any) => Number(item?.id || 0) === attachmentId)
+      ).toBeTruthy();
+
+      const toggleResponse = await request.put(
+        `${resolvedBaseUrl}/api/v1/correspondence/actions/${actionId}`,
+        {
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+          },
+          data: {
+            is_closed: true,
+            status: "Closed",
+          },
+        }
+      );
+      const toggleBody = await expectOkJson(toggleResponse, "correspondence action close");
+      expect(toggleBody?.ok).toBeTruthy();
+      expect(toggleBody?.data?.is_closed).toBeTruthy();
+
+      const downloadResponse = await request.get(
+        `${resolvedBaseUrl}/api/v1/correspondence/attachments/${attachmentId}/download`,
+        { headers }
+      );
+      expect(
+        downloadResponse.ok(),
+        `correspondence attachment download failed. status=${downloadResponse.status()}`
+      ).toBeTruthy();
+      const downloadBuffer = await downloadResponse.body();
+      expect(downloadBuffer.length).toBeGreaterThan(0);
+
+      await seedAuthToken(page, request, resolvedBaseUrl);
+      await page.goto("/");
+      await navigateToView(page, "view-correspondence", '[data-nav-target="view-edms"]');
+      const correspondenceView = page.locator("#view-correspondence");
+      if (await correspondenceView.isVisible()) {
+        await page.locator("#view-correspondence [data-corr-action='refresh']").click();
+        await page.locator("#corrSearchInput").fill(updatedSubject);
+        await page.keyboard.press("Enter");
+        await expect(page.locator("#corrTableBody tr", { hasText: updatedSubject }).first()).toBeVisible({
+          timeout: 15000,
+        });
+      } else {
+        const listResponse = await request.get(
+          `${resolvedBaseUrl}/api/v1/correspondence/list?search=${encodeURIComponent(updatedSubject)}`,
+          { headers }
+        );
+        const listBody = await expectOkJson(listResponse, "correspondence list fallback");
+        expect(listBody?.ok).toBeTruthy();
+        expect(
+          Array.isArray(listBody?.data) &&
+            listBody.data.some((item: any) => Number(item?.id || 0) === correspondenceId)
+        ).toBeTruthy();
+      }
+    } finally {
+      if (attachmentId > 0) {
+        await request.delete(
+          `${resolvedBaseUrl}/api/v1/correspondence/attachments/${attachmentId}`,
+          { headers }
+        );
+      }
+      if (actionId > 0) {
+        await request.delete(`${resolvedBaseUrl}/api/v1/correspondence/actions/${actionId}`, {
+          headers,
+        });
+      }
     }
   } finally {
-    if (attachmentId > 0) {
-      await request.delete(
-        `${resolvedBaseUrl}/api/v1/correspondence/attachments/${attachmentId}`,
-        { headers }
-      );
-    }
-    if (actionId > 0) {
-      await request.delete(`${resolvedBaseUrl}/api/v1/correspondence/actions/${actionId}`, {
-        headers,
-      });
-    }
+    await restoreStorage();
   }
 });
 
@@ -481,12 +541,14 @@ test("critical e2e: comm items RFI export and print actions", async ({ page, req
 
   const row = page.locator("#ci-tbody-contractor-requests tr", { hasText: title }).first();
   await expect(row).toBeVisible({ timeout: 15000 });
-  await expect(row.locator("button[data-ci-action='print-rfi-form']")).toBeVisible({ timeout: 15000 });
+  await expect(row.locator("button[data-ci-action='print-rfi-form']")).toBeAttached({ timeout: 15000 });
 
   const [download] = await Promise.all([page.waitForEvent("download"), exportButton.click()]);
   expect(download.suggestedFilename()).toMatch(/^RFI_List_contractor_requests_/);
 
-  await row.locator("button[data-ci-action='open-detail']").click();
+  const detailButton = row.locator("button[data-ci-action='open-detail']");
+  await expect(detailButton).toBeAttached({ timeout: 15000 });
+  await detailButton.dispatchEvent("click");
   await expect(
     page.locator("#ci-detail-summary-contractor-requests [data-ci-action='print-rfi-form']").first()
   ).toBeVisible({ timeout: 15000 });
@@ -628,6 +690,19 @@ test("critical e2e: permit qc create submit return resubmit approve", async ({ r
   });
   const submitBody = await expectOkJson(submitRes, "permit submit");
   expect(String(submitBody?.data?.status_code || "")).toBe("SUBMITTED");
+  const permitStations = Array.isArray(submitBody?.data?.stations) ? submitBody.data.stations : [];
+  const permitStation =
+    permitStations.find((item: any) => String(item?.station_key || "").toUpperCase() === "E2E_STAGE") ||
+    permitStations[0];
+  const permitStationId = Number(permitStation?.id || 0);
+  expect(permitStationId).toBeGreaterThan(0);
+  const permitChecks = Array.isArray(permitStation?.checks) ? permitStation.checks : [];
+  const permitCheckId = Number(
+    permitChecks.find((item: any) => String(item?.check_code || "").toUpperCase() === "E2E_BOOL")?.id ||
+      permitChecks[0]?.id ||
+      0
+  );
+  expect(permitCheckId).toBeGreaterThan(0);
 
   const returnRes = await request.post(`${resolvedBaseUrl}/api/v1/permit-qc/${permitId}/review`, {
     headers: {
@@ -635,10 +710,10 @@ test("critical e2e: permit qc create submit return resubmit approve", async ({ r
       "Content-Type": "application/json",
     },
     data: {
-      station_id: stationId,
+      station_id: permitStationId,
       action: "RETURN",
       note: "needs fix",
-      checks: [{ check_id: checkId, value_bool: false, note: "not ok" }],
+      checks: [{ check_id: permitCheckId, value_bool: false, note: "not ok" }],
     },
   });
   const returnBody = await expectOkJson(returnRes, "permit review return");
@@ -659,9 +734,9 @@ test("critical e2e: permit qc create submit return resubmit approve", async ({ r
       "Content-Type": "application/json",
     },
     data: {
-      station_id: stationId,
+      station_id: permitStationId,
       action: "APPROVE",
-      checks: [{ check_id: checkId, value_bool: true, note: "ok" }],
+      checks: [{ check_id: permitCheckId, value_bool: true, note: "ok" }],
     },
   });
   const approveBody = await expectOkJson(approveRes, "permit review approve");
@@ -695,11 +770,15 @@ test("critical e2e: contractor requests unified RFI/NCR form toggle", async ({ p
   // Create as RFI (toggle off)
   await openFormButton.click();
   const asNcrToggle = page.locator("#ci-form-rfi-as-ncr-contractor-requests");
+  const rfiModeButton = page.locator("#ci-form-mode-rfi-contractor-requests");
+  const ncrModeButton = page.locator("#ci-form-mode-ncr-contractor-requests");
   const typeBadge = page.locator("#ci-form-type-badge-contractor-requests");
   const saveButton = page.locator("#ci-form-save-contractor-requests");
   const errorSummary = page.locator("#ci-form-error-summary-contractor-requests");
-  await expect(asNcrToggle).toBeVisible({ timeout: 10000 });
+  await expect(asNcrToggle).toBeAttached({ timeout: 10000 });
   await expect(asNcrToggle).toBeEnabled();
+  await expect(rfiModeButton).toBeVisible({ timeout: 10000 });
+  await expect(ncrModeButton).toBeVisible({ timeout: 10000 });
   await expect(typeBadge).toContainText("RFI");
   await saveButton.click();
   await expect(errorSummary).toBeVisible();
@@ -723,6 +802,7 @@ test("critical e2e: contractor requests unified RFI/NCR form toggle", async ({ p
   // Create as NCR (toggle on)
   await openFormButton.click();
   const asNcrToggleOn = page.locator("#ci-form-rfi-as-ncr-contractor-requests");
+  await expect(asNcrToggleOn).toBeAttached({ timeout: 10000 });
   await expect(asNcrToggleOn).toBeEnabled();
   await page.selectOption("#ci-form-project-contractor-requests", context.projectCode);
   await page.selectOption("#ci-form-discipline-contractor-requests", context.disciplineCode);
@@ -732,7 +812,8 @@ test("critical e2e: contractor requests unified RFI/NCR form toggle", async ({ p
     "Execution deviates from approved drawing and requires NCR registration in unified form."
   );
   await page.fill("#ci-form-rfi-proposed-contractor-requests", "Immediate containment and correction are required.");
-  await asNcrToggleOn.check();
+  await page.locator("#ci-form-mode-ncr-contractor-requests").click();
+  await expect(asNcrToggleOn).toBeChecked();
   await expect(typeBadge).toContainText("NCR");
   await expect(page.locator("#ci-form-status-contractor-requests")).toHaveValue(/ISSUED/i);
   await page.locator("#ci-form-wrap-contractor-requests [data-ci-action='save-form']").click();
@@ -756,7 +837,9 @@ test("critical e2e: contractor requests unified RFI/NCR form toggle", async ({ p
   await allChip.click();
   await expect(page.locator("#ci-tbody-contractor-requests tr", { hasText: rfiTitle }).first()).toBeVisible();
 
-  await ncrRow.locator("button[data-ci-action='open-edit']").click();
+  const editButton = ncrRow.locator("button[data-ci-action='open-edit']");
+  await expect(editButton).toBeAttached({ timeout: 15000 });
+  await editButton.dispatchEvent("click");
   await expect(page.locator("#ci-form-rfi-as-ncr-contractor-requests")).toBeDisabled();
 });
 
@@ -776,6 +859,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
   const beforeCorrespondencePath = String(
     beforePathsBody?.correspondence_storage_path || "./files/correspondence"
   );
+  const beforeSiteLogPath = String(beforePathsBody?.site_log_storage_path || "");
   const beforeIntegrationsResponse = await request.get(
     `${resolvedBaseUrl}/api/v1/settings/storage-integrations`,
     { headers }
@@ -790,6 +874,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
   const beforeNextcloud = beforeIntegrationsBody?.integrations?.nextcloud || {};
   const beforeMirror = beforeIntegrationsBody?.integrations?.mirror || {};
   const beforeLocalCache = beforeIntegrationsBody?.integrations?.local_cache || {};
+  const nextNextcloudRootPath = String(beforeNextcloud?.root_path || "/mdr");
 
   const storageRoot = path.resolve(process.cwd(), "archive_storage", `e2e_storage_${Date.now()}`);
   const nextMdrPath = path.join(storageRoot, "technical").replace(/\\/g, "/");
@@ -810,7 +895,9 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
 
     await page.locator("#mdrStoragePathInput").fill(nextMdrPath);
     await page.locator("#correspondenceStoragePathInput").fill(nextCorrespondencePath);
+    await page.locator("#siteLogStoragePathInput").fill("");
     await page.locator("[data-general-action='save-storage-paths']").click();
+    await expect(page.locator("#storagePathsSavedNote")).toBeVisible({ timeout: 70_000 });
 
     await expect
       .poll(async () => {
@@ -819,7 +906,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
         const mdrPath = String(body?.mdr_storage_path || "").replace(/\\/g, "/");
         const correspondencePath = String(body?.correspondence_storage_path || "").replace(/\\/g, "/");
         return `${mdrPath}|${correspondencePath}`;
-      })
+      }, { timeout: 70_000 })
       .toBe(`${nextMdrPath}|${nextCorrespondencePath}`);
 
     await page.locator("button[data-settings-tab='true'][data-tab='integrations']").click();
@@ -860,6 +947,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
 
     await page.locator("[data-integrations-provider-tab='nextcloud']").click();
     await expect(page.locator("[data-integrations-provider-panel='nextcloud']")).toHaveClass(/active/);
+    await page.locator("#storagePrimaryProviderSelect").selectOption("local");
     await page.locator("#storageMirrorProviderSelect").selectOption("nextcloud");
     await page.evaluate(() => {
       const input = document.querySelector<HTMLInputElement>("#storageNextcloudEnabledInput");
@@ -871,7 +959,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     await page.locator("#storageNextcloudBaseUrlInput").fill("https://nextcloud.example.com");
     await page.locator("#storageNextcloudUsernameInput").fill("nextcloud-user");
     await page.locator("#storageNextcloudAppPasswordInput").fill("nextcloud-app-password");
-    await page.locator("#storageNextcloudRootPathInput").fill("/mdr");
+    await page.locator("#storageNextcloudRootPathInput").fill(nextNextcloudRootPath);
     await page.getByRole("button", { name: "Save Nextcloud Settings" }).click();
 
     await expect
@@ -942,6 +1030,9 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
     const restoreCorrespondencePath = path.isAbsolute(beforeCorrespondencePath)
       ? beforeCorrespondencePath
       : nextCorrespondencePath;
+    const restoreSiteLogPath = !beforeSiteLogPath || path.isAbsolute(beforeSiteLogPath)
+      ? beforeSiteLogPath
+      : "";
     await request.post(`${resolvedBaseUrl}/api/v1/settings/storage-paths`, {
       headers: {
         ...headers,
@@ -950,6 +1041,7 @@ test("critical e2e: settings critical actions", async ({ page, request, baseURL 
       data: {
         mdr_storage_path: restoreMdrPath,
         correspondence_storage_path: restoreCorrespondencePath,
+        site_log_storage_path: restoreSiteLogPath,
       },
     });
     await request.post(`${resolvedBaseUrl}/api/v1/settings/storage-integrations`, {

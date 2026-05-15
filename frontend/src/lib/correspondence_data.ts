@@ -8,6 +8,7 @@ export interface CorrespondenceListQuery {
   search?: string;
   issuing_code?: string;
   category_code?: string;
+  tag_id?: string;
   direction?: string;
   status?: string;
   date_from?: string;
@@ -19,8 +20,10 @@ export interface CorrespondenceDataBridge {
   loadCatalog(deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
   loadDashboard(deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
   loadList(query: CorrespondenceListQuery, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
+  loadSuggestions(search: string, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
   listActions(correspondenceId: number, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
   listAttachments(correspondenceId: number, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
+  listRelations(correspondenceId: number, deps: CorrespondenceHttpDeps): Promise<Record<string, unknown>>;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -71,6 +74,7 @@ async function loadList(
     "search",
     "issuing_code",
     "category_code",
+    "tag_id",
     "direction",
     "status",
     "date_from",
@@ -82,6 +86,17 @@ async function loadList(
   });
 
   return asRecord(await requestJson(`/api/v1/correspondence/list?${params.toString()}`, undefined, deps));
+}
+
+async function loadSuggestions(
+  search: string,
+  deps: CorrespondenceHttpDeps
+): Promise<Record<string, unknown>> {
+  const params = new URLSearchParams();
+  const value = String(search || "").trim();
+  if (value) params.set("q", value);
+  params.set("limit", "8");
+  return asRecord(await requestJson(`/api/v1/correspondence/suggestions?${params.toString()}`, undefined, deps));
 }
 
 async function listActions(
@@ -100,13 +115,23 @@ async function listAttachments(
   return asRecord(await requestJson(`/api/v1/correspondence/${id}/attachments`, undefined, deps));
 }
 
+async function listRelations(
+  correspondenceId: number,
+  deps: CorrespondenceHttpDeps
+): Promise<Record<string, unknown>> {
+  const id = Math.max(0, Number(correspondenceId) || 0);
+  return asRecord(await requestJson(`/api/v1/correspondence/${id}/relations`, undefined, deps));
+}
+
 export function createCorrespondenceDataBridge(): CorrespondenceDataBridge {
   return {
     requestJson,
     loadCatalog,
     loadDashboard,
     loadList,
+    loadSuggestions,
     listActions,
     listAttachments,
+    listRelations,
   };
 }

@@ -36,17 +36,21 @@ def test_correspondence_permission_matrix_controls_navigation_and_catalog_access
 
     permissions = matrix_body.get("permissions", [])
     assert "correspondence:read" in permissions
-    assert "module_settings:read" in permissions
+    assert "module_settings_consultant:read" in permissions
+
+    me_res = client.get("/api/v1/auth/me", headers=consultant_headers)  # type: ignore[arg-type]
+    assert me_res.status_code == 200, me_res.text
+    effective_role = str(me_res.json().get("effective_role") or "").strip().lower() or "viewer"
 
     matrix = matrix_body.get("matrix", {})
     assert isinstance(matrix, dict)
-    assert isinstance(matrix.get("user"), dict)
+    assert isinstance(matrix.get(effective_role), dict)
 
     original_matrix = deepcopy(matrix)
     modified_matrix = deepcopy(matrix)
-    modified_matrix.setdefault("user", {})
-    modified_matrix["user"]["correspondence:read"] = False
-    modified_matrix["user"]["module_settings:read"] = False
+    modified_matrix.setdefault(effective_role, {})
+    modified_matrix[effective_role]["correspondence:read"] = False
+    modified_matrix[effective_role]["module_settings_consultant:read"] = False
 
     try:
         save_res = client.post(
@@ -64,7 +68,8 @@ def test_correspondence_permission_matrix_controls_navigation_and_catalog_access
         assert nav_body.get("ok") is True
         tabs = nav_body.get("edms_tabs", {})
         assert tabs.get("correspondence") is False
-        assert nav_body.get("module_settings") is False
+        assert nav_body.get("module_settings_visibility", {}).get("consultant") is False
+        assert nav_body.get("consultant") is False
 
         catalog_res = client.get("/api/v1/correspondence/catalog", headers=consultant_headers)  # type: ignore[arg-type]
         assert catalog_res.status_code == 403, catalog_res.text

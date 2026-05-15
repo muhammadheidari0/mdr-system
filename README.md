@@ -181,6 +181,21 @@ python create_admin.py
 pytest -q test_api.py tests/test_endpoint_fixes.py tests/test_regressions.py tests/test_services.py tests/test_schema_sanity.py tests/test_db_runtime_policy.py tests/test_ui_smoke.py tests/test_no_legacy_fallbacks.py
 ```
 
+## WebDAV Primary Regression
+
+Run the repeatable backend smoke lane for WebDAV primary storage support across archive, correspondence, communication items, site logs, permit QC, site-agent download, and mirror interplay:
+
+```powershell
+npm run regression:webdav-primary
+```
+
+Direct pytest entry:
+
+```powershell
+$env:DEBUG="false"
+python -m pytest -q tests/test_webdav_primary_smoke.py tests/test_storage_sync_mirror_provider.py
+```
+
 ## Local E2E In Restricted Networks
 
 If Playwright browser download is blocked, run with system Chrome:

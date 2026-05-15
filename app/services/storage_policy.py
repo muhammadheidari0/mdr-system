@@ -121,6 +121,8 @@ DEFAULT_STORAGE_INTEGRATIONS: dict[str, Any] = {
         "base_url": "",
         "username": "",
         "app_password": "",
+        "public_share_password": "",
+        "public_share_password_required": True,
         "root_path": "",
         "local_mount_root": "",
         "skip_ssl_verify": None,
@@ -322,6 +324,13 @@ def _normalize_integrations(raw: dict[str, Any]) -> dict[str, Any]:
     merged["nextcloud"]["base_url"] = str(merged["nextcloud"].get("base_url") or "").strip()
     merged["nextcloud"]["username"] = str(merged["nextcloud"].get("username") or "").strip()
     merged["nextcloud"]["app_password"] = str(merged["nextcloud"].get("app_password") or "").strip()
+    merged["nextcloud"]["public_share_password"] = str(
+        merged["nextcloud"].get("public_share_password") or ""
+    ).strip()
+    merged["nextcloud"]["public_share_password_required"] = _to_bool(
+        merged["nextcloud"].get("public_share_password_required"),
+        True,
+    )
     merged["nextcloud"]["root_path"] = str(merged["nextcloud"].get("root_path") or "").strip()
     merged["nextcloud"]["local_mount_root"] = str(
         merged["nextcloud"].get("local_mount_root") or ""

@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
@@ -97,6 +98,104 @@ export async function seedAuthToken(
 
 export function bearerHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
+}
+
+async function expectOkJsonResponse(response: any, label: string): Promise<any> {
+  const bodyText = await response.text();
+  expect(
+    response.ok(),
+    `${label} failed. status=${response.status()} body=${bodyText}`
+  ).toBeTruthy();
+  if (!bodyText) return {};
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    return {};
+  }
+}
+
+export async function forceLocalPrimaryStorage(
+  request: APIRequestContext,
+  baseURL: string,
+  headers: Record<string, string>,
+  scopeLabel = "default"
+): Promise<() => Promise<void>> {
+  const normalizedBaseUrl = resolveBaseUrl(baseURL);
+  const jsonHeaders = {
+    ...headers,
+    "Content-Type": "application/json",
+  };
+
+  const beforePathsBody = await expectOkJsonResponse(
+    await request.get(`${normalizedBaseUrl}/api/v1/settings/storage-paths`, { headers }),
+    "read storage paths before local override"
+  );
+  const beforeIntegrationsBody = await expectOkJsonResponse(
+    await request.get(`${normalizedBaseUrl}/api/v1/settings/storage-integrations`, { headers }),
+    "read storage integrations before local override"
+  );
+
+  const beforeMdrPath = String(beforePathsBody?.mdr_storage_path || "./files/technical");
+  const beforeCorrespondencePath = String(
+    beforePathsBody?.correspondence_storage_path || "./files/correspondence"
+  );
+  const beforeSiteLogPath = String(beforePathsBody?.site_log_storage_path || "");
+  const beforePrimaryProvider = String(
+    beforeIntegrationsBody?.integrations?.primary?.provider || "local"
+  ).trim() || "local";
+  const beforeMirrorProvider = String(
+    beforeIntegrationsBody?.integrations?.mirror?.provider || "none"
+  ).trim() || "none";
+
+  const storageRoot = path.resolve(
+    process.cwd(),
+    "archive_storage",
+    `e2e_local_${scopeLabel}_${Date.now()}`
+  );
+  const nextMdrPath = path.join(storageRoot, "technical").replace(/\\/g, "/");
+  const nextCorrespondencePath = path.join(storageRoot, "correspondence").replace(/\\/g, "/");
+  mkdirSync(nextMdrPath, { recursive: true });
+  mkdirSync(nextCorrespondencePath, { recursive: true });
+
+  await expectOkJsonResponse(
+    await request.post(`${normalizedBaseUrl}/api/v1/settings/storage-integrations`, {
+      headers: jsonHeaders,
+      data: {
+        primary: { provider: "local" },
+        mirror: { provider: "none" },
+      },
+    }),
+    "force local storage integrations"
+  );
+  await expectOkJsonResponse(
+    await request.post(`${normalizedBaseUrl}/api/v1/settings/storage-paths`, {
+      headers: jsonHeaders,
+      data: {
+        mdr_storage_path: nextMdrPath,
+        correspondence_storage_path: nextCorrespondencePath,
+        site_log_storage_path: "",
+      },
+    }),
+    "force local storage paths"
+  );
+
+  return async () => {
+    await request.post(`${normalizedBaseUrl}/api/v1/settings/storage-integrations`, {
+      headers: jsonHeaders,
+      data: {
+        primary: { provider: beforePrimaryProvider },
+        mirror: { provider: beforeMirrorProvider },
+      },
+    });
+    await request.post(`${normalizedBaseUrl}/api/v1/settings/storage-paths`, {
+      headers: jsonHeaders,
+      data: {
+        mdr_storage_path: beforeMdrPath,
+        correspondence_storage_path: beforeCorrespondencePath,
+        site_log_storage_path: beforeSiteLogPath,
+      },
+    });
+  };
 }
 
 export async function waitForAppIdle(page: Page, timeout = 15_000): Promise<void> {

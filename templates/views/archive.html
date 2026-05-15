@@ -30,6 +30,11 @@
                     <option value="IFI">IFI</option>
                     <option value="AB">AB</option>
                 </select>
+                <select id="archiveFilePresenceFilter" class="archive-filter-select">
+                    <option value="">همه مدارک</option>
+                    <option value="with_file">دارای فایل</option>
+                    <option value="mdr_only">فقط MDR</option>
+                </select>
                 <input type="date" id="archiveDateFromFilter" class="archive-filter-date">
                 <input type="date" id="archiveDateToFilter" class="archive-filter-date">
                 <button class="btn-archive-icon" type="button" data-archive-action="reset-filters" title="Clear filters">
@@ -40,6 +45,21 @@
             <button class="btn-archive-icon" type="button" data-archive-action="refresh-list" title="بروزرسانی">
                 <span class="material-icons-round">refresh</span>
             </button>
+        </div>
+
+        <div class="archive-summary-strip" id="archiveSummaryStrip">
+            <div class="archive-summary-card">
+                <span class="archive-summary-label">کل مدارک</span>
+                <strong id="archiveSummaryTotal">0</strong>
+            </div>
+            <div class="archive-summary-card">
+                <span class="archive-summary-label">دارای فایل</span>
+                <strong id="archiveSummaryWithFile">0</strong>
+            </div>
+            <div class="archive-summary-card">
+                <span class="archive-summary-label">فقط MDR</span>
+                <strong id="archiveSummaryMdrOnly">0</strong>
+            </div>
         </div>
 
         <div style="flex:1; overflow-x:auto;">
@@ -92,7 +112,7 @@
                 <div class="archive-upload-grid">
                     <div id="archivePdfDropzone" data-kind="pdf" class="am-dropzone archive-dropzone is-pdf">
                         <span class="material-icons-round" style="font-size:36px; color:#dc2626;">picture_as_pdf</span>
-                        <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">خروجی غیرقابل ویرایش (اجباری)</p>
+                        <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">خروجی غیرقابل ویرایش</p>
                         <p class="archive-dropzone-sub">PDF / تصویر / DWF / DWFX</p>
                         <div id="archivePdfFileName" class="archive-file-name"></div>
                         <div id="archivePdfValidation" class="archive-file-validation"></div>
@@ -100,7 +120,7 @@
 
                     <div id="archiveNativeDropzone" data-kind="native" class="am-dropzone archive-dropzone is-native">
                         <span class="material-icons-round" style="font-size:36px; color:#2563eb;">description</span>
-                        <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">فایل قابل ویرایش (اختیاری)</p>
+                        <p style="margin:5px 0; font-size:0.9rem; color:#4b5563;">فایل قابل ویرایش / Native</p>
                         <p class="archive-dropzone-sub">DWG / DOCX / XLSX / ...</p>
                         <div id="archiveNativeFileName" class="archive-file-name"></div>
                         <div id="archiveNativeValidation" class="archive-file-validation"></div>
@@ -108,7 +128,7 @@
                 </div>
                 <input type="file" id="archivePdfFileInput" name="file" accept=".pdf,.dwf,.dwfx,image/*,application/pdf,image/png,image/jpeg,image/webp,image/tiff,image/bmp,image/gif" hidden>
                 <input type="file" id="archiveNativeFileInput" name="native_file" hidden>
-                <div class="archive-upload-hint">Drag & Drop یا کلیک کنید. فایل خروجی باید غیرقابل ویرایش باشد و فایل Native برای نسخه قابل ویرایش است.</div>
+                <div class="archive-upload-hint">Drag & Drop یا کلیک کنید. برای فعال شدن آپلود، حداقل یک فایل خروجی یا Native انتخاب کنید.</div>
 
                 <button type="button" id="toggleModeBtn" class="mode-toggle-btn" data-archive-action="toggle-mode">
                     <span class="material-icons-round">tune</span> تغییر به حالت ثبت کامل (پیشرفته)

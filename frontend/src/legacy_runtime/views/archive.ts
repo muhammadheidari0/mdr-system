@@ -8,6 +8,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
         let archiveFormDataPromise = null;
         let archiveDropzonesBound = false;
         let archiveUiEventsBound = false;
+        let archiveUiEventsRoot = null;
         let archiveDocSuggestTimer = null;
         let archiveFullPreviewTimer = null;
         let archiveSuspendAutoPreview = false;
@@ -388,8 +389,13 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
         }
 
         function archiveValidateSelectedFilesBeforeSubmit(pdfFile, nativeFile) {
-            const pdfValidation = archiveValidateFileByKind(pdfFile, 'pdf');
-            if (!pdfValidation.ok) return { ...pdfValidation, kind: 'pdf' };
+            if (!pdfFile && !nativeFile) {
+                return { ok: false, kind: 'pdf', message: 'حداقل یک فایل خروجی یا Native انتخاب کنید.' };
+            }
+            if (pdfFile) {
+                const pdfValidation = archiveValidateFileByKind(pdfFile, 'pdf');
+                if (!pdfValidation.ok) return { ...pdfValidation, kind: 'pdf' };
+            }
             if (nativeFile) {
                 const nativeValidation = archiveValidateFileByKind(nativeFile, 'native');
                 if (!nativeValidation.ok) return { ...nativeValidation, kind: 'native' };
@@ -467,9 +473,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             }
         }
 
-        async function loadFormData() {
+        async function loadFormData(force = false) {
             try {
-                const data = await archiveGetFormData();
+                const data = await archiveGetFormData(force);
                 allPackages = data.packages; 
                 allBlocks = data.blocks;
                 const fillSimple = (id, arr) => {
@@ -580,14 +586,14 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             }
 
             const pkgNames = archiveGetPackageNames(discipline, pkg);
-            const isGeneral = level === 'GEN';
+            const omitLocation = block === 'T' && level === 'GEN';
             const locationPart = `${block}${level}`;
 
             let titleE = pkgNames.nameE;
-            if (!isGeneral) titleE = `${titleE}-${locationPart}`;
+            if (!omitLocation) titleE = `${titleE}-${locationPart}`;
             if (subject) titleE = `${titleE} - ${subject}`;
 
-            let titleP = isGeneral ? pkgNames.nameP : `${locationPart}-${pkgNames.nameP}`;
+            let titleP = omitLocation ? pkgNames.nameP : `${locationPart}-${pkgNames.nameP}`;
             if (subject) titleP = `${titleP}-${subject}`;
 
             return { titleE, titleP };
@@ -665,7 +671,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             if(isFullMode) {
                 quick.style.display = 'none'; full.style.display = 'block';
                 btn.innerHTML = '<span class="material-icons-round">speed</span> Ø¨Ø§Ø²Ú¯Ø´Øª Ø¨Ù‡ Ø­Ø§Ù„Øª Ø³Ø±ÛŒØ¹'; btn.classList.add('active'); prevInfo.style.display = 'none';
-                if(document.getElementById('regProject').options.length === 0) await loadFormData();
+                await loadFormData(true);
                 if (fullMsg) fullMsg.innerHTML = '';
                 if (fullRegisterBtn) fullRegisterBtn.style.display = 'none';
                 const prefilledFromQuick = await archiveTryPrefillFullModeFromQuickCode();
@@ -689,11 +695,12 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             if (!submitBtn) return;
             const docId = Number(document.getElementById('realDocId')?.value || 0);
             const hasPdf = Boolean(document.getElementById('archivePdfFileInput')?.files?.[0]);
+            const hasNative = Boolean(document.getElementById('archiveNativeFileInput')?.files?.[0]);
             if (isFullMode) {
-                submitBtn.disabled = docId <= 0 || !hasPdf;
+                submitBtn.disabled = docId <= 0 || (!hasPdf && !hasNative);
                 return;
             }
-            submitBtn.disabled = docId <= 0 || !hasPdf;
+            submitBtn.disabled = docId <= 0 || (!hasPdf && !hasNative);
         }
 
         function archiveNormalizeDocCode(value) {
@@ -828,6 +835,15 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             return '-';
         }
 
+        function archiveRenderSummary(summary = {}) {
+            const totalEl = document.getElementById('archiveSummaryTotal');
+            const withFileEl = document.getElementById('archiveSummaryWithFile');
+            const mdrOnlyEl = document.getElementById('archiveSummaryMdrOnly');
+            if (totalEl) totalEl.textContent = String(Number(summary?.total_documents || 0));
+            if (withFileEl) withFileEl.textContent = String(Number(summary?.with_file || 0));
+            if (mdrOnlyEl) mdrOnlyEl.textContent = String(Number(summary?.mdr_only || 0));
+        }
+
         function archiveCloseRowMenus() {
             document.querySelectorAll('[data-archive-row-menu].is-open').forEach((menuEl) => {
                 menuEl.classList.remove('is-open');
@@ -855,6 +871,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             const projectFilter = document.getElementById('archiveProjectFilter');
             const disciplineFilter = document.getElementById('archiveDisciplineFilter');
             const statusFilter = document.getElementById('archiveStatusFilter');
+            const filePresenceFilter = document.getElementById('archiveFilePresenceFilter');
             const dateFromFilter = document.getElementById('archiveDateFromFilter');
             const dateToFilter = document.getElementById('archiveDateToFilter');
             tbody.innerHTML=''; loader.style.display='block'; empty.style.display='none';
@@ -868,6 +885,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 if (projectFilter?.value) params.set('project_code', projectFilter.value);
                 if (disciplineFilter?.value) params.set('discipline_code', disciplineFilter.value);
                 if (statusFilter?.value) params.set('status', statusFilter.value);
+                if (filePresenceFilter?.value) params.set('file_presence', filePresenceFilter.value);
                 if (dateFromFilter?.value) params.set('date_from', dateFromFilter.value);
                 if (dateToFilter?.value) params.set('date_to', dateToFilter.value);
                 const siteContext = await archiveLoadSiteContext(projectFilter?.value || '', true);
@@ -877,6 +895,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 const url = `/api/v1/archive/list${params.toString() ? `?${params.toString()}` : ''}`;
                 await archiveLoadPinManifest();
                 const data = await archiveRequestJson(url);
+                archiveRenderSummary(data?.summary || {});
                 let rows = Array.isArray(data?.data) ? data.data : [];
                 rows = await archiveEnrichOpenProjectStatus(rows);
                 const effectiveRole = String(
@@ -895,17 +914,22 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                 if (rows.length > 0) {
                     tbody.innerHTML = rows.map((f, i) => {
                         const fileId = Number(f.id || 0);
+                        const isMdrOnly = Boolean(f.is_mdr_only) || !Boolean(f.has_uploaded_file);
                         const sizeText = archiveFormatFileSize(f.size);
                         const uploadedAt = formatShamsiDate(f.uploaded_at);
                         const pdfId = Number(f.pdf_file_id || 0);
                         const nativeId = Number(f.native_file_id || 0);
-                        const hasNative = nativeId > 0;
-                        const hasPdf = pdfId > 0;
+                        const hasNative = !isMdrOnly && nativeId > 0;
+                        const hasPdf = !isMdrOnly && pdfId > 0;
                         const isPinned = archivePinnedSet.has(fileId);
-                        const pinLabel = isPinned
+                        const pinLabel = isMdrOnly
+                            ? '\u0628\u0631\u0627\u06cc \u0631\u062f\u06cc\u0641\u200c\u0647\u0627\u06cc \u0628\u062f\u0648\u0646 \u0641\u0627\u06cc\u0644\u060c \u0647\u0645\u06af\u0627\u0645\u200c\u0633\u0627\u0632\u06cc \u062f\u0633\u06a9\u062a\u0627\u067e \u0641\u0639\u0627\u0644 \u0646\u06cc\u0633\u062a'
+                            : isPinned
                             ? '\u0644\u063a\u0648 \u0647\u0645\u06af\u0627\u0645\u200c\u0633\u0627\u0632\u06cc \u0628\u0627 \u062f\u0633\u06a9\u062a\u0627\u067e'
                             : '\u0647\u0645\u06af\u0627\u0645\u200c\u0633\u0627\u0632\u06cc \u0628\u0627 \u062f\u0633\u06a9\u062a\u0627\u067e';
-                        const pinClass = isPinned
+                        const pinClass = isMdrOnly
+                            ? 'archive-pin-btn is-unpinned'
+                            : isPinned
                             ? 'archive-pin-btn is-pinned'
                             : 'archive-pin-btn is-unpinned';
                         const projectText = archiveFormatCodeName(f.project_code, f.project_name);
@@ -913,12 +937,16 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                         const packageText = archiveFormatCodeName(f.package_code, f.package_name);
                         const titleP = archiveEsc(f.doc_title_p || '-');
                         const titleE = archiveEsc(f.doc_title_e || '-');
-                        const pdfTooltip = archiveEsc(f.pdf_file_name || f.name || '-');
+                        const pdfTooltip = archiveEsc(
+                            isMdrOnly
+                                ? (f.row_message || 'This document exists in MDR but has no uploaded file yet.')
+                                : (f.pdf_file_name || f.name || '-')
+                        );
                         const nativeTooltip = archiveEsc(f.native_file_name || '-');
                         const pdfRelativePath = String(f.pdf_relative_path || f.site_relative_path || '').trim();
                         const nativeRelativePath = String(f.native_relative_path || '').trim();
                         const hasLocalContext = Boolean(archiveSiteContext?.active && archiveSiteContext?.localRootPath);
-                        const localMenuItem = hasLocalContext && pdfRelativePath
+                        const localMenuItem = !isMdrOnly && hasLocalContext && pdfRelativePath
                             ? `
                                             <button class="archive-row-menu-item" type="button" data-archive-action="open-local" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath))}" data-file-name="${archiveEsc(f.pdf_file_name || f.name || '')}">
                                                 <span class="material-icons-round">folder_open</span>
@@ -926,13 +954,71 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                                             </button>
                             `
                             : '';
-                        const securityIcons = archiveBuildSecurityIcons(f);
+                        const securityIcons = isMdrOnly
+                            ? `<span class="file-badge" style="background:#ecfccb;color:#3f6212;">MDR</span>`
+                            : archiveBuildSecurityIcons(f);
+                        const statusMarkup = isMdrOnly
+                            ? `<span class="file-badge" style="background:#dbeafe;color:#1d4ed8;">ثبت‌شده در MDR</span>`
+                            : `<span class="file-badge" style="background:#fef3c7;color:#92400e;">${archiveEsc(f.status)}</span>`;
+                        const filesMarkup = isMdrOnly
+                            ? `
+                                    <div class="archive-files-group archive-files-group--empty">
+                                        <span class="file-badge" style="background:#eef2ff;color:#3730a3;">بدون فایل</span>
+                                        <button class="btn-archive-icon archive-mdr-upload-btn" type="button" data-archive-action="upload-for-document" data-document-id="${Number(f.document_id || 0)}" data-doc-number="${archiveEsc(f.doc_number || '')}">
+                                            <span class="material-icons-round" style="font-size:18px;">cloud_upload</span>
+                                        </button>
+                                        <span class="archive-mdr-note">${archiveEsc(f.row_message || 'این مدرک در MDR ثبت شده است.')}</span>
+                                    </div>
+                            `
+                            : `
+                                    <div class="archive-files-group">
+                                        <button class="btn-archive-icon archive-download-btn is-pdf" title="${pdfTooltip}" ${hasPdf ? '' : 'disabled'} data-archive-action="download-kind" data-kind="pdf" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath))}" data-file-name="${archiveEsc(f.pdf_file_name || f.name || '')}">
+                                            <span class="material-icons-round" style="font-size:18px;">picture_as_pdf</span>
+                                        </button>
+                                        <button class="btn-archive-icon archive-download-btn is-native" title="${nativeTooltip}" ${hasNative ? '' : 'disabled'} data-archive-action="download-kind" data-kind="native" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(nativeRelativePath))}" data-file-name="${archiveEsc(f.native_file_name || '')}">
+                                            <span class="material-icons-round" style="font-size:18px;">description</span>
+                                        </button>
+                                    </div>
+                            `;
+                        const downloadLatestMenuItem = !isMdrOnly
+                            ? `
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="download-latest" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath || nativeRelativePath || ''))}" data-file-name="${archiveEsc(f.pdf_file_name || f.native_file_name || f.name || '')}">
+                                                <span class="material-icons-round">download</span>
+                                                دانلود
+                                            </button>
+                            `
+                            : '';
+                        const sendTransmittalMenuItem = !isMdrOnly && canSendTransmittal
+                            ? `
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="send-transmittal" data-doc-number="${archiveEsc(f.doc_number)}" data-project-code="${archiveEsc(f.project_code || '')}" data-discipline-code="${archiveEsc(f.discipline_code || '')}" data-revision="${archiveEsc(f.revision || '00')}">
+                                                <span class="material-icons-round">send</span>
+                                                ارسال ترنسمیتال
+                                            </button>`
+                            : '';
+                        const integrityMenuItem = !isMdrOnly
+                            ? `
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="show-integrity" data-file-id="${fileId}" data-file-name="${archiveEsc(f.name)}">
+                                                <span class="material-icons-round">verified</span>
+                                                Integrity
+                                            </button>
+                            `
+                            : '';
+                        const uploadForDocumentMenuItem = isMdrOnly
+                            ? `
+                                            <button class="archive-row-menu-item" type="button" data-archive-action="upload-for-document" data-document-id="${Number(f.document_id || 0)}" data-doc-number="${archiveEsc(f.doc_number || '')}">
+                                                <span class="material-icons-round">cloud_upload</span>
+                                                آپلود فایل برای این سند
+                                            </button>
+                            `
+                            : '';
+
+                        const rowClass = isMdrOnly ? 'archive-row--mdr-only' : '';
 
                         return `
-                            <tr>
+                            <tr class="${rowClass}">
                                 <td style="color:#9ca3af;">${i+1}</td>
                                 <td style="text-align:center;">
-                                    <button class="${pinClass}" type="button" title="${pinLabel}" data-archive-action="toggle-pin" data-file-id="${fileId}" data-pinned="${isPinned ? '1' : '0'}">
+                                    <button class="${pinClass}" type="button" title="${pinLabel}" ${isMdrOnly ? 'disabled' : ''} data-archive-action="toggle-pin" data-file-id="${fileId}" data-pinned="${isPinned ? '1' : '0'}">
                                         <span class="material-icons-round">push_pin</span>
                                     </button>
                                 </td>
@@ -943,20 +1029,11 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                                 <td>${disciplineText}</td>
                                 <td>${packageText}</td>
                                 <td><span class="archive-revision-badge">${archiveEsc(f.revision)}</span></td>
-                                <td><span class="file-badge" style="background:#fef3c7;color:#92400e;">${archiveEsc(f.status)}</span></td>
+                                <td>${statusMarkup}</td>
                                 <td>${sizeText}</td>
                                 <td>${uploadedAt}</td>
                                 <td style="text-align:center;">${securityIcons}</td>
-                                <td style="text-align:center;">
-                                    <div class="archive-files-group">
-                                        <button class="btn-archive-icon archive-download-btn is-pdf" title="${pdfTooltip}" ${hasPdf ? '' : 'disabled'} data-archive-action="download-kind" data-kind="pdf" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath))}" data-file-name="${archiveEsc(f.pdf_file_name || f.name || '')}">
-                                            <span class="material-icons-round" style="font-size:18px;">picture_as_pdf</span>
-                                        </button>
-                                        <button class="btn-archive-icon archive-download-btn is-native" title="${nativeTooltip}" ${hasNative ? '' : 'disabled'} data-archive-action="download-kind" data-kind="native" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(nativeRelativePath))}" data-file-name="${archiveEsc(f.native_file_name || '')}">
-                                            <span class="material-icons-round" style="font-size:18px;">description</span>
-                                        </button>
-                                    </div>
-                                </td>
+                                <td style="text-align:center;">${filesMarkup}</td>
                                 <td class="archive-row-actions-cell">
                                     <div class="archive-row-menu" data-archive-row-menu>
                                         <button class="btn-archive-icon archive-row-menu-trigger" type="button" title="Actions" data-archive-action="toggle-row-menu" aria-expanded="false">
@@ -972,15 +1049,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                                                 <span class="material-icons-round">edit</span>
                                                 ویرایش
                                             </button>` : ''}
-                                            <button class="archive-row-menu-item" type="button" data-archive-action="download-latest" data-pdf-id="${pdfId}" data-native-id="${nativeId}" data-site-relative-path="${archiveEsc(encodeURIComponent(pdfRelativePath || nativeRelativePath || ''))}" data-file-name="${archiveEsc(f.pdf_file_name || f.native_file_name || f.name || '')}">
-                                                <span class="material-icons-round">download</span>
-                                                دانلود
-                                            </button>
-                                            ${canSendTransmittal ? `
-                                            <button class="archive-row-menu-item" type="button" data-archive-action="send-transmittal" data-doc-number="${archiveEsc(f.doc_number)}" data-project-code="${archiveEsc(f.project_code || '')}" data-discipline-code="${archiveEsc(f.discipline_code || '')}" data-revision="${archiveEsc(f.revision || '00')}">
-                                                <span class="material-icons-round">send</span>
-                                                ارسال ترنسمیتال
-                                            </button>` : ''}
+                                            ${downloadLatestMenuItem}
+                                            ${sendTransmittalMenuItem}
+                                            ${uploadForDocumentMenuItem}
                                             <button class="archive-row-menu-item" type="button" data-archive-action="copy-doc" data-doc-number="${archiveEsc(f.doc_number)}">
                                                 <span class="material-icons-round">content_copy</span>
                                                 Copy Doc Number
@@ -990,10 +1061,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                                                 <span class="material-icons-round">history</span>
                                                 Revision History
                                             </button>
-                                            <button class="archive-row-menu-item" type="button" data-archive-action="show-integrity" data-file-id="${fileId}" data-file-name="${archiveEsc(f.name)}">
-                                                <span class="material-icons-round">verified</span>
-                                                Integrity
-                                            </button>
+                                            ${integrityMenuItem}
                                             ${canDeleteDocument ? `
                                             <div class="divider"></div>
                                             <button class="archive-row-menu-item text-danger" type="button" data-archive-action="delete-document" data-document-id="${Number(f.document_id || 0)}">
@@ -1006,10 +1074,12 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                             </tr>`;
                     }).join('');
                 } else {
+                    archiveRenderSummary(data?.summary || {});
                     empty.style.display='block';
                 }
             } catch(e) {
                 console.error(e);
+                archiveRenderSummary({});
             } finally {
                 loader.style.display='none';
             }
@@ -1023,11 +1093,13 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             const projectFilter = document.getElementById('archiveProjectFilter');
             const disciplineFilter = document.getElementById('archiveDisciplineFilter');
             const statusFilter = document.getElementById('archiveStatusFilter');
+            const filePresenceFilter = document.getElementById('archiveFilePresenceFilter');
             const dateFromFilter = document.getElementById('archiveDateFromFilter');
             const dateToFilter = document.getElementById('archiveDateToFilter');
             if (projectFilter) projectFilter.value = '';
             if (disciplineFilter) disciplineFilter.value = '';
             if (statusFilter) statusFilter.value = '';
+            if (filePresenceFilter) filePresenceFilter.value = '';
             if (dateFromFilter) dateFromFilter.value = '';
             if (dateToFilter) dateToFilter.value = '';
             archiveLoadFiles();
@@ -1176,9 +1248,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             const status = String(form.querySelector('select[name="status"]')?.value || 'IFA').trim() || 'IFA';
             const submitText = "ØªØ§ÛŒÛŒØ¯ Ùˆ Ø¢Ù¾Ù„ÙˆØ¯ Ù†Ù‡Ø§ÛŒÛŒ";
 
-            if (!pdfFile) {
+            if (!pdfFile && !nativeFile) {
                 archiveSetDropzoneState('pdf', 'invalid');
-                archiveSetValidationMessage('pdf', 'ÙØ§ÛŒÙ„ Ø®Ø±ÙˆØ¬ÛŒ Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª.', 'error');
+                archiveSetValidationMessage('pdf', 'حداقل یک فایل خروجی یا Native انتخاب کنید.', 'error');
                 return;
             }
 
@@ -1203,7 +1275,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                     return;
                 }
 
-                if (nativeFile) {
+                if (pdfFile && nativeFile) {
                     const dualData = new FormData();
                     dualData.set('document_id', String(docId));
                     dualData.set('revision', revision);
@@ -1212,12 +1284,14 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                     dualData.set('native_file', nativeFile);
                     await archiveRequestJson('/api/v1/archive/upload-dual', { method: 'POST', body: dualData });
                 } else {
+                    const uploadFile = pdfFile || nativeFile;
+                    const fileKind = pdfFile ? 'pdf' : 'native';
                     const singleData = new FormData();
                     singleData.set('document_id', String(docId));
                     singleData.set('revision', revision);
                     singleData.set('status', status);
-                    singleData.set('file', pdfFile);
-                    singleData.set('file_kind', 'pdf');
+                    singleData.set('file', uploadFile);
+                    singleData.set('file_kind', fileKind);
                     await archiveRequestJson('/api/v1/archive/upload', { method: 'POST', body: singleData });
                 }
 
@@ -1459,6 +1533,23 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
             toggleRegistrationMode();
         }
 
+        async function archiveOpenModalForDocument(documentId, docNumber) {
+            const normalizedDocNumber = archiveNormalizeDocCode(docNumber);
+            const resolvedDocumentId = Number(documentId || 0);
+            archiveOpenModal();
+            const smartDocCodeInput = document.getElementById('smartDocCode');
+            if (smartDocCodeInput && normalizedDocNumber) {
+                smartDocCodeInput.value = normalizedDocNumber;
+            }
+            if (resolvedDocumentId > 0) {
+                document.getElementById('realDocId').value = String(resolvedDocumentId);
+            }
+            archiveRefreshSubmitButtonState();
+            if (normalizedDocNumber) {
+                await checkDocStatus();
+            }
+        }
+
         function archiveOnFileSelect(input, kind = 'pdf') {
             const file = input?.files?.[0];
             if (!file) {
@@ -1487,6 +1578,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
 
             if (kind === 'native') {
                 document.getElementById('archiveNativeFileName').innerText = `${file.name} - ${archiveFormatFileSize(file.size)}`;
+                archiveRefreshSubmitButtonState();
                 return;
             }
 
@@ -1502,20 +1594,22 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
         }
 
         function archiveBindUiEvents() {
-            if (archiveUiEventsBound) return;
             const root = document.getElementById('view-archive');
             if (!root) return;
+            if (archiveUiEventsBound && archiveUiEventsRoot === root) return;
             archiveUiEventsBound = true;
+            archiveUiEventsRoot = root;
 
             const searchInput = document.getElementById('archiveSearchInput');
             const projectFilter = document.getElementById('archiveProjectFilter');
             const disciplineFilter = document.getElementById('archiveDisciplineFilter');
             const statusFilter = document.getElementById('archiveStatusFilter');
+            const filePresenceFilter = document.getElementById('archiveFilePresenceFilter');
             const dateFromFilter = document.getElementById('archiveDateFromFilter');
             const dateToFilter = document.getElementById('archiveDateToFilter');
 
             searchInput?.addEventListener('keyup', archiveDebouncedSearch);
-            [projectFilter, disciplineFilter, statusFilter, dateFromFilter, dateToFilter].forEach((el) => {
+            [projectFilter, disciplineFilter, statusFilter, filePresenceFilter, dateFromFilter, dateToFilter].forEach((el) => {
                 el?.addEventListener('change', archiveApplyFilters);
             });
 
@@ -1575,6 +1669,12 @@ import { formatShamsiDate, formatShamsiDateTime } from "../../lib/persian_dateti
                         break;
                     case 'open-modal':
                         archiveOpenModal();
+                        break;
+                    case 'upload-for-document':
+                        archiveOpenModalForDocument(
+                            Number(actionEl.getAttribute('data-document-id') || 0),
+                            actionEl.getAttribute('data-doc-number') || ''
+                        );
                         break;
                     case 'close-modal':
                         archiveCloseModal();

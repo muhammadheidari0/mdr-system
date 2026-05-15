@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -25,6 +25,7 @@ from app.db.models import (
     Discipline,
     DocumentActivity,
     DocumentComment,
+    DocumentExternalRelation,
     DocumentRelation,
     DocumentRevision,
     DocumentTag,
@@ -37,7 +38,7 @@ from app.db.models import (
     Phase,
     Project,
 )
-from app.services import archive_service, docnum_service, mdr_service
+from app.services import archive_service, docnum_service, mdr_service, tag_service
 from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.storage_policy import get_storage_integrations
 from app.services.storage_sync import resolve_nextcloud_runtime
@@ -85,6 +86,20 @@ def _file_kind(value: str | None) -> str:
     return kind if kind in {"pdf", "native"} else "pdf"
 
 
+def _ensure_active_mdr_category(db: Session, mdr_code: str | None) -> str:
+    code = str(mdr_code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=422, detail="MDR code is required.")
+    exists = (
+        db.query(MdrCategory.code)
+        .filter(MdrCategory.code == code, MdrCategory.is_active.is_(True))
+        .first()
+    )
+    if not exists:
+        raise HTTPException(status_code=422, detail="MDR code is not active or does not exist.")
+    return code
+
+
 def _revision_file_meta(
     revision: DocumentRevision | None,
 ) -> tuple[int | None, str | None, int | None, str | None]:
@@ -114,6 +129,195 @@ def _parse_filter_date(value: str | None, field_name: str) -> datetime | None:
         return datetime.strptime(raw, "%Y-%m-%d")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid `{field_name}` format (YYYY-MM-DD expected).") from exc
+
+
+def _latest_revision_for_document(document: MdrDocument | None) -> DocumentRevision | None:
+    if not document:
+        return None
+    revisions = list(document.revisions or [])
+    if not revisions:
+        return None
+    revisions.sort(
+        key=lambda row: (
+            row.created_at.isoformat() if row.created_at else "",
+            int(row.id or 0),
+        ),
+        reverse=True,
+    )
+    return revisions[0]
+
+
+def _archive_document_names(document: MdrDocument | None) -> tuple[str | None, str | None, str | None]:
+    if not document:
+        return None, None, None
+    project_name = None
+    discipline_name = None
+    package_name = None
+    if document.project:
+        project_name = document.project.name_p or document.project.name_e
+    if document.discipline:
+        discipline_name = document.discipline.name_p or document.discipline.name_e
+    if document.package:
+        package_name = document.package.name_p or document.package.name_e
+    return project_name, discipline_name, package_name
+
+
+def _serialize_archive_list_file_row(
+    row: ArchiveFile,
+    *,
+    status_map: dict[tuple[str, int], dict],
+    fallback_status: str,
+    pinned_ids: set[int],
+    site_scope: str,
+) -> dict[str, Any]:
+    revision_row = row.document_revision
+    document_row = revision_row.document if revision_row else None
+    doc_num = document_row.doc_number if document_row else "Unknown"
+    pdf_file_id, pdf_file_name, native_file_id, native_file_name = _revision_file_meta(revision_row)
+    pdf_relative_path = None
+    native_relative_path = None
+    if revision_row:
+        for item in revision_row.archive_files or []:
+            kind = _file_kind(item.file_kind)
+            rel_path = build_archive_relative_path(item)
+            if kind == "native":
+                if native_relative_path is None:
+                    native_relative_path = rel_path
+            elif pdf_relative_path is None:
+                pdf_relative_path = rel_path
+    op_payload = _archive_openproject_payload(status_map, fallback_status, int(row.id or 0))
+    project_name, discipline_name, package_name = _archive_document_names(document_row)
+    return {
+        "id": row.id,
+        "name": row.original_name,
+        "doc_number": doc_num,
+        "document_id": document_row.id if document_row else None,
+        "doc_title_e": document_row.doc_title_e if document_row else None,
+        "doc_title_p": document_row.doc_title_p if document_row else None,
+        "project_code": document_row.project_code if document_row else None,
+        "project_name": project_name,
+        "discipline_code": document_row.discipline_code if document_row else None,
+        "discipline_name": discipline_name,
+        "package_code": document_row.package_code if document_row else None,
+        "package_name": package_name,
+        "revision_id": revision_row.id if revision_row else None,
+        "revision": row.revision,
+        "size": row.size_bytes,
+        "status": row.status,
+        "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
+        "type": row.mime_type,
+        "detected_mime": row.detected_mime,
+        "validation_status": row.validation_status,
+        "sha256": row.sha256,
+        "storage_backend": row.storage_backend,
+        "gdrive_file_id": row.gdrive_file_id,
+        "mirror_provider": getattr(row, "mirror_provider", None),
+        "mirror_remote_id": getattr(row, "mirror_remote_id", None),
+        "mirror_remote_url": getattr(row, "mirror_remote_url", None),
+        "mirror_status": row.mirror_status,
+        "mirror_updated_at": row.mirror_updated_at.isoformat() if row.mirror_updated_at else None,
+        "file_kind": row.file_kind or "pdf",
+        "is_primary": True if row.is_primary is None else bool(row.is_primary),
+        "companion_file_id": row.companion_file_id,
+        "pdf_file_id": pdf_file_id,
+        "pdf_file_name": pdf_file_name,
+        "pdf_relative_path": pdf_relative_path,
+        "native_file_id": native_file_id,
+        "native_file_name": native_file_name,
+        "native_relative_path": native_relative_path,
+        "site_relative_path": build_archive_relative_path(row),
+        "site_pinned": bool(int(row.id or 0) in pinned_ids) if site_scope else None,
+        "site_scope": site_scope or None,
+        "is_mdr_only": False,
+        "has_uploaded_file": True,
+        "row_kind": "archive_file",
+        "row_message": None,
+        "_sort_at": row.uploaded_at.isoformat() if row.uploaded_at else "",
+        **op_payload,
+    }
+
+
+def _serialize_archive_list_mdr_only_row(document: MdrDocument) -> dict[str, Any]:
+    latest_revision = _latest_revision_for_document(document)
+    project_name, discipline_name, package_name = _archive_document_names(document)
+    row_status = str(getattr(latest_revision, "status", "") or "").strip() or "MDR"
+    row_revision = str(getattr(latest_revision, "revision", "") or "").strip() or "00"
+    sort_at = (
+        latest_revision.created_at.isoformat()
+        if latest_revision and latest_revision.created_at
+        else (document.created_at.isoformat() if document.created_at else "")
+    )
+    display_name = (
+        str(document.doc_title_p or "").strip()
+        or str(document.doc_title_e or "").strip()
+        or str(document.doc_number or "").strip()
+    )
+    return {
+        "id": 0,
+        "name": display_name,
+        "doc_number": document.doc_number,
+        "document_id": int(document.id or 0),
+        "doc_title_e": document.doc_title_e,
+        "doc_title_p": document.doc_title_p,
+        "project_code": document.project_code,
+        "project_name": project_name,
+        "discipline_code": document.discipline_code,
+        "discipline_name": discipline_name,
+        "package_code": document.package_code,
+        "package_name": package_name,
+        "revision_id": int(latest_revision.id or 0) if latest_revision else None,
+        "revision": row_revision,
+        "size": None,
+        "status": row_status,
+        "uploaded_at": None,
+        "type": None,
+        "detected_mime": None,
+        "validation_status": None,
+        "sha256": None,
+        "storage_backend": None,
+        "gdrive_file_id": None,
+        "mirror_provider": None,
+        "mirror_remote_id": None,
+        "mirror_remote_url": None,
+        "mirror_status": None,
+        "mirror_updated_at": None,
+        "file_kind": "pdf",
+        "is_primary": True,
+        "companion_file_id": None,
+        "pdf_file_id": None,
+        "pdf_file_name": None,
+        "pdf_relative_path": None,
+        "native_file_id": None,
+        "native_file_name": None,
+        "native_relative_path": None,
+        "site_relative_path": None,
+        "site_pinned": None,
+        "site_scope": None,
+        "openproject_sync_status": "disabled",
+        "openproject_work_package_id": None,
+        "openproject_attachment_id": None,
+        "openproject_last_synced_at": None,
+        "is_mdr_only": True,
+        "has_uploaded_file": False,
+        "row_kind": "mdr_only",
+        "row_message": "این مدرک در MDR ثبت شده و هنوز فایل آپلود نشده است.",
+        "_sort_at": sort_at,
+    }
+
+
+def _matches_archive_search(document: MdrDocument, revision_row: DocumentRevision | None, raw_search: str) -> bool:
+    term = str(raw_search or "").strip().lower()
+    if not term:
+        return True
+    values = [
+        document.doc_number,
+        document.doc_title_e,
+        document.doc_title_p,
+        document.subject,
+        getattr(revision_row, "status", None),
+        getattr(revision_row, "revision", None),
+    ]
+    return any(term in str(value or "").strip().lower() for value in values)
 
 
 def _extract_serial_from_doc_number(doc_number: str, prefix: str, suffix: str) -> str | None:
@@ -147,14 +351,22 @@ def _subject_key_for_coding(subject_e: str | None, subject_p: str | None) -> str
 
 
 class DocumentMetadataUpdateIn(BaseModel):
-    doc_title_e: Optional[str] = None
-    doc_title_p: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+
     subject: Optional[str] = None
-    phase_code: Optional[str] = None
-    package_code: Optional[str] = None
-    block: Optional[str] = None
-    level_code: Optional[str] = None
     notes: Optional[str] = None
+
+
+class DocumentReclassifyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    project_code: str
+    mdr_code: str
+    phase_code: str
+    discipline_code: str
+    package_code: str
+    block: str
+    level_code: str
 
 
 class DocumentCommentCreateIn(BaseModel):
@@ -167,7 +379,10 @@ class DocumentCommentUpdateIn(BaseModel):
 
 
 class DocumentRelationCreateIn(BaseModel):
-    target_document_id: int
+    target_document_id: Optional[int] = None
+    target_entity_type: Optional[str] = "document"
+    target_entity_id: Optional[int] = None
+    target_code: Optional[str] = None
     relation_type: Optional[str] = "related"
     notes: Optional[str] = None
 
@@ -181,6 +396,14 @@ class DocumentTagAssignIn(BaseModel):
     tag_id: Optional[int] = None
     tag_name: Optional[str] = None
     color: Optional[str] = None
+
+
+class ArchiveFilePublicShareCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expire_date: Optional[str] = None
+    password: Optional[str] = None
+    regenerate: bool = False
 
 
 def _parse_json_text(raw: str | None) -> Any:
@@ -238,6 +461,7 @@ def _serialize_archive_file(row: ArchiveFile | None) -> dict[str, Any] | None:
         "is_primary": bool(row.is_primary) if row.is_primary is not None else True,
         "revision": row.revision,
         "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None,
+        **archive_service.public_share_support_payload(row),
     }
 
 
@@ -305,12 +529,66 @@ def _build_comment_tree(rows: list[DocumentComment]) -> list[dict[str, Any]]:
     return roots
 
 
-def _serialize_relation_payload(row: DocumentRelation, *, direction: str) -> dict[str, Any]:
+def _external_relation_target_label(entity_type: str) -> str:
+    labels = {
+        "correspondence": "مکاتبه",
+        "meeting_minute": "صورتجلسه",
+        "rfi": "RFI",
+        "ncr": "NCR",
+        "tech": "فنی/TECH",
+        "comm_item": "فرم",
+        "site_log": "گزارش کارگاهی",
+        "permit_qc": "Permit QC",
+    }
+    return labels.get(str(entity_type or "").strip().lower(), str(entity_type or ""))
+
+
+def _serialize_external_relation_payload(row: DocumentExternalRelation, *, direction: str = "outgoing") -> dict[str, Any]:
+    target_type = str(row.target_entity_type or "").strip().lower()
+    return {
+        "id": f"external:{int(row.id or 0)}",
+        "relation_id": int(row.id or 0),
+        "source_document_id": int(row.source_document_id or 0),
+        "target_document_id": None,
+        "target_entity_type": target_type,
+        "target_entity_id": int(row.target_entity_id or 0),
+        "target_code": row.target_code,
+        "target_label": _external_relation_target_label(target_type),
+        "relation_type": row.relation_type,
+        "notes": row.notes,
+        "created_by_id": row.created_by_id,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "direction": direction,
+        "counterpart": {
+            "id": int(row.target_entity_id or 0),
+            "entity_type": target_type,
+            "entity_label": _external_relation_target_label(target_type),
+            "doc_number": row.target_code,
+            "code": row.target_code,
+            "doc_title_e": row.target_title,
+            "doc_title_p": None,
+            "title": row.target_title,
+            "subject": row.target_title,
+            "project_code": row.target_project_code,
+            "discipline_code": None,
+            "status": row.target_status,
+            "deleted_at": None,
+        },
+    }
+
+
+def _serialize_relation_payload(row: DocumentRelation | DocumentExternalRelation, *, direction: str) -> dict[str, Any]:
+    if isinstance(row, DocumentExternalRelation):
+        return _serialize_external_relation_payload(row, direction=direction)
     counterpart = row.target_document if direction == "outgoing" else row.source_document
     return {
         "id": int(row.id or 0),
         "source_document_id": int(row.source_document_id or 0),
         "target_document_id": int(row.target_document_id or 0),
+        "target_entity_type": "document",
+        "target_entity_id": int(row.target_document_id or 0),
+        "target_code": getattr(counterpart, "doc_number", None),
+        "target_label": "مدرک",
         "relation_type": row.relation_type,
         "notes": row.notes,
         "created_by_id": row.created_by_id,
@@ -318,9 +596,13 @@ def _serialize_relation_payload(row: DocumentRelation, *, direction: str) -> dic
         "direction": direction,
         "counterpart": {
             "id": int(getattr(counterpart, "id", 0) or 0),
+            "entity_type": "document",
+            "entity_label": "مدرک",
             "doc_number": getattr(counterpart, "doc_number", None),
+            "code": getattr(counterpart, "doc_number", None),
             "doc_title_e": getattr(counterpart, "doc_title_e", None),
             "doc_title_p": getattr(counterpart, "doc_title_p", None),
+            "title": getattr(counterpart, "doc_title_e", None) or getattr(counterpart, "doc_title_p", None),
             "subject": getattr(counterpart, "subject", None),
             "project_code": getattr(counterpart, "project_code", None),
             "discipline_code": getattr(counterpart, "discipline_code", None),
@@ -495,10 +777,11 @@ async def register_document_only(
             "duplicate_meta": True,
         }
 
+    active_mdr_code = _ensure_active_mdr_category(db, mdr_code or "X")
     meta_data = {
         "doc_number": normalized_doc_number,
         "project_code": str(project_code or "").strip().upper(),
-        "mdr_code": str(mdr_code or "X").strip().upper() or "X",
+        "mdr_code": active_mdr_code,
         "phase": str(phase or "X").strip().upper() or "X",
         "discipline": str(discipline or "XX").strip().upper() or "XX",
         "package": str(package or "").strip().upper(),
@@ -687,10 +970,11 @@ async def register_and_upload(
     )
 
     try:
+        active_mdr_code = _ensure_active_mdr_category(db, mdr_code or "X")
         meta_data = {
             "doc_number": doc_number,
             "project_code": project_code,
-            "mdr_code": mdr_code or "X",
+            "mdr_code": active_mdr_code,
             "phase": phase or "X",
             "discipline": discipline or "XX",
             "package": package,
@@ -763,10 +1047,11 @@ async def register_and_upload_dual(
         discipline_code=discipline,
     )
     try:
+        active_mdr_code = _ensure_active_mdr_category(db, mdr_code or "X")
         meta_data = {
             "doc_number": doc_number,
             "project_code": project_code,
-            "mdr_code": mdr_code or "X",
+            "mdr_code": active_mdr_code,
             "phase": phase or "X",
             "discipline": discipline or "XX",
             "package": package,
@@ -830,13 +1115,18 @@ async def list_archives(
     project_code: Optional[str] = None,
     discipline_code: Optional[str] = None,
     status: Optional[str] = None,
+    file_presence: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     site_code: Optional[str] = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
 ):
-    query = (
+    normalized_presence = str(file_presence or "").strip().lower() or "all"
+    if normalized_presence not in {"all", "with_file", "mdr_only"}:
+        raise HTTPException(status_code=400, detail="Invalid `file_presence` value.")
+
+    file_query = (
         db.query(ArchiveFile)
         .options(
             joinedload(ArchiveFile.document_revision)
@@ -854,25 +1144,30 @@ async def list_archives(
         .join(MdrDocument)
         .filter(ArchiveFile.deleted_at.is_(None), MdrDocument.deleted_at.is_(None))
     )
-    query = apply_scope_query_filters(
-        query,
+    file_query = apply_scope_query_filters(
+        file_query,
         db,
         user,
         project_column=MdrDocument.project_code,
         discipline_column=MdrDocument.discipline_code,
     )
     # Keep list rows focused on one row per revision/document.
-    # Native companion files are still reachable via `native_file_id`.
-    query = query.filter(
+    # Native companion files are still reachable via `native_file_id`, but
+    # Native-only uploads are primary files and must remain visible.
+    file_query = file_query.filter(
         or_(ArchiveFile.is_primary.is_(True), ArchiveFile.is_primary.is_(None))
     )
-    query = query.filter(
-        or_(ArchiveFile.file_kind.is_(None), ArchiveFile.file_kind != "native")
+    file_query = file_query.filter(
+        or_(
+            ArchiveFile.file_kind.is_(None),
+            ArchiveFile.file_kind != "native",
+            ArchiveFile.is_primary.is_(True),
+        )
     )
 
     if search:
         search_term = f"%{search}%"
-        query = query.filter(
+        file_query = file_query.filter(
             or_(
                 ArchiveFile.original_name.ilike(search_term),
                 MdrDocument.doc_number.ilike(search_term),
@@ -884,35 +1179,34 @@ async def list_archives(
 
     project_code = str(project_code or "").strip()
     if project_code:
-        query = query.filter(MdrDocument.project_code == project_code)
+        file_query = file_query.filter(MdrDocument.project_code == project_code)
 
     discipline_code = str(discipline_code or "").strip()
     if discipline_code:
-        query = query.filter(MdrDocument.discipline_code == discipline_code)
+        file_query = file_query.filter(MdrDocument.discipline_code == discipline_code)
 
     status = str(status or "").strip()
     if status:
-        query = query.filter(ArchiveFile.status.ilike(status))
+        file_query = file_query.filter(ArchiveFile.status.ilike(status))
 
     from_dt = _parse_filter_date(date_from, "date_from")
     to_dt = _parse_filter_date(date_to, "date_to")
     if from_dt and to_dt and from_dt > to_dt:
         raise HTTPException(status_code=400, detail="`date_from` must be earlier than or equal to `date_to`.")
     if from_dt:
-        query = query.filter(ArchiveFile.uploaded_at >= from_dt)
+        file_query = file_query.filter(ArchiveFile.uploaded_at >= from_dt)
     if to_dt:
-        query = query.filter(ArchiveFile.uploaded_at < (to_dt + timedelta(days=1)))
+        file_query = file_query.filter(ArchiveFile.uploaded_at < (to_dt + timedelta(days=1)))
 
-    total = query.count()
-    files = query.order_by(ArchiveFile.uploaded_at.desc()).offset(skip).limit(limit).all()
+    file_rows = file_query.order_by(ArchiveFile.uploaded_at.desc(), ArchiveFile.id.desc()).all()
     status_map, fallback_status = _archive_openproject_status_map(
-        db, [int(row.id or 0) for row in files]
+        db, [int(row.id or 0) for row in file_rows]
     )
     normalized_site_code = normalize_site_code(site_code)
     site_scope = site_manifest_policy_scope(normalized_site_code) if normalized_site_code else ""
     pinned_ids: set[int] = set()
     if site_scope:
-        file_ids = [int(row.id or 0) for row in files if int(row.id or 0) > 0]
+        file_ids = [int(row.id or 0) for row in file_rows if int(row.id or 0) > 0]
         if file_ids:
             pinned_rows = (
                 db.query(LocalSyncManifest.file_id)
@@ -925,81 +1219,81 @@ async def list_archives(
             )
             pinned_ids = {int(row.file_id) for row in pinned_rows}
 
-    data = []
-    for f in files:
-        revision_row = f.document_revision
-        document_row = revision_row.document if revision_row else None
-        doc_num = document_row.doc_number if document_row else "Unknown"
-        pdf_file_id, pdf_file_name, native_file_id, native_file_name = _revision_file_meta(revision_row)
-        pdf_relative_path = None
-        native_relative_path = None
-        if revision_row:
-            for item in revision_row.archive_files or []:
-                kind = _file_kind(item.file_kind)
-                rel_path = build_archive_relative_path(item)
-                if kind == "native":
-                    if native_relative_path is None:
-                        native_relative_path = rel_path
-                elif pdf_relative_path is None:
-                    pdf_relative_path = rel_path
-        op_payload = _archive_openproject_payload(status_map, fallback_status, int(f.id or 0))
-        project_name = None
-        discipline_name = None
-        package_name = None
-        if document_row:
-            if document_row.project:
-                project_name = document_row.project.name_p or document_row.project.name_e
-            if document_row.discipline:
-                discipline_name = document_row.discipline.name_p or document_row.discipline.name_e
-            if document_row.package:
-                package_name = document_row.package.name_p or document_row.package.name_e
-        data.append(
-            {
-                "id": f.id,
-                "name": f.original_name,
-                "doc_number": doc_num,
-                "document_id": document_row.id if document_row else None,
-                "doc_title_e": document_row.doc_title_e if document_row else None,
-                "doc_title_p": document_row.doc_title_p if document_row else None,
-                "project_code": document_row.project_code if document_row else None,
-                "project_name": project_name,
-                "discipline_code": document_row.discipline_code if document_row else None,
-                "discipline_name": discipline_name,
-                "package_code": document_row.package_code if document_row else None,
-                "package_name": package_name,
-                "revision_id": revision_row.id if revision_row else None,
-                "revision": f.revision,
-                "size": f.size_bytes,
-                "status": f.status,
-                "uploaded_at": f.uploaded_at.isoformat() if f.uploaded_at else None,
-                "type": f.mime_type,
-                "detected_mime": f.detected_mime,
-                "validation_status": f.validation_status,
-                "sha256": f.sha256,
-                "storage_backend": f.storage_backend,
-                "gdrive_file_id": f.gdrive_file_id,
-                "mirror_provider": getattr(f, "mirror_provider", None),
-                "mirror_remote_id": getattr(f, "mirror_remote_id", None),
-                "mirror_remote_url": getattr(f, "mirror_remote_url", None),
-                "mirror_status": f.mirror_status,
-                "mirror_updated_at": f.mirror_updated_at.isoformat() if f.mirror_updated_at else None,
-                "file_kind": f.file_kind or "pdf",
-                "is_primary": True if f.is_primary is None else bool(f.is_primary),
-                "companion_file_id": f.companion_file_id,
-                "pdf_file_id": pdf_file_id,
-                "pdf_file_name": pdf_file_name,
-                "pdf_relative_path": pdf_relative_path,
-                "native_file_id": native_file_id,
-                "native_file_name": native_file_name,
-                "native_relative_path": native_relative_path,
-                "site_relative_path": build_archive_relative_path(f),
-                "site_pinned": bool(int(f.id or 0) in pinned_ids) if site_scope else None,
-                "site_scope": site_scope or None,
-                **op_payload,
-            }
+    uploaded_document_ids = {
+        int(getattr(getattr(row, "document_revision", None), "document_id", 0) or 0)
+        for row in file_rows
+        if int(getattr(getattr(row, "document_revision", None), "document_id", 0) or 0) > 0
+    }
+
+    mdr_query = (
+        db.query(MdrDocument)
+        .options(
+            joinedload(MdrDocument.project),
+            joinedload(MdrDocument.discipline),
+            joinedload(MdrDocument.package),
+            joinedload(MdrDocument.revisions).joinedload(DocumentRevision.archive_files),
+        )
+        .filter(MdrDocument.deleted_at.is_(None))
+    )
+    mdr_query = apply_scope_query_filters(
+        mdr_query,
+        db,
+        user,
+        project_column=MdrDocument.project_code,
+        discipline_column=MdrDocument.discipline_code,
+    )
+    if project_code:
+        mdr_query = mdr_query.filter(MdrDocument.project_code == project_code)
+    if discipline_code:
+        mdr_query = mdr_query.filter(MdrDocument.discipline_code == discipline_code)
+    mdr_documents = mdr_query.all()
+
+    merged_rows: list[dict[str, Any]] = []
+    if normalized_presence != "mdr_only":
+        merged_rows.extend(
+            _serialize_archive_list_file_row(
+                row,
+                status_map=status_map,
+                fallback_status=fallback_status,
+                pinned_ids=pinned_ids,
+                site_scope=site_scope,
+            )
+            for row in file_rows
         )
 
-    return {"ok": True, "total": total, "data": data}
+    normalized_status = status.lower()
+    if normalized_presence != "with_file":
+        for document_row in mdr_documents:
+            if int(document_row.id or 0) in uploaded_document_ids:
+                continue
+            if archive_service._latest_live_file(document_row):
+                continue
+            latest_revision = _latest_revision_for_document(document_row)
+            if search and not _matches_archive_search(document_row, latest_revision, search):
+                continue
+            if normalized_status:
+                candidate_status = str(getattr(latest_revision, "status", "") or "").strip().lower()
+                if candidate_status != normalized_status:
+                    continue
+            sort_dt = latest_revision.created_at if latest_revision and latest_revision.created_at else document_row.created_at
+            if from_dt and (not sort_dt or sort_dt < from_dt):
+                continue
+            if to_dt and (not sort_dt or sort_dt >= (to_dt + timedelta(days=1))):
+                continue
+            merged_rows.append(_serialize_archive_list_mdr_only_row(document_row))
+
+    merged_rows.sort(key=lambda row: (str(row.get("_sort_at") or ""), int(row.get("document_id") or 0)), reverse=True)
+    total = len(merged_rows)
+    summary = {
+        "total_documents": total,
+        "with_file": sum(1 for row in merged_rows if not bool(row.get("is_mdr_only"))),
+        "mdr_only": sum(1 for row in merged_rows if bool(row.get("is_mdr_only"))),
+    }
+    data = merged_rows[skip : skip + limit]
+    for row in data:
+        row.pop("_sort_at", None)
+
+    return {"ok": True, "total": total, "summary": summary, "data": data}
 
 
 @router.get("/revision-history/{document_id}")
@@ -1067,6 +1361,10 @@ async def revision_history(
                     "is_primary": True if af.is_primary is None else bool(af.is_primary),
                     "companion_file_id": af.companion_file_id,
                     "uploaded_at": af.uploaded_at.isoformat() if af.uploaded_at else None,
+                    **archive_service.public_share_support_payload(af),
+                    "public_share": archive_service.serialize_archive_public_share(
+                        archive_service._active_archive_public_share(db, int(af.id or 0))
+                    ),
                     **op_payload,
                 }
             )
@@ -1095,7 +1393,13 @@ async def revision_history(
     }
 
 
-def _download_from_webdav(db: Session, file_record: ArchiveFile, stored_path: str) -> StreamingResponse:
+def _stream_from_webdav(
+    db: Session,
+    file_record: ArchiveFile,
+    stored_path: str,
+    *,
+    inline: bool = False,
+) -> StreamingResponse:
     """Stream file from Nextcloud WebDAV."""
     integrations = get_storage_integrations(db)
     runtime = resolve_nextcloud_runtime(integrations)
@@ -1125,7 +1429,7 @@ def _download_from_webdav(db: Session, file_record: ArchiveFile, stored_path: st
         adapter.download_file_stream(remote_path),
         media_type=file_record.mime_type or "application/octet-stream",
         headers={
-            "Content-Disposition": f'attachment; filename="{file_record.original_name}"'
+            "Content-Disposition": f'{"inline" if inline else "attachment"}; filename="{file_record.original_name}"'
         },
     )
 
@@ -1154,7 +1458,7 @@ async def download_file(
 
     # WebDAV download
     if stored_path.startswith("webdav://"):
-        return _download_from_webdav(db, file_record, stored_path)
+        return _stream_from_webdav(db, file_record, stored_path)
 
     # Local filesystem download
     if not os.path.exists(stored_path):
@@ -1165,6 +1469,79 @@ async def download_file(
         filename=file_record.original_name,
         media_type=file_record.mime_type,
     )
+
+
+@router.post("/files/{file_id}/replace")
+async def replace_archive_file(
+    file_id: int,
+    file: UploadFile = File(...),
+    status: str | None = Form(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:update")),
+):
+    replacement = archive_service.replace_archive_file(
+        db,
+        int(file_id),
+        file,
+        user,
+        status_code=status,
+    )
+    return {"ok": True, "file": _serialize_archive_file(replacement)}
+
+
+@router.post("/revisions/{revision_id}/files")
+async def add_archive_revision_file(
+    revision_id: int,
+    file_kind: str = Form("pdf"),
+    status: str | None = Form(default=None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:update")),
+):
+    added = archive_service.add_revision_file(
+        db,
+        int(revision_id),
+        file,
+        user,
+        file_kind=file_kind,
+        status_code=status,
+    )
+    return {"ok": True, "file": _serialize_archive_file(added)}
+
+
+@router.get("/files/{file_id}/public-share")
+async def get_archive_file_public_share(
+    file_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:read")),
+):
+    return archive_service.get_archive_file_public_share(db, int(file_id), user)
+
+
+@router.post("/files/{file_id}/public-share")
+async def create_archive_file_public_share(
+    file_id: int,
+    body: ArchiveFilePublicShareCreateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:share")),
+):
+    return archive_service.create_archive_file_public_share(
+        db,
+        int(file_id),
+        user,
+        expire_date=body.expire_date,
+        password=body.password,
+        regenerate=body.regenerate,
+    )
+
+
+@router.delete("/files/{file_id}/public-share")
+async def revoke_archive_file_public_share(
+    file_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("archive:share")),
+):
+    return archive_service.revoke_archive_file_public_share(db, int(file_id), user)
 
 
 @router.get("/files/{file_id}/integrity")
@@ -1227,6 +1604,9 @@ async def get_document_detail(
                 "can_comment": False,
                 "can_manage_relations": False,
                 "can_manage_tags": False,
+                "can_reclassify": False,
+                "can_replace_files": False,
+                "can_share_public": False,
             }
         )
 
@@ -1278,6 +1658,44 @@ async def update_document_metadata(
     }
 
 
+@router.post("/documents/{document_id}/reclassify/preview")
+async def preview_document_reclassification(
+    document_id: int,
+    body: DocumentReclassifyIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:reclassify")),
+):
+    preview = archive_service.preview_document_reclassification(
+        db,
+        int(document_id),
+        body.model_dump(),
+        user,
+    )
+    return {"ok": True, "preview": preview}
+
+
+@router.post("/documents/{document_id}/reclassify")
+async def reclassify_document(
+    document_id: int,
+    body: DocumentReclassifyIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("documents:reclassify")),
+):
+    updated = archive_service.reclassify_document(
+        db,
+        int(document_id),
+        body.model_dump(),
+        user,
+    )
+    detail = archive_service.get_document_detail(db, int(updated.id or 0), user)
+    return {
+        "ok": True,
+        "document": _serialize_document_payload(updated),
+        "capabilities": detail.get("capabilities") or {},
+        "is_deleted": bool(updated.deleted_at),
+    }
+
+
 @router.delete("/documents/{document_id}")
 async def delete_document(
     document_id: int,
@@ -1306,6 +1724,8 @@ async def stream_document_preview(
     if preview_file.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Preview file not found")
     file_path = str(preview_file.stored_path or "").strip()
+    if file_path.startswith("webdav://"):
+        return _stream_from_webdav(db, preview_file, file_path, inline=True)
     if not file_path or not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Preview file not found")
     media_type = str(preview_file.mime_type or preview_file.detected_mime or "application/octet-stream")
@@ -1431,10 +1851,13 @@ async def create_document_relation(
     row = archive_service.create_document_relation(
         db,
         int(document_id),
-        int(body.target_document_id),
+        int(body.target_document_id or 0) or None,
         relation_type=str(body.relation_type or "related"),
         notes=body.notes,
         user=user,
+        target_entity_type=str(body.target_entity_type or "document"),
+        target_entity_id=int(body.target_entity_id or 0) or None,
+        target_code=body.target_code,
     )
     return {"ok": True, "relation": _serialize_relation_payload(row, direction="outgoing")}
 
@@ -1442,12 +1865,12 @@ async def create_document_relation(
 @router.delete("/documents/{document_id}/relations/{relation_id}")
 async def delete_document_relation(
     document_id: int,
-    relation_id: int,
+    relation_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("documents:relation_manage")),
 ):
-    archive_service.delete_document_relation(db, int(document_id), int(relation_id), user)
-    return {"ok": True, "document_id": int(document_id), "relation_id": int(relation_id)}
+    archive_service.delete_document_relation(db, int(document_id), relation_id, user)
+    return {"ok": True, "document_id": int(document_id), "relation_id": str(relation_id)}
 
 
 @router.get("/tags")
@@ -1456,7 +1879,7 @@ async def list_tags(
     user: User = Depends(require_permission("archive:read")),
 ):
     del user
-    rows = archive_service.list_tags(db)
+    rows = tag_service.list_tags(db)
     return {"ok": True, "items": [_serialize_tag_payload(row) for row in rows]}
 
 
@@ -1466,7 +1889,7 @@ async def create_tag(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("documents:tag_manage")),
 ):
-    row = archive_service.create_tag(db, name=body.name, color=body.color, user=user)
+    row = tag_service.create_tag(db, name=body.name, color=body.color, user=user)
     return {"ok": True, "tag": _serialize_tag_payload(row)}
 
 
@@ -1476,7 +1899,7 @@ async def list_document_tags(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("archive:read")),
 ):
-    rows = archive_service.list_document_tags(db, int(document_id), user)
+    rows = tag_service.list_document_tags(db, int(document_id), user)
     return {"ok": True, "items": [_serialize_tag_assignment_payload(row) for row in rows]}
 
 
@@ -1487,7 +1910,7 @@ async def assign_document_tag(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("documents:tag_manage")),
 ):
-    row = archive_service.assign_tag_to_document(
+    row = tag_service.assign_tag_to_document(
         db,
         int(document_id),
         tag_name=body.tag_name,
@@ -1505,7 +1928,7 @@ async def remove_document_tag(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission("documents:tag_manage")),
 ):
-    archive_service.remove_tag_from_document(db, int(document_id), int(tag_id), user)
+    tag_service.remove_tag_from_document(db, int(document_id), int(tag_id), user)
     return {"ok": True, "document_id": int(document_id), "tag_id": int(tag_id)}
 
 
@@ -1534,7 +1957,12 @@ def get_archive_form_data(
         ],
         "mdr_categories": [
             {"code": c.code, "name": c.name_e or c.name_p or ""}
-            for c in db.query(MdrCategory).order_by(MdrCategory.code).all()
+            for c in (
+                db.query(MdrCategory)
+                .filter(MdrCategory.is_active.is_(True))
+                .order_by(MdrCategory.sort_order, MdrCategory.code)
+                .all()
+            )
         ],
         "phases": [
             {"code": p.ph_code, "name": p.name_e or p.name_p or ""}
@@ -1582,6 +2010,7 @@ def get_next_serial_preview(
         project_code=project_code,
         discipline_code=discipline,
     )
+    _ensure_active_mdr_category(db, mdr_code)
     try:
         subject_key = _subject_key_for_coding(subject_e, subject_p)
         if not subject_key:

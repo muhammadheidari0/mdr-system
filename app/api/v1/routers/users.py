@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.dependencies import get_db, require_permission
+from app.api.dependencies import get_db, require_permission, _effective_scope_values, _load_scope_rules
 from app.core.organizations import ALL_ORG_TYPES, OrganizationRole, OrganizationType, normalize_org_role, normalize_org_type
 from app.db.models import Organization, User, UserDisciplineScope, UserProjectScope
 from app.core.security import get_password_hash
@@ -27,7 +27,11 @@ def _base_users_query(
     organization_type: Optional[str] = None,
     is_active: Optional[bool] = None,
 ):
-    q = db.query(User).options(joinedload(User.organization))
+    q = db.query(User).options(
+        joinedload(User.organization),
+        joinedload(User.project_scopes),
+        joinedload(User.discipline_scopes),
+    )
     search_value = _normalize_text(search)
     if search_value:
         pattern = f"%{search_value}%"
@@ -40,7 +44,7 @@ def _base_users_query(
 
     role_value = _normalize_text(role).lower()
     if role_value:
-        if role_value not in {"admin", "manager", "dcc", "user", "viewer"}:
+        if role_value not in {item.value for item in OrganizationRole}:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid role filter: {role_value}",
@@ -126,9 +130,11 @@ def _normalize_user_org_role_or_400(org: Optional[Organization], requested_role:
     return role_value
 
 
-def _scope_counts_map(db: Session, user_ids: List[int]) -> Dict[int, dict]:
-    if not user_ids:
+def _scope_counts_map(db: Session, users: List[User]) -> Dict[int, dict]:
+    if not users:
         return {}
+
+    user_ids = [int(user.id) for user in users]
 
     project_counts = {
         int(row.user_id): int(row.count)
@@ -155,16 +161,82 @@ def _scope_counts_map(db: Session, user_ids: List[int]) -> Dict[int, dict]:
         )
     }
 
+    categories = {
+        str(resolve_effective_access(user).permission_category or "").strip().lower()
+        for user in users
+        if not resolve_effective_access(user).full_access
+    }
+    role_scope_by_category: Dict[str, Dict[str, dict]] = {
+        category: _load_scope_rules(db, category=category)
+        for category in categories
+        if category
+    }
+
     result: Dict[int, dict] = {}
-    for user_id in user_ids:
-        projects_count = int(project_counts.get(user_id, 0))
-        disciplines_count = int(discipline_counts.get(user_id, 0))
-        has_custom_scope = (projects_count > 0 or disciplines_count > 0)
-        result[int(user_id)] = {
-            "projects_count": projects_count,
-            "disciplines_count": disciplines_count,
+    for user in users:
+        user_id = int(user.id)
+        access = resolve_effective_access(user)
+        if access.full_access:
+            result[user_id] = {
+                "projects_count": 0,
+                "disciplines_count": 0,
+                "has_custom_scope": False,
+                "status": "admin",
+                "source": "admin",
+                "role_projects_count": 0,
+                "role_disciplines_count": 0,
+                "user_projects_count": 0,
+                "user_disciplines_count": 0,
+                "effective_projects_count": 0,
+                "effective_disciplines_count": 0,
+            }
+            continue
+
+        category = str(access.permission_category or "").strip().lower()
+        role = str(access.effective_role or "").strip().lower()
+        role_scope = (role_scope_by_category.get(category, {}) or {}).get(role, {"projects": [], "disciplines": []})
+        role_projects = [str(item or "").strip().upper() for item in (role_scope.get("projects") or []) if str(item or "").strip()]
+        role_disciplines = [str(item or "").strip().upper() for item in (role_scope.get("disciplines") or []) if str(item or "").strip()]
+        user_projects_count = int(project_counts.get(user_id, 0))
+        user_disciplines_count = int(discipline_counts.get(user_id, 0))
+        user_projects = [
+            str(row.project_code or "").strip().upper()
+            for row in user.project_scopes
+            if str(row.project_code or "").strip()
+        ]
+        user_disciplines = [
+            str(row.discipline_code or "").strip().upper()
+            for row in user.discipline_scopes
+            if str(row.discipline_code or "").strip()
+        ]
+        effective_projects, projects_restricted = _effective_scope_values(role_projects, user_projects)
+        effective_disciplines, disciplines_restricted = _effective_scope_values(role_disciplines, user_disciplines)
+        has_custom_scope = bool(user_projects_count > 0 or user_disciplines_count > 0)
+
+        source = "full"
+        if (role_projects or role_disciplines) and (user_projects or user_disciplines):
+            source = "intersection"
+            if projects_restricted and not effective_projects and role_projects:
+                source = "empty_intersection"
+            if disciplines_restricted and not effective_disciplines and role_disciplines:
+                source = "empty_intersection"
+        elif role_projects or role_disciplines:
+            source = "role"
+        elif user_projects or user_disciplines:
+            source = "user"
+
+        result[user_id] = {
+            "projects_count": user_projects_count,
+            "disciplines_count": user_disciplines_count,
             "has_custom_scope": has_custom_scope,
-            "status": "restricted" if has_custom_scope else "full",
+            "status": "restricted" if (projects_restricted or disciplines_restricted) else "full",
+            "source": source,
+            "role_projects_count": len(role_projects),
+            "role_disciplines_count": len(role_disciplines),
+            "user_projects_count": user_projects_count,
+            "user_disciplines_count": user_disciplines_count,
+            "effective_projects_count": len(effective_projects),
+            "effective_disciplines_count": len(effective_disciplines),
         }
     return result
 
@@ -176,6 +248,13 @@ def _serialize_user_with_scope(user: User, scope_map: Dict[int, dict]) -> dict:
         "disciplines_count": 0,
         "has_custom_scope": False,
         "status": "full",
+        "source": "full",
+        "role_projects_count": 0,
+        "role_disciplines_count": 0,
+        "user_projects_count": 0,
+        "user_disciplines_count": 0,
+        "effective_projects_count": 0,
+        "effective_disciplines_count": 0,
     })
     if access.full_access:
         scope_summary = {
@@ -183,6 +262,13 @@ def _serialize_user_with_scope(user: User, scope_map: Dict[int, dict]) -> dict:
             "disciplines_count": 0,
             "has_custom_scope": False,
             "status": "admin",
+            "source": "admin",
+            "role_projects_count": 0,
+            "role_disciplines_count": 0,
+            "user_projects_count": 0,
+            "user_disciplines_count": 0,
+            "effective_projects_count": 0,
+            "effective_disciplines_count": 0,
         }
 
     return {
@@ -242,7 +328,7 @@ def list_users(
         .limit(limit)
         .all()
     )
-    scope_map = _scope_counts_map(db, [int(u.id) for u in users])
+    scope_map = _scope_counts_map(db, users)
     return [_serialize_user_with_scope(user, scope_map) for user in users]
 
 
@@ -282,7 +368,7 @@ def list_users_paged(
         .all()
     )
 
-    scope_map = _scope_counts_map(db, [int(u.id) for u in items])
+    scope_map = _scope_counts_map(db, items)
     serialized_items = [_serialize_user_with_scope(user, scope_map) for user in items]
 
     return {
@@ -349,7 +435,7 @@ def create_user(
         .filter(User.id == db_user.id)
         .first()
     )
-    scope_map = _scope_counts_map(db, [int(db_user.id)])
+    scope_map = _scope_counts_map(db, [db_user])
     return _serialize_user_with_scope(db_user, scope_map)
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -372,7 +458,7 @@ def get_user(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="کاربر یافت نشد"
         )
-    scope_map = _scope_counts_map(db, [int(user.id)])
+    scope_map = _scope_counts_map(db, [user])
     return _serialize_user_with_scope(user, scope_map)
 
 @router.put("/{user_id}", response_model=UserResponse)
@@ -423,7 +509,7 @@ def update_user(
         .filter(User.id == user_id)
         .first()
     )
-    scope_map = _scope_counts_map(db, [int(user.id)])
+    scope_map = _scope_counts_map(db, [user])
     return _serialize_user_with_scope(user, scope_map)
 
 @router.delete("/{user_id}")

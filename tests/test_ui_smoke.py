@@ -35,6 +35,25 @@ def test_ui_smoke_public_pages_load() -> None:
     assert docs.status_code == 200, docs.text
 
 
+def test_auth_runtime_idle_session_activity_contract() -> None:
+    base_dir = Path(__file__).resolve().parents[1]
+    auth_ts = (base_dir / "frontend" / "src" / "legacy_runtime" / "auth.ts").read_text(encoding="utf-8")
+    assert "idle_timeout_minutes" in auth_ts
+    assert "heartbeat_interval_seconds" in auth_ts
+    assert "authActivity !== false" in auth_ts
+    assert "X-User-Activity" in auth_ts
+    assert "idleTimeoutMessage" in auth_ts
+
+
+def test_site_log_consultant_verify_ux_contract() -> None:
+    base_dir = Path(__file__).resolve().parents[1]
+    ui_ts = (base_dir / "frontend" / "src" / "lib" / "site_logs_ui.ts").read_text(encoding="utf-8")
+    assert 'data-sl-action="send-comment"' not in ui_ts
+    assert "آیا از ارسال گزارش کارگاهی مطمئن هستید؟" in ui_ts
+    assert "پیمانکار دیگر امکان ویرایش گزارش را ندارد" in ui_ts
+    assert "آیا از تایید نهایی این گزارش کارگاهی مطمئن هستید؟" in ui_ts
+
+
 def test_ui_smoke_whitelisted_partials_load() -> None:
     expected_markers = {
         "dashboard": 'id="view-dashboard"',
@@ -54,14 +73,27 @@ def test_ui_smoke_whitelisted_partials_load() -> None:
         response = client.get(f"/ui/partial/{partial}")
         assert response.status_code == 200, f"{partial}: {response.text}"
         assert marker in response.text, f"{partial}: expected marker `{marker}`"
+        if partial == "edms":
+            assert 'id="edms-tab-meeting-minutes"' in response.text
+            assert 'id="view-meeting-minutes"' in response.text
 
 
 def test_ui_smoke_reports_rebranded_impact_labels() -> None:
     response = client.get("/ui/partial/reports")
     assert response.status_code == 200, response.text
     html = response.text
+    assert "مرکز گزارش‌ها" in html
+    assert "گزارش کارگاهی" in html
+    assert "data-report-section=\"manpower\"" in html
+    assert "data-report-section=\"equipment\"" in html
+    assert "data-report-section=\"material\"" in html
+    assert "data-report-section=\"activity\"" in html
+    assert "PowerBI / خروجی‌ها" not in html
+    assert 'data-report-tab-target="powerbi"' not in html
     assert "Impact Signals" in html
-    assert "Items with Potential Impacts" in html
+    assert "آیتم‌های دارای اثر احتمالی" in html
+    assert "گزارش مکاتبات" in html
+    assert 'id="rpt-correspondence-table"' in html
     assert "Claim Candidates" not in html
 
 
@@ -183,6 +215,7 @@ def test_ui_smoke_settings_storage_paths_roundtrip(monkeypatch, tmp_path: Path) 
         restore_payload = {
             "mdr_storage_path": before.get("mdr_storage_path") or "./files/technical",
             "correspondence_storage_path": before.get("correspondence_storage_path") or "./files/correspondence",
+            "site_log_storage_path": before.get("site_log_storage_path") or "",
         }
         restore_res = client.post("/api/v1/settings/storage-paths", json=restore_payload, headers=headers)
         assert restore_res.status_code == 200, restore_res.text
@@ -201,10 +234,12 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'data-integrations-provider-tab="google"' in html
     assert 'data-integrations-provider-tab="nextcloud"' in html
     assert 'data-integrations-provider-tab="bim"' in html
+    assert 'data-integrations-provider-tab="powerbi"' in html
     assert 'data-integrations-provider-panel="openproject"' in html
     assert 'data-integrations-provider-panel="google"' in html
     assert 'data-integrations-provider-panel="nextcloud"' in html
     assert 'data-integrations-provider-panel="bim"' in html
+    assert 'data-integrations-provider-panel="powerbi"' in html
     assert 'id="storageMirrorProviderSelect"' in html
     assert 'data-op-tab="connection"' in html
     assert 'data-op-tab="project-import"' not in html
@@ -243,11 +278,21 @@ def test_ui_smoke_settings_integrations_tab_and_storage_split() -> None:
     assert 'id="storageBimRevitSecretStateBadge"' in html
     assert 'id="storageBimRevitAllowedMimeInput"' in html
     assert 'id="storageBimRevitMaxBatchSizeInput"' in html
+    assert 'id="powerBiTokenNameInput"' in html
+    assert 'id="powerBiTokensBody"' in html
+    assert 'id="powerBiQuerySectionSelect"' in html
+    assert 'value="manpower"' in html
+    assert 'data-powerbi-section-limit' in html
+    assert 'id="powerBiTokenSectionsInput"' not in html
+    assert 'id="powerBiQueryTemplate"' in html
     assert 'data-integrations-action="ping-google-drive"' in html
     assert 'data-integrations-action="ping-google-gmail"' in html
     assert 'data-integrations-action="ping-google-calendar"' in html
     assert 'data-integrations-action="ping-nextcloud"' in html
     assert 'data-integrations-action="run-nextcloud-sync"' in html
+    assert 'data-integrations-action="mint-power-bi-token"' in html
+    assert 'data-integrations-action="copy-power-bi-token"' in html
+    assert 'data-integrations-action="copy-power-bi-query"' in html
     assert "storageLocalCacheEnabledInput" not in html
 
     base_dir = Path(__file__).resolve().parents[1]
@@ -303,8 +348,10 @@ def test_ui_smoke_consultant_module_settings_contains_openproject_operations() -
     html = partial.text
     assert 'id="view-consultant-settings"' in html
     assert 'data-consultant-settings-tab="openproject"' in html
+    assert 'data-consultant-settings-tab="site-log-activity"' in html
     assert 'data-consultant-settings-tab="permit-qc-template"' in html
     assert 'id="consultantOpenProjectOpsRoot"' in html
+    assert 'id="consultantSiteLogActivityCatalogRoot"' in html
     assert 'id="consultantPermitQcTemplateRoot"' in html
     assert 'data-op-tab="project-import"' in html
     assert 'data-op-tab="import"' in html
@@ -316,6 +363,17 @@ def test_ui_smoke_consultant_module_settings_contains_openproject_operations() -
     assert 'id="storageOpenProjectImportRunsBody"' in html
     assert 'id="storageOpenProjectActivityBody"' in html
     assert 'id="storageOpenProjectImportRowDetails"' in html
+
+
+def test_ui_smoke_contractor_module_settings_contains_report_catalog_shell() -> None:
+    partial = client.get("/ui/partial/contractor-settings")
+    assert partial.status_code == 200, partial.text
+    html = partial.text
+    assert 'id="view-contractor-settings"' in html
+    assert 'data-contractor-settings-tab="report-settings"' in html
+    assert 'id="contractor-settings-tab-report-settings"' in html
+    assert 'id="contractorSiteLogCatalogsRoot"' in html
+    assert "تنظیمات داخلی گزارش" in html
 
 
 def test_ui_smoke_permit_qc_tabs_present_in_contractor_and_consultant() -> None:
@@ -427,6 +485,28 @@ def test_ui_smoke_transmittal_and_correspondence_endpoints_with_auth() -> None:
     corr_list = corr_list_res.json()
     assert corr_list.get("ok") is True
     assert isinstance(corr_list.get("data"), list)
+
+    base_dir = Path(__file__).resolve().parents[1]
+    corr_template = (base_dir / "templates" / "views" / "correspondence.html").read_text(encoding="utf-8")
+    assert 'value="correspondence"' in corr_template
+
+    minutes_catalog_res = client.get("/api/v1/meeting-minutes/catalog", headers=headers)
+    assert minutes_catalog_res.status_code == 200, minutes_catalog_res.text
+    minutes_catalog = minutes_catalog_res.json()
+    assert minutes_catalog.get("ok") is True
+    assert isinstance(minutes_catalog.get("projects"), list)
+
+    minutes_dashboard_res = client.get("/api/v1/meeting-minutes/dashboard", headers=headers)
+    assert minutes_dashboard_res.status_code == 200, minutes_dashboard_res.text
+    minutes_dashboard = minutes_dashboard_res.json()
+    assert minutes_dashboard.get("ok") is True
+    assert isinstance(minutes_dashboard.get("stats"), dict)
+
+    minutes_list_res = client.get("/api/v1/meeting-minutes/list?skip=0&limit=10", headers=headers)
+    assert minutes_list_res.status_code == 200, minutes_list_res.text
+    minutes_list = minutes_list_res.json()
+    assert minutes_list.get("ok") is True
+    assert isinstance(minutes_list.get("data"), list)
 
 
 def test_ui_smoke_comm_items_endpoints_with_auth() -> None:

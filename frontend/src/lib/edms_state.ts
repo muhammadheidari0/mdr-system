@@ -1,5 +1,5 @@
-type EdmsTabName = "archive" | "transmittal" | "correspondence";
-type EdmsViewId = "view-archive" | "view-transmittal" | "view-correspondence";
+type EdmsTabName = "archive" | "transmittal" | "correspondence" | "meeting_minutes" | "forms";
+type EdmsViewId = "view-archive" | "view-transmittal" | "view-correspondence" | "view-meeting-minutes" | "view-edms-forms";
 
 interface NavigationPayload {
   edms_tabs?: Partial<Record<EdmsTabName, boolean>>;
@@ -69,15 +69,19 @@ const TAB_TO_VIEW: Record<EdmsTabName, EdmsViewId> = {
   archive: "view-archive",
   transmittal: "view-transmittal",
   correspondence: "view-correspondence",
+  meeting_minutes: "view-meeting-minutes",
+  forms: "view-edms-forms",
 };
 
 const VIEW_TO_TAB: Record<EdmsViewId, EdmsTabName> = {
   "view-archive": "archive",
   "view-transmittal": "transmittal",
   "view-correspondence": "correspondence",
+  "view-meeting-minutes": "meeting_minutes",
+  "view-edms-forms": "forms",
 };
 
-const TAB_ORDER: EdmsTabName[] = ["archive", "transmittal", "correspondence"];
+const TAB_ORDER: EdmsTabName[] = ["archive", "transmittal", "correspondence", "meeting_minutes", "forms"];
 
 function normalizeTabName(input: unknown): EdmsTabName | null {
   const value = String(input || "").trim().toLowerCase();
@@ -114,6 +118,8 @@ export function createEdmsStateBridge(): EdmsStateBridge {
     archive: true,
     transmittal: true,
     correspondence: true,
+    meeting_minutes: true,
+    forms: true,
   };
   let headerStatsLoading = false;
   let headerStatsLastLoadedAt = 0;
@@ -124,6 +130,8 @@ export function createEdmsStateBridge(): EdmsStateBridge {
       archive: true,
       transmittal: true,
       correspondence: true,
+      meeting_minutes: true,
+      forms: true,
     };
   }
 
@@ -204,6 +212,8 @@ export function createEdmsStateBridge(): EdmsStateBridge {
         archive: tabs.archive !== false,
         transmittal: tabs.transmittal !== false,
         correspondence: tabs.correspondence !== false,
+        meeting_minutes: tabs.meeting_minutes !== false,
+        forms: tabs.forms !== false,
       };
 
       const apiDefault = normalizeTabName(payload.default_edms_tab);

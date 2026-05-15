@@ -10,13 +10,13 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 import traceback  # ✅ برای لاگ خطاهای دقیق
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.exc import IntegrityError
 
-from app.api.dependencies import get_db, require_permission
+from app.api.dependencies import _load_allowed_permissions, get_db, require_permission
 from app.core.config import settings
 from app.core.redaction import redact_secrets
 from app.core.organizations import (
@@ -25,19 +25,30 @@ from app.core.organizations import (
     PERMISSION_CATEGORIES,
     normalize_permission_category,
 )
-from app.core.roles import MATRIX_ROLES, ROLE_PERMISSIONS, Role, normalize_role
-from app.core.permission_catalog import permission_keys
+from app.core.access_matrix import (
+    CANONICAL_MATRIX_ROLES,
+    CANONICAL_PERMISSION_CATEGORIES,
+    build_navigation_diagnostics,
+    build_navigation_state,
+    default_permission_matrix_for_category,
+)
+from app.core.roles import MATRIX_ROLES
+from app.core.permission_catalog import feature_catalog, permission_keys, permission_meta_list
 from app.db.models import (
     Project, Phase, Discipline, Package, Level,
     SettingsKV, Block, MdrCategory, DocStatus, User as DbUser, Organization, WorkboardItem,
+    OrganizationContract,
     RoleCategoryDisciplineScope, RoleCategoryPermission, RoleCategoryProjectScope,
     RolePermission, RoleProjectScope, RoleDisciplineScope,
     UserProjectScope, UserDisciplineScope,
     SettingsAuditLog,
-    Correspondence, CorrespondenceAction, CorrespondenceAttachment,
-    CorrespondenceCategory, IssuingEntity,
+    PowerBiApiToken,
+    ArchiveFile, Correspondence, CorrespondenceAction, CorrespondenceAttachment,
+    CorrespondenceCategory, DocumentTag, IssuingEntity,
     WorkflowStatus, WorkflowTransition, TechSubtype, ReviewResult,
-    SiteLogRoleCatalog, SiteLogEquipmentCatalog, SiteLogEquipmentStatusCatalog,
+    SiteLogActivityCatalog, SiteLogRoleCatalog, SiteLogWorkSectionCatalog, SiteLogEquipmentCatalog, SiteLogMaterialCatalog, SiteLogEquipmentStatusCatalog,
+    SiteLogAttachmentTypeCatalog, SiteLogIssueTypeCatalog, SiteLogShiftCatalog, SiteLogWeatherCatalog,
+    SiteLogActivityPmsMapping, SiteLogActivityPmsStep, SiteLogPmsTemplate, SiteLogPmsTemplateStep,
 )
 
 # ✅ استفاده از سرویس Seed
@@ -55,9 +66,19 @@ from app.services.storage_policy import (
     set_storage_policy,
 )
 from app.services.bim_revit_security import encrypt_plugin_secret, generate_plugin_secret
+from app.services.power_bi_tokens import (
+    POWER_BI_SITE_LOG_SCOPE,
+    create_power_bi_token,
+    serialize_power_bi_token,
+)
 from app.services.storage_sync import resolve_nextcloud_runtime, resolve_openproject_runtime
 from app.services.storage import StorageManager
 from app.services.access_control import resolve_effective_access
+from app.services import tag_service
+from app.services.transmittal_options import (
+    get_transmittal_parties,
+    set_transmittal_parties,
+)
 
 router = APIRouter(
     prefix="/settings",
@@ -74,6 +95,7 @@ KV_RESERVED_KEYS = {
 KV_ALLOWED_WRITE_PREFIXES = ("ui.", "feature.", "custom.")
 STORAGE_PATH_MDR_KEY = "mdr_storage_path"
 STORAGE_PATH_CORRESPONDENCE_KEY = "correspondence_storage_path"
+STORAGE_PATH_SITE_LOG_KEY = "site_log_storage_path"
 DEFAULT_MDR_STORAGE_PATH = "./files/technical"
 DEFAULT_CORRESPONDENCE_STORAGE_PATH = "./files/correspondence"
 
@@ -133,6 +155,7 @@ class KvIn(BaseModel):
 class StoragePathsIn(BaseModel):
     mdr_storage_path: str = Field(..., min_length=1, max_length=1024)
     correspondence_storage_path: str = Field(..., min_length=1, max_length=1024)
+    site_log_storage_path: Optional[str] = Field(default=None, max_length=1024)
     network_username: Optional[str] = Field(default=None, max_length=255)
     network_password: Optional[str] = Field(default=None, max_length=255)
 
@@ -164,6 +187,15 @@ class BimRevitSettingsIn(BaseModel):
     default_folder_id: Optional[int] = Field(default=None, ge=1)
     allowed_mime: Optional[List[str]] = None
     max_batch_size: Optional[int] = Field(default=None, ge=1, le=5000)
+
+
+class PowerBiTokenMintIn(BaseModel):
+    name: str = Field(default="Power BI Dashboard", min_length=1, max_length=255)
+    expires_at: Optional[datetime] = None
+    allowed_project_codes: Optional[List[str]] = None
+    allowed_report_sections: Optional[List[str]] = None
+    allowed_ip_ranges: Optional[List[str]] = None
+
 
 class BlockIn(BaseModel):
     project_code: str = Field(..., min_length=1, max_length=50)
@@ -237,6 +269,28 @@ class CorrespondenceCategoryDeleteIn(BaseModel):
     hard_delete: bool = False
 
 
+class CorrespondenceTagIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    name: str = Field(..., min_length=1, max_length=64)
+    color: Optional[str] = Field(default=None, max_length=16)
+
+
+class CorrespondenceTagDeleteIn(BaseModel):
+    id: int = Field(..., ge=1)
+
+
+class TransmittalPartyOptionIn(BaseModel):
+    code: str = Field(..., min_length=1, max_length=20)
+    label: str = Field(..., min_length=1, max_length=100)
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class TransmittalPartiesIn(BaseModel):
+    direction_options: List[TransmittalPartyOptionIn] = Field(default_factory=list)
+    recipient_options: List[TransmittalPartyOptionIn] = Field(default_factory=list)
+
+
 class WorkflowStatusIn(BaseModel):
     id: Optional[int] = Field(default=None, ge=1)
     item_type: str = Field(..., min_length=1, max_length=16)
@@ -270,6 +324,13 @@ class ReviewResultIn(BaseModel):
     is_active: bool = True
 
 
+class OrganizationContractIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    contract_number: Optional[str] = Field(default=None, max_length=128)
+    subject: Optional[str] = Field(default=None, max_length=500)
+    block_id: Optional[int] = Field(default=None, ge=1)
+
+
 class OrganizationIn(BaseModel):
     id: Optional[int] = Field(default=None, ge=1)
     code: str = Field(..., min_length=1, max_length=64)
@@ -277,6 +338,7 @@ class OrganizationIn(BaseModel):
     org_type: str = Field(default="contractor", min_length=1, max_length=32)
     parent_id: Optional[int] = Field(default=None, ge=1)
     is_active: bool = True
+    contracts: Optional[List[OrganizationContractIn]] = None
 
 
 class OrganizationDeleteIn(BaseModel):
@@ -308,9 +370,77 @@ class SiteLogCatalogUpsertIn(BaseModel):
     is_active: bool = True
 
 
+class SiteLogCatalogBulkItemIn(BaseModel):
+    code: Optional[str] = Field(default=None, max_length=128)
+    label: str = Field(..., min_length=1, max_length=255)
+    sort_order: Optional[int] = None
+    is_active: bool = True
+
+
+class SiteLogCatalogBulkUpsertIn(BaseModel):
+    catalog_type: str = Field(..., min_length=1, max_length=32)
+    items: List[SiteLogCatalogBulkItemIn] = Field(..., min_length=1, max_length=500)
+    overwrite_existing: bool = False
+
+
 class SiteLogCatalogDeleteIn(BaseModel):
     catalog_type: str = Field(..., min_length=1, max_length=32)
     id: int = Field(..., ge=1)
+
+
+class SiteLogActivityCatalogUpsertIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    project_code: str = Field(..., min_length=1, max_length=50)
+    organization_id: Optional[int] = Field(default=None, ge=1)
+    organization_contract_id: Optional[int] = Field(default=None, ge=1)
+    activity_code: str = Field(..., min_length=1, max_length=64)
+    activity_title: str = Field(..., min_length=1, max_length=255)
+    default_location: Optional[str] = Field(default=None, max_length=255)
+    default_unit: Optional[str] = Field(default=None, max_length=64)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class SiteLogActivityCatalogDeleteIn(BaseModel):
+    id: int = Field(..., ge=1)
+
+
+class SiteLogPmsStepIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    step_code: str = Field(..., min_length=1, max_length=64)
+    step_title: str = Field(..., min_length=1, max_length=255)
+    weight_pct: float = Field(default=0, ge=0, le=100)
+    sort_order: int = 0
+    is_active: bool = True
+
+
+class SiteLogPmsTemplateUpsertIn(BaseModel):
+    id: Optional[int] = Field(default=None, ge=1)
+    code: str = Field(..., min_length=1, max_length=64)
+    title: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    sort_order: int = 0
+    is_active: bool = True
+    steps: List[SiteLogPmsStepIn] = Field(default_factory=list)
+
+
+class SiteLogPmsTemplateDeleteIn(BaseModel):
+    id: int = Field(..., ge=1)
+
+
+class SiteLogPmsMappingApplyIn(BaseModel):
+    activity_ids: List[int] = Field(..., min_length=1)
+    template_id: Optional[int] = Field(default=None, ge=1)
+    template_code: Optional[str] = Field(default=None, max_length=64)
+    overwrite: bool = False
+
+
+class SiteLogPmsMappingDeleteIn(BaseModel):
+    activity_id: int = Field(..., ge=1)
+
+
+class SiteLogPmsMappingReapplyIn(BaseModel):
+    activity_ids: List[int] = Field(..., min_length=1)
 
 
 # -----------------------------
@@ -326,14 +456,38 @@ def _upper(s: Any) -> str:
 
 SITE_LOG_CATALOG_MODELS: Dict[str, Any] = {
     "role": SiteLogRoleCatalog,
+    "work_section": SiteLogWorkSectionCatalog,
     "equipment": SiteLogEquipmentCatalog,
+    "material": SiteLogMaterialCatalog,
     "equipment_status": SiteLogEquipmentStatusCatalog,
+    "attachment_type": SiteLogAttachmentTypeCatalog,
+    "issue_type": SiteLogIssueTypeCatalog,
+    "shift": SiteLogShiftCatalog,
+    "weather": SiteLogWeatherCatalog,
 }
 
 SITE_LOG_CATALOG_TITLES: Dict[str, str] = {
     "role": "فهرست نقش‌ها",
     "equipment": "فهرست تجهیزات",
+    "material": "فهرست مصالح",
     "equipment_status": "فهرست وضعیت تجهیزات",
+    "attachment_type": "فهرست نوع پیوست گزارش",
+    "issue_type": "فهرست نوع موانع",
+}
+SITE_LOG_CATALOG_TITLES.update(
+    {
+        "shift": "فهرست شیفت‌های گزارش",
+        "weather": "فهرست وضعیت‌های جوی",
+    }
+)
+
+
+SITE_LOG_CATALOG_TITLES["work_section"] = "فهرست واحد / بخش کاری نفرات"
+
+
+SITE_LOG_BULK_CATALOG_PREFIXES: Dict[str, str] = {
+    "equipment": "EQP",
+    "material": "MAT",
 }
 
 
@@ -346,6 +500,24 @@ def _normalize_site_log_catalog_type_or_400(value: Optional[str]) -> str:
 
 def _site_log_catalog_model(catalog_type: str):
     return SITE_LOG_CATALOG_MODELS[_normalize_site_log_catalog_type_or_400(catalog_type)]
+
+
+def _next_site_log_bulk_code(db: Session, model: Any, prefix: str, used_codes: set[str]) -> str:
+    prefix_value = _upper(prefix) or "CAT"
+    max_number = 0
+    for (raw_code,) in db.query(model.code).filter(func.upper(model.code).like(f"{prefix_value}%")).all():
+        code = _upper(raw_code)
+        suffix = code[len(prefix_value):]
+        if suffix.isdigit():
+            max_number = max(max_number, int(suffix))
+
+    next_number = max_number + 1
+    while True:
+        code = f"{prefix_value}{next_number:04d}"
+        if code not in used_codes:
+            used_codes.add(code)
+            return code
+        next_number += 1
 
 
 def _serialize_site_log_catalog_row(row: Any) -> Dict[str, Any]:
@@ -375,7 +547,676 @@ def _load_site_log_catalogs_payload(db: Session) -> Dict[str, List[Dict[str, Any
     }
 
 
-VALID_WORKFLOW_ITEM_TYPES = {"RFI", "NCR", "TECH"}
+def _serialize_site_log_activity_catalog_row(row: SiteLogActivityCatalog) -> Dict[str, Any]:
+    contract = row.organization_contract
+    scope_code = "project"
+    if row.organization_contract_id:
+        scope_code = "contract"
+    elif row.organization_id:
+        scope_code = "organization"
+    pms_payload = _serialize_activity_pms_summary(getattr(row, "pms_mapping", None))
+    return {
+        "id": int(row.id or 0),
+        "project_code": _upper(row.project_code),
+        "project_name": _norm(getattr(getattr(row, "project", None), "name_e", None))
+        or _norm(getattr(getattr(row, "project", None), "name_p", None))
+        or _upper(row.project_code),
+        "organization_id": int(row.organization_id or 0) or None,
+        "organization_name": _norm(getattr(getattr(row, "organization", None), "name", None)) or None,
+        "organization_contract_id": int(row.organization_contract_id or 0) or None,
+        "contract_number": _norm(getattr(contract, "contract_number", None)) or None,
+        "contract_subject": _norm(getattr(contract, "subject", None)) or None,
+        "activity_code": _upper(row.activity_code),
+        "activity_title": _norm(row.activity_title),
+        "default_location": _norm(row.default_location) or None,
+        "default_unit": _norm(row.default_unit) or None,
+        "sort_order": int(row.sort_order or 0),
+        "is_active": bool(row.is_active),
+        "scope_code": scope_code,
+        "scope_label": (
+            "سطح قرارداد"
+            if scope_code == "contract"
+            else "سطح سازمان" if scope_code == "organization" else "سطح پروژه"
+        ),
+        **pms_payload,
+    }
+
+
+def _serialize_pms_step(row: SiteLogPmsTemplateStep | SiteLogActivityPmsStep) -> Dict[str, Any]:
+    return {
+        "id": int(getattr(row, "id", 0) or 0),
+        "step_code": _upper(getattr(row, "step_code", None)),
+        "step_title": _norm(getattr(row, "step_title", None)),
+        "weight_pct": float(getattr(row, "weight_pct", 0) or 0),
+        "sort_order": int(getattr(row, "sort_order", 0) or 0),
+        "is_active": bool(getattr(row, "is_active", False)),
+    }
+
+
+def _active_template_steps(template: SiteLogPmsTemplate) -> List[SiteLogPmsTemplateStep]:
+    return [
+        step
+        for step in sorted(template.steps or [], key=lambda item: (int(item.sort_order or 0), int(item.id or 0)))
+        if bool(step.is_active)
+    ]
+
+
+def _template_weight_total(template: SiteLogPmsTemplate) -> float:
+    return round(sum(float(step.weight_pct or 0) for step in _active_template_steps(template)), 6)
+
+
+def _serialize_pms_template(row: SiteLogPmsTemplate, *, include_steps: bool = True) -> Dict[str, Any]:
+    steps = sorted(row.steps or [], key=lambda item: (int(item.sort_order or 0), int(item.id or 0)))
+    active_steps = [step for step in steps if bool(step.is_active)]
+    payload: Dict[str, Any] = {
+        "id": int(row.id or 0),
+        "code": _upper(row.code),
+        "title": _norm(row.title),
+        "description": _norm(row.description) or None,
+        "version": int(row.version or 1),
+        "sort_order": int(row.sort_order or 0),
+        "is_active": bool(row.is_active),
+        "active_step_count": len(active_steps),
+        "weight_total": _template_weight_total(row),
+    }
+    if include_steps:
+        payload["steps"] = [_serialize_pms_step(step) for step in steps]
+    return payload
+
+
+def _serialize_activity_pms_summary(mapping: SiteLogActivityPmsMapping | None) -> Dict[str, Any]:
+    if not mapping:
+        return {
+            "pms_mapping_id": None,
+            "pms_template_id": None,
+            "pms_template_code": None,
+            "pms_template_title": None,
+            "pms_snapshot_version": None,
+            "pms_template_version": None,
+            "pms_status": "none",
+            "pms_status_label": "بدون PMS",
+            "pms_steps": [],
+        }
+    template = mapping.template
+    template_version = int(getattr(template, "version", None) or mapping.snapshot_version or 1)
+    snapshot_version = int(mapping.snapshot_version or 1)
+    status = "stale" if template_version != snapshot_version else "mapped"
+    steps = [
+        _serialize_pms_step(step)
+        for step in sorted(mapping.steps or [], key=lambda item: (int(item.sort_order or 0), int(item.id or 0)))
+        if bool(step.is_active)
+    ]
+    return {
+        "pms_mapping_id": int(mapping.id or 0),
+        "pms_template_id": int(mapping.template_id or 0),
+        "pms_template_code": _upper(mapping.template_code),
+        "pms_template_title": _norm(mapping.template_title),
+        "pms_snapshot_version": snapshot_version,
+        "pms_template_version": template_version,
+        "pms_status": status,
+        "pms_status_label": "قدیمی شده" if status == "stale" else "دارای PMS",
+        "pms_steps": steps,
+    }
+
+
+def _load_pms_templates(db: Session, *, active_only: bool = False) -> List[SiteLogPmsTemplate]:
+    query = db.query(SiteLogPmsTemplate).options(selectinload(SiteLogPmsTemplate.steps))
+    if active_only:
+        query = query.filter(SiteLogPmsTemplate.is_active == True)
+    return query.order_by(
+        SiteLogPmsTemplate.sort_order.asc(),
+        SiteLogPmsTemplate.code.asc(),
+        SiteLogPmsTemplate.id.asc(),
+    ).all()
+
+
+def _load_pms_template_or_404(
+    db: Session,
+    template_id: int | None = None,
+    template_code: str | None = None,
+) -> SiteLogPmsTemplate:
+    query = db.query(SiteLogPmsTemplate).options(selectinload(SiteLogPmsTemplate.steps))
+    if template_id:
+        query = query.filter(SiteLogPmsTemplate.id == int(template_id))
+    else:
+        code = _upper(template_code)
+        if not code:
+            raise HTTPException(status_code=400, detail="template_id or template_code is required")
+        query = query.filter(func.upper(SiteLogPmsTemplate.code) == code)
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="PMS Template not found")
+    return row
+
+
+def _ensure_pms_template_ready(template: SiteLogPmsTemplate) -> None:
+    if not bool(template.is_active):
+        raise HTTPException(status_code=400, detail="PMS Template is inactive")
+    active_steps = _active_template_steps(template)
+    if not active_steps:
+        raise HTTPException(status_code=400, detail="PMS Template must have at least one active step")
+    if abs(_template_weight_total(template) - 100.0) > 0.001:
+        raise HTTPException(status_code=400, detail="Active PMS Step weights must sum to 100")
+
+
+def _copy_template_to_activity_mapping(
+    db: Session,
+    *,
+    activity: SiteLogActivityCatalog,
+    template: SiteLogPmsTemplate,
+    overwrite: bool,
+) -> SiteLogActivityPmsMapping:
+    _ensure_pms_template_ready(template)
+    mapping = activity.pms_mapping
+    if mapping and not overwrite:
+        raise HTTPException(status_code=409, detail=f"Activity already has PMS: {activity.activity_code}")
+    if not mapping:
+        mapping = SiteLogActivityPmsMapping(activity_catalog=activity)
+        db.add(mapping)
+    mapping.template = template
+    mapping.template_id = int(template.id or 0)
+    mapping.template_code = _upper(template.code)
+    mapping.template_title = _norm(template.title)
+    mapping.snapshot_version = int(template.version or 1)
+    mapping.updated_at = datetime.utcnow()
+    if int(mapping.id or 0) > 0 and mapping.steps:
+        mapping.steps[:] = []
+        db.flush()
+    for step in _active_template_steps(template):
+        mapping.steps.append(
+            SiteLogActivityPmsStep(
+                source_template_step_id=int(step.id or 0) or None,
+                step_code=_upper(step.step_code),
+                step_title=_norm(step.step_title),
+                weight_pct=float(step.weight_pct or 0),
+                sort_order=int(step.sort_order or 0),
+                is_active=True,
+            )
+        )
+    return mapping
+
+
+def _check_optional_project_or_404(db: Session, project_code: str | None) -> str | None:
+    value = _upper(project_code)
+    if not value:
+        return None
+    if not db.query(Project.code).filter(Project.code == value).first():
+        raise HTTPException(status_code=404, detail=f"Project not found: {project_code}")
+    return value
+
+
+def _check_optional_organization_or_404(db: Session, organization_id: int | None) -> int | None:
+    if not organization_id:
+        return None
+    if not db.query(Organization.id).filter(Organization.id == int(organization_id)).first():
+        raise HTTPException(status_code=404, detail=f"Organization not found: {organization_id}")
+    return int(organization_id)
+
+
+def _load_site_log_activity_catalog_row_or_404(db: Session, item_id: int) -> SiteLogActivityCatalog:
+    row = (
+        db.query(SiteLogActivityCatalog)
+        .options(
+            joinedload(SiteLogActivityCatalog.project),
+            joinedload(SiteLogActivityCatalog.organization),
+            joinedload(SiteLogActivityCatalog.organization_contract).joinedload(OrganizationContract.block),
+            joinedload(SiteLogActivityCatalog.pms_mapping).joinedload(SiteLogActivityPmsMapping.template),
+            joinedload(SiteLogActivityCatalog.pms_mapping).selectinload(SiteLogActivityPmsMapping.steps),
+        )
+        .filter(SiteLogActivityCatalog.id == int(item_id))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Activity catalog item not found")
+    return row
+
+
+def _activity_catalog_scope_query(
+    db: Session,
+    *,
+    project_code: str | None,
+    organization_id: int | None,
+    organization_contract_id: int | None,
+):
+    query = db.query(SiteLogActivityCatalog).options(
+        joinedload(SiteLogActivityCatalog.project),
+        joinedload(SiteLogActivityCatalog.organization),
+        joinedload(SiteLogActivityCatalog.organization_contract).joinedload(OrganizationContract.block),
+        joinedload(SiteLogActivityCatalog.pms_mapping).joinedload(SiteLogActivityPmsMapping.template),
+        joinedload(SiteLogActivityCatalog.pms_mapping).selectinload(SiteLogActivityPmsMapping.steps),
+    )
+    if project_code:
+        query = query.filter(SiteLogActivityCatalog.project_code == project_code)
+    if organization_id is not None:
+        query = query.filter(SiteLogActivityCatalog.organization_id == organization_id)
+    if organization_contract_id is not None:
+        query = query.filter(SiteLogActivityCatalog.organization_contract_id == organization_contract_id)
+    return query
+
+
+def _load_site_log_activity_catalog_payload(
+    db: Session,
+    *,
+    project_code: str | None = None,
+    organization_id: int | None = None,
+    organization_contract_id: int | None = None,
+    pms_status: str | None = None,
+    pms_template_id: int | None = None,
+    default_unit: str | None = None,
+    default_location: str | None = None,
+    reference_search: str | None = None,
+) -> Dict[str, Any]:
+    rows = (
+        _activity_catalog_scope_query(
+            db,
+            project_code=project_code,
+            organization_id=organization_id,
+            organization_contract_id=organization_contract_id,
+        )
+        .order_by(
+            SiteLogActivityCatalog.project_code.asc(),
+            SiteLogActivityCatalog.sort_order.asc(),
+            SiteLogActivityCatalog.activity_code.asc(),
+            SiteLogActivityCatalog.id.asc(),
+        )
+        .all()
+    )
+    status_filter = _norm(pms_status).lower()
+    template_filter = int(pms_template_id or 0) or None
+    unit_filter = _norm(default_unit).lower()
+    location_filter = _norm(default_location).lower()
+    reference_filter = _norm(reference_search).lower()
+    if any([status_filter, template_filter, unit_filter, location_filter, reference_filter]):
+        filtered_rows: List[SiteLogActivityCatalog] = []
+        for item in rows:
+            pms = _serialize_activity_pms_summary(getattr(item, "pms_mapping", None))
+            item_status = str(pms.get("pms_status") or "none").lower()
+            if status_filter in {"none", "without", "without_pms"} and item_status != "none":
+                continue
+            if status_filter in {"mapped", "with", "with_pms"} and item_status == "none":
+                continue
+            if status_filter == "stale" and item_status != "stale":
+                continue
+            if template_filter and int(pms.get("pms_template_id") or 0) != template_filter:
+                continue
+            if unit_filter and unit_filter not in _norm(item.default_unit).lower():
+                continue
+            if location_filter and location_filter not in _norm(item.default_location).lower():
+                continue
+            reference_text = " ".join(
+                [
+                    _norm(getattr(getattr(item, "organization", None), "name", None)),
+                    _norm(getattr(getattr(item, "organization_contract", None), "contract_number", None)),
+                    _norm(getattr(getattr(item, "organization_contract", None), "subject", None)),
+                    _upper(item.project_code),
+                ]
+            ).lower()
+            if reference_filter and reference_filter not in reference_text:
+                continue
+            filtered_rows.append(item)
+        rows = filtered_rows
+    pms_summary = {"total": len(rows), "mapped": 0, "none": 0, "stale": 0}
+    for item in rows:
+        status = str(_serialize_activity_pms_summary(getattr(item, "pms_mapping", None)).get("pms_status") or "none")
+        if status == "stale":
+            pms_summary["stale"] += 1
+        elif status == "mapped":
+            pms_summary["mapped"] += 1
+        else:
+            pms_summary["none"] += 1
+    projects = db.query(Project).filter(Project.is_active == True).order_by(Project.code.asc()).all()
+    organizations = (
+        db.query(Organization)
+        .options(joinedload(Organization.contracts).joinedload(OrganizationContract.block))
+        .filter(Organization.is_active == True)
+        .order_by(Organization.name.asc())
+        .all()
+    )
+    return {
+        "items": [_serialize_site_log_activity_catalog_row(row) for row in rows],
+        "pms_summary": pms_summary,
+        "pms_templates": [_serialize_pms_template(row) for row in _load_pms_templates(db)],
+        "projects": [{"code": row.code, "name": row.name_e or row.name_p or row.code} for row in projects],
+        "organizations": [
+            {
+                "id": row.id,
+                "name": row.name,
+                "org_type": row.org_type,
+                "contracts": [
+                    _serialize_organization_contract(contract)
+                    for contract in sorted(
+                        list(row.contracts or []),
+                        key=lambda item: (int(item.sort_order or 0), int(item.id or 0)),
+                    )
+                ],
+            }
+            for row in organizations
+        ],
+    }
+
+
+_ACTIVITY_IMPORT_HEADER_ALIASES: Dict[str, str] = {
+    "activitycode": "activity_code",
+    "code": "activity_code",
+    "کد": "activity_code",
+    "کدفعالیت": "activity_code",
+    "activitytitle": "activity_title",
+    "title": "activity_title",
+    "name": "activity_title",
+    "شرح": "activity_title",
+    "عنوان": "activity_title",
+    "عنوانفعالیت": "activity_title",
+    "defaultlocation": "default_location",
+    "location": "default_location",
+    "محل": "default_location",
+    "محلپیشفرض": "default_location",
+    "جبههکاری": "default_location",
+    "defaultunit": "default_unit",
+    "unit": "default_unit",
+    "واحد": "default_unit",
+    "واحدپیشفرض": "default_unit",
+    "sortorder": "sort_order",
+    "order": "sort_order",
+    "sort": "sort_order",
+    "ترتیب": "sort_order",
+    "ردیف": "sort_order",
+    "isactive": "is_active",
+    "active": "is_active",
+    "status": "is_active",
+    "وضعیت": "is_active",
+    "فعال": "is_active",
+}
+
+
+def _activity_import_header_key(value: Any) -> str:
+    raw = _norm(value).lower().replace("ي", "ی").replace("ك", "ک")
+    raw = raw.replace("\u200c", "").replace("\u200f", "").replace("\u200e", "")
+    return re.sub(r"[\s_\-‐‑‒–—./()]+", "", raw)
+
+
+def _activity_import_cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return _norm(value)
+
+
+def _activity_import_bool(value: Any, default: bool = True) -> bool:
+    text = _activity_import_cell_text(value).lower().replace("ي", "ی").replace("ك", "ک")
+    compact = re.sub(r"\s+", "", text)
+    if not compact:
+        return default
+    if compact in {"0", "false", "no", "n", "inactive", "disabled", "غیرفعال", "غيرفعال", "نه", "خیر"}:
+        return False
+    if compact in {"1", "true", "yes", "y", "active", "enabled", "فعال", "بله"}:
+        return True
+    return default
+
+
+def _activity_import_int(value: Any, default: int) -> int:
+    text = _activity_import_cell_text(value)
+    if not text:
+        return default
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return default
+
+
+def _resolve_activity_catalog_scope(
+    db: Session,
+    *,
+    project_code: str | None,
+    organization_id: int | None,
+    organization_contract_id: int | None,
+) -> tuple[str, int | None, OrganizationContract | None]:
+    project_value = _check_optional_project_or_404(db, project_code)
+    if not project_value:
+        raise HTTPException(status_code=400, detail="project_code is required")
+    organization_value = _check_optional_organization_or_404(db, organization_id)
+    contract = None
+    if organization_contract_id:
+        contract = (
+            db.query(OrganizationContract)
+            .options(joinedload(OrganizationContract.block))
+            .filter(OrganizationContract.id == int(organization_contract_id))
+            .first()
+        )
+        if not contract:
+            raise HTTPException(status_code=404, detail="Organization contract not found")
+        if organization_value and int(contract.organization_id or 0) != int(organization_value):
+            raise HTTPException(status_code=400, detail="Selected contract does not belong to the selected organization.")
+        if organization_value is None:
+            organization_value = int(contract.organization_id or 0) or None
+    return project_value, organization_value, contract
+
+
+def _find_activity_catalog_by_scope_code(
+    db: Session,
+    *,
+    project_code: str,
+    organization_id: int | None,
+    organization_contract_id: int | None,
+    activity_code: str,
+) -> SiteLogActivityCatalog | None:
+    query = db.query(SiteLogActivityCatalog).filter(
+        SiteLogActivityCatalog.project_code == project_code,
+        func.upper(SiteLogActivityCatalog.activity_code) == _upper(activity_code),
+    )
+    if organization_id is None:
+        query = query.filter(SiteLogActivityCatalog.organization_id.is_(None))
+    else:
+        query = query.filter(SiteLogActivityCatalog.organization_id == int(organization_id))
+    if organization_contract_id is None:
+        query = query.filter(SiteLogActivityCatalog.organization_contract_id.is_(None))
+    else:
+        query = query.filter(SiteLogActivityCatalog.organization_contract_id == int(organization_contract_id))
+    return query.first()
+
+
+def _parse_site_log_activity_catalog_import(content: bytes, filename: str) -> List[Dict[str, Any]]:
+    if not content:
+        raise HTTPException(status_code=400, detail="Import file is empty")
+    name = _norm(filename).lower()
+    if not name.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are supported for activity catalog import")
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:  # pragma: no cover - dependency is expected in the app image
+        raise HTTPException(status_code=500, detail="Excel parser dependency is not installed") from exc
+
+    try:
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid Excel file: {exc}") from exc
+    try:
+        sheet = workbook.active
+        header_map: Dict[int, str] = {}
+        header_row_no = 0
+        buffered_rows = list(sheet.iter_rows(values_only=True))
+        for row_no, row in enumerate(buffered_rows, start=1):
+            candidate: Dict[int, str] = {}
+            for index, cell in enumerate(row):
+                alias = _ACTIVITY_IMPORT_HEADER_ALIASES.get(_activity_import_header_key(cell))
+                if alias:
+                    candidate[index] = alias
+            if "activity_code" in candidate.values() and "activity_title" in candidate.values():
+                header_map = candidate
+                header_row_no = row_no
+                break
+        if not header_map:
+            raise HTTPException(
+                status_code=400,
+                detail="Excel header must include activity code and activity title columns.",
+            )
+
+        parsed: List[Dict[str, Any]] = []
+        for row_no, row in enumerate(buffered_rows[header_row_no:], start=header_row_no + 1):
+            if not any(_activity_import_cell_text(cell) for cell in row):
+                continue
+            item: Dict[str, Any] = {"row_no": row_no}
+            for index, key in header_map.items():
+                item[key] = _activity_import_cell_text(row[index] if index < len(row) else None)
+            parsed.append(item)
+        return parsed
+    finally:
+        workbook.close()
+
+
+def _site_log_activity_catalog_template_bytes() -> bytes:
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+    except ImportError as exc:  # pragma: no cover - dependency is expected in the app image
+        raise HTTPException(status_code=500, detail="Excel writer dependency is not installed") from exc
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Activity Catalog"
+    headers = ["کد فعالیت", "عنوان فعالیت", "محل پیش‌فرض", "واحد", "ترتیب", "وضعیت"]
+    sheet.append(headers)
+    sheet.append(["CV-101", "آرماتوربندی فونداسیون", "بلوک B", "تن", 10, "فعال"])
+    sheet.append(["CV-118", "قالب بندی دیوار حائل", "ضلع شمالی", "مترمربع", 20, "فعال"])
+    sheet.freeze_panes = "A2"
+    widths = [18, 34, 24, 14, 12, 14]
+    header_fill = PatternFill("solid", fgColor="EAF2FF")
+    header_font = Font(bold=True, color="0B3A7A")
+    for col_index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[sheet.cell(row=1, column=col_index).column_letter].width = width
+        cell = sheet.cell(row=1, column=col_index)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    for row in sheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+    return buffer.getvalue()
+
+
+_PMS_MAPPING_IMPORT_HEADER_ALIASES: Dict[str, str] = {
+    "activitycode": "activity_code",
+    "code": "activity_code",
+    "pmsactivitycode": "activity_code",
+    "activitytitle": "activity_title",
+    "title": "activity_title",
+    "pmstemplatecode": "pms_template_code",
+    "templatecode": "pms_template_code",
+    "pmscode": "pms_template_code",
+}
+
+
+def _parse_site_log_pms_mapping_import(content: bytes, filename: str) -> List[Dict[str, Any]]:
+    if not content:
+        raise HTTPException(status_code=400, detail="Import file is empty")
+    name = _norm(filename).lower()
+    if not name.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are supported for PMS mapping import")
+    try:
+        from openpyxl import load_workbook
+    except ImportError as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Excel parser dependency is not installed") from exc
+
+    try:
+        workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid Excel file: {exc}") from exc
+    try:
+        sheet = workbook.active
+        buffered_rows = list(sheet.iter_rows(values_only=True))
+        header_map: Dict[int, str] = {}
+        header_row_no = 0
+        for row_no, row in enumerate(buffered_rows, start=1):
+            candidate: Dict[int, str] = {}
+            for index, cell in enumerate(row):
+                alias = _PMS_MAPPING_IMPORT_HEADER_ALIASES.get(_activity_import_header_key(cell))
+                if alias:
+                    candidate[index] = alias
+            if "activity_code" in candidate.values() and "pms_template_code" in candidate.values():
+                header_map = candidate
+                header_row_no = row_no
+                break
+        if not header_map:
+            raise HTTPException(
+                status_code=400,
+                detail="Excel header must include activity_code and pms_template_code columns.",
+            )
+        parsed: List[Dict[str, Any]] = []
+        for row_no, row in enumerate(buffered_rows[header_row_no:], start=header_row_no + 1):
+            if not any(_activity_import_cell_text(cell) for cell in row):
+                continue
+            item: Dict[str, Any] = {"row_no": row_no}
+            for index, key in header_map.items():
+                item[key] = _activity_import_cell_text(row[index] if index < len(row) else None)
+            parsed.append(item)
+        return parsed
+    finally:
+        workbook.close()
+
+
+def _site_log_pms_mapping_workbook_bytes(rows: List[Dict[str, Any]] | None = None) -> bytes:
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+    except ImportError as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Excel writer dependency is not installed") from exc
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Activity PMS Mapping"
+    headers = [
+        "activity_code",
+        "activity_title",
+        "default_location",
+        "default_unit",
+        "reference",
+        "pms_template_code",
+        "pms_template_title",
+        "pms_status",
+        "pms_version",
+    ]
+    sheet.append(headers)
+    if rows:
+        for row in rows:
+            sheet.append(
+                [
+                    row.get("activity_code") or "",
+                    row.get("activity_title") or "",
+                    row.get("default_location") or "",
+                    row.get("default_unit") or "",
+                    row.get("organization_name") or row.get("contract_subject") or row.get("project_code") or "",
+                    row.get("pms_template_code") or "",
+                    row.get("pms_template_title") or "",
+                    row.get("pms_status") or "none",
+                    row.get("pms_snapshot_version") or "",
+                ]
+            )
+    else:
+        sheet.append(["CV-101", "Concrete work", "Block A", "m3", "Contract A", "CONC", "Concrete PMS", "", ""])
+    sheet.freeze_panes = "A2"
+    header_fill = PatternFill("solid", fgColor="EAF2FF")
+    header_font = Font(bold=True, color="0B3A7A")
+    widths = [18, 34, 24, 14, 24, 22, 32, 16, 14]
+    for col_index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[sheet.cell(row=1, column=col_index).column_letter].width = width
+        cell = sheet.cell(row=1, column=col_index)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    for row in sheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(horizontal="right", vertical="center")
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+    return buffer.getvalue()
+
+
+VALID_WORKFLOW_ITEM_TYPES = {"RFI", "NCR", "WORK_INSTRUCTION"}
 
 
 def _normalize_workflow_item_type_or_400(value: Optional[str]) -> str:
@@ -633,7 +1474,14 @@ def _masked_storage_integrations_payload(
     nextcloud["local_mount_root_configured"] = bool(
         nextcloud_runtime.get("local_mount_root_configured")
     )
+    nextcloud["public_share_password_configured"] = bool(
+        str((integrations.get("nextcloud") or {}).get("public_share_password") or "").strip()
+    )
+    nextcloud["public_share_password_required"] = bool(
+        (integrations.get("nextcloud") or {}).get("public_share_password_required", True)
+    )
     nextcloud.pop("app_password", None)
+    nextcloud.pop("public_share_password", None)
     masked["nextcloud"] = nextcloud
 
     return redact_secrets(masked)
@@ -831,21 +1679,39 @@ def _permission_keys() -> List[str]:
     return permission_keys()
 
 
-def _default_permission_matrix() -> Dict[str, Dict[str, bool]]:
-    perms = _permission_keys()
-    matrix: Dict[str, Dict[str, bool]] = {}
-    for role in MATRIX_ROLES:
-        role_enum = Role(role)
-        role_permissions = ROLE_PERMISSIONS.get(role_enum, [])
-        if "*" in role_permissions:
-            matrix[role] = {perm: True for perm in perms}
-        else:
-            matrix[role] = {perm: perm in role_permissions for perm in perms}
-    return matrix
+def _permission_meta() -> List[Dict[str, Any]]:
+    return permission_meta_list()
 
 
-def _normalize_permission_matrix(raw: Any) -> Dict[str, Dict[str, bool]]:
-    normalized = _default_permission_matrix()
+def _feature_catalog() -> List[Dict[str, Any]]:
+    return feature_catalog()
+
+
+def _default_permission_matrix(category: Optional[str] = None) -> Dict[str, Dict[str, bool]]:
+    return default_permission_matrix_for_category(category)
+
+
+def _matrix_role_labels() -> Dict[str, str]:
+    return {
+        "manager": "سرپرست",
+        "dcc": "کنترل مدارک (DCC)",
+        "project_control": "کنترل پروژه",
+        "user": "کاربر عادی",
+        "viewer": "مشاهده‌گر",
+    }
+
+
+def _permission_category_labels() -> Dict[str, str]:
+    return {
+        "consultant": "مشاور",
+        "contractor": "پیمانکار",
+        "employer": "کارفرما",
+        "dcc": "DCC",
+    }
+
+
+def _normalize_permission_matrix(raw: Any, category: Optional[str] = None) -> Dict[str, Dict[str, bool]]:
+    normalized = _default_permission_matrix(category)
     perms = _permission_keys()
 
     if not isinstance(raw, dict):
@@ -868,19 +1734,20 @@ def _load_permission_matrix(
     *,
     category: Optional[str] = None,
 ) -> Dict[str, Dict[str, bool]]:
-    matrix = _default_permission_matrix()
-    perms = _permission_keys()
     rows = []
 
     if category is not None:
         category_key = _normalize_permission_category_or_400(category)
+        matrix = _default_permission_matrix(category_key)
+        perms = _permission_keys()
         rows = (
             db.query(RoleCategoryPermission)
             .filter(RoleCategoryPermission.category == category_key)
             .all()
         )
-
-    if not rows:
+    else:
+        matrix = _default_permission_matrix()
+        perms = _permission_keys()
         rows = db.query(RolePermission).all()
 
     for row in rows:
@@ -1082,6 +1949,162 @@ def _build_organization_tree(items: List[Dict[str, Any]]) -> List[Dict[str, Any]
     return roots
 
 
+def _organization_contract_block_label(block: Block | None) -> Optional[str]:
+    if block is None:
+        return None
+    primary = "/".join(part for part in [_norm(block.project_code), _norm(block.code)] if part)
+    name = _norm(getattr(block, "name_p", None)) or _norm(getattr(block, "name_e", None))
+    if not primary:
+        return name or None
+    return f"{primary} - {name}" if name else primary
+
+
+def _serialize_organization_contract(row: OrganizationContract) -> Dict[str, Any]:
+    block = row.block
+    return {
+        "id": row.id,
+        "contract_number": row.contract_number,
+        "subject": row.subject,
+        "block_id": row.block_id,
+        "block_code": block.code if block else None,
+        "block_project_code": block.project_code if block else None,
+        "block_label": _organization_contract_block_label(block),
+        "sort_order": row.sort_order,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+def _serialize_organization_snapshot(row: Organization | None) -> Dict[str, Any] | None:
+    if row is None:
+        return None
+    contracts = [
+        _serialize_organization_contract(contract)
+        for contract in sorted(
+            list(row.contracts or []),
+            key=lambda item: (int(item.sort_order or 0), int(item.id or 0)),
+        )
+    ]
+    return {
+        "id": row.id,
+        "code": row.code,
+        "name": row.name,
+        "org_type": row.org_type,
+        "parent_id": row.parent_id,
+        "is_active": bool(row.is_active),
+        "contracts": contracts,
+        "contracts_count": len(contracts),
+    }
+
+
+def _serialize_organization_list_item(
+    row: Organization,
+    *,
+    parent: Organization | None,
+    depth: int,
+    users_count: Dict[int, int],
+    children_count: Dict[int, int],
+) -> Dict[str, Any]:
+    snapshot = _serialize_organization_snapshot(row) or {}
+    snapshot.update(
+        {
+            "parent_code": parent.code if parent else None,
+            "parent_name": parent.name if parent else None,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "users_count": users_count.get(int(row.id), 0),
+            "children_count": children_count.get(int(row.id), 0),
+            "depth": int(depth),
+        }
+    )
+    return snapshot
+
+
+def _normalize_organization_contracts_or_400(
+    payload_contracts: Optional[List[OrganizationContractIn]],
+    db: Session,
+) -> tuple[List[Dict[str, Any]], Dict[int, Block]]:
+    normalized: List[Dict[str, Any]] = []
+    block_ids: set[int] = set()
+
+    for index, item in enumerate(payload_contracts or []):
+        contract_number = _norm(item.contract_number)
+        subject = _norm(item.subject)
+        block_id = int(item.block_id) if item.block_id is not None else None
+
+        if not contract_number and not subject and block_id is None:
+            continue
+        if not contract_number:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Contract #{index + 1}: contract_number is required",
+            )
+        if not subject:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Contract #{index + 1}: subject is required",
+            )
+
+        normalized.append(
+            {
+                "id": int(item.id) if item.id is not None else None,
+                "contract_number": contract_number,
+                "subject": subject,
+                "block_id": block_id,
+                "sort_order": index,
+            }
+        )
+        if block_id is not None:
+            block_ids.add(block_id)
+
+    block_lookup: Dict[int, Block] = {}
+    if block_ids:
+        block_lookup = {
+            int(block.id): block
+            for block in db.query(Block).filter(Block.id.in_(sorted(block_ids))).all()
+        }
+        missing_ids = sorted(block_ids - set(block_lookup))
+        if missing_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Block not found for contract(s): {', '.join(str(item) for item in missing_ids)}",
+            )
+
+    return normalized, block_lookup
+
+
+def _sync_organization_contracts(
+    row: Organization,
+    *,
+    contracts_payload: List[Dict[str, Any]],
+    block_lookup: Dict[int, Block],
+) -> None:
+    existing_by_id = {
+        int(contract.id): contract
+        for contract in list(row.contracts or [])
+        if contract.id is not None
+    }
+    next_contracts: List[OrganizationContract] = []
+
+    for item in contracts_payload:
+        contract_id = item.get("id")
+        contract = existing_by_id.get(int(contract_id)) if contract_id is not None else None
+        if contract_id is not None and contract is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Organization contract not found: {contract_id}",
+            )
+        if contract is None:
+            contract = OrganizationContract()
+
+        contract.contract_number = item["contract_number"]
+        contract.subject = item["subject"]
+        contract.block_id = item["block_id"]
+        contract.block = block_lookup.get(item["block_id"]) if item["block_id"] is not None else None
+        contract.sort_order = int(item["sort_order"])
+        next_contracts.append(contract)
+
+    row.contracts[:] = next_contracts
+
+
 # -----------------------------
 # Endpoints
 # -----------------------------
@@ -1166,7 +2189,12 @@ def list_organizations_settings(
     db: Session = Depends(get_db),
     _: DbUser = Depends(require_permission("organizations:read")),
 ):
-    all_rows = db.query(Organization).order_by(Organization.id.asc()).all()
+    all_rows = (
+        db.query(Organization)
+        .options(joinedload(Organization.contracts).joinedload(OrganizationContract.block))
+        .order_by(Organization.id.asc())
+        .all()
+    )
     parent_lookup = {int(row.id): row for row in all_rows}
     rows = [row for row in all_rows if include_inactive or bool(row.is_active)]
 
@@ -1194,20 +2222,13 @@ def list_organizations_settings(
     for row, depth in flat_rows:
         parent = parent_lookup.get(int(row.parent_id)) if row.parent_id is not None else None
         items.append(
-            {
-                "id": row.id,
-                "code": row.code,
-                "name": row.name,
-                "org_type": row.org_type,
-                "parent_id": row.parent_id,
-                "parent_code": parent.code if parent else None,
-                "parent_name": parent.name if parent else None,
-                "is_active": bool(row.is_active),
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-                "users_count": users_count.get(int(row.id), 0),
-                "children_count": children_count.get(int(row.id), 0),
-                "depth": int(depth),
-            }
+            _serialize_organization_list_item(
+                row,
+                parent=parent,
+                depth=depth,
+                users_count=users_count,
+                children_count=children_count,
+            )
         )
 
     payload: Dict[str, Any] = {
@@ -1230,19 +2251,35 @@ def upsert_organization_settings(
     name = _norm(payload.name)
     org_type = _normalize_org_type_or_400(payload.org_type)
     parent_id = int(payload.parent_id) if payload.parent_id is not None else None
+    payload_fields = payload.model_fields_set if hasattr(payload, "model_fields_set") else getattr(payload, "__fields_set__", set())
+    contracts_provided = "contracts" in payload_fields
+    contracts_payload: Optional[List[Dict[str, Any]]] = None
+    block_lookup: Dict[int, Block] = {}
 
     if not code:
         raise HTTPException(status_code=400, detail="code is required")
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
+    if contracts_provided:
+        contracts_payload, block_lookup = _normalize_organization_contracts_or_400(payload.contracts, db)
 
     row = None
     if payload.id is not None:
-        row = db.query(Organization).filter(Organization.id == int(payload.id)).first()
+        row = (
+            db.query(Organization)
+            .options(joinedload(Organization.contracts).joinedload(OrganizationContract.block))
+            .filter(Organization.id == int(payload.id))
+            .first()
+        )
         if not row:
             raise HTTPException(status_code=404, detail=f"Organization not found: {payload.id}")
     if row is None:
-        row = db.query(Organization).filter(Organization.code == code).first()
+        row = (
+            db.query(Organization)
+            .options(joinedload(Organization.contracts).joinedload(OrganizationContract.block))
+            .filter(Organization.code == code)
+            .first()
+        )
 
     parent = None
     if parent_id is not None:
@@ -1274,7 +2311,7 @@ def upsert_organization_settings(
     if duplicate.first():
         raise HTTPException(status_code=409, detail=f"Organization code already exists: {code}")
 
-    before = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    before = _serialize_organization_snapshot(row)
     if row:
         row.code = code
         row.name = name
@@ -1291,8 +2328,15 @@ def upsert_organization_settings(
         )
         db.add(row)
 
+    if contracts_payload is not None:
+        _sync_organization_contracts(
+            row,
+            contracts_payload=contracts_payload,
+            block_lookup=block_lookup,
+        )
+
     db.flush()
-    after = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    after = _serialize_organization_snapshot(row)
     _audit_log(
         db,
         actor=current_user,
@@ -1303,7 +2347,13 @@ def upsert_organization_settings(
         after=after,
     )
     db.commit()
-    return {"ok": True, "message": "Organization upserted", "item": after}
+    return {
+        "ok": True,
+        "message": "Organization upserted",
+        "id": after["id"] if after else None,
+        "code": after["code"] if after else code,
+        "item": after,
+    }
 
 
 @router.post("/organizations/delete")
@@ -1317,9 +2367,19 @@ def delete_organization_settings(
 
     row = None
     if payload.id is not None:
-        row = db.query(Organization).filter(Organization.id == int(payload.id)).first()
+        row = (
+            db.query(Organization)
+            .options(joinedload(Organization.contracts).joinedload(OrganizationContract.block))
+            .filter(Organization.id == int(payload.id))
+            .first()
+        )
     if row is None and _norm(payload.code):
-        row = db.query(Organization).filter(Organization.code == _upper(payload.code)).first()
+        row = (
+            db.query(Organization)
+            .options(joinedload(Organization.contracts).joinedload(OrganizationContract.block))
+            .filter(Organization.code == _upper(payload.code))
+            .first()
+        )
     if row is None:
         return {"ok": True, "message": "Organization not found (noop)"}
 
@@ -1336,7 +2396,7 @@ def delete_organization_settings(
         "workboard_items": int(workboard_count),
     }
 
-    before = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    before = _serialize_organization_snapshot(row)
     if payload.hard_delete:
         if children_count > 0 or users_count > 0 or workboard_count > 0:
             raise HTTPException(
@@ -1360,7 +2420,7 @@ def delete_organization_settings(
         return {"ok": True, "message": "Organization deleted", "id": row.id, "code": code}
 
     row.is_active = False
-    after = _as_dict(row, ["id", "code", "name", "org_type", "parent_id", "is_active"])
+    after = _serialize_organization_snapshot(row)
     _audit_log(
         db,
         actor=current_user,
@@ -1583,6 +2643,9 @@ def upsert_mdr_category(
         after=_as_dict(row, ["code", "name_e", "name_p", "folder_name", "sort_order", "is_active"]),
     )
     db.commit()
+    from app.api.v1.routers.lookup import invalidate_dictionary_cache
+
+    invalidate_dictionary_cache()
     return {"ok": True, "message": "MDR Category upserted", "code": code}
 
 @router.post("/mdr-categories/delete")
@@ -1607,6 +2670,9 @@ def delete_mdr_category(
         after=None if payload.hard_delete else _as_dict(row, ["code", "name_e", "name_p", "folder_name", "sort_order", "is_active"]),
     )
     db.commit()
+    from app.api.v1.routers.lookup import invalidate_dictionary_cache
+
+    invalidate_dictionary_cache()
     return {"ok": True, "message": "MDR Category deleted" if payload.hard_delete else "MDR Category disabled"}
 
 
@@ -2201,6 +3267,104 @@ def delete_correspondence_categories_settings(
     return {"ok": True, "message": "Correspondence category disabled", "code": code}
 
 
+def _serialize_correspondence_tag(row: DocumentTag) -> Dict[str, Any]:
+    return {
+        "id": int(row.id or 0),
+        "name": row.name,
+        "color": row.color,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/correspondence-tags")
+def list_correspondence_tags_settings(db: Session = Depends(get_db)):
+    rows = tag_service.list_tags(db)
+    return {"ok": True, "items": [_serialize_correspondence_tag(row) for row in rows]}
+
+
+@router.post("/correspondence-tags/upsert")
+def upsert_correspondence_tag_settings(
+    payload: CorrespondenceTagIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    if payload.id:
+        row = tag_service.update_tag(
+            db,
+            int(payload.id),
+            name=payload.name,
+            color=payload.color,
+        )
+        action = "correspondence_tag.update"
+    else:
+        row = tag_service.create_tag(
+            db,
+            name=payload.name,
+            color=payload.color,
+            user=current_user,
+        )
+        action = "correspondence_tag.create"
+    _audit_log(
+        db,
+        actor=current_user,
+        action=action,
+        target_type="correspondence_tag",
+        target_key=str(int(row.id or 0)),
+        before=None,
+        after=_serialize_correspondence_tag(row),
+    )
+    db.commit()
+    return {"ok": True, "message": "Correspondence tag upserted", "id": int(row.id or 0)}
+
+
+@router.post("/correspondence-tags/delete")
+def delete_correspondence_tag_settings(
+    payload: CorrespondenceTagDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    row = tag_service.get_tag_or_404(db, int(payload.id))
+    before = _serialize_correspondence_tag(row)
+    tag_service.delete_tag(db, int(payload.id))
+    _audit_log(
+        db,
+        actor=current_user,
+        action="correspondence_tag.delete",
+        target_type="correspondence_tag",
+        target_key=str(int(payload.id)),
+        before=before,
+        after=None,
+    )
+    db.commit()
+    return {"ok": True, "message": "Correspondence tag deleted", "id": int(payload.id)}
+
+
+@router.get("/transmittal-parties")
+def get_transmittal_parties_settings(db: Session = Depends(get_db)):
+    return {"ok": True, **get_transmittal_parties(db)}
+
+
+@router.post("/transmittal-parties")
+def save_transmittal_parties_settings(
+    payload: TransmittalPartiesIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    before = get_transmittal_parties(db)
+    after = set_transmittal_parties(db, payload.model_dump())
+    _audit_log(
+        db,
+        actor=current_user,
+        action="transmittal_parties.update",
+        target_type="transmittal_parties",
+        target_key="custom.transmittal.parties.v1",
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {"ok": True, "message": "Transmittal parties saved", **after}
+
+
 # --- KV ---
 @router.get("/kv")
 def kv_list(
@@ -2244,14 +3408,18 @@ def kv_set(
 
 @router.get("/storage-paths")
 def get_storage_paths(db: Session = Depends(get_db)):
+    correspondence_path = _kv_get_value(
+        db,
+        STORAGE_PATH_CORRESPONDENCE_KEY,
+        DEFAULT_CORRESPONDENCE_STORAGE_PATH,
+    )
+    site_log_path = _kv_get_value(db, STORAGE_PATH_SITE_LOG_KEY, "")
     return {
         "ok": True,
         "mdr_storage_path": _kv_get_value(db, STORAGE_PATH_MDR_KEY, DEFAULT_MDR_STORAGE_PATH),
-        "correspondence_storage_path": _kv_get_value(
-            db,
-            STORAGE_PATH_CORRESPONDENCE_KEY,
-            DEFAULT_CORRESPONDENCE_STORAGE_PATH,
-        ),
+        "correspondence_storage_path": correspondence_path,
+        "site_log_storage_path": site_log_path,
+        "site_log_storage_path_effective": site_log_path or correspondence_path,
     }
 
 
@@ -2263,6 +3431,8 @@ def save_storage_paths(
 ):
     mdr_storage_path = _norm(payload.mdr_storage_path)
     correspondence_storage_path = _norm(payload.correspondence_storage_path)
+    site_log_storage_path = _norm(payload.site_log_storage_path)
+    before_site_log = _kv_get_value(db, STORAGE_PATH_SITE_LOG_KEY, "")
     integrations = get_storage_integrations(db)
     primary_provider = resolve_primary_storage_provider(integrations)
     nextcloud_runtime = resolve_nextcloud_runtime(integrations)
@@ -2290,6 +3460,17 @@ def save_storage_paths(
     )
     errors.extend(mdr_errors)
     errors.extend(corr_errors)
+    normalized_site_log = before_site_log if payload.site_log_storage_path is None else ""
+    if payload.site_log_storage_path is not None and site_log_storage_path:
+        normalized_site_log, site_log_errors = StorageManager.validate_storage_path(
+            site_log_storage_path,
+            field="site_log_storage_path",
+            network_username=payload.network_username,
+            network_password=payload.network_password,
+            allow_remote_webdav_path=use_nextcloud_webdav,
+            remote_root_value=remote_root if use_nextcloud_webdav else None,
+        )
+        errors.extend(site_log_errors)
     if errors:
         raise HTTPException(status_code=422, detail=errors)
 
@@ -2300,14 +3481,19 @@ def save_storage_paths(
             STORAGE_PATH_CORRESPONDENCE_KEY,
             DEFAULT_CORRESPONDENCE_STORAGE_PATH,
         ),
+        "site_log_storage_path": before_site_log,
     }
     after = {
         "mdr_storage_path": normalized_mdr,
         "correspondence_storage_path": normalized_corr,
+        "site_log_storage_path": normalized_site_log,
+        "site_log_storage_path_effective": normalized_site_log or normalized_corr,
     }
 
     _kv_set(db, STORAGE_PATH_MDR_KEY, normalized_mdr)
     _kv_set(db, STORAGE_PATH_CORRESPONDENCE_KEY, normalized_corr)
+    if payload.site_log_storage_path is not None:
+        _kv_set(db, STORAGE_PATH_SITE_LOG_KEY, normalized_site_log)
     _audit_log(
         db,
         actor=current_user,
@@ -2400,6 +3586,12 @@ def save_storage_integrations_settings(
     if isinstance(nextcloud_incoming, dict):
         if "app_password" in nextcloud_incoming and not str(nextcloud_incoming.get("app_password") or "").strip():
             nextcloud_incoming["app_password"] = str((before.get("nextcloud") or {}).get("app_password") or "")
+        if "public_share_password" in nextcloud_incoming and not str(
+            nextcloud_incoming.get("public_share_password") or ""
+        ).strip():
+            nextcloud_incoming["public_share_password"] = str(
+                (before.get("nextcloud") or {}).get("public_share_password") or ""
+            )
 
         # CRITICAL: Warn if root_path is changing and WebDAV files exist
         if "root_path" in nextcloud_incoming:
@@ -2483,6 +3675,85 @@ def clear_storage_openproject_token(
     )
     db.commit()
     return {"ok": True, "integrations": masked}
+
+
+@router.get("/power-bi/tokens")
+def list_power_bi_tokens(
+    include_inactive: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("settings:update")),
+):
+    query = db.query(PowerBiApiToken)
+    if not include_inactive:
+        query = query.filter(PowerBiApiToken.is_active.is_(True), PowerBiApiToken.revoked_at.is_(None))
+    rows = query.order_by(PowerBiApiToken.id.desc()).all()
+    return {
+        "ok": True,
+        "items": [serialize_power_bi_token(row) for row in rows],
+        "defaults": {"scopes": [POWER_BI_SITE_LOG_SCOPE]},
+    }
+
+
+@router.post("/power-bi/tokens/mint")
+def mint_power_bi_token(
+    payload: PowerBiTokenMintIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    row, raw_token = create_power_bi_token(
+        db,
+        name=payload.name,
+        created_by_id=int(current_user.id or 0) if getattr(current_user, "id", None) else None,
+        expires_at=payload.expires_at,
+        allowed_project_codes=payload.allowed_project_codes or [],
+        allowed_report_sections=payload.allowed_report_sections or [],
+        allowed_ip_ranges=payload.allowed_ip_ranges or [],
+    )
+    item = serialize_power_bi_token(row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="power_bi_token.mint",
+        target_type="power_bi_api_token",
+        target_key=str(row.id),
+        before=None,
+        after=item,
+    )
+    db.commit()
+    db.refresh(row)
+    item = serialize_power_bi_token(row)
+    return {
+        "ok": True,
+        "item": item,
+        "token": raw_token,
+        "warning": "Power BI token is shown once. Save it securely now.",
+    }
+
+
+@router.post("/power-bi/tokens/{token_id}/revoke")
+def revoke_power_bi_token(
+    token_id: int,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    row = db.query(PowerBiApiToken).filter(PowerBiApiToken.id == int(token_id)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Power BI token not found")
+    before = serialize_power_bi_token(row)
+    row.is_active = False
+    row.revoked_at = datetime.utcnow()
+    after = serialize_power_bi_token(row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="power_bi_token.revoke",
+        target_type="power_bi_api_token",
+        target_key=str(row.id),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {"ok": True, "item": after}
 
 
 @router.get("/bim-revit")
@@ -2674,6 +3945,99 @@ def upsert_site_log_catalog(
     }
 
 
+@router.post("/site-log-catalogs/bulk-upsert")
+def bulk_upsert_site_log_catalog(
+    payload: SiteLogCatalogBulkUpsertIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    catalog_type = _normalize_site_log_catalog_type_or_400(payload.catalog_type)
+    if catalog_type not in SITE_LOG_BULK_CATALOG_PREFIXES:
+        raise HTTPException(status_code=400, detail="Bulk add is only supported for material and equipment catalogs")
+
+    model = _site_log_catalog_model(catalog_type)
+    overwrite_existing = bool(payload.overwrite_existing)
+    existing_by_code = {
+        _upper(row.code): row
+        for row in db.query(model).all()
+        if _upper(row.code)
+    }
+    used_codes = set(existing_by_code.keys())
+    created: List[Dict[str, Any]] = []
+    updated: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    touched_rows: List[Any] = []
+    seen_payload_codes: set[str] = set()
+
+    for index, item in enumerate(payload.items, start=1):
+        label = _norm(item.label)
+        if not label:
+            skipped.append({"row": index, "reason": "label_required"})
+            continue
+
+        code = _upper(item.code)
+        if not code:
+            code = _next_site_log_bulk_code(db, model, SITE_LOG_BULK_CATALOG_PREFIXES[catalog_type], used_codes)
+        elif code in seen_payload_codes:
+            skipped.append({"row": index, "code": code, "label": label, "reason": "duplicate_in_payload"})
+            continue
+        elif len(code) > 32:
+            skipped.append({"row": index, "code": code, "label": label, "reason": "code_too_long"})
+            continue
+        else:
+            used_codes.add(code)
+
+        seen_payload_codes.add(code)
+        row = existing_by_code.get(code)
+        if row and not overwrite_existing:
+            skipped.append({"row": index, "code": code, "label": label, "reason": "duplicate_code"})
+            continue
+
+        before = _serialize_site_log_catalog_row(row) if row else None
+        if row is None:
+            row = model(code=code)
+            db.add(row)
+
+        row.code = code
+        row.label = label
+        row.sort_order = int(item.sort_order if item.sort_order is not None else index * 10)
+        row.is_active = bool(item.is_active)
+        db.flush()
+
+        after = _serialize_site_log_catalog_row(row)
+        touched_rows.append(row)
+        if before:
+            updated.append(after)
+        else:
+            created.append(after)
+
+    after_items = [_serialize_site_log_catalog_row(row) for row in touched_rows]
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_catalog.bulk_upsert",
+        target_type=f"site_log_catalog.{catalog_type}",
+        target_key=None,
+        before=None,
+        after={
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+        },
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "catalog_type": catalog_type,
+        "created": len(created),
+        "updated": len(updated),
+        "skipped": len(skipped),
+        "items": after_items,
+        "errors": skipped,
+        "catalogs": _load_site_log_catalogs_payload(db),
+    }
+
+
 @router.post("/site-log-catalogs/delete")
 def delete_site_log_catalog(
     payload: SiteLogCatalogDeleteIn,
@@ -2708,6 +4072,679 @@ def delete_site_log_catalog(
     }
 
 
+@router.get("/site-log-activity-catalog")
+def get_site_log_activity_catalog(
+    project_code: Optional[str] = Query(default=None),
+    organization_id: Optional[int] = Query(default=None, ge=1),
+    organization_contract_id: Optional[int] = Query(default=None, ge=1),
+    pms_status: Optional[str] = Query(default=None),
+    pms_template_id: Optional[int] = Query(default=None, ge=1),
+    default_unit: Optional[str] = Query(default=None),
+    default_location: Optional[str] = Query(default=None),
+    reference_search: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    project_value = _check_optional_project_or_404(db, project_code)
+    organization_value = _check_optional_organization_or_404(db, organization_id)
+    contract = None
+    if organization_contract_id:
+        contract = (
+            db.query(OrganizationContract)
+            .options(joinedload(OrganizationContract.block))
+            .filter(OrganizationContract.id == int(organization_contract_id))
+            .first()
+        )
+        if not contract:
+            raise HTTPException(status_code=404, detail="Organization contract not found")
+        if organization_value and int(contract.organization_id or 0) != int(organization_value):
+            raise HTTPException(status_code=400, detail="Selected contract does not belong to the selected organization.")
+        if organization_value is None:
+            organization_value = int(contract.organization_id or 0) or None
+    return {
+        "ok": True,
+        **_load_site_log_activity_catalog_payload(
+            db,
+            project_code=project_value,
+            organization_id=organization_value,
+            organization_contract_id=int(contract.id) if contract else None,
+            pms_status=pms_status,
+            pms_template_id=pms_template_id,
+            default_unit=default_unit,
+            default_location=default_location,
+            reference_search=reference_search,
+        ),
+    }
+
+
+@router.post("/site-log-activity-catalog/upsert")
+def upsert_site_log_activity_catalog(
+    payload: SiteLogActivityCatalogUpsertIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    project_value = _check_optional_project_or_404(db, payload.project_code)
+    if not project_value:
+        raise HTTPException(status_code=400, detail="project_code is required")
+    organization_value = _check_optional_organization_or_404(db, payload.organization_id)
+    contract = None
+    if payload.organization_contract_id:
+        contract = (
+            db.query(OrganizationContract)
+            .options(joinedload(OrganizationContract.block))
+            .filter(OrganizationContract.id == int(payload.organization_contract_id))
+            .first()
+        )
+        if not contract:
+            raise HTTPException(status_code=404, detail="Organization contract not found")
+        if organization_value and int(contract.organization_id or 0) != int(organization_value):
+            raise HTTPException(status_code=400, detail="Selected contract does not belong to the selected organization.")
+        if organization_value is None:
+            organization_value = int(contract.organization_id or 0) or None
+
+    activity_code = _upper(payload.activity_code)
+    activity_title = _norm(payload.activity_title)
+    if not activity_code:
+        raise HTTPException(status_code=400, detail="activity_code is required")
+    if not activity_title:
+        raise HTTPException(status_code=400, detail="activity_title is required")
+
+    row = None
+    if payload.id:
+        row = db.query(SiteLogActivityCatalog).filter(SiteLogActivityCatalog.id == int(payload.id)).first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Activity catalog item not found")
+
+    duplicate_query = db.query(SiteLogActivityCatalog).filter(
+        SiteLogActivityCatalog.project_code == project_value,
+        func.upper(SiteLogActivityCatalog.activity_code) == activity_code,
+    )
+    if organization_value is None:
+        duplicate_query = duplicate_query.filter(SiteLogActivityCatalog.organization_id.is_(None))
+    else:
+        duplicate_query = duplicate_query.filter(SiteLogActivityCatalog.organization_id == organization_value)
+    if contract is None:
+        duplicate_query = duplicate_query.filter(SiteLogActivityCatalog.organization_contract_id.is_(None))
+    else:
+        duplicate_query = duplicate_query.filter(SiteLogActivityCatalog.organization_contract_id == int(contract.id))
+    duplicate = duplicate_query.first()
+    if duplicate and (not row or int(duplicate.id) != int(row.id)):
+        raise HTTPException(status_code=409, detail="Activity code already exists in the selected scope.")
+
+    before = _serialize_site_log_activity_catalog_row(_load_site_log_activity_catalog_row_or_404(db, int(row.id))) if row else None
+    if not row:
+        row = SiteLogActivityCatalog(project_code=project_value, activity_code=activity_code)
+        db.add(row)
+
+    row.project_code = project_value
+    row.organization_id = organization_value
+    row.organization_contract_id = int(contract.id) if contract else None
+    row.activity_code = activity_code
+    row.activity_title = activity_title
+    row.default_location = _norm(payload.default_location) or None
+    row.default_unit = _norm(payload.default_unit) or None
+    row.sort_order = int(payload.sort_order or 0)
+    row.is_active = bool(payload.is_active)
+
+    db.flush()
+    after_row = _load_site_log_activity_catalog_row_or_404(db, int(row.id))
+    after = _serialize_site_log_activity_catalog_row(after_row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_activity_catalog.upsert",
+        target_type="site_log_activity_catalog",
+        target_key=str(after["id"]),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "item": after,
+        **_load_site_log_activity_catalog_payload(
+            db,
+            project_code=project_value,
+            organization_id=organization_value,
+            organization_contract_id=int(contract.id) if contract else None,
+        ),
+    }
+
+
+@router.get("/site-log-activity-catalog/template")
+def download_site_log_activity_catalog_template(
+    _: DbUser = Depends(require_permission("settings:read")),
+):
+    return Response(
+        content=_site_log_activity_catalog_template_bytes(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": 'attachment; filename="site_log_activity_catalog_template.xlsx"',
+        },
+    )
+
+
+@router.post("/site-log-activity-catalog/import")
+async def import_site_log_activity_catalog(
+    project_code: str = Form(...),
+    organization_id: Optional[int] = Form(default=None),
+    organization_contract_id: Optional[int] = Form(default=None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    project_value, organization_value, contract = _resolve_activity_catalog_scope(
+        db,
+        project_code=project_code,
+        organization_id=organization_id,
+        organization_contract_id=organization_contract_id,
+    )
+    content = await file.read()
+    rows = _parse_site_log_activity_catalog_import(content, str(file.filename or "activities.xlsx"))
+    if not rows:
+        raise HTTPException(status_code=400, detail="No activity rows found in the Excel file")
+
+    scope_contract_id = int(contract.id) if contract else None
+    max_sort_query = db.query(func.max(SiteLogActivityCatalog.sort_order)).filter(
+        SiteLogActivityCatalog.project_code == project_value
+    )
+    if organization_value is None:
+        max_sort_query = max_sort_query.filter(SiteLogActivityCatalog.organization_id.is_(None))
+    else:
+        max_sort_query = max_sort_query.filter(SiteLogActivityCatalog.organization_id == organization_value)
+    if scope_contract_id is None:
+        max_sort_query = max_sort_query.filter(SiteLogActivityCatalog.organization_contract_id.is_(None))
+    else:
+        max_sort_query = max_sort_query.filter(SiteLogActivityCatalog.organization_contract_id == scope_contract_id)
+    max_sort_order = max_sort_query.scalar() or 0
+    created = 0
+    updated = 0
+    skipped = 0
+    errors: List[Dict[str, Any]] = []
+    imported_ids: List[int] = []
+
+    for index, raw_row in enumerate(rows, start=1):
+        row_no = int(raw_row.get("row_no") or index)
+        activity_code = _upper(raw_row.get("activity_code"))
+        activity_title = _norm(raw_row.get("activity_title"))
+        if not activity_code or not activity_title:
+            skipped += 1
+            errors.append(
+                {
+                    "row_no": row_no,
+                    "message": "activity_code and activity_title are required",
+                }
+            )
+            continue
+
+        row = _find_activity_catalog_by_scope_code(
+            db,
+            project_code=project_value,
+            organization_id=organization_value,
+            organization_contract_id=scope_contract_id,
+            activity_code=activity_code,
+        )
+        is_new = row is None
+        if row is None:
+            row = SiteLogActivityCatalog(project_code=project_value, activity_code=activity_code)
+            db.add(row)
+            created += 1
+        else:
+            updated += 1
+
+        row.project_code = project_value
+        row.organization_id = organization_value
+        row.organization_contract_id = scope_contract_id
+        row.activity_code = activity_code
+        row.activity_title = activity_title
+        row.default_location = _norm(raw_row.get("default_location")) or None
+        row.default_unit = _norm(raw_row.get("default_unit")) or None
+        row.sort_order = _activity_import_int(raw_row.get("sort_order"), max_sort_order + (index * 10))
+        row.is_active = _activity_import_bool(raw_row.get("is_active"), True)
+        db.flush()
+        imported_ids.append(int(row.id or 0))
+        if is_new:
+            max_sort_order = max(max_sort_order, int(row.sort_order or 0))
+
+    if not imported_ids:
+        first_error = _norm(errors[0].get("message")) if errors else ""
+        detail = "No valid activity rows were imported"
+        if first_error:
+            detail = f"{detail}: {first_error}"
+        raise HTTPException(status_code=400, detail=detail)
+
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_activity_catalog.import",
+        target_type="site_log_activity_catalog",
+        target_key=f"{project_value}:{organization_value or 'project'}:{scope_contract_id or 'all'}",
+        before=None,
+        after={
+            "source_file": file.filename,
+            "project_code": project_value,
+            "organization_id": organization_value,
+            "organization_contract_id": scope_contract_id,
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors[:20],
+        },
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "created": created,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "imported_ids": imported_ids,
+        **_load_site_log_activity_catalog_payload(
+            db,
+            project_code=project_value,
+            organization_id=organization_value,
+            organization_contract_id=scope_contract_id,
+        ),
+    }
+
+
+@router.post("/site-log-activity-catalog/delete")
+def delete_site_log_activity_catalog(
+    payload: SiteLogActivityCatalogDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    row = _load_site_log_activity_catalog_row_or_404(db, int(payload.id))
+    before = _serialize_site_log_activity_catalog_row(row)
+    row.is_active = False
+    db.flush()
+    after_row = _load_site_log_activity_catalog_row_or_404(db, int(payload.id))
+    after = _serialize_site_log_activity_catalog_row(after_row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_activity_catalog.delete",
+        target_type="site_log_activity_catalog",
+        target_key=str(payload.id),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "item": after,
+        **_load_site_log_activity_catalog_payload(
+            db,
+            project_code=_upper(row.project_code),
+            organization_id=int(row.organization_id or 0) or None,
+            organization_contract_id=int(row.organization_contract_id or 0) or None,
+        ),
+    }
+
+
+@router.get("/site-log-pms/templates")
+def list_site_log_pms_templates(
+    db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("settings:read")),
+):
+    templates = _load_pms_templates(db)
+    return {
+        "ok": True,
+        "items": [_serialize_pms_template(row) for row in templates],
+    }
+
+
+@router.post("/site-log-pms/templates/upsert")
+def upsert_site_log_pms_template(
+    payload: SiteLogPmsTemplateUpsertIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    code = _upper(payload.code)
+    title = _norm(payload.title)
+    if not code:
+        raise HTTPException(status_code=400, detail="PMS Template code is required")
+    if not title:
+        raise HTTPException(status_code=400, detail="PMS Template title is required")
+    step_codes: set[str] = set()
+    for step in payload.steps:
+        step_code = _upper(step.step_code)
+        if step_code in step_codes:
+            raise HTTPException(status_code=400, detail=f"Duplicate PMS Step code: {step_code}")
+        step_codes.add(step_code)
+
+    row = None
+    if payload.id:
+        row = (
+            db.query(SiteLogPmsTemplate)
+            .options(selectinload(SiteLogPmsTemplate.steps))
+            .filter(SiteLogPmsTemplate.id == int(payload.id))
+            .first()
+        )
+        if not row:
+            raise HTTPException(status_code=404, detail="PMS Template not found")
+
+    duplicate = db.query(SiteLogPmsTemplate).filter(func.upper(SiteLogPmsTemplate.code) == code).first()
+    if duplicate and (not row or int(duplicate.id) != int(row.id)):
+        raise HTTPException(status_code=409, detail="PMS Template code already exists")
+
+    before = _serialize_pms_template(row) if row else None
+    if not row:
+        row = SiteLogPmsTemplate(code=code, version=1)
+        db.add(row)
+    else:
+        row.version = int(row.version or 1) + 1
+    row.code = code
+    row.title = title
+    row.description = _norm(payload.description) or None
+    row.sort_order = int(payload.sort_order or 0)
+    row.is_active = bool(payload.is_active)
+    row.updated_at = datetime.utcnow()
+    if int(row.id or 0) > 0 and row.steps:
+        row.steps[:] = []
+        db.flush()
+    for index, step in enumerate(payload.steps):
+        row.steps.append(
+            SiteLogPmsTemplateStep(
+                step_code=_upper(step.step_code),
+                step_title=_norm(step.step_title),
+                weight_pct=float(step.weight_pct or 0),
+                sort_order=int(step.sort_order if step.sort_order is not None else index),
+                is_active=bool(step.is_active),
+            )
+        )
+    db.flush()
+    after = _serialize_pms_template(row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_pms_template.upsert",
+        target_type="site_log_pms_template",
+        target_key=str(after["id"]),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {"ok": True, "item": after, "items": [_serialize_pms_template(row) for row in _load_pms_templates(db)]}
+
+
+@router.post("/site-log-pms/templates/delete")
+def delete_site_log_pms_template(
+    payload: SiteLogPmsTemplateDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    row = _load_pms_template_or_404(db, template_id=payload.id)
+    before = _serialize_pms_template(row)
+    row.is_active = False
+    row.version = int(row.version or 1) + 1
+    row.updated_at = datetime.utcnow()
+    db.flush()
+    after = _serialize_pms_template(row)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_pms_template.delete",
+        target_type="site_log_pms_template",
+        target_key=str(payload.id),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {"ok": True, "item": after, "items": [_serialize_pms_template(row) for row in _load_pms_templates(db)]}
+
+
+@router.post("/site-log-pms/mappings/apply")
+def apply_site_log_activity_pms_mapping(
+    payload: SiteLogPmsMappingApplyIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    template = _load_pms_template_or_404(db, template_id=payload.template_id, template_code=payload.template_code)
+    _ensure_pms_template_ready(template)
+    activity_ids = sorted({int(item) for item in payload.activity_ids if int(item or 0) > 0})
+    activities = (
+        db.query(SiteLogActivityCatalog)
+        .options(
+            joinedload(SiteLogActivityCatalog.pms_mapping).joinedload(SiteLogActivityPmsMapping.template),
+            joinedload(SiteLogActivityCatalog.pms_mapping).selectinload(SiteLogActivityPmsMapping.steps),
+        )
+        .filter(SiteLogActivityCatalog.id.in_(activity_ids))
+        .all()
+    )
+    found_ids = {int(row.id or 0) for row in activities}
+    missing = [item for item in activity_ids if item not in found_ids]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Activity catalog items not found: {missing}")
+    existing = [row.activity_code for row in activities if row.pms_mapping is not None]
+    if existing and not payload.overwrite:
+        raise HTTPException(status_code=409, detail=f"Activities already have PMS: {', '.join(existing[:10])}")
+
+    before = [_serialize_site_log_activity_catalog_row(row) for row in activities]
+    for activity in activities:
+        _copy_template_to_activity_mapping(db, activity=activity, template=template, overwrite=True)
+    db.flush()
+    refreshed = [
+        _load_site_log_activity_catalog_row_or_404(db, int(activity.id or 0))
+        for activity in activities
+    ]
+    after = [_serialize_site_log_activity_catalog_row(row) for row in refreshed]
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_activity_pms_mapping.apply",
+        target_type="site_log_activity_pms_mapping",
+        target_key=",".join(str(item) for item in activity_ids),
+        before=before,
+        after={"template": _serialize_pms_template(template, include_steps=False), "activities": after},
+    )
+    db.commit()
+    return {"ok": True, "applied": len(activities), "items": after}
+
+
+@router.post("/site-log-pms/mappings/delete")
+def delete_site_log_activity_pms_mapping(
+    payload: SiteLogPmsMappingDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    activity = _load_site_log_activity_catalog_row_or_404(db, int(payload.activity_id))
+    before = _serialize_site_log_activity_catalog_row(activity)
+    if activity.pms_mapping:
+        db.delete(activity.pms_mapping)
+        activity.pms_mapping = None
+    db.flush()
+    after = _serialize_site_log_activity_catalog_row(_load_site_log_activity_catalog_row_or_404(db, int(activity.id)))
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_activity_pms_mapping.delete",
+        target_type="site_log_activity_pms_mapping",
+        target_key=str(payload.activity_id),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {"ok": True, "item": after}
+
+
+@router.post("/site-log-pms/mappings/reapply")
+def reapply_site_log_activity_pms_mapping(
+    payload: SiteLogPmsMappingReapplyIn,
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    activity_ids = sorted({int(item) for item in payload.activity_ids if int(item or 0) > 0})
+    activities = (
+        db.query(SiteLogActivityCatalog)
+        .options(
+            joinedload(SiteLogActivityCatalog.pms_mapping).joinedload(SiteLogActivityPmsMapping.template),
+            joinedload(SiteLogActivityCatalog.pms_mapping).selectinload(SiteLogActivityPmsMapping.steps),
+        )
+        .filter(SiteLogActivityCatalog.id.in_(activity_ids))
+        .all()
+    )
+    if len(activities) != len(activity_ids):
+        found_ids = {int(row.id or 0) for row in activities}
+        missing = [item for item in activity_ids if item not in found_ids]
+        raise HTTPException(status_code=404, detail=f"Activity catalog items not found: {missing}")
+    missing_pms = [row.activity_code for row in activities if not row.pms_mapping]
+    if missing_pms:
+        raise HTTPException(status_code=400, detail=f"Activities without PMS cannot be reapplied: {', '.join(missing_pms[:10])}")
+    before = [_serialize_site_log_activity_catalog_row(row) for row in activities]
+    for activity in activities:
+        assert activity.pms_mapping is not None
+        _copy_template_to_activity_mapping(db, activity=activity, template=activity.pms_mapping.template, overwrite=True)
+    db.flush()
+    after = [
+        _serialize_site_log_activity_catalog_row(_load_site_log_activity_catalog_row_or_404(db, int(activity.id or 0)))
+        for activity in activities
+    ]
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_activity_pms_mapping.reapply",
+        target_type="site_log_activity_pms_mapping",
+        target_key=",".join(str(item) for item in activity_ids),
+        before=before,
+        after=after,
+    )
+    db.commit()
+    return {"ok": True, "reapplied": len(activities), "items": after}
+
+
+@router.get("/site-log-pms/mappings/template")
+def download_site_log_pms_mapping_template(
+    _: DbUser = Depends(require_permission("settings:read")),
+):
+    return Response(
+        content=_site_log_pms_mapping_workbook_bytes(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="site_log_pms_mapping_template.xlsx"'},
+    )
+
+
+@router.get("/site-log-pms/mappings/export")
+def export_site_log_pms_mappings(
+    project_code: Optional[str] = Query(default=None),
+    organization_id: Optional[int] = Query(default=None, ge=1),
+    organization_contract_id: Optional[int] = Query(default=None, ge=1),
+    pms_status: Optional[str] = Query(default=None),
+    pms_template_id: Optional[int] = Query(default=None, ge=1),
+    default_unit: Optional[str] = Query(default=None),
+    default_location: Optional[str] = Query(default=None),
+    reference_search: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    _: DbUser = Depends(require_permission("settings:read")),
+):
+    payload = _load_site_log_activity_catalog_payload(
+        db,
+        project_code=_check_optional_project_or_404(db, project_code),
+        organization_id=_check_optional_organization_or_404(db, organization_id),
+        organization_contract_id=organization_contract_id,
+        pms_status=pms_status,
+        pms_template_id=pms_template_id,
+        default_unit=default_unit,
+        default_location=default_location,
+        reference_search=reference_search,
+    )
+    return Response(
+        content=_site_log_pms_mapping_workbook_bytes(list(payload.get("items") or [])),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="site_log_pms_mappings.xlsx"'},
+    )
+
+
+@router.post("/site-log-pms/mappings/import")
+async def import_site_log_pms_mappings(
+    project_code: str = Form(...),
+    organization_id: Optional[int] = Form(default=None),
+    organization_contract_id: Optional[int] = Form(default=None),
+    overwrite: bool = Form(default=False),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: DbUser = Depends(require_permission("settings:update")),
+):
+    project_value, organization_value, contract = _resolve_activity_catalog_scope(
+        db,
+        project_code=project_code,
+        organization_id=organization_id,
+        organization_contract_id=organization_contract_id,
+    )
+    scope_contract_id = int(contract.id) if contract else None
+    rows = _parse_site_log_pms_mapping_import(await file.read(), str(file.filename or "pms_mapping.xlsx"))
+    if not rows:
+        raise HTTPException(status_code=400, detail="No PMS mapping rows found in the Excel file")
+
+    imported = 0
+    skipped = 0
+    errors: List[Dict[str, Any]] = []
+    imported_ids: List[int] = []
+    for index, raw_row in enumerate(rows, start=1):
+        row_no = int(raw_row.get("row_no") or index)
+        activity_code = _upper(raw_row.get("activity_code"))
+        template_code = _upper(raw_row.get("pms_template_code"))
+        if not activity_code or not template_code:
+            skipped += 1
+            errors.append({"row_no": row_no, "message": "activity_code and pms_template_code are required"})
+            continue
+        activity = _find_activity_catalog_by_scope_code(
+            db,
+            project_code=project_value,
+            organization_id=organization_value,
+            organization_contract_id=scope_contract_id,
+            activity_code=activity_code,
+        )
+        if not activity:
+            skipped += 1
+            errors.append({"row_no": row_no, "message": f"Activity not found: {activity_code}"})
+            continue
+        try:
+            template = _load_pms_template_or_404(db, template_code=template_code)
+            _copy_template_to_activity_mapping(db, activity=activity, template=template, overwrite=overwrite)
+            imported += 1
+            imported_ids.append(int(activity.id or 0))
+        except HTTPException as exc:
+            skipped += 1
+            errors.append({"row_no": row_no, "message": str(exc.detail)})
+
+    if not imported:
+        detail = "No valid PMS mappings were imported"
+        if errors:
+            detail = f"{detail}: {errors[0].get('message')}"
+        raise HTTPException(status_code=400, detail=detail)
+    _audit_log(
+        db,
+        actor=current_user,
+        action="site_log_activity_pms_mapping.import",
+        target_type="site_log_activity_pms_mapping",
+        target_key=f"{project_value}:{organization_value or 'project'}:{scope_contract_id or 'all'}",
+        before=None,
+        after={
+            "source_file": file.filename,
+            "project_code": project_value,
+            "organization_id": organization_value,
+            "organization_contract_id": scope_contract_id,
+            "imported": imported,
+            "skipped": skipped,
+            "errors": errors[:20],
+        },
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "imported": imported,
+        "skipped": skipped,
+        "errors": errors,
+        "imported_ids": imported_ids,
+        **_load_site_log_activity_catalog_payload(
+            db,
+            project_code=project_value,
+            organization_id=organization_value,
+            organization_contract_id=scope_contract_id,
+        ),
+    }
+
+
 @router.get("/permissions/matrix")
 def get_permissions_matrix(
     category: Optional[str] = Query(default=None),
@@ -2716,13 +4753,19 @@ def get_permissions_matrix(
 ):
     category_key = _normalize_permission_category_or_400(category)
     matrix = _load_permission_matrix(db, category=category_key)
+    baseline_matrix = _default_permission_matrix(category_key)
     return {
         "ok": True,
         "category": category_key,
-        "categories": list(PERMISSION_CATEGORIES),
+        "category_label": _permission_category_labels().get(category_key, category_key),
+        "categories": list(CANONICAL_PERMISSION_CATEGORIES),
         "read_only": False,
-        "roles": list(MATRIX_ROLES),
+        "roles": list(CANONICAL_MATRIX_ROLES),
+        "role_labels": _matrix_role_labels(),
         "permissions": _permission_keys(),
+        "permissions_meta": _permission_meta(),
+        "feature_catalog": _feature_catalog(),
+        "baseline_matrix": baseline_matrix,
         "matrix": matrix,
     }
 
@@ -2736,7 +4779,7 @@ def save_permissions_matrix(
 ):
     category_key = _normalize_permission_category_or_400(category)
     before = _load_permission_matrix(db, category=category_key)
-    matrix = _normalize_permission_matrix(payload.matrix)
+    matrix = _normalize_permission_matrix(payload.matrix, category_key)
     perms = _permission_keys()
     db.query(RoleCategoryPermission).filter(
         RoleCategoryPermission.category == category_key
@@ -2788,8 +4831,11 @@ def get_permissions_scope(
     return {
         "ok": True,
         "category": category_key,
-        "categories": list(PERMISSION_CATEGORIES),
-        "roles": list(MATRIX_ROLES),
+        "category_label": _permission_category_labels().get(category_key, category_key),
+        "categories": list(CANONICAL_PERMISSION_CATEGORIES),
+        "roles": list(CANONICAL_MATRIX_ROLES),
+        "role_labels": _matrix_role_labels(),
+        "scope_read_only": False,
         "scope": scope,
         "projects": projects,
         "disciplines": disciplines,
@@ -3056,6 +5102,37 @@ def permissions_user_access_report(
     access = resolve_effective_access(user)
     role = access.effective_role
     category = access.permission_category
+    permission_source = "full_access"
+    if not access.full_access:
+        has_category_rows = (
+            db.query(RoleCategoryPermission.id)
+            .filter(
+                RoleCategoryPermission.category == category,
+                RoleCategoryPermission.role == role,
+            )
+            .first()
+            is not None
+        )
+        if has_category_rows:
+            permission_source = "category_matrix"
+        else:
+            has_role_rows = (
+                db.query(RolePermission.id)
+                .filter(RolePermission.role == role)
+                .first()
+                is not None
+            )
+            permission_source = "role_matrix" if has_role_rows else "static_fallback"
+    allowed = _load_allowed_permissions(db, role, category=category)
+    capabilities = {
+        permission: ("*" in allowed or permission in allowed)
+        for permission in _permission_keys()
+    }
+    navigation = build_navigation_state(
+        capabilities,
+        category=category,
+        effective_role=role,
+    )
     role_scope = _load_scope_rules(db, category=category).get(role, {"projects": [], "disciplines": []})
     user_scope = _load_user_scope_rules(db).get(str(user_id), {"projects": [], "disciplines": []})
     projects, projects_restricted = _effective_scope_values(
@@ -3078,9 +5155,16 @@ def permissions_user_access_report(
             "organization_role": user.organization_role,
             "effective_role": role,
             "category": category,
+            "organization_type": access.organization_type,
             "is_system_admin": access.is_system_admin,
             "is_active": user.is_active,
+            "permission_source": permission_source,
         },
+        "capabilities": capabilities,
+        "granted_permissions": sorted(permission for permission, is_allowed in capabilities.items() if is_allowed),
+        "denied_permissions_sample": sorted(permission for permission, is_allowed in capabilities.items() if not is_allowed)[:25],
+        "navigation": navigation,
+        "navigation_diagnostics": build_navigation_diagnostics(navigation, category=category),
         "role_scope": role_scope,
         "user_scope": user_scope,
         "effective_scope": {

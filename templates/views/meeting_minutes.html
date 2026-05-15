@@ -1,0 +1,139 @@
+<div id="view-meeting-minutes" class="view-section meeting-minutes-view" style="display: none;">
+    <div class="archive-card meeting-minutes-card">
+        <div class="archive-header">
+            <div class="header-content">
+                <h3 class="archive-title">
+                    <span class="material-icons-round">groups</span>
+                    صورتجلسات
+                </h3>
+                <p class="archive-subtitle">بایگانی صورتجلسه‌ها و پیگیری مصوبات، مسئول‌ها، سررسیدها و پیوست‌ها</p>
+            </div>
+            <div class="header-actions">
+                <button type="button" class="btn-archive-primary" data-meeting-minutes-action="new-minute" id="meetingMinutesCreateBtn">
+                    <span class="material-icons-round">add</span>
+                    صورتجلسه جدید
+                </button>
+                <button type="button" class="btn-archive-icon" data-meeting-minutes-action="refresh" title="به‌روزرسانی">
+                    <span class="material-icons-round">refresh</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="meeting-minutes-summary" aria-label="خلاصه صورتجلسات">
+            <div class="meeting-minutes-summary-card">
+                <strong id="meetingMinutesTotal">0</strong>
+                <span>کل صورتجلسات</span>
+            </div>
+            <div class="meeting-minutes-summary-card is-open">
+                <strong id="meetingMinutesOpen">0</strong>
+                <span>باز</span>
+            </div>
+            <div class="meeting-minutes-summary-card is-closed">
+                <strong id="meetingMinutesClosed">0</strong>
+                <span>بسته</span>
+            </div>
+            <div class="meeting-minutes-summary-card is-action">
+                <strong id="meetingMinutesOpenResolutions">0</strong>
+                <span>دارای مصوبه باز</span>
+            </div>
+            <div class="meeting-minutes-summary-card is-overdue">
+                <strong id="meetingMinutesOverdueResolutions">0</strong>
+                <span>مصوبات سررسید گذشته</span>
+            </div>
+        </div>
+
+        <div class="archive-toolbar meeting-minutes-toolbar">
+            <input id="meetingMinutesSearch" class="archive-search-input" type="text" placeholder="جستجو شماره، عنوان، محل یا مصوبه..." autocomplete="off">
+            <select id="meetingMinutesProject" class="archive-filter-select">
+                <option value="">همه پروژه‌ها</option>
+            </select>
+            <select id="meetingMinutesType" class="archive-filter-select">
+                <option value="">همه نوع جلسه‌ها</option>
+            </select>
+            <select id="meetingMinutesStatus" class="archive-filter-select">
+                <option value="">همه وضعیت‌ها</option>
+                <option value="Draft">Draft</option>
+                <option value="Open">Open</option>
+                <option value="Closed">Closed</option>
+                <option value="Cancelled">Cancelled</option>
+            </select>
+            <input id="meetingMinutesResponsible" class="archive-filter-select" type="text" placeholder="مسئول مصوبه">
+            <input id="meetingMinutesRelationSearch" class="archive-filter-select" type="text" placeholder="جستجوی ارتباط">
+            <input id="meetingMinutesDateFrom" class="archive-filter-date" type="date" title="از تاریخ">
+            <input id="meetingMinutesDateTo" class="archive-filter-date" type="date" title="تا تاریخ">
+            <select id="meetingMinutesHasAttachments" class="archive-filter-select">
+                <option value="">همه پیوست‌ها</option>
+                <option value="true">دارای پیوست</option>
+                <option value="false">بدون پیوست</option>
+            </select>
+            <select id="meetingMinutesSortBy" class="archive-filter-select">
+                <option value="meeting_date">مرتب‌سازی: تاریخ</option>
+                <option value="meeting_no">مرتب‌سازی: شماره</option>
+                <option value="title">مرتب‌سازی: عنوان</option>
+                <option value="status">مرتب‌سازی: وضعیت</option>
+                <option value="updated_at">مرتب‌سازی: بروزرسانی</option>
+            </select>
+            <select id="meetingMinutesSortDir" class="archive-filter-select">
+                <option value="desc">نزولی</option>
+                <option value="asc">صعودی</option>
+            </select>
+            <label class="meeting-minutes-check">
+                <input id="meetingMinutesOpenResolutionsOnly" type="checkbox">
+                <span>فقط مصوبات باز</span>
+            </label>
+            <label class="meeting-minutes-check">
+                <input id="meetingMinutesOverdueOnly" type="checkbox">
+                <span>سررسید گذشته</span>
+            </label>
+            <button type="button" class="btn-archive-icon" data-meeting-minutes-action="reset" title="پاک کردن فیلترها">
+                <span class="material-icons-round">filter_alt_off</span>
+            </button>
+        </div>
+
+        <div class="meeting-minutes-table-wrap">
+            <table class="archive-table meeting-minutes-table">
+                <thead>
+                    <tr>
+                        <th>شماره</th>
+                        <th>عنوان</th>
+                        <th>پروژه</th>
+                        <th>نوع جلسه</th>
+                        <th>تاریخ جلسه</th>
+                        <th>وضعیت</th>
+                        <th>مصوبات</th>
+                        <th>باز</th>
+                        <th>پیوست</th>
+                        <th>عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="meetingMinutesTableBody">
+                    <tr><td colspan="10" class="archive-empty">در حال بارگذاری...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="meeting-minutes-footer">
+            <div id="meetingMinutesPaginationInfo">-</div>
+            <div class="meeting-minutes-pagination-actions">
+                <button type="button" class="btn-archive-icon" data-meeting-minutes-action="prev">قبلی</button>
+                <button type="button" class="btn-archive-icon" data-meeting-minutes-action="next">بعدی</button>
+            </div>
+        </div>
+
+        <div id="meetingMinutesDrawer" class="meeting-minutes-drawer" hidden>
+            <div class="meeting-minutes-drawer-backdrop" data-meeting-minutes-action="close-drawer"></div>
+            <aside class="meeting-minutes-drawer-panel" aria-label="جزئیات صورتجلسه">
+                <div class="meeting-minutes-drawer-header">
+                    <div>
+                        <h3 id="meetingMinutesDrawerTitle">صورتجلسه</h3>
+                        <p id="meetingMinutesDrawerMeta">-</p>
+                    </div>
+                    <button type="button" class="btn-archive-icon" data-meeting-minutes-action="close-drawer" title="بستن">
+                        <span class="material-icons-round">close</span>
+                    </button>
+                </div>
+                <div id="meetingMinutesDrawerBody" class="meeting-minutes-drawer-body"></div>
+            </aside>
+        </div>
+    </div>
+</div>
