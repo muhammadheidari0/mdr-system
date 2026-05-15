@@ -681,6 +681,10 @@ PREVIEW_UNSUPPORTED_DETAIL = (
     "پیش‌نمایش فقط برای PDF و فایل‌های تصویری پشتیبانی می‌شود. "
     "برای این فایل از دانلود استفاده کنید."
 )
+CORRESPONDENCE_PREVIEW_NOT_FOUND_DETAIL = (
+    "برای پیش‌نمایش مکاتبه، فایل نامه با فرمت PDF یا تصویر بارگذاری کنید. "
+    "پیوست‌ها فقط از لیست فایل‌ها پیش‌نمایش داده می‌شوند."
+)
 
 _PREVIEW_EXTENSION_MEDIA_TYPES = {
     ".pdf": "application/pdf",
@@ -726,23 +730,17 @@ def _resolve_correspondence_preview_attachment(row: Correspondence) -> Correspon
     attachments = [
         attachment
         for attachment in list(row.attachments or [])
-        if attachment.deleted_at is None and _attachment_preview_supported(attachment)
+        if (
+            attachment.deleted_at is None
+            and _attachment_kind(attachment.file_kind) == "letter"
+            and _attachment_preview_supported(attachment)
+        )
     ]
     if not attachments:
         return None
 
-    kind_rank = {"letter": 0, "original": 1, "attachment": 2}
-    attachments.sort(
-        key=lambda item: (
-            kind_rank.get(_attachment_kind(item.file_kind), 9),
-            *_attachment_sort_key(item),
-        ),
-        reverse=False,
-    )
-    best_rank = kind_rank.get(_attachment_kind(attachments[0].file_kind), 9)
-    same_kind = [item for item in attachments if kind_rank.get(_attachment_kind(item.file_kind), 9) == best_rank]
-    same_kind.sort(key=_attachment_sort_key, reverse=True)
-    return same_kind[0] if same_kind else attachments[0]
+    attachments.sort(key=_attachment_sort_key, reverse=True)
+    return attachments[0]
 
 
 def _enforce_corr_scope(db: Session, user: User, row: Correspondence) -> None:
@@ -1810,7 +1808,7 @@ def preview_correspondence_attachment(
 
     attachment = _resolve_correspondence_preview_attachment(row)
     if not attachment:
-        raise HTTPException(status_code=404, detail=PREVIEW_UNSUPPORTED_DETAIL)
+        raise HTTPException(status_code=404, detail=CORRESPONDENCE_PREVIEW_NOT_FOUND_DETAIL)
 
     file_path = Path(attachment.stored_path)
     if str(attachment.stored_path or "").strip().startswith("webdav://"):

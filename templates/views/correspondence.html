@@ -315,8 +315,8 @@
                     <div>
                         <label class="form-label-sm">نوع فایل</label>
                         <select id="corrAttachmentKindInput" class="archive-search-input">
-                            <option value="letter">فایل نامه (PDF)</option>
-                            <option value="original">فایل اصلی نامه (Word/Excel)</option>
+                            <option value="letter">فایل نامه (PDF/تصویر)</option>
+                            <option value="original">فایل قابل ویرایش (Word/Excel)</option>
                             <option value="attachment">پیوست</option>
                         </select>
                     </div>
@@ -328,7 +328,7 @@
                     </div>
                     <div style="grid-column: span 2;">
                         <label class="form-label-sm">انتخاب فایل</label>
-                        <input id="corrAttachmentFileInput" type="file" class="archive-search-input">
+                        <input id="corrAttachmentFileInput" type="file" class="archive-search-input" accept=".pdf,image/*">
                     </div>
                 </div>
                 <div class="corr-action-toolbar">

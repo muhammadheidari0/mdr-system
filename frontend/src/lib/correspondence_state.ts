@@ -160,7 +160,7 @@ function statusClass(status: unknown): string {
 function kindFa(kind: unknown): string {
   const normalized = String(kind || "").toLowerCase();
   if (normalized === "letter") return "فایل نامه";
-  if (normalized === "original") return "فایل اصلی";
+  if (normalized === "original") return "فایل قابل ویرایش";
   return "پیوست";
 }
 

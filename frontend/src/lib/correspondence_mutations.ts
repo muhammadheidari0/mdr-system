@@ -273,7 +273,8 @@ async function previewAttachment(
   }
   const fileName = parseFileNameFromHeaders(response.headers);
   const blob = await response.blob();
-  return { blob, fileName };
+  const contentType = response.headers.get("Content-Type") || response.headers.get("content-type") || blob.type || null;
+  return { blob, fileName, contentType };
 }
 
 async function createRelation(

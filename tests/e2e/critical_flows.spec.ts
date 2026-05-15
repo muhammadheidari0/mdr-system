@@ -12,6 +12,13 @@ import {
   seedAuthToken,
 } from "./helpers";
 
+const PNG_1X1 = Buffer.from(
+  "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01" +
+    "\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00" +
+    "\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82",
+  "binary"
+);
+
 async function requestGetWithRetry(
   request: any,
   url: string,
@@ -302,6 +309,7 @@ test("critical e2e: transmittal create/issue/void", async ({ page, request, base
 });
 
 test("critical e2e: correspondence CRUD with attachments", async ({ page, request, baseURL }) => {
+  test.setTimeout(150_000);
   const resolvedBaseUrl = resolveBaseUrl(baseURL);
   const token = await apiLoginToken(request, resolvedBaseUrl);
   const headers = bearerHeaders(token);
@@ -381,6 +389,9 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
     expect(actionId).toBeGreaterThan(0);
 
     let attachmentId = 0;
+    let editableAttachmentId = 0;
+    let letterAttachmentId = 0;
+    let imageAttachmentId = 0;
     try {
       const uploadResponse = await request.post(
         `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments/upload`,
@@ -401,6 +412,71 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
       expect(uploadBody?.ok).toBeTruthy();
       attachmentId = Number(uploadBody?.data?.id || 0);
       expect(attachmentId).toBeGreaterThan(0);
+
+      const previewWithoutLetter = await request.get(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/preview`,
+        { headers }
+      );
+      expect(previewWithoutLetter.status(), "correspondence preview should not fall back to attachment").toBe(404);
+
+      const editableUploadResponse = await request.post(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments/upload`,
+        {
+          headers,
+          multipart: {
+            file: {
+              name: "critical-e2e-editable.pdf",
+              mimeType: "application/pdf",
+              buffer: Buffer.from("%PDF-1.4\ncritical-e2e-editable-preview\n", "utf8"),
+            },
+            file_kind: "original",
+          },
+        }
+      );
+      const editableUploadBody = await expectOkJson(editableUploadResponse, "correspondence editable upload");
+      editableAttachmentId = Number(editableUploadBody?.data?.id || 0);
+      expect(editableAttachmentId).toBeGreaterThan(0);
+      const previewWithEditableOnly = await request.get(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/preview`,
+        { headers }
+      );
+      expect(previewWithEditableOnly.status(), "correspondence preview should not fall back to editable file").toBe(404);
+
+      const letterUploadResponse = await request.post(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments/upload`,
+        {
+          headers,
+          multipart: {
+            file: {
+              name: "critical-e2e-letter.pdf",
+              mimeType: "application/pdf",
+              buffer: Buffer.from("%PDF-1.4\ncritical-e2e-letter-preview\n", "utf8"),
+            },
+            file_kind: "letter",
+          },
+        }
+      );
+      const letterUploadBody = await expectOkJson(letterUploadResponse, "correspondence letter upload");
+      letterAttachmentId = Number(letterUploadBody?.data?.id || 0);
+      expect(letterAttachmentId).toBeGreaterThan(0);
+
+      const imageUploadResponse = await request.post(
+        `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/attachments/upload`,
+        {
+          headers,
+          multipart: {
+            file: {
+              name: "critical-e2e-image.png",
+              mimeType: "image/png",
+              buffer: PNG_1X1,
+            },
+            file_kind: "attachment",
+          },
+        }
+      );
+      const imageUploadBody = await expectOkJson(imageUploadResponse, "correspondence image attachment upload");
+      imageAttachmentId = Number(imageUploadBody?.data?.id || 0);
+      expect(imageAttachmentId).toBeGreaterThan(0);
 
       const actionsListResponse = await request.get(
         `${resolvedBaseUrl}/api/v1/correspondence/${correspondenceId}/actions`,
@@ -463,9 +539,27 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
         await page.locator("#view-correspondence [data-corr-action='refresh']").click();
         await page.locator("#corrSearchInput").fill(updatedSubject);
         await page.keyboard.press("Enter");
-        await expect(page.locator("#corrTableBody tr", { hasText: updatedSubject }).first()).toBeVisible({
-          timeout: 15000,
-        });
+        const correspondenceRow = page.locator("#corrTableBody tr", { hasText: updatedSubject }).first();
+        await expect(correspondenceRow).toBeVisible({ timeout: 15000 });
+
+        await correspondenceRow.locator('[data-corr-action="toggle-row-menu"]').click();
+        await correspondenceRow.locator('[data-corr-action="preview-correspondence"]').click();
+        const previewModal = page.locator("#corrPreviewModal");
+        await expect(previewModal).toBeVisible({ timeout: 15000 });
+        await expect(previewModal.locator("iframe.corr-preview-frame")).toBeVisible({ timeout: 15000 });
+        await previewModal.locator('[data-corr-action="close-preview"]').first().click();
+        await expect(previewModal).toBeHidden({ timeout: 15000 });
+
+        await correspondenceRow.locator('[data-corr-action="toggle-row-menu"]').click();
+        await correspondenceRow.locator('[data-corr-action="open-workflow"]').click();
+        await expect(page.locator("#corrModal")).toBeVisible({ timeout: 15000 });
+        const imageRow = page.locator("#corrAttachmentsBody tr", { hasText: "critical-e2e-image.png" }).first();
+        await expect(imageRow).toBeVisible({ timeout: 15000 });
+        await imageRow.locator('[data-corr-action="preview-attachment"]').click();
+        await expect(previewModal).toBeVisible({ timeout: 15000 });
+        await expect(previewModal.locator("img.corr-preview-image")).toBeVisible({ timeout: 15000 });
+        await previewModal.locator('[data-corr-action="close-preview"]').first().click();
+        await expect(previewModal).toBeHidden({ timeout: 15000 });
       } else {
         const listResponse = await request.get(
           `${resolvedBaseUrl}/api/v1/correspondence/list?search=${encodeURIComponent(updatedSubject)}`,
@@ -479,6 +573,24 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
         ).toBeTruthy();
       }
     } finally {
+      if (imageAttachmentId > 0) {
+        await request.delete(
+          `${resolvedBaseUrl}/api/v1/correspondence/attachments/${imageAttachmentId}`,
+          { headers }
+        );
+      }
+      if (letterAttachmentId > 0) {
+        await request.delete(
+          `${resolvedBaseUrl}/api/v1/correspondence/attachments/${letterAttachmentId}`,
+          { headers }
+        );
+      }
+      if (editableAttachmentId > 0) {
+        await request.delete(
+          `${resolvedBaseUrl}/api/v1/correspondence/attachments/${editableAttachmentId}`,
+          { headers }
+        );
+      }
       if (attachmentId > 0) {
         await request.delete(
           `${resolvedBaseUrl}/api/v1/correspondence/attachments/${attachmentId}`,

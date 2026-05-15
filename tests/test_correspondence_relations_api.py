@@ -14,6 +14,12 @@ from tests.auth_helpers import get_auth_headers
 
 client = TestClient(app)
 
+PNG_1X1 = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00"
+    b"\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 
 def _ensure_context(project_code: str, discipline_code: str = "GN") -> None:
     with SessionLocal() as db:
@@ -133,6 +139,35 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     assert attachment_res.status_code == 200, attachment_res.text
     attachment_id = int((attachment_res.json().get("data") or {}).get("id") or 0)
 
+    preview_without_letter = client.get(f"/api/v1/correspondence/{correspondence_id}/preview", headers=headers)
+    assert preview_without_letter.status_code == 404, preview_without_letter.text
+    assert b"attachment-preview" not in preview_without_letter.content
+
+    original_res = client.post(
+        f"/api/v1/correspondence/{correspondence_id}/attachments/upload",
+        data={"file_kind": "original"},
+        files={"file": ("editable.pdf", io.BytesIO(b"%PDF-1.4\neditable-preview\n"), "application/pdf")},
+        headers=headers,
+    )
+    assert original_res.status_code == 200, original_res.text
+    original_id = int((original_res.json().get("data") or {}).get("id") or 0)
+    assert original_id > 0
+
+    preview_with_original_only = client.get(f"/api/v1/correspondence/{correspondence_id}/preview", headers=headers)
+    assert preview_with_original_only.status_code == 404, preview_with_original_only.text
+    assert b"editable-preview" not in preview_with_original_only.content
+
+    image_attachment_res = client.post(
+        f"/api/v1/correspondence/{correspondence_id}/attachments/upload",
+        data={"file_kind": "attachment"},
+        files={"file": ("attachment-image.png", io.BytesIO(PNG_1X1), "image/png")},
+        headers=headers,
+    )
+    assert image_attachment_res.status_code == 200, image_attachment_res.text
+    image_attachment_id = int((image_attachment_res.json().get("data") or {}).get("id") or 0)
+    assert image_attachment_id > 0
+    assert (image_attachment_res.json().get("data") or {}).get("preview_supported") is True
+
     letter_res = client.post(
         f"/api/v1/correspondence/{correspondence_id}/attachments/upload",
         data={"file_kind": "letter"},
@@ -156,11 +191,38 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     assert "inline" in preview_res.headers.get("content-disposition", "").lower()
     assert preview_res.headers.get("content-type", "").startswith("application/pdf")
     assert b"letter-preview" in preview_res.content
+    assert b"attachment-preview" not in preview_res.content
+    assert b"editable-preview" not in preview_res.content
 
     attachment_preview = client.get(f"/api/v1/correspondence/attachments/{attachment_id}/preview", headers=headers)
     assert attachment_preview.status_code == 200, attachment_preview.text
     assert "inline" in attachment_preview.headers.get("content-disposition", "").lower()
     assert b"attachment-preview" in attachment_preview.content
+
+    original_preview = client.get(f"/api/v1/correspondence/attachments/{original_id}/preview", headers=headers)
+    assert original_preview.status_code == 200, original_preview.text
+    assert "inline" in original_preview.headers.get("content-disposition", "").lower()
+    assert b"editable-preview" in original_preview.content
+
+    image_attachment_preview = client.get(
+        f"/api/v1/correspondence/attachments/{image_attachment_id}/preview",
+        headers=headers,
+    )
+    assert image_attachment_preview.status_code == 200, image_attachment_preview.text
+    assert image_attachment_preview.headers.get("content-type", "").startswith("image/png")
+    assert image_attachment_preview.content.startswith(b"\x89PNG")
+
+    image_letter_res = client.post(
+        f"/api/v1/correspondence/{correspondence_id}/attachments/upload",
+        data={"file_kind": "letter"},
+        files={"file": ("letter-image.png", io.BytesIO(PNG_1X1), "image/png")},
+        headers=headers,
+    )
+    assert image_letter_res.status_code == 200, image_letter_res.text
+    image_letter_preview = client.get(f"/api/v1/correspondence/{correspondence_id}/preview", headers=headers)
+    assert image_letter_preview.status_code == 200, image_letter_preview.text
+    assert image_letter_preview.headers.get("content-type", "").startswith("image/png")
+    assert image_letter_preview.content.startswith(b"\x89PNG")
 
     unsupported_preview = client.get(
         f"/api/v1/correspondence/attachments/{unsupported_id}/preview",

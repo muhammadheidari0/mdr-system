@@ -254,7 +254,7 @@ def test_webdav_primary_correspondence_attachment_flow(admin_headers: dict[str, 
     correspondence_id = _create_correspondence(admin_headers)
     upload_res = client.post(
         f"/api/v1/correspondence/{correspondence_id}/attachments/upload",
-        data={"file_kind": "attachment"},
+        data={"file_kind": "letter"},
         files={"file": ("corr.pdf", io.BytesIO(b"%PDF-1.4\ncorr-preview\n"), "application/pdf")},
         headers=admin_headers,
     )
@@ -262,6 +262,7 @@ def test_webdav_primary_correspondence_attachment_flow(admin_headers: dict[str, 
     attachment = upload_res.json().get("data") or {}
     attachment_id = int(attachment.get("id") or 0)
     assert attachment_id > 0
+    assert attachment.get("file_kind") == "letter"
 
     download_res = client.get(f"/api/v1/correspondence/attachments/{attachment_id}/download", headers=admin_headers)
     assert download_res.status_code == 200, download_res.text

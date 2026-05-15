@@ -30,12 +30,26 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   const dirCode = (v) => ["I", "IN", "INBOUND"].includes(String(v || "").toUpperCase()) ? "I" : "O";
   const dirFa = (v) => dirCode(v) === "I" ? "وارده" : "صادره";
   const statusClass = (s) => { const k = String(s || "").toLowerCase(); return k === "closed" ? "is-closed" : (k === "overdue" ? "is-overdue" : "is-open"); };
-  const kindFa = (k) => ({ letter: "فایل نامه", original: "فایل اصلی", attachment: "پیوست" }[String(k || "").toLowerCase()] || "پیوست");
+  const kindFa = (k) => ({ letter: "فایل نامه", original: "فایل قابل ویرایش", attachment: "پیوست" }[String(k || "").toLowerCase()] || "پیوست");
   const info = (m) => window.UI?.success?.(m); const warn = (m) => window.UI?.warning?.(m); const err = (m) => window.UI?.error?.(m);
   const nowYyMm = (v) => { const d = v ? new Date(`${v}T00:00:00`) : new Date(); return Number.isNaN(d.getTime()) ? "0000" : `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, "0")}`; };
   const curId = () => Number(q("corrIdInput")?.value || 0);
   const getCorrFetchFn = () => (typeof window.fetchWithAuth === "function" ? window.fetchWithAuth : fetch);
   const STORAGE_ENTITY_ATTACHMENT = "correspondence_attachment";
+  const CORR_ATTACHMENT_ACCEPT = {
+    letter: ".pdf,image/*",
+    original: ".doc,.docx,.xls,.xlsx,.dwg,.dxf,.ifc",
+    attachment: ".pdf,image/*,.doc,.docx,.xls,.xlsx,.dwg,.dxf,.ifc,.zip",
+  };
+
+  function corrSyncAttachmentAccept(clearSelectedFile = false) {
+    const kind = String(q("corrAttachmentKindInput")?.value || "attachment").toLowerCase();
+    const fileInput = q("corrAttachmentFileInput");
+    if (!fileInput) return;
+    fileInput.setAttribute("accept", CORR_ATTACHMENT_ACCEPT[kind] || CORR_ATTACHMENT_ACCEPT.attachment);
+    if (clearSelectedFile) fileInput.value = "";
+  }
+
   async function corrReadJsonSafe(response) {
     try {
       return await response.json();
@@ -765,6 +779,9 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     applyFormValues(formBridge.createDefaultValues());
     if (!q("corrIssuingInput").value && q("corrIssuingInput").options.length) q("corrIssuingInput").selectedIndex = 0;
     if (!q("corrCategoryInput").value && q("corrCategoryInput").options.length) q("corrCategoryInput").selectedIndex = 0;
+    if (q("corrAttachmentKindInput")) q("corrAttachmentKindInput").value = "letter";
+    if (q("corrAttachmentFileInput")) q("corrAttachmentFileInput").value = "";
+    corrSyncAttachmentAccept();
     S.actions = []; S.atts = []; S.relations = []; clearActionEditor(); q("corrActionsBody").innerHTML = `<tr><td colspan="5" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; q("corrAttachmentsBody").innerHTML = `<tr><td colspan="7" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; q("corrRelationsBody").innerHTML = `<tr><td colspan="6" class="corr-empty-row">ابتدا مکاتبه را ذخیره کنید.</td></tr>`; fillActionOptions(); corrUpdateReferencePreview();
   }
   function payloadForm() {
@@ -857,6 +874,8 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
     if (!handled) {
       throw new Error("Correspondence UI bridge did not bind events.");
     }
+    q("corrAttachmentKindInput")?.addEventListener("change", () => corrSyncAttachmentAccept(true));
+    corrSyncAttachmentAccept();
     S.bound = true;
   }
 
