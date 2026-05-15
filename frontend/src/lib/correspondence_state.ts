@@ -187,6 +187,7 @@ function relationTypeFa(type: unknown): string {
   const normalized = String(type || "").toLowerCase();
   if (normalized === "references") return "ارجاع";
   if (normalized === "supersedes") return "جایگزین";
+  if (normalized === "attachment" || normalized === "attached") return "پیوست";
   if (normalized === "contains_document") return "از روی مدرک";
   return "مرتبط";
 }

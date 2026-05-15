@@ -557,6 +557,7 @@ test("critical e2e: correspondence CRUD with attachments", async ({ page, reques
         await correspondenceRow.locator('[data-corr-action="open-workflow"]').click();
         await expect(page.locator("#corrModal")).toBeVisible({ timeout: 15000 });
         await expect(page.locator("#corrCcRecipientsInput")).toHaveValue("E2E CC Design, E2E CC Finance");
+        await expect(page.locator('#corrRelationTypeInput option[value="attachment"]')).toHaveText("پیوست");
         const imageRow = page.locator("#corrAttachmentsBody tr", { hasText: "critical-e2e-image.png" }).first();
         await expect(imageRow).toBeVisible({ timeout: 15000 });
         await imageRow.locator('[data-corr-action="preview-attachment"]').click();

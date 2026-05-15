@@ -258,6 +258,14 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     assert document_relation.status_code == 200, document_relation.text
     assert (document_relation.json().get("data") or {}).get("target_entity_type") == "document"
 
+    attachment_relation = client.post(
+        f"/api/v1/correspondence/{correspondence_id}/relations",
+        json={"target_entity_type": "document", "target_code": doc_no, "relation_type": "attachment"},
+        headers=headers,
+    )
+    assert attachment_relation.status_code == 200, attachment_relation.text
+    assert (attachment_relation.json().get("data") or {}).get("relation_type") == "attachment"
+
     transmittal_relation = client.post(
         f"/api/v1/correspondence/{correspondence_id}/relations",
         json={"target_entity_type": "transmittal", "target_code": transmittal_no, "relation_type": "related"},
@@ -314,6 +322,12 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
         for item in relations.json().get("data") or []
     }
     assert ("document", doc_no) in indexed
+    assert any(
+        item.get("target_entity_type") == "document"
+        and item.get("target_code") == doc_no
+        and item.get("relation_type") == "attachment"
+        for item in relations.json().get("data") or []
+    )
     assert ("transmittal", transmittal_no) in indexed
     assert ("meeting_minute", meeting_no) in indexed
     assert ("correspondence", related_reference_no) in indexed
