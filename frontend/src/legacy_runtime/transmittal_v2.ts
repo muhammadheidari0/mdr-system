@@ -1298,23 +1298,23 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     };
 
     window.voidTransmittal = async function voidTransmittal(id) {
-        const reasonInput = prompt("Ø¯Ù„ÛŒÙ„ Ø§Ø¨Ø·Ø§Ù„ ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ Ø±Ø§ ÙˆØ§Ø±Ø¯ Ú©Ù†ÛŒØ¯:");
+        const reasonInput = prompt("دلیل ابطال ترنسمیتال را وارد کنید:");
         if (reasonInput === null) return;
         const reason = reasonInput.trim();
         if (!reason) {
-            notify("error", "Ø«Ø¨Øª Ø¯Ù„ÛŒÙ„ Ø§Ø¨Ø·Ø§Ù„ Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³Øª");
+            notify("error", "ثبت دلیل ابطال الزامی است");
             return;
         }
         try {
             const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
             await mutationBridge.voidItem(String(id), reason, { fetch: getTransmittalFetchFn() });
-            notify("success", "ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ Ø¨Ø§Ø·Ù„ Ø´Ø¯");
+            notify("success", "ترنسمیتال باطل شد");
             await loadTransmittals();
             if (state.activeDetailId === String(id) && typeof window.openTransmittalDetail === "function") {
                 await window.openTransmittalDetail(String(id));
             }
         } catch (error) {
-            notify("error", error.message || "Ø§Ø¨Ø·Ø§Ù„ ØªØ±Ù†Ø³Ù…ÛŒØªØ§Ù„ Ù†Ø§Ù…ÙˆÙÙ‚ Ø¨ÙˆØ¯");
+            notify("error", error.message || "ابطال ترنسمیتال ناموفق بود");
         }
     };
 
