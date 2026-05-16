@@ -53,6 +53,9 @@ export interface EligibleDocItem {
   discipline_code?: string | null;
   revision?: string;
   status?: string;
+  default_file_kind?: string;
+  file_kind?: string;
+  file_options?: Array<Record<string, unknown>>;
   [key: string]: unknown;
 }
 

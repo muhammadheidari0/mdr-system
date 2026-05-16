@@ -45,9 +45,12 @@ class TransmittalDocItem(BaseModel):
     document_code: str
     revision: str
     status: str
+    file_kind: str = "pdf"
     electronic_copy: bool = True
     hard_copy: bool = False
     document_title: Optional[str] = None
+    file_label: Optional[str] = None
+    file_options: List[Dict[str, object]] = Field(default_factory=list)
 
 
 class TransmittalCreate(BaseModel):
@@ -99,6 +102,8 @@ class EligibleDocumentResponse(BaseModel):
     discipline_code: Optional[str] = None
     revision: str
     status: str
+    default_file_kind: str = "pdf"
+    file_options: List[Dict[str, object]] = Field(default_factory=list)
 
 
 class TransmittalVoidIn(BaseModel):
@@ -224,13 +229,101 @@ def _uniq_join(values: List[Any]) -> str:
     return "، ".join(seen) if seen else "-"
 
 
+def _normalize_transmittal_file_kind(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"native", "dwg", "dxf", "editable", "cad"}:
+        return "native"
+    return "pdf"
+
+
+def _transmittal_file_label(value: Any) -> str:
+    return "DWG" if _normalize_transmittal_file_kind(value) == "native" else "PDF"
+
+
+def _archive_file_kind(row: ArchiveFile) -> str:
+    raw = str(row.file_kind or "").strip().lower()
+    name = str(row.original_name or "").strip().lower()
+    mime = str(row.mime_type or row.detected_mime or "").strip().lower()
+    if raw in {"native", "dwg", "dxf", "editable", "cad"}:
+        return "native"
+    if name.endswith((".dwg", ".dxf")):
+        return "native"
+    if raw == "pdf" or mime in {"application/pdf", "application/x-pdf"} or name.endswith(".pdf"):
+        return "pdf"
+    return "pdf"
+
+
+def _latest_revision(document: MdrDocument) -> Optional[DocumentRevision]:
+    revisions = list(document.revisions or [])
+    if not revisions:
+        return None
+    return sorted(
+        revisions,
+        key=lambda row: (row.created_at or datetime.min, int(row.id or 0)),
+        reverse=True,
+    )[0]
+
+
+def _document_revision_by_code(document: MdrDocument, revision_code: Any) -> Optional[DocumentRevision]:
+    revision = str(revision_code or "").strip()
+    if revision:
+        for row in document.revisions or []:
+            if str(row.revision or "").strip() == revision:
+                return row
+    return _latest_revision(document)
+
+
+def _revision_file_options(revision: Optional[DocumentRevision]) -> List[Dict[str, object]]:
+    if revision is None:
+        return []
+
+    options: dict[str, Dict[str, object]] = {}
+    for row in revision.archive_files or []:
+        if getattr(row, "deleted_at", None) is not None:
+            continue
+        kind = _archive_file_kind(row)
+        if kind not in options:
+            options[kind] = {
+                "value": kind,
+                "label": _transmittal_file_label(kind),
+                "file_id": int(row.id or 0),
+                "file_name": row.original_name,
+            }
+
+    if "pdf" not in options:
+        legacy_name = str(revision.file_name or revision.file_path or "").strip()
+        if legacy_name.lower().endswith(".pdf"):
+            options["pdf"] = {
+                "value": "pdf",
+                "label": _transmittal_file_label("pdf"),
+                "file_id": None,
+                "file_name": revision.file_name,
+            }
+
+    ordered: List[Dict[str, object]] = []
+    for kind in ("pdf", "native"):
+        if kind in options:
+            ordered.append(options[kind])
+    return ordered
+
+
+def _default_file_kind(options: List[Dict[str, object]], fallback: Any = "pdf") -> str:
+    values = {str(option.get("value") or "").strip().lower() for option in options}
+    if "pdf" in values:
+        return "pdf"
+    if "native" in values:
+        return "native"
+    return _normalize_transmittal_file_kind(fallback)
+
+
 def _copy_format_label(doc: TransmittalDoc) -> str:
     electronic = bool(doc.electronic_copy)
     hard = bool(doc.hard_copy)
+    file_label = _transmittal_file_label(getattr(doc, "file_kind", "pdf"))
     if electronic and hard:
-        return "PDF / کاغذی"
+        return f"{file_label} / کاغذی"
     if electronic:
-        return "PDF"
+        return file_label
     if hard:
         return "کاغذی"
     return "-"
@@ -259,6 +352,8 @@ def _active_pdf_public_share_url(
     if document is None:
         return None
     if not bool(transmittal_doc.electronic_copy):
+        return None
+    if _normalize_transmittal_file_kind(getattr(transmittal_doc, "file_kind", "pdf")) != "pdf":
         return None
 
     now = datetime.utcnow()
@@ -329,6 +424,8 @@ def _build_transmittal_pdf_payload(db: Session, tr: Transmittal) -> SimpleNamesp
             revision=d.revision,
             status=d.status,
             document_title=d.document_title,
+            file_kind=_normalize_transmittal_file_kind(getattr(d, "file_kind", "pdf")),
+            file_label=_transmittal_file_label(getattr(d, "file_kind", "pdf")),
             electronic_copy=d.electronic_copy,
             hard_copy=d.hard_copy,
             public_share_url=_active_pdf_public_share_url(db, mdr_rows.get(str(d.document_code or "").strip()), d),
@@ -366,6 +463,13 @@ def _render_transmittal_print_html(db: Session, tr: Transmittal) -> str:
     rows: list[str] = []
     for idx, doc in enumerate(tr.docs, 1):
         public_share_url = _active_pdf_public_share_url(db, mdr_rows.get(str(doc.document_code or "").strip()), doc)
+        receive_note = "لینک عمومی Nextcloud" if public_share_url else (
+            "نسخه کاغذی" if doc.hard_copy else (
+                f"فایل {_transmittal_file_label(getattr(doc, 'file_kind', 'pdf'))}"
+                if doc.electronic_copy
+                else "-"
+            )
+        )
         rows.append(
             "<tr>"
             f"<td>{idx}</td>"
@@ -376,7 +480,7 @@ def _render_transmittal_print_html(db: Session, tr: Transmittal) -> str:
             f"<td>1</td>"
             f"<td>{html_escape(_copy_format_label(doc))}</td>"
             f"<td>{_download_link_html(public_share_url)}</td>"
-            f"<td>{html_escape('لینک عمومی Nextcloud' if public_share_url else ('نسخه کاغذی' if doc.hard_copy else '-'))}</td>"
+            f"<td>{html_escape(receive_note)}</td>"
             "</tr>"
         )
     if not rows:
@@ -687,6 +791,23 @@ def _validate_payload_documents(
             project_code=doc.project_code,
             discipline_code=doc.discipline_code,
         )
+    for doc_item in documents:
+        doc_code = doc_item.document_code.strip()
+        doc = docs_by_code.get(doc_code)
+        if doc is None:
+            continue
+        selected_kind = _normalize_transmittal_file_kind(doc_item.file_kind)
+        revision = _document_revision_by_code(doc, doc_item.revision)
+        options = _revision_file_options(revision)
+        allowed = {str(option.get("value") or "").strip().lower() for option in options}
+        if allowed and selected_kind not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Selected file_kind '{doc_item.file_kind}' is not available for "
+                    f"document {doc_code} revision {doc_item.revision or '-'}"
+                ),
+            )
     return docs_by_code
 
 
@@ -781,17 +902,22 @@ def get_eligible_documents(
         .limit(max(1, min(limit, 100)))
         .all()
     )
-    return [
-        {
-            "doc_number": doc.doc_number,
-            "doc_title": doc.doc_title_p or doc.doc_title_e or doc.subject or doc.doc_number,
-            "project_code": doc.project_code,
-            "discipline_code": doc.discipline_code,
-            "revision": rev.revision if rev else "00",
-            "status": rev.status if rev else "Registered",
-        }
-        for doc, rev in rows
-    ]
+    output = []
+    for doc, rev in rows:
+        file_options = _revision_file_options(rev)
+        output.append(
+            {
+                "doc_number": doc.doc_number,
+                "doc_title": doc.doc_title_p or doc.doc_title_e or doc.subject or doc.doc_number,
+                "project_code": doc.project_code,
+                "discipline_code": doc.discipline_code,
+                "revision": rev.revision if rev else "00",
+                "status": rev.status if rev else "Registered",
+                "default_file_kind": _default_file_kind(file_options),
+                "file_options": file_options,
+            }
+        )
+    return output
 
 
 @router.get("/", response_model=List[TransmittalResponse])
@@ -869,6 +995,7 @@ def create_transmittal(
             document_title=doc_title,
             revision=doc_item.revision,
             status=doc_item.status,
+            file_kind=_normalize_transmittal_file_kind(doc_item.file_kind),
             electronic_copy=doc_item.electronic_copy,
             hard_copy=doc_item.hard_copy,
         )
@@ -918,6 +1045,32 @@ def get_transmittal_detail(
     state_record = _get_transmittal_state_record(tr)
     correspondence_relations = _list_transmittal_correspondence_relations(db, user, tr)
     party_labels = _transmittal_party_labels(db, tr)
+    doc_codes = [str(d.document_code or "").strip() for d in tr.docs if str(d.document_code or "").strip()]
+    mdr_rows: dict[str, MdrDocument] = {}
+    if doc_codes:
+        mdr_rows = {
+            row.doc_number: row
+            for row in db.query(MdrDocument).filter(MdrDocument.doc_number.in_(doc_codes)).all()
+        }
+    document_items: List[Dict[str, object]] = []
+    for d in tr.docs:
+        mdr_doc = mdr_rows.get(str(d.document_code or "").strip())
+        revision = _document_revision_by_code(mdr_doc, d.revision) if mdr_doc is not None else None
+        file_options = _revision_file_options(revision)
+        file_kind = _normalize_transmittal_file_kind(getattr(d, "file_kind", "pdf"))
+        document_items.append(
+            {
+                "document_code": d.document_code,
+                "revision": d.revision or "00",
+                "status": d.status or "IFA",
+                "file_kind": file_kind,
+                "file_label": _transmittal_file_label(file_kind),
+                "file_options": file_options,
+                "electronic_copy": bool(d.electronic_copy),
+                "hard_copy": bool(d.hard_copy),
+                "document_title": d.document_title,
+            }
+        )
     return {
         "id": tr.id,
         "transmittal_no": tr.id,
@@ -931,17 +1084,7 @@ def get_transmittal_detail(
         "void_reason": state_record["void_reason"],
         "voided_by": state_record["voided_by"],
         "voided_at": state_record["voided_at"],
-        "documents": [
-            {
-                "document_code": d.document_code,
-                "revision": d.revision or "00",
-                "status": d.status or "IFA",
-                "electronic_copy": bool(d.electronic_copy),
-                "hard_copy": bool(d.hard_copy),
-                "document_title": d.document_title,
-            }
-            for d in tr.docs
-        ],
+        "documents": document_items,
         "correspondence_relations": correspondence_relations,
     }
 
@@ -986,6 +1129,7 @@ def edit_transmittal(
                 document_title=doc_title,
                 revision=doc_item.revision,
                 status=doc_item.status,
+                file_kind=_normalize_transmittal_file_kind(doc_item.file_kind),
                 electronic_copy=doc_item.electronic_copy,
                 hard_copy=doc_item.hard_copy,
             )

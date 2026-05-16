@@ -302,6 +302,60 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         return new Map(state.selectedDocs.map((d) => [d.document_code, d]));
     }
 
+    function normalizeTr2FileKind(value) {
+        const raw = String(value || "").trim().toLowerCase();
+        return raw === "native" || raw === "dwg" || raw === "dxf" ? "native" : "pdf";
+    }
+
+    function tr2FileKindLabel(value) {
+        return normalizeTr2FileKind(value) === "native" ? "DWG" : "PDF";
+    }
+
+    function normalizeTr2FileOptions(options, fallback = "pdf") {
+        const source = Array.isArray(options) ? options : [];
+        const seen = new Set();
+        const normalized = [];
+        source.forEach((option) => {
+            const value = normalizeTr2FileKind(option?.value || option?.file_kind || option);
+            if (seen.has(value)) return;
+            seen.add(value);
+            normalized.push({
+                value,
+                label: option?.label || tr2FileKindLabel(value),
+                file_name: option?.file_name || "",
+            });
+        });
+        if (!normalized.length) {
+            const value = normalizeTr2FileKind(fallback);
+            normalized.push({ value, label: tr2FileKindLabel(value), file_name: "" });
+        }
+        return normalized.sort((a, b) => {
+            const order = { pdf: 0, native: 1 };
+            return (order[a.value] ?? 9) - (order[b.value] ?? 9);
+        });
+    }
+
+    function renderTr2FileKindOptions(options, selectedKind) {
+        const normalized = normalizeTr2FileOptions(options, selectedKind);
+        const selected = normalizeTr2FileKind(selectedKind || normalized[0]?.value || "pdf");
+        return normalized.map((option) => `
+            <option value="${escapeHtml(option.value)}" ${option.value === selected ? "selected" : ""}>
+                ${escapeHtml(option.label || tr2FileKindLabel(option.value))}
+            </option>
+        `).join("");
+    }
+
+    function selectedSearchFileKind(docNumber, item) {
+        const selects = document.querySelectorAll("[data-tr2-search-file-kind]");
+        for (const select of selects) {
+            if (select instanceof HTMLSelectElement && String(select.getAttribute("data-doc-number") || "").trim() === docNumber) {
+                return normalizeTr2FileKind(select.value);
+            }
+        }
+        const options = normalizeTr2FileOptions(item?.file_options, item?.default_file_kind || item?.file_kind);
+        return normalizeTr2FileKind(item?.default_file_kind || item?.file_kind || options[0]?.value || "pdf");
+    }
+
     function currentProjectCode() {
         return String(document.getElementById("tr2-project")?.value || "").trim().toUpperCase();
     }
@@ -357,34 +411,12 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     function renderSelectedDocs() {
         const tbody = document.getElementById("tr2-docs-body");
         if (!tbody) return;
-        if (Array.isArray(state.selectedDocs)) {
-            if (!state.selectedDocs.length) {
-                tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">هنوز مدرکی اضافه نشده است</td></tr>';
-                return;
-            }
-            tbody.innerHTML = state.selectedDocs.map((d, idx) => `
-                <tr>
-                    <td>${escapeHtml(d.document_code)}</td>
-                    <td><input class="form-input" style="max-width:90px" value="${escapeHtml(d.revision)}" data-tr2-action="doc-field-change" data-index="${idx}" data-field="revision"></td>
-                    <td>
-                        <select class="form-input" data-tr2-action="doc-field-change" data-index="${idx}" data-field="status">
-                            <option value="IFA" ${d.status === "IFA" ? "selected" : ""}>IFA</option>
-                            <option value="IFC" ${d.status === "IFC" ? "selected" : ""}>IFC</option>
-                            <option value="IFI" ${d.status === "IFI" ? "selected" : ""}>IFI</option>
-                        </select>
-                    </td>
-                    <td class="center-text"><input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy"></td>
-                    <td class="center-text"><input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy"></td>
-                    <td><button class="btn-archive-icon" type="button" data-tr2-action="doc-remove" data-index="${idx}">حذف</button></td>
-                </tr>
-            `).join("");
+        const selectedRows = Array.isArray(state.selectedDocs) ? state.selectedDocs : [];
+        if (!selectedRows.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="center-text muted">هنوز مدرکی اضافه نشده است</td></tr>';
             return;
         }
-        if (!state.selectedDocs.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">Ù‡Ù†ÙˆØ² Ø¢ÛŒØªÙ…ÛŒ Ø§Ø¶Ø§ÙÙ‡ Ù†Ø´Ø¯Ù‡ Ø§Ø³Øª</td></tr>';
-            return;
-        }
-        tbody.innerHTML = state.selectedDocs.map((d, idx) => `
+        tbody.innerHTML = selectedRows.map((d, idx) => `
             <tr>
                 <td>${escapeHtml(d.document_code)}</td>
                 <td><input class="form-input" style="max-width:90px" value="${escapeHtml(d.revision)}" data-tr2-action="doc-field-change" data-index="${idx}" data-field="revision"></td>
@@ -395,9 +427,14 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                         <option value="IFI" ${d.status === "IFI" ? "selected" : ""}>IFI</option>
                     </select>
                 </td>
+                <td>
+                    <select class="form-input" style="max-width:110px" data-tr2-action="doc-field-change" data-index="${idx}" data-field="file_kind">
+                        ${renderTr2FileKindOptions(d.file_options, d.file_kind || "pdf")}
+                    </select>
+                </td>
                 <td class="center-text"><input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy"></td>
                 <td class="center-text"><input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy"></td>
-                <td><button class="btn-archive-icon" type="button" data-tr2-action="doc-remove" data-index="${idx}">Ø­Ø°Ù</button></td>
+                <td><button class="btn-archive-icon" type="button" data-tr2-action="doc-remove" data-index="${idx}">حذف</button></td>
             </tr>
         `).join("");
     }
@@ -439,6 +476,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                             <th>Title</th>
                             <th>Revision</th>
                             <th>Status</th>
+                            <th>File</th>
                             <th>E-Copy</th>
                             <th>Hard</th>
                         </tr>
@@ -450,6 +488,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                                 <td>${escapeHtml(doc?.document_title || "-")}</td>
                                 <td>${escapeHtml(doc?.revision || "-")}</td>
                                 <td>${escapeHtml(doc?.status || "-")}</td>
+                                <td>${escapeHtml(doc?.file_label || tr2FileKindLabel(doc?.file_kind || "pdf"))}</td>
                                 <td>${doc?.electronic_copy ? "دارد" : "ندارد"}</td>
                                 <td>${doc?.hard_copy ? "دارد" : "ندارد"}</td>
                             </tr>
@@ -617,7 +656,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         if (!tbody) return;
         state.searchDocs = Array.isArray(items) ? items : [];
         if (!items.length) {
-            tbody.innerHTML = '<tr><td colspan="5" class="center-text muted">مدرکی یافت نشد</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="center-text muted">مدرکی یافت نشد</td></tr>';
             return;
         }
 
@@ -625,12 +664,19 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         tbody.innerHTML = items.map((item) => {
             const docNumber = String(item.doc_number || "").trim();
             const disabled = chosen.has(docNumber);
+            const fileOptions = normalizeTr2FileOptions(item.file_options, item.default_file_kind || item.file_kind || "pdf");
+            const selectedKind = normalizeTr2FileKind(item.default_file_kind || item.file_kind || fileOptions[0]?.value || "pdf");
             return `
                 <tr>
                     <td>${escapeHtml(docNumber)}</td>
                     <td>${escapeHtml(item.doc_title || "-")}</td>
                     <td>${escapeHtml(item.revision || "00")}</td>
                     <td>${escapeHtml(item.status || "-")}</td>
+                    <td>
+                        <select class="form-input" style="max-width:110px" data-tr2-search-file-kind data-doc-number="${escapeHtml(docNumber)}" ${disabled ? "disabled" : ""}>
+                            ${renderTr2FileKindOptions(fileOptions, selectedKind)}
+                        </select>
+                    </td>
                     <td>
                         <button class="btn-archive-icon" type="button" ${disabled ? "disabled" : ""} data-tr2-action="doc-add" data-doc-number="${escapeHtml(docNumber)}">
                             ${disabled ? "افزوده شده" : "افزودن"}
@@ -800,6 +846,8 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     revision,
                     status,
                     doc_title: pendingDoc.doc_title || pendingDoc.doc_title_p || pendingDoc.doc_title_e || docNumber,
+                    file_kind: pendingDoc.file_kind || "pdf",
+                    file_options: pendingDoc.file_options || [],
                 });
             }
             return;
@@ -847,13 +895,22 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             if (subjectEl) subjectEl.value = "";
             if (notesEl) notesEl.value = detail.notes || "";
 
-            state.selectedDocs = Array.isArray(detail.documents) ? detail.documents.map((d) => ({
-                document_code: d.document_code,
-                revision: d.revision || "00",
-                status: d.status || "IFA",
-                electronic_copy: Boolean(d.electronic_copy),
-                hard_copy: Boolean(d.hard_copy),
-            })) : [];
+            state.selectedDocs = Array.isArray(detail.documents) ? detail.documents.map((d) => {
+                const fileOptions = normalizeTr2FileOptions(d.file_options, d.file_kind || "pdf");
+                const rawKind = normalizeTr2FileKind(d.file_kind || fileOptions[0]?.value || "pdf");
+                const fileKind = fileOptions.some((option) => option.value === rawKind)
+                    ? rawKind
+                    : normalizeTr2FileKind(fileOptions[0]?.value || "pdf");
+                return {
+                    document_code: d.document_code,
+                    revision: d.revision || "00",
+                    status: d.status || "IFA",
+                    file_kind: fileKind,
+                    file_options: fileOptions,
+                    electronic_copy: Boolean(d.electronic_copy),
+                    hard_copy: Boolean(d.hard_copy),
+                };
+            }) : [];
             renderSelectedDocs();
             await refreshTransmittalNumber();
             await searchEligibleDocs();
@@ -925,10 +982,17 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         const resolved = typeof item === "string" ? findSearchDocByNumber(item) : item;
         if (!resolved || !resolved.doc_number) return;
         if (state.selectedDocs.some((d) => d.document_code === resolved.doc_number)) return;
+        const fileOptions = normalizeTr2FileOptions(resolved.file_options, resolved.default_file_kind || resolved.file_kind || "pdf");
+        const chosenKind = selectedSearchFileKind(String(resolved.doc_number || "").trim(), resolved);
+        const fileKind = fileOptions.some((option) => option.value === chosenKind)
+            ? chosenKind
+            : normalizeTr2FileKind(fileOptions[0]?.value || "pdf");
         state.selectedDocs.push({
             document_code: resolved.doc_number,
             revision: resolved.revision || "00",
             status: resolved.status && resolved.status !== "Registered" ? resolved.status : "IFA",
+            file_kind: fileKind,
+            file_options: fileOptions,
             electronic_copy: true,
             hard_copy: false,
         });
@@ -938,7 +1002,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
 
     window.updateTr2Doc = function updateTr2Doc(index, field, value) {
         if (!state.selectedDocs[index]) return;
-        state.selectedDocs[index][field] = value;
+        state.selectedDocs[index][field] = field === "file_kind" ? normalizeTr2FileKind(value) : value;
     };
 
     window.removeTr2Doc = function removeTr2Doc(index) {
@@ -984,6 +1048,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     document_code: d.document_code,
                     revision: d.revision || "00",
                     status: d.status || "IFA",
+                    file_kind: normalizeTr2FileKind(d.file_kind || "pdf"),
                     electronic_copy: Boolean(d.electronic_copy),
                     hard_copy: Boolean(d.hard_copy),
                 })),

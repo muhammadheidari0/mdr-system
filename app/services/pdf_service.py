@@ -93,7 +93,9 @@ def generate_transmittal_pdf(transmittal, project_name="MDR Project", watermark_
     # پر کردن جدول با مدارک
     for idx, doc_item in enumerate(transmittal.documents, 1):
         copy_type = []
-        if doc_item.electronic_copy: copy_type.append("Elec")
+        selected_kind = str(getattr(doc_item, "file_kind", "pdf") or "pdf").strip().lower()
+        file_label = "DWG" if selected_kind in {"native", "dwg", "dxf"} else "PDF"
+        if doc_item.electronic_copy: copy_type.append(file_label)
         if doc_item.hard_copy: copy_type.append("Hard")
         public_share_url = str(getattr(doc_item, "public_share_url", "") or "").strip()
         download_cell = "-"
