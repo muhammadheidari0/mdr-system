@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.db.models import (
     ArchiveFile,
     ArchiveFilePublicShare,
+    Discipline,
     DocumentRevision,
     MdrDocument,
     Organization,
@@ -463,6 +464,84 @@ def test_transmittal_document_file_kind_options_and_validation():
             db.commit()
 
 
+def test_transmittal_eligible_docs_accepts_multiple_disciplines():
+    headers = _auth_headers()
+    project_code, first_discipline = ensure_project_discipline(client, headers)
+    second_discipline = f"MD{uuid.uuid4().hex[:5].upper()}"
+    marker = f"MULTIDISC-{uuid.uuid4().hex[:6].upper()}"
+    first_doc = f"{project_code}-{marker}-A-TGEN"
+    second_doc = f"{project_code}-{marker}-B-TGEN"
+    document_ids: list[int] = []
+    revision_ids: list[int] = []
+
+    with SessionLocal() as db:
+        if db.query(Discipline).filter(Discipline.code == second_discipline).first() is None:
+            db.add(
+                Discipline(
+                    code=second_discipline,
+                    name_e=f"Discipline {second_discipline}",
+                    name_p=f"Discipline {second_discipline}",
+                )
+            )
+            db.flush()
+        for doc_number, discipline in ((first_doc, first_discipline), (second_doc, second_discipline)):
+            document = MdrDocument(
+                doc_number=doc_number,
+                doc_title_e=f"{marker} {discipline}",
+                doc_title_p=f"{marker} {discipline}",
+                subject=f"{marker} {discipline}",
+                project_code=project_code,
+                discipline_code=discipline,
+                mdr_code="E",
+                package_code=None,
+                block="T",
+                level_code=None,
+            )
+            db.add(document)
+            db.flush()
+            document_ids.append(int(document.id or 0))
+            revision = DocumentRevision(
+                document_id=int(document.id or 0),
+                revision="00",
+                status="IFA",
+                file_name=f"{doc_number}.pdf",
+                file_path=f"local://Archive/{doc_number}.pdf",
+            )
+            db.add(revision)
+            db.flush()
+            revision_ids.append(int(revision.id or 0))
+        db.commit()
+
+    try:
+        single_response = client.get(
+            "/api/v1/transmittal/eligible-docs",
+            params={"project_code": project_code, "discipline_code": first_discipline, "q": marker},
+            headers=headers,
+        )
+        assert single_response.status_code == 200, single_response.text
+        assert {item.get("doc_number") for item in single_response.json()} == {first_doc}
+
+        multi_response = client.get(
+            "/api/v1/transmittal/eligible-docs",
+            params={
+                "project_code": project_code,
+                "discipline_code": f"{first_discipline},{second_discipline}",
+                "q": marker,
+            },
+            headers=headers,
+        )
+        assert multi_response.status_code == 200, multi_response.text
+        assert {item.get("doc_number") for item in multi_response.json()} == {first_doc, second_doc}
+    finally:
+        with SessionLocal() as db:
+            if revision_ids:
+                db.query(DocumentRevision).filter(DocumentRevision.id.in_(revision_ids)).delete(synchronize_session=False)
+            if document_ids:
+                db.query(MdrDocument).filter(MdrDocument.id.in_(document_ids)).delete(synchronize_session=False)
+            db.query(Discipline).filter(Discipline.code == second_discipline).delete(synchronize_session=False)
+            db.commit()
+
+
 def test_transmittal_options_settings_and_labels():
     headers = _auth_headers()
     org_code = f"TRORG{uuid.uuid4().hex[:6].upper()}"
@@ -503,11 +582,16 @@ def test_transmittal_options_settings_and_labels():
         item.get("code") == org_code and item.get("label") == org_label and item.get("source") == "organization"
         for item in options["recipient_options"]
     )
+    assert any(
+        item.get("code") == org_code and item.get("label") == org_label and item.get("source") == "organization"
+        for item in options["sender_options"]
+    )
 
     payload = {
         "project_code": "T202",
-        "sender": "O",
-        "receiver": org_code,
+        "sender": org_code,
+        "receiver": "C",
+        "direction": "O",
         "subject": f"labels-{uuid.uuid4().hex[:6]}",
         "notes": "",
         "documents": [],
@@ -523,18 +607,22 @@ def test_transmittal_options_settings_and_labels():
     detail_response = client.get(f"/api/v1/transmittal/item/{transmittal_no}", headers=headers)
     assert detail_response.status_code == 200, detail_response.text
     detail = detail_response.json()
-    assert detail["sender_label"] == "صادره"
-    assert detail["receiver_label"] == org_label
+    assert detail["sender_label"] == org_label
+    assert detail["receiver_label"] == "مشاور"
+    assert detail["direction"] == "O"
+    assert detail["direction_label"] == "صادره"
 
     list_response = client.get("/api/v1/transmittal/", headers=headers)
     assert list_response.status_code == 200, list_response.text
     row = next(item for item in list_response.json() if item.get("transmittal_no") == transmittal_no)
-    assert row["sender_label"] == "صادره"
-    assert row["receiver_label"] == org_label
+    assert row["sender_label"] == org_label
+    assert row["receiver_label"] == "مشاور"
+    assert row["direction"] == "O"
+    assert row["direction_label"] == "صادره"
 
 
 def test_lookup_dictionary_endpoint_available():
-    response = client.get("/api/v1/lookup/dictionary")
+    response = client.get("/api/v1/lookup/dictionary", headers=_auth_headers())
     assert response.status_code == 200, response.text
     body = response.json()
     assert body.get("ok") is True

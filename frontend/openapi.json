@@ -24447,6 +24447,18 @@
             ],
             "title": "Recipient"
           },
+          "cc_recipients": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cc Recipients"
+          },
           "corr_date": {
             "anyOf": [
               {
@@ -24896,6 +24908,18 @@
               }
             ],
             "title": "Recipient"
+          },
+          "cc_recipients": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cc Recipients"
           },
           "corr_date": {
             "anyOf": [
@@ -25483,6 +25507,19 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "default_file_kind": {
+            "type": "string",
+            "title": "Default File Kind",
+            "default": "pdf"
+          },
+          "file_options": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "File Options"
           }
         },
         "type": "object",
@@ -30685,6 +30722,17 @@
             "type": "string",
             "title": "Receiver"
           },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
           "subject": {
             "anyOf": [
               {
@@ -30750,6 +30798,28 @@
           "receiver": {
             "type": "string",
             "title": "Receiver"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "direction_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Label"
           },
           "sender_label": {
             "anyOf": [
@@ -30863,6 +30933,11 @@
             "type": "string",
             "title": "Status"
           },
+          "file_kind": {
+            "type": "string",
+            "title": "File Kind",
+            "default": "pdf"
+          },
           "electronic_copy": {
             "type": "boolean",
             "title": "Electronic Copy",
@@ -30883,6 +30958,36 @@
               }
             ],
             "title": "Document Title"
+          },
+          "remarks": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remarks"
+          },
+          "file_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Label"
+          },
+          "file_options": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "File Options"
           }
         },
         "type": "object",
@@ -30971,6 +31076,28 @@
           "status": {
             "type": "string",
             "title": "Status"
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "direction_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction Label"
           },
           "sender_label": {
             "anyOf": [

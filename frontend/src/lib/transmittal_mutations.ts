@@ -16,6 +16,7 @@ export interface TransmittalSavePayload {
   project_code: string;
   sender: string;
   receiver: string;
+  direction?: string;
   subject?: string;
   notes?: string;
   issue_now?: boolean;

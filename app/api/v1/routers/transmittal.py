@@ -58,6 +58,7 @@ class TransmittalCreate(BaseModel):
     project_code: str
     sender: str
     receiver: str
+    direction: Optional[str] = None
     subject: Optional[str] = None
     notes: Optional[str] = None
     documents: List[TransmittalDocItem]
@@ -71,6 +72,8 @@ class TransmittalResponse(BaseModel):
     created_at: datetime
     doc_count: int
     status: str
+    direction: Optional[str] = None
+    direction_label: Optional[str] = None
     sender_label: Optional[str] = None
     receiver_label: Optional[str] = None
     void_reason: Optional[str] = None
@@ -84,6 +87,8 @@ class TransmittalDetailResponse(BaseModel):
     project_code: str
     sender: str
     receiver: str
+    direction: Optional[str] = None
+    direction_label: Optional[str] = None
     sender_label: Optional[str] = None
     receiver_label: Optional[str] = None
     subject: str
@@ -147,10 +152,27 @@ def _display_subject(transmittal: Transmittal) -> str:
     return f"{transmittal.sender} -> {transmittal.receiver}"
 
 
+def _transmittal_sender_label(db: Session, code: Any) -> str:
+    normalized = _normalize_code(code)
+    if not normalized:
+        return "-"
+    label = transmittal_party_label(db, "recipient_options", normalized)
+    if label != normalized:
+        return label
+    if normalized in {"I", "O"}:
+        return transmittal_party_label(db, "direction_options", normalized)
+    return label
+
+
+def _transmittal_direction_label(db: Session, code: Any) -> str:
+    return transmittal_party_label(db, "direction_options", _normalize_code(code, "O"))
+
+
 def _transmittal_party_labels(db: Session, transmittal: Transmittal) -> Dict[str, str]:
     return {
-        "sender_label": transmittal_party_label(db, "direction_options", transmittal.sender),
+        "sender_label": _transmittal_sender_label(db, transmittal.sender),
         "receiver_label": transmittal_party_label(db, "recipient_options", transmittal.receiver),
+        "direction_label": _transmittal_direction_label(db, getattr(transmittal, "direction", None)),
     }
 
 
@@ -448,7 +470,7 @@ def _build_transmittal_pdf_payload(db: Session, tr: Transmittal) -> SimpleNamesp
         transmittal_no=tr.id,
         subject=_display_subject_with_labels(db, tr),
         created_at=tr.created_at or datetime.utcnow(),
-        sender=transmittal_party_label(db, "direction_options", tr.sender),
+        sender=_transmittal_sender_label(db, tr.sender),
         receiver=transmittal_party_label(db, "recipient_options", tr.receiver),
         notes=None,
         documents=pdf_docs,
@@ -457,7 +479,7 @@ def _build_transmittal_pdf_payload(db: Session, tr: Transmittal) -> SimpleNamesp
 
 def _render_transmittal_print_html(db: Session, tr: Transmittal) -> str:
     state_record = _get_transmittal_state_record(tr)
-    sender_label = transmittal_party_label(db, "direction_options", tr.sender)
+    sender_label = _transmittal_sender_label(db, tr.sender)
     receiver_label = transmittal_party_label(db, "recipient_options", tr.receiver)
     project = tr.project
     project_name = _safe_text(getattr(project, "name_p", None) or getattr(project, "name_e", None), f"Project {tr.project_code}")
@@ -722,6 +744,31 @@ def _normalize_code(value: str | None, fallback: str = "") -> str:
     return (value or fallback).strip().upper()
 
 
+def _normalize_code_list(value: Any) -> List[str]:
+    if isinstance(value, (list, tuple, set)):
+        raw_items = value
+    else:
+        raw_items = str(value or "").replace(";", ",").split(",")
+    seen: set[str] = set()
+    output: List[str] = []
+    for item in raw_items:
+        code = _normalize_code(str(item or ""))
+        if code and code not in seen:
+            seen.add(code)
+            output.append(code)
+    return output
+
+
+def _resolve_transmittal_direction(direction: Any, sender: Any) -> str:
+    normalized = _normalize_code(str(direction or ""))
+    if normalized in {"I", "O"}:
+        return normalized
+    sender_code = _normalize_code(str(sender or ""))
+    if sender_code in {"I", "O"}:
+        return sender_code
+    return "O"
+
+
 def _normalize_state(value: str | None) -> str:
     state = str(value or "").strip().lower()
     if state in {STATE_DRAFT, STATE_ISSUED, STATE_VOID}:
@@ -872,7 +919,10 @@ def get_eligible_documents(
     project = _normalize_code(project_code)
     if not project:
         raise HTTPException(status_code=400, detail="project_code is required")
-    enforce_scope_access(db, user, project_code=project, discipline_code=discipline_code)
+    discipline_codes = _normalize_code_list(discipline_code)
+    enforce_scope_access(db, user, project_code=project)
+    for discipline in discipline_codes:
+        enforce_scope_access(db, user, discipline_code=discipline)
 
     latest_subq = (
         db.query(
@@ -901,9 +951,8 @@ def get_eligible_documents(
     )
     query = query.filter(MdrDocument.project_code == project, MdrDocument.deleted_at.is_(None))
 
-    discipline = _normalize_code(discipline_code)
-    if discipline:
-        query = query.filter(MdrDocument.discipline_code == discipline)
+    if discipline_codes:
+        query = query.filter(MdrDocument.discipline_code.in_(discipline_codes))
 
     if q:
         term = f"%{q.strip()}%"
@@ -966,6 +1015,7 @@ def get_transmittals(
                 "created_at": t.created_at,
                 "doc_count": len(t.docs),
                 "status": state_record["status"],
+                "direction": getattr(t, "direction", None),
                 **party_labels,
                 "void_reason": state_record["void_reason"],
                 "voided_by": state_record["voided_by"],
@@ -986,7 +1036,7 @@ def create_transmittal(
     receiver = _normalize_code(payload.receiver, "C")
 
     enforce_scope_access(db, user, project_code=project_code)
-    direction = sender if sender in {"I", "O"} else "O"
+    direction = _resolve_transmittal_direction(payload.direction, sender)
 
     docs_by_code = _validate_payload_documents(db, user, project_code, payload.documents)
 
@@ -1098,6 +1148,7 @@ def get_transmittal_detail(
         "project_code": tr.project_code,
         "sender": tr.sender,
         "receiver": tr.receiver,
+        "direction": tr.direction,
         **party_labels,
         "subject": _display_subject_with_labels(db, tr),
         "created_at": tr.created_at,
@@ -1133,11 +1184,12 @@ def edit_transmittal(
 
     sender = _normalize_code(payload.sender, "O")
     receiver = _normalize_code(payload.receiver, "C")
+    direction = _resolve_transmittal_direction(payload.direction, sender)
     docs_by_code = _validate_payload_documents(db, user, payload_project, payload.documents)
 
     tr.sender = sender
     tr.receiver = receiver
-    tr.direction = sender if sender in {"I", "O"} else "O"
+    tr.direction = direction
 
     db.query(TransmittalDoc).filter(TransmittalDoc.transmittal_id == tr.id).delete(synchronize_session=False)
     for doc_item in payload.documents:

@@ -17,6 +17,7 @@ export interface TransmittalPartyOption {
 
 export interface TransmittalOptionsPayload {
   direction_options: TransmittalPartyOption[];
+  sender_options?: TransmittalPartyOption[];
   recipient_options: TransmittalPartyOption[];
 }
 
@@ -123,6 +124,7 @@ async function loadOptions(deps: TransmittalDataHttpDeps): Promise<TransmittalOp
   const body = asRecord(await requestJson("/api/v1/transmittal/options", undefined, deps));
   return {
     direction_options: asArray<TransmittalPartyOption>(body.direction_options),
+    sender_options: asArray<TransmittalPartyOption>(body.sender_options),
     recipient_options: asArray<TransmittalPartyOption>(body.recipient_options),
   };
 }

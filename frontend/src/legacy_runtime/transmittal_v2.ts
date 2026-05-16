@@ -26,6 +26,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         printPreviewId: null,
         printPreviewUrl: "",
         directionOptions: [],
+        senderOptions: [],
         recipientOptions: [],
     };
 
@@ -129,43 +130,72 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         return normalizePartyOptions(state.recipientOptions, DEFAULT_RECIPIENT_OPTIONS);
     }
 
+    function senderOptions() {
+        return normalizePartyOptions(state.senderOptions, recipientOptions());
+    }
+
     function partyLabel(group, code, fallbackLabel = "") {
         const normalized = String(code || "").trim().toUpperCase();
         const fallback = String(fallbackLabel || "").trim();
         if (fallback) return fallback;
-        const options = group === "recipient" ? recipientOptions() : directionOptions();
+        const options = group === "recipient"
+            ? recipientOptions()
+            : (group === "sender" ? senderOptions() : directionOptions());
         const found = options.find((item) => item.code === normalized);
+        if (!found && group === "sender" && ["O", "I"].includes(normalized)) {
+            return partyLabel("direction", normalized);
+        }
         return found?.label || normalized || "-";
     }
 
     function renderPartySelectOptions(selectEl, options, selectedCode) {
         if (!selectEl) return;
         const selected = String(selectedCode || "").trim().toUpperCase();
-        selectEl.innerHTML = options.map((option) => {
+        const rows = [...options];
+        if (selected && !rows.some((option) => option.code === selected)) {
+            const labelGroup = selectEl.id === "tr2-sender"
+                ? "sender"
+                : (selectEl.id === "tr2-receiver" ? "recipient" : "direction");
+            rows.unshift({
+                code: selected,
+                label: partyLabel(labelGroup, selected),
+                is_active: true,
+                sort_order: -1,
+            });
+        }
+        selectEl.innerHTML = rows.map((option) => {
             const code = String(option.code || "").trim().toUpperCase();
             const label = String(option.label || code).trim();
             return `<option value="${escapeHtml(code)}" ${code === selected ? "selected" : ""}>${escapeHtml(label)}</option>`;
         }).join("");
-        if (selected && options.some((option) => option.code === selected)) {
+        if (selected && rows.some((option) => option.code === selected)) {
             selectEl.value = selected;
-        } else if (options[0]) {
-            selectEl.value = options[0].code;
+        } else if (rows[0]) {
+            selectEl.value = rows[0].code;
         }
     }
 
-    function renderPartySelects(senderValue = "O", receiverValue = "C") {
-        renderPartySelectOptions(document.getElementById("tr2-sender"), directionOptions(), senderValue);
-        renderPartySelectOptions(document.getElementById("tr2-receiver"), recipientOptions(), receiverValue);
+    function renderPartySelects(senderValue = "", receiverValue = "", directionValue = "O") {
+        const resolvedSender = String(senderValue || senderOptions()[0]?.code || recipientOptions()[0]?.code || "C").trim().toUpperCase();
+        const resolvedReceiver = String(receiverValue || recipientOptions()[0]?.code || "C").trim().toUpperCase();
+        renderPartySelectOptions(document.getElementById("tr2-sender"), senderOptions(), resolvedSender);
+        renderPartySelectOptions(document.getElementById("tr2-receiver"), recipientOptions(), resolvedReceiver);
+        renderPartySelectOptions(document.getElementById("tr2-direction"), directionOptions(), directionValue || "O");
     }
 
     function currentSenderCode() {
-        const fallback = directionOptions()[0]?.code || "O";
+        const fallback = senderOptions()[0]?.code || recipientOptions()[0]?.code || "C";
         return String(document.getElementById("tr2-sender")?.value || fallback).trim().toUpperCase() || fallback;
     }
 
     function currentReceiverCode() {
         const fallback = recipientOptions()[0]?.code || "C";
         return String(document.getElementById("tr2-receiver")?.value || fallback).trim().toUpperCase() || fallback;
+    }
+
+    function currentDirectionCode() {
+        const fallback = directionOptions()[0]?.code || "O";
+        return String(document.getElementById("tr2-direction")?.value || fallback).trim().toUpperCase() || fallback;
     }
 
     async function runTransmittalBulkAction(actionId, selectedKeys) {
@@ -381,7 +411,26 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     }
 
     function currentDisciplineCode() {
-        return String(document.getElementById("tr2-discipline")?.value || "").trim().toUpperCase();
+        const disciplineEl = document.getElementById("tr2-discipline");
+        if (disciplineEl instanceof HTMLSelectElement && disciplineEl.multiple) {
+            return Array.from(disciplineEl.selectedOptions)
+                .map((option) => String(option.value || "").trim().toUpperCase())
+                .filter(Boolean)
+                .join(",");
+        }
+        return String(disciplineEl?.value || "").trim().toUpperCase();
+    }
+
+    function setSelectedDisciplineCodes(codes = []) {
+        const disciplineEl = document.getElementById("tr2-discipline");
+        if (!(disciplineEl instanceof HTMLSelectElement)) return;
+        const selected = new Set((Array.isArray(codes) ? codes : [codes])
+            .map((code) => String(code || "").trim().toUpperCase())
+            .filter(Boolean));
+        Array.from(disciplineEl.options).forEach((option) => {
+            const code = String(option.value || "").trim().toUpperCase();
+            option.selected = selected.size ? selected.has(code) : code === "";
+        });
     }
 
     function currentHeaderStatus() {
@@ -409,16 +458,13 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         state.selectedDocs = [];
         state.searchDocs = [];
         const projectEl = document.getElementById("tr2-project");
-        const disciplineEl = document.getElementById("tr2-discipline");
-        const senderEl = document.getElementById("tr2-sender");
-        const receiverEl = document.getElementById("tr2-receiver");
         const subjectEl = document.getElementById("tr2-subject");
         const notesEl = document.getElementById("tr2-notes");
         const searchEl = document.getElementById("tr2-doc-search");
         const nextNoEl = document.getElementById("tr2-next-number");
         if (projectEl) projectEl.disabled = false;
-        if (disciplineEl) disciplineEl.value = "";
-        renderPartySelects("O", "C");
+        setSelectedDisciplineCodes([]);
+        renderPartySelects();
         if (subjectEl) subjectEl.value = "";
         if (notesEl) notesEl.value = "";
         if (searchEl) searchEl.value = "";
@@ -571,8 +617,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         const meta = document.getElementById("tr2-detail-drawer-meta");
         if (!drawer || !content) return;
         const relations = Array.isArray(detail?.correspondence_relations) ? detail.correspondence_relations : [];
-        const senderLabel = partyLabel("direction", detail?.sender, detail?.sender_label);
+        const senderLabel = partyLabel("sender", detail?.sender, detail?.sender_label);
         const receiverLabel = partyLabel("recipient", detail?.receiver, detail?.receiver_label);
+        const directionLabel = partyLabel("direction", detail?.direction, detail?.direction_label);
         if (meta) {
             meta.innerHTML = `
                 <span class="ci-form-badge ci-form-status-badge">${escapeHtml(formatStatusLabel(detail?.status))}</span>
@@ -590,11 +637,15 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             <div class="general-overview-grid" style="margin-bottom: 12px;">
                 <div class="general-overview-card">
                     <div class="general-overview-value">${escapeHtml(senderLabel)}</div>
-                    <div class="general-overview-label">جهت</div>
+                    <div class="general-overview-label">فرستنده</div>
                 </div>
                 <div class="general-overview-card">
                     <div class="general-overview-value">${escapeHtml(receiverLabel)}</div>
                     <div class="general-overview-label">طرف مقابل</div>
+                </div>
+                <div class="general-overview-card">
+                    <div class="general-overview-value">${escapeHtml(directionLabel)}</div>
+                    <div class="general-overview-label">جهت</div>
                 </div>
                 <div class="general-overview-card">
                     <div class="general-overview-value">${escapeHtml(formatStatusLabel(detail?.status))}</div>
@@ -700,9 +751,11 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             const options = await dataBridge.loadOptions({ fetch: getTransmittalFetchFn() });
             state.directionOptions = normalizePartyOptions(options?.direction_options, DEFAULT_DIRECTION_OPTIONS);
             state.recipientOptions = normalizePartyOptions(options?.recipient_options, DEFAULT_RECIPIENT_OPTIONS);
+            state.senderOptions = normalizePartyOptions(options?.sender_options, state.recipientOptions);
         } catch (_) {
             state.directionOptions = DEFAULT_DIRECTION_OPTIONS;
             state.recipientOptions = DEFAULT_RECIPIENT_OPTIONS;
+            state.senderOptions = DEFAULT_RECIPIENT_OPTIONS;
         }
     }
 
@@ -724,13 +777,14 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 return `<option value="${escapeHtml(code)}">${escapeHtml(label)}</option>`;
             }).join("");
         }
-        renderPartySelects("O", "C");
+        renderPartySelects();
         if (disciplineEl) {
             disciplineEl.innerHTML = `<option value="">همه دیسیپلین‌ها</option>` + disciplines.map((d) => {
                 const code = (d.code || "").toUpperCase();
                 const label = `${code} - ${d.name || code}`;
                 return `<option value="${escapeHtml(code)}">${escapeHtml(label)}</option>`;
             }).join("");
+            setSelectedDisciplineCodes([]);
         }
         state.createReady = true;
     }
@@ -776,7 +830,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             }
             tbody.innerHTML = state.listItems.map((t) => {
                 const status = normalizeTransmittalStatus(t.status);
-                const senderLabel = partyLabel("direction", t.sender, t.sender_label);
+                const senderLabel = partyLabel("sender", t.sender, t.sender_label);
                 const receiverLabel = partyLabel("recipient", t.receiver, t.receiver_label);
                 return `
                 <tr class="tr2-list-row" data-bulk-key="${escapeHtml(String(t.id || '').trim())}" data-transmittal-id="${escapeHtml(String(t.id || '').trim())}" data-transmittal-status="${escapeHtml(status)}">
@@ -840,9 +894,8 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             const status = String(pendingDoc.status || "IFA").trim() || "IFA";
 
             const projectEl = document.getElementById("tr2-project");
-            const disciplineEl = document.getElementById("tr2-discipline");
             if (projectEl && projectCode) projectEl.value = projectCode;
-            if (disciplineEl && disciplineCode) disciplineEl.value = disciplineCode;
+            if (disciplineCode) setSelectedDisciplineCodes([disciplineCode]);
 
             await refreshTransmittalNumber();
             await searchEligibleDocs();
@@ -888,17 +941,14 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             setEditBanner(detail.id, detail.status || "draft");
 
             const projectEl = document.getElementById("tr2-project");
-            const disciplineEl = document.getElementById("tr2-discipline");
-            const senderEl = document.getElementById("tr2-sender");
-            const receiverEl = document.getElementById("tr2-receiver");
             const subjectEl = document.getElementById("tr2-subject");
             const notesEl = document.getElementById("tr2-notes");
             if (projectEl) {
                 projectEl.value = (detail.project_code || "").toUpperCase();
                 projectEl.disabled = true;
             }
-            if (disciplineEl) disciplineEl.value = "";
-            renderPartySelects(detail.sender || "O", detail.receiver || "C");
+            setSelectedDisciplineCodes([]);
+            renderPartySelects(detail.sender || "", detail.receiver || "", detail.direction || "O");
             if (subjectEl) subjectEl.value = "";
             if (notesEl) notesEl.value = detail.notes || "";
 
@@ -1034,6 +1084,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         const project = currentProjectCode();
         const sender = currentSenderCode();
         const receiver = currentReceiverCode();
+        const direction = currentDirectionCode();
         const subject = String(document.getElementById("tr2-subject")?.value || "").trim();
         const notes = String(document.getElementById("tr2-notes")?.value || "").trim();
         const btn = document.getElementById("tr2-submit-btn");
@@ -1046,8 +1097,8 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             notify("error", "Ø­Ø¯Ø§Ù‚Ù„ ÛŒÚ© Ù…Ø¯Ø±Ú© Ø§Ù†ØªØ®Ø§Ø¨ Ú©Ù†ÛŒØ¯");
             return;
         }
-        if (!sender || !receiver) {
-            notify("error", "جهت و طرف مقابل ترنسمیتال الزامی است");
+        if (!sender || !receiver || !direction) {
+            notify("error", "فرستنده، طرف مقابل و جهت ترنسمیتال الزامی است");
             return;
         }
 
@@ -1059,6 +1110,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 project_code: project,
                 sender,
                 receiver,
+                direction,
                 subject,
                 notes,
                 issue_now: issueNow,

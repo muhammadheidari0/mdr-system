@@ -6444,6 +6444,8 @@ export interface components {
             sender?: string | null;
             /** Recipient */
             recipient?: string | null;
+            /** Cc Recipients */
+            cc_recipients?: string | null;
             /** Corr Date */
             corr_date?: string | null;
             /** Due Date */
@@ -6580,6 +6582,8 @@ export interface components {
             sender?: string | null;
             /** Recipient */
             recipient?: string | null;
+            /** Cc Recipients */
+            cc_recipients?: string | null;
             /** Corr Date */
             corr_date?: string | null;
             /** Due Date */
@@ -6752,6 +6756,15 @@ export interface components {
             revision: string;
             /** Status */
             status: string;
+            /**
+             * Default File Kind
+             * @default pdf
+             */
+            default_file_kind: string;
+            /** File Options */
+            file_options?: {
+                [key: string]: unknown;
+            }[];
         };
         /** EquipmentIn */
         EquipmentIn: {
@@ -8197,6 +8210,8 @@ export interface components {
             sender: string;
             /** Receiver */
             receiver: string;
+            /** Direction */
+            direction?: string | null;
             /** Subject */
             subject?: string | null;
             /** Notes */
@@ -8221,6 +8236,10 @@ export interface components {
             sender: string;
             /** Receiver */
             receiver: string;
+            /** Direction */
+            direction?: string | null;
+            /** Direction Label */
+            direction_label?: string | null;
             /** Sender Label */
             sender_label?: string | null;
             /** Receiver Label */
@@ -8256,6 +8275,11 @@ export interface components {
             /** Status */
             status: string;
             /**
+             * File Kind
+             * @default pdf
+             */
+            file_kind: string;
+            /**
              * Electronic Copy
              * @default true
              */
@@ -8267,6 +8291,14 @@ export interface components {
             hard_copy: boolean;
             /** Document Title */
             document_title?: string | null;
+            /** Remarks */
+            remarks?: string | null;
+            /** File Label */
+            file_label?: string | null;
+            /** File Options */
+            file_options?: {
+                [key: string]: unknown;
+            }[];
         };
         /** TransmittalPartiesIn */
         TransmittalPartiesIn: {
@@ -8309,6 +8341,10 @@ export interface components {
             doc_count: number;
             /** Status */
             status: string;
+            /** Direction */
+            direction?: string | null;
+            /** Direction Label */
+            direction_label?: string | null;
             /** Sender Label */
             sender_label?: string | null;
             /** Receiver Label */

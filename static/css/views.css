@@ -3156,7 +3156,7 @@ body.ci-drawer-open {
 
 .tr2-form-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 12px;
 }
 
@@ -3172,6 +3172,15 @@ body.ci-drawer-open {
 
 .tr2-field-wide {
     grid-column: span 2;
+}
+
+.tr2-multi-select {
+    min-height: 92px;
+    padding: 6px;
+}
+
+.tr2-multi-select option {
+    padding: 4px 6px;
 }
 
 .tr2-number-row {

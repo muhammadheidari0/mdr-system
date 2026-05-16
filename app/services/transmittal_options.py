@@ -165,6 +165,7 @@ def transmittal_options_payload(db: Session, *, active_only: bool = True) -> dic
         active_payload.get("recipient_options") or [],
         _organization_recipient_options(db, active_only=True),
     )
+    active_payload["sender_options"] = list(active_payload["recipient_options"])
     return active_payload
 
 

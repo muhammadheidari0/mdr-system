@@ -43,7 +43,7 @@
               <tr>
                 <th>شماره</th>
                 <th>موضوع</th>
-                <th>جهت</th>
+                <th>فرستنده</th>
                 <th>طرف مقابل</th>
                 <th>تعداد مدرک</th>
                 <th>وضعیت</th>
@@ -85,15 +85,19 @@
             </label>
             <label class="tr2-field">
               <span>دیسیپلین</span>
-              <select id="tr2-discipline" class="form-input"></select>
+              <select id="tr2-discipline" class="form-input tr2-multi-select" multiple size="4" title="برای همه دیسیپلین‌ها انتخابی نداشته باشید"></select>
             </label>
             <label class="tr2-field">
-              <span>جهت</span>
+              <span>فرستنده</span>
               <select id="tr2-sender" class="form-input"></select>
             </label>
             <label class="tr2-field">
               <span>طرف مقابل</span>
               <select id="tr2-receiver" class="form-input"></select>
+            </label>
+            <label class="tr2-field">
+              <span>جهت</span>
+              <select id="tr2-direction" class="form-input"></select>
             </label>
             <label class="tr2-field tr2-field-wide">
               <span>شماره خودکار</span>
