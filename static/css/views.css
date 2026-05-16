@@ -3624,6 +3624,18 @@ body.ci-drawer-open {
     gap: 8px;
 }
 
+.tr2-package-btn {
+    color: #047857;
+    border-color: #a7f3d0;
+    background: #ecfdf5;
+}
+
+.tr2-package-btn:hover {
+    color: #065f46;
+    border-color: #6ee7b7;
+    background: #d1fae5;
+}
+
 .tr2-detail-actions .material-icons-round,
 .tr2-editor-footer .material-icons-round,
 .tr2-number-row .material-icons-round {

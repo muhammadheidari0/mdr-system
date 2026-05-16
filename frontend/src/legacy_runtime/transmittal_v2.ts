@@ -738,6 +738,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         return `
             <div class="tr2-detail-actions">
                 ${status === "draft" ? `<button class="btn btn-primary" type="button" data-tr2-action="edit-item" data-id="${escapeHtml(id)}"><span class="material-icons-round">edit</span>ویرایش کامل</button>` : ""}
+                <button class="btn btn-secondary tr2-package-btn" type="button" data-tr2-action="download-package" data-id="${escapeHtml(id)}"><span class="material-icons-round">folder_zip</span>دانلود پکیج کامل</button>
                 <button class="btn btn-secondary" type="button" data-tr2-action="download-cover" data-id="${escapeHtml(id)}"><span class="material-icons-round">preview</span>پیش‌نمایش چاپ</button>
                 ${status === "draft" ? `<button class="btn btn-primary" type="button" data-tr2-action="issue-item" data-id="${escapeHtml(id)}"><span class="material-icons-round">send</span>صدور</button>` : ""}
                 ${status === "draft" || status === "issued" ? `<button class="btn btn-secondary" type="button" data-tr2-action="void-item" data-id="${escapeHtml(id)}"><span class="material-icons-round">cancel</span>ابطال</button>` : ""}
@@ -1376,6 +1377,22 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         }
     };
 
+    window.downloadTransmittalPackage = async function downloadTransmittalPackage(id) {
+        const transmittalId = String(id || "").trim();
+        if (!transmittalId) {
+            notify("error", "ترنسمیتال برای دانلود پکیج مشخص نیست");
+            return;
+        }
+        try {
+            const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
+            const blob = await mutationBridge.downloadPackage(transmittalId, { fetch: getTransmittalFetchFn() });
+            downloadBlob(blob, `Transmittal_${transmittalId}_package.zip`);
+            notify("success", "پکیج کامل ترنسمیتال دانلود شد");
+        } catch (error) {
+            notify("error", error.message || "دانلود پکیج ترنسمیتال ناموفق بود");
+        }
+    };
+
     window.downloadTransmittalCover = async function downloadTransmittalCover(id) {
         try {
             const mutationBridge = requireBridge(TS_TRANSMITTAL_MUTATIONS, "Transmittal mutations");
@@ -1414,6 +1431,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             submitDraft: () => window.submitTransmittal(),
             submitIssue: () => window.submitAndIssueTransmittal(),
             downloadCover: (id) => window.downloadTransmittalCover(id),
+            downloadPackage: (id) => window.downloadTransmittalPackage(id),
             closePrintPreview: () => window.closeTransmittalPrintPreview(),
             printPreview: () => window.printTransmittalPreview(),
             downloadPreview: () => window.downloadTransmittalPreviewPdf(),

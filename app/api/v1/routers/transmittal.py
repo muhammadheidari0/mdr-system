@@ -1,7 +1,13 @@
 from datetime import date, datetime
+import csv
 from html import escape as html_escape
+import io
+import os
+import re
+import tempfile
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
+import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -27,7 +33,10 @@ from app.db.models import (
     TransmittalDoc,
 )
 from app.services.document_activity_service import log_document_activity
+from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.pdf_service import generate_transmittal_pdf
+from app.services.storage_policy import get_storage_integrations
+from app.services.storage_sync import resolve_nextcloud_runtime
 from app.services.transmittal_options import (
     transmittal_options_payload,
     transmittal_party_label,
@@ -39,6 +48,7 @@ STATE_ISSUED = "issued"
 STATE_VOID = "void"
 EDITABLE_STATES = {STATE_DRAFT}
 VOIDABLE_STATES = {STATE_DRAFT, STATE_ISSUED}
+ZIP_CHUNK_SIZE = 1024 * 1024
 
 
 class TransmittalDocItem(BaseModel):
@@ -441,6 +451,305 @@ def _download_link_html(url: Optional[str]) -> str:
         return "-"
     escaped_url = html_escape(url, quote=True)
     return f'<a class="download-link" href="{escaped_url}" target="_blank" rel="noopener noreferrer">دانلود</a>'
+
+
+def _zip_safe_segment(value: Any, fallback: str) -> str:
+    text = str(value if value is not None else "").strip() or fallback
+    text = text.replace("\\", "_").replace("/", "_")
+    text = re.sub(r'[<>:"|?*\x00-\x1f]+', "_", text)
+    text = re.sub(r"\s+", " ", text).strip(" .")
+    return text or fallback
+
+
+def _unique_zip_name(used_names: set[str], name: str) -> str:
+    normalized = name.strip("/")
+    if normalized not in used_names:
+        used_names.add(normalized)
+        return normalized
+    base, ext = os.path.splitext(normalized)
+    counter = 2
+    while True:
+        candidate = f"{base}__{counter}{ext}"
+        if candidate not in used_names:
+            used_names.add(candidate)
+            return candidate
+        counter += 1
+
+
+def _transmittal_package_root(transmittal_id: Any) -> str:
+    return f"Transmittal_{_zip_safe_segment(transmittal_id, 'transmittal')}"
+
+
+def _package_local_path(stored_path: str) -> str:
+    if stored_path.startswith("local://"):
+        return stored_path.replace("local://", "", 1)
+    return stored_path
+
+
+def _package_nextcloud_adapter(db: Session, cache: dict[str, Any]) -> NextcloudAdapter:
+    adapter = cache.get("nextcloud_adapter")
+    if isinstance(adapter, NextcloudAdapter):
+        return adapter
+    integrations = get_storage_integrations(db)
+    runtime = resolve_nextcloud_runtime(integrations)
+    if not runtime.get("enabled") or runtime.get("mode") != "webdav":
+        raise HTTPException(status_code=503, detail="WebDAV storage not configured.")
+    adapter = NextcloudAdapter(
+        base_url=str(runtime.get("base_url") or ""),
+        username=str(runtime.get("username") or ""),
+        app_password=str(runtime.get("app_password") or ""),
+        root_path=str(runtime.get("root_path") or ""),
+        connect_timeout=float(runtime.get("connect_timeout") or 5),
+        read_timeout=float(runtime.get("read_timeout") or 60),
+        tls_verify=bool(runtime.get("tls_verify")),
+    )
+    cache["nextcloud_adapter"] = adapter
+    return adapter
+
+
+def _package_archive_file_exists(db: Session, file_record: ArchiveFile, cache: dict[str, Any]) -> bool:
+    stored_path = str(file_record.stored_path or "").strip()
+    if not stored_path:
+        return False
+    if stored_path.startswith("webdav://"):
+        adapter = _package_nextcloud_adapter(db, cache)
+        return bool(adapter.file_exists(stored_path.replace("webdav://", "", 1)))
+    return os.path.exists(_package_local_path(stored_path))
+
+
+def _write_archive_file_to_zip(
+    db: Session,
+    zip_handle: zipfile.ZipFile,
+    file_record: ArchiveFile,
+    zip_name: str,
+    cache: dict[str, Any],
+) -> None:
+    stored_path = str(file_record.stored_path or "").strip()
+    if stored_path.startswith("webdav://"):
+        adapter = _package_nextcloud_adapter(db, cache)
+        remote_path = stored_path.replace("webdav://", "", 1)
+        with zip_handle.open(zip_name, "w") as target:
+            for chunk in adapter.download_file_stream(remote_path):
+                if chunk:
+                    target.write(chunk)
+        return
+
+    local_path = _package_local_path(stored_path)
+    with open(local_path, "rb") as source, zip_handle.open(zip_name, "w") as target:
+        while True:
+            chunk = source.read(ZIP_CHUNK_SIZE)
+            if not chunk:
+                break
+            target.write(chunk)
+
+
+def _transmittal_doc_archive_file(
+    db: Session,
+    document: Optional[MdrDocument],
+    transmittal_doc: TransmittalDoc,
+) -> Optional[ArchiveFile]:
+    if document is None:
+        return None
+    selected_kind = _normalize_transmittal_file_kind(getattr(transmittal_doc, "file_kind", "pdf"))
+    revision_code = _safe_text(getattr(transmittal_doc, "revision", None), "").strip()
+    rows = (
+        db.query(ArchiveFile, DocumentRevision)
+        .join(DocumentRevision, ArchiveFile.revision_id == DocumentRevision.id)
+        .filter(
+            DocumentRevision.document_id == document.id,
+            ArchiveFile.deleted_at.is_(None),
+        )
+        .all()
+    )
+
+    def sort_key(pair: tuple[ArchiveFile, DocumentRevision]) -> tuple[int, datetime, datetime, int]:
+        archive_file, revision = pair
+        exact = 1 if revision_code and (
+            str(revision.revision or "").strip() == revision_code
+            or str(archive_file.revision or "").strip() == revision_code
+        ) else 0
+        return (
+            exact,
+            revision.created_at or datetime.min,
+            archive_file.uploaded_at or datetime.min,
+            int(archive_file.id or 0),
+        )
+
+    candidates = [
+        (archive_file, revision)
+        for archive_file, revision in rows
+        if _archive_file_kind(archive_file) == selected_kind
+    ]
+    if candidates:
+        candidates.sort(key=sort_key, reverse=True)
+        return candidates[0][0]
+
+    if selected_kind == "pdf":
+        revision = _document_revision_by_code(document, revision_code)
+        if revision is not None:
+            legacy_path = str(revision.file_path or "").strip()
+            legacy_name = str(revision.file_name or os.path.basename(legacy_path) or "").strip()
+            if legacy_path and legacy_name.lower().endswith(".pdf"):
+                return SimpleNamespace(
+                    id=None,
+                    original_name=legacy_name or f"{document.doc_number}.pdf",
+                    stored_path=legacy_path,
+                    mime_type="application/pdf",
+                    detected_mime="application/pdf",
+                    size_bytes=None,
+                    file_kind="pdf",
+                    revision=revision.revision,
+                    status=revision.status,
+                    uploaded_at=revision.created_at,
+                )
+    return None
+
+
+def _build_manifest_csv(rows: list[dict[str, Any]]) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "Row",
+            "Document No",
+            "Revision",
+            "Status",
+            "File Type",
+            "E-Copy",
+            "Hard",
+            "Package Status",
+            "Zip Path",
+            "Remarks",
+        ]
+    )
+    for row in rows:
+        writer.writerow(
+            [
+                row.get("row") or "",
+                row.get("document_code") or "",
+                row.get("revision") or "",
+                row.get("status") or "",
+                row.get("file_label") or "",
+                "Yes" if row.get("electronic_copy") else "No",
+                "Yes" if row.get("hard_copy") else "No",
+                row.get("package_status") or "",
+                row.get("zip_path") or "",
+                row.get("remarks") or "",
+            ]
+        )
+    return "\ufeff" + buffer.getvalue()
+
+
+def _build_transmittal_package_zip(db: Session, tr: Transmittal) -> tempfile.SpooledTemporaryFile:
+    root = _transmittal_package_root(tr.id)
+    used_names: set[str] = set()
+    manifest_rows: list[dict[str, Any]] = []
+    adapter_cache: dict[str, Any] = {}
+    package_file = tempfile.SpooledTemporaryFile(max_size=64 * 1024 * 1024, mode="w+b")
+
+    doc_codes = [str(doc.document_code or "").strip() for doc in tr.docs if str(doc.document_code or "").strip()]
+    mdr_rows: dict[str, MdrDocument] = {}
+    if doc_codes:
+        mdr_rows = {
+            row.doc_number: row
+            for row in db.query(MdrDocument).filter(MdrDocument.doc_number.in_(doc_codes)).all()
+        }
+
+    try:
+        with zipfile.ZipFile(package_file, "w", compression=zipfile.ZIP_DEFLATED, allowZip64=True) as zip_handle:
+            state_record = _get_transmittal_state_record(tr)
+            watermark_text = None
+            if state_record["status"] == STATE_DRAFT:
+                watermark_text = "DRAFT - NOT ISSUED"
+            elif state_record["status"] == STATE_VOID:
+                watermark_text = "VOID"
+            cover_buffer = generate_transmittal_pdf(
+                _build_transmittal_pdf_payload(db, tr),
+                project_name=f"Project {tr.project_code}",
+                watermark_text=watermark_text,
+            )
+            cover_buffer.seek(0)
+            cover_name = _unique_zip_name(
+                used_names,
+                f"{root}/00_Cover/Transmittal_{_zip_safe_segment(tr.id, 'transmittal')}.pdf",
+            )
+            zip_handle.writestr(cover_name, cover_buffer.read())
+
+            for idx, doc in enumerate(tr.docs, 1):
+                selected_kind = _normalize_transmittal_file_kind(getattr(doc, "file_kind", "pdf"))
+                file_label = _transmittal_file_label(selected_kind)
+                doc_code = _safe_text(getattr(doc, "document_code", None), "-")
+                revision = _safe_text(getattr(doc, "revision", None), "00")
+                manifest_row = {
+                    "row": idx,
+                    "document_code": doc_code,
+                    "revision": revision,
+                    "status": _safe_text(getattr(doc, "status", None), "IFA"),
+                    "file_label": file_label,
+                    "electronic_copy": bool(getattr(doc, "electronic_copy", False)),
+                    "hard_copy": bool(getattr(doc, "hard_copy", False)),
+                    "remarks": _safe_text(getattr(doc, "remarks", None), ""),
+                    "zip_path": "",
+                    "package_status": "",
+                }
+                if not manifest_row["electronic_copy"]:
+                    manifest_row["package_status"] = "hard-copy-only"
+                    manifest_rows.append(manifest_row)
+                    continue
+
+                file_record = _transmittal_doc_archive_file(db, mdr_rows.get(doc_code), doc)
+                if file_record is None:
+                    manifest_row["package_status"] = "missing-file-record"
+                    manifest_rows.append(manifest_row)
+                    continue
+                if not _package_archive_file_exists(db, file_record, adapter_cache):
+                    manifest_row["package_status"] = "missing-physical-file"
+                    manifest_rows.append(manifest_row)
+                    continue
+
+                original_name = _zip_safe_segment(
+                    getattr(file_record, "original_name", None),
+                    f"{doc_code}.{'pdf' if selected_kind == 'pdf' else 'native'}",
+                )
+                extension = os.path.splitext(original_name)[1] or (".pdf" if selected_kind == "pdf" else "")
+                folder = "01_Documents/PDF" if selected_kind == "pdf" else "01_Documents/Native"
+                zip_doc_name = _unique_zip_name(
+                    used_names,
+                    (
+                        f"{root}/{folder}/"
+                        f"{idx:03d}_{_zip_safe_segment(doc_code, 'document')}_"
+                        f"Rev-{_zip_safe_segment(revision, '00')}_{file_label}{extension}"
+                    ),
+                )
+                _write_archive_file_to_zip(db, zip_handle, file_record, zip_doc_name, adapter_cache)
+                manifest_row["package_status"] = "included"
+                manifest_row["zip_path"] = zip_doc_name
+                manifest_rows.append(manifest_row)
+
+            zip_handle.writestr(
+                _unique_zip_name(used_names, f"{root}/manifest.csv"),
+                _build_manifest_csv(manifest_rows).encode("utf-8"),
+            )
+            readme_lines = [
+                f"Transmittal package: {tr.id}",
+                f"Generated at: {datetime.utcnow().isoformat()}Z",
+                "",
+                "Folders:",
+                "- 00_Cover: transmittal cover sheet PDF",
+                "- 01_Documents/PDF: selected PDF files",
+                "- 01_Documents/Native: selected editable/native files",
+                "",
+                "See manifest.csv for included and missing files.",
+            ]
+            zip_handle.writestr(
+                _unique_zip_name(used_names, f"{root}/README.txt"),
+                "\n".join(readme_lines).encode("utf-8"),
+            )
+        package_file.seek(0)
+        return package_file
+    except Exception:
+        package_file.close()
+        raise
 
 
 def _build_transmittal_pdf_payload(db: Session, tr: Transmittal) -> SimpleNamespace:
@@ -1352,6 +1661,36 @@ def download_cover_sheet(
         pdf_buffer,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/{transmittal_id}/download-package")
+def download_transmittal_package(
+    transmittal_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("transmittal:read")),
+):
+    tr = db.query(Transmittal).filter(Transmittal.id == transmittal_id).first()
+    if not tr:
+        raise HTTPException(status_code=404, detail="Transmittal not found")
+    enforce_scope_access(db, user, project_code=tr.project_code)
+    package_file = _build_transmittal_package_zip(db, tr)
+    filename = f"Transmittal_{_zip_safe_segment(tr.id, 'transmittal')}_package.zip"
+
+    def file_iterator():
+        try:
+            while True:
+                chunk = package_file.read(ZIP_CHUNK_SIZE)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            package_file.close()
+
+    return StreamingResponse(
+        file_iterator(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

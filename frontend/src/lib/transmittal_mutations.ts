@@ -39,6 +39,7 @@ export interface TransmittalMutationsBridge {
   ): Promise<Record<string, unknown>>;
   previewCover(transmittalId: string, deps: TransmittalMutationHttpDeps): Promise<{ html: string; fileName: string }>;
   downloadCover(transmittalId: string, deps: TransmittalMutationHttpDeps): Promise<Blob>;
+  downloadPackage(transmittalId: string, deps: TransmittalMutationHttpDeps): Promise<Blob>;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -139,6 +140,19 @@ async function downloadCover(transmittalId: string, deps: TransmittalMutationHtt
   return response.blob();
 }
 
+async function downloadPackage(transmittalId: string, deps: TransmittalMutationHttpDeps): Promise<Blob> {
+  const id = String(transmittalId || "").trim();
+  const response = await deps.fetch(`/api/v1/transmittal/${encodeURIComponent(id)}/download-package`);
+  if (!response.ok) {
+    let message = "Package download failed";
+    const body = asRecord(await parseJsonSafe(response.clone()));
+    const detail = String(body.detail || body.message || "").trim();
+    if (detail) message = detail;
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
 async function previewCover(
   transmittalId: string,
   deps: TransmittalMutationHttpDeps
@@ -167,5 +181,6 @@ export function createTransmittalMutationsBridge(): TransmittalMutationsBridge {
     voidItem,
     previewCover,
     downloadCover,
+    downloadPackage,
   };
 }

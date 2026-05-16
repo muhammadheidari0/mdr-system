@@ -11,6 +11,7 @@ export interface TransmittalTemplateActionDeps {
   submitDraft: () => Promise<void> | void;
   submitIssue: () => Promise<void> | void;
   downloadCover?: (id: string) => Promise<void> | void;
+  downloadPackage?: (id: string) => Promise<void> | void;
   closePrintPreview?: () => Promise<void> | void;
   printPreview?: () => Promise<void> | void;
   downloadPreview?: () => Promise<void> | void;
@@ -135,6 +136,11 @@ function bindTemplateActions(root: HTMLElement | null, deps: TransmittalTemplate
       case "download-cover": {
         const id = String(actionEl.getAttribute("data-id") || "").trim();
         if (id && deps.downloadCover) await invoke(() => deps.downloadCover?.(id));
+        break;
+      }
+      case "download-package": {
+        const id = String(actionEl.getAttribute("data-id") || "").trim();
+        if (id && deps.downloadPackage) await invoke(() => deps.downloadPackage?.(id));
         break;
       }
       case "close-print-preview":

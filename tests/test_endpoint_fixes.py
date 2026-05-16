@@ -1,4 +1,6 @@
+import io
 import uuid
+import zipfile
 from datetime import datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -196,6 +198,146 @@ def test_transmittal_download_cover_returns_pdf_attachment():
                 document = db.query(MdrDocument).filter(MdrDocument.id == document_id).first()
                 if document is not None:
                     db.delete(document)
+            db.commit()
+
+
+def test_transmittal_download_package_zip_contains_cover_manifest_and_files(tmp_path):
+    headers = _auth_headers()
+    project_code, discipline_code = ensure_project_discipline(client, headers)
+    doc_number = f"{project_code}-PKG-{uuid.uuid4().hex[:6].upper()}-TGEN"
+    pdf_path = tmp_path / f"{doc_number}.pdf"
+    native_path = tmp_path / f"{doc_number}.xlsx"
+    pdf_payload = b"%PDF-1.4\n%package-test-pdf\n"
+    native_payload = b"native-editable-package-test"
+    pdf_path.write_bytes(pdf_payload)
+    native_path.write_bytes(native_payload)
+
+    created_transmittal_no = ""
+    document_id = 0
+    revision_id = 0
+    archive_file_ids: list[int] = []
+
+    with SessionLocal() as db:
+        document = MdrDocument(
+            doc_number=doc_number,
+            doc_title_e="Transmittal Package Test Document",
+            doc_title_p="Transmittal Package Test Document",
+            subject="Transmittal Package Test Document",
+            project_code=project_code,
+            discipline_code=discipline_code,
+            mdr_code="E",
+            package_code=None,
+            block="T",
+            level_code=None,
+        )
+        db.add(document)
+        db.flush()
+        document_id = int(document.id or 0)
+        revision = DocumentRevision(
+            document_id=document_id,
+            revision="00",
+            status="IFA",
+            file_name=pdf_path.name,
+            file_path=str(pdf_path),
+        )
+        db.add(revision)
+        db.flush()
+        revision_id = int(revision.id or 0)
+        for file_kind, path, mime in (
+            ("pdf", pdf_path, "application/pdf"),
+            ("native", native_path, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        ):
+            archive_file = ArchiveFile(
+                revision_id=revision_id,
+                original_name=path.name,
+                stored_path=str(path),
+                mime_type=mime,
+                detected_mime=mime,
+                size_bytes=path.stat().st_size,
+                storage_backend="local",
+                file_kind=file_kind,
+                is_primary=True,
+                revision="00",
+                status="IFA",
+            )
+            db.add(archive_file)
+            db.flush()
+            archive_file_ids.append(int(archive_file.id or 0))
+        db.commit()
+
+    try:
+        create_response = client.post(
+            "/api/v1/transmittal/create",
+            headers={**headers, "Content-Type": "application/json"},
+            json={
+                "project_code": project_code,
+                "sender": "O",
+                "receiver": "C",
+                "subject": f"package-{uuid.uuid4().hex[:6]}",
+                "notes": "",
+                "documents": [
+                    {
+                        "document_code": doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "pdf",
+                        "remarks": "PDF package copy",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    },
+                    {
+                        "document_code": doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "native",
+                        "remarks": "Native package copy",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    },
+                ],
+            },
+        )
+        assert create_response.status_code == 200, create_response.text
+        created_transmittal_no = create_response.json()["transmittal_no"]
+
+        package_response = client.get(
+            f"/api/v1/transmittal/{created_transmittal_no}/download-package",
+            headers=headers,
+        )
+        assert package_response.status_code == 200, package_response.text
+        assert package_response.headers.get("content-type", "").startswith("application/zip")
+        disposition = package_response.headers.get("content-disposition", "").lower()
+        assert "attachment" in disposition
+        assert created_transmittal_no.lower() in disposition
+
+        with zipfile.ZipFile(io.BytesIO(package_response.content)) as package_zip:
+            names = package_zip.namelist()
+            assert any(name.endswith(".pdf") and "/00_Cover/" in name for name in names)
+            pdf_entry = next(name for name in names if "/01_Documents/PDF/" in name and name.endswith(".pdf"))
+            native_entry = next(name for name in names if "/01_Documents/Native/" in name and name.endswith(".xlsx"))
+            manifest_entry = next(name for name in names if name.endswith("/manifest.csv"))
+            assert package_zip.read(pdf_entry) == pdf_payload
+            assert package_zip.read(native_entry) == native_payload
+            manifest_text = package_zip.read(manifest_entry).decode("utf-8-sig")
+            assert doc_number in manifest_text
+            assert "PDF package copy" in manifest_text
+            assert "Native package copy" in manifest_text
+            assert manifest_text.count("included") == 2
+    finally:
+        with SessionLocal() as db:
+            if created_transmittal_no:
+                db.query(TransmittalDoc).filter(TransmittalDoc.transmittal_id == created_transmittal_no).delete(
+                    synchronize_session=False
+                )
+                db.query(Transmittal).filter(Transmittal.id == created_transmittal_no).delete(
+                    synchronize_session=False
+                )
+            if archive_file_ids:
+                db.query(ArchiveFile).filter(ArchiveFile.id.in_(archive_file_ids)).delete(synchronize_session=False)
+            if revision_id > 0:
+                db.query(DocumentRevision).filter(DocumentRevision.id == revision_id).delete(synchronize_session=False)
+            if document_id > 0:
+                db.query(MdrDocument).filter(MdrDocument.id == document_id).delete(synchronize_session=False)
             db.commit()
 
 
