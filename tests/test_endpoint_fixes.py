@@ -195,13 +195,21 @@ def test_transmittal_document_file_kind_options_and_validation():
     project_code, discipline_code = ensure_project_discipline(client, headers)
     dual_doc_number = f"{project_code}-DUAL-{uuid.uuid4().hex[:6].upper()}-TGEN"
     pdf_doc_number = f"{project_code}-PDFONLY-{uuid.uuid4().hex[:6].upper()}-TGEN"
+    native_doc_number = f"{project_code}-DWGONLY-{uuid.uuid4().hex[:6].upper()}-TGEN"
     created_transmittal_no = ""
     document_ids: list[int] = []
     revision_ids: list[int] = []
     archive_file_ids: list[int] = []
+    share_urls: dict[str, str] = {}
 
     with SessionLocal() as db:
-        for doc_number, include_native in ((dual_doc_number, True), (pdf_doc_number, False)):
+        for doc_number, file_kinds in (
+            (dual_doc_number, ("pdf", "native")),
+            (pdf_doc_number, ("pdf",)),
+            (native_doc_number, ("native",)),
+        ):
+            first_kind = file_kinds[0]
+            first_ext = "dwg" if first_kind == "native" else "pdf"
             document = MdrDocument(
                 doc_number=doc_number,
                 doc_title_e=f"Transmittal File Kind {doc_number}",
@@ -221,45 +229,46 @@ def test_transmittal_document_file_kind_options_and_validation():
                 document_id=int(document.id or 0),
                 revision="00",
                 status="IFA",
-                file_name=f"{doc_number}.pdf",
-                file_path=f"local://Archive/{doc_number}.pdf",
+                file_name=f"{doc_number}.{first_ext}",
+                file_path=f"local://Archive/{doc_number}.{first_ext}",
             )
             db.add(revision)
             db.flush()
             revision_ids.append(int(revision.id or 0))
-            pdf_file = ArchiveFile(
-                revision_id=int(revision.id or 0),
-                original_name=f"{doc_number}.pdf",
-                stored_path=f"local://Archive/{doc_number}.pdf",
-                mime_type="application/pdf",
-                detected_mime="application/pdf",
-                size_bytes=1024,
-                storage_backend="local",
-                file_kind="pdf",
-                is_primary=True,
-                revision="00",
-                status="IFA",
-            )
-            db.add(pdf_file)
-            db.flush()
-            archive_file_ids.append(int(pdf_file.id or 0))
-            if include_native:
-                native_file = ArchiveFile(
+            for file_kind in file_kinds:
+                ext = "dwg" if file_kind == "native" else "pdf"
+                mime = "application/acad" if file_kind == "native" else "application/pdf"
+                archive_file = ArchiveFile(
                     revision_id=int(revision.id or 0),
-                    original_name=f"{doc_number}.dwg",
-                    stored_path=f"local://Archive/{doc_number}.dwg",
-                    mime_type="application/acad",
-                    detected_mime="application/acad",
-                    size_bytes=2048,
+                    original_name=f"{doc_number}.{ext}",
+                    stored_path=f"local://Archive/{doc_number}.{ext}",
+                    mime_type=mime,
+                    detected_mime=mime,
+                    size_bytes=2048 if file_kind == "native" else 1024,
                     storage_backend="local",
-                    file_kind="native",
+                    file_kind=file_kind,
                     is_primary=True,
                     revision="00",
                     status="IFA",
                 )
-                db.add(native_file)
+                db.add(archive_file)
                 db.flush()
-                archive_file_ids.append(int(native_file.id or 0))
+                archive_file_ids.append(int(archive_file.id or 0))
+                share_url = f"https://cloud.example.test/s/{uuid.uuid4().hex}"
+                share_urls[f"{doc_number}:{file_kind}"] = share_url
+                db.add(
+                    ArchiveFilePublicShare(
+                        file_id=int(archive_file.id or 0),
+                        provider="nextcloud",
+                        provider_share_id=f"share-{uuid.uuid4().hex[:8]}",
+                        share_url=share_url,
+                        resolved_path=f"/Archive/{doc_number}.{ext}",
+                        source="primary_nextcloud",
+                        permissions=1,
+                        password_set=False,
+                        expires_at=datetime.utcnow() + timedelta(days=30),
+                    )
+                )
         db.commit()
 
     try:
@@ -273,6 +282,26 @@ def test_transmittal_document_file_kind_options_and_validation():
         assert row.get("default_file_kind") == "pdf"
         assert {item.get("value") for item in row.get("file_options") or []} == {"pdf", "native"}
 
+        pdf_only_response = client.get(
+            "/api/v1/transmittal/eligible-docs",
+            params={"project_code": project_code, "q": pdf_doc_number},
+            headers=headers,
+        )
+        assert pdf_only_response.status_code == 200, pdf_only_response.text
+        pdf_only_row = next(item for item in pdf_only_response.json() if item.get("doc_number") == pdf_doc_number)
+        assert {item.get("value") for item in pdf_only_row.get("file_options") or []} == {"pdf"}
+
+        native_only_response = client.get(
+            "/api/v1/transmittal/eligible-docs",
+            params={"project_code": project_code, "q": native_doc_number},
+            headers=headers,
+        )
+        assert native_only_response.status_code == 200, native_only_response.text
+        native_only_row = next(
+            item for item in native_only_response.json() if item.get("doc_number") == native_doc_number
+        )
+        assert {item.get("value") for item in native_only_row.get("file_options") or []} == {"native"}
+
         create_response = client.post(
             "/api/v1/transmittal/create",
             headers={**headers, "Content-Type": "application/json"},
@@ -283,6 +312,14 @@ def test_transmittal_document_file_kind_options_and_validation():
                 "subject": f"file-kind-{uuid.uuid4().hex[:6]}",
                 "notes": "",
                 "documents": [
+                    {
+                        "document_code": dual_doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "pdf",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    },
                     {
                         "document_code": dual_doc_number,
                         "revision": "00",
@@ -299,9 +336,50 @@ def test_transmittal_document_file_kind_options_and_validation():
 
         detail_response = client.get(f"/api/v1/transmittal/item/{created_transmittal_no}", headers=headers)
         assert detail_response.status_code == 200, detail_response.text
-        detail_doc = next(item for item in detail_response.json().get("documents") or [])
-        assert detail_doc.get("file_kind") == "native"
-        assert detail_doc.get("file_label") == "DWG"
+        detail_docs = detail_response.json().get("documents") or []
+        indexed_detail_docs = {item.get("file_kind"): item for item in detail_docs}
+        assert set(indexed_detail_docs.keys()) == {"pdf", "native"}
+        assert indexed_detail_docs["pdf"].get("file_label") == "PDF"
+        assert indexed_detail_docs["native"].get("file_label") == "DWG"
+
+        preview_response = client.get(f"/api/v1/transmittal/{created_transmittal_no}/print-preview", headers=headers)
+        assert preview_response.status_code == 200, preview_response.text
+        assert "PDF" in preview_response.text
+        assert "DWG" in preview_response.text
+        assert share_urls[f"{dual_doc_number}:pdf"] in preview_response.text
+        assert share_urls[f"{dual_doc_number}:native"] in preview_response.text
+
+        duplicate_response = client.post(
+            "/api/v1/transmittal/create",
+            headers={**headers, "Content-Type": "application/json"},
+            json={
+                "project_code": project_code,
+                "sender": "O",
+                "receiver": "C",
+                "subject": f"duplicate-kind-{uuid.uuid4().hex[:6]}",
+                "notes": "",
+                "documents": [
+                    {
+                        "document_code": dual_doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "pdf",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    },
+                    {
+                        "document_code": dual_doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "pdf",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    },
+                ],
+            },
+        )
+        assert duplicate_response.status_code == 400, duplicate_response.text
+        assert "Duplicate document_code and file_kind" in duplicate_response.text
 
         invalid_response = client.post(
             "/api/v1/transmittal/create",
@@ -326,6 +404,30 @@ def test_transmittal_document_file_kind_options_and_validation():
         )
         assert invalid_response.status_code == 400, invalid_response.text
         assert "not available" in invalid_response.text
+
+        invalid_pdf_response = client.post(
+            "/api/v1/transmittal/create",
+            headers={**headers, "Content-Type": "application/json"},
+            json={
+                "project_code": project_code,
+                "sender": "O",
+                "receiver": "C",
+                "subject": f"invalid-pdf-{uuid.uuid4().hex[:6]}",
+                "notes": "",
+                "documents": [
+                    {
+                        "document_code": native_doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "pdf",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    }
+                ],
+            },
+        )
+        assert invalid_pdf_response.status_code == 400, invalid_pdf_response.text
+        assert "not available" in invalid_pdf_response.text
     finally:
         with SessionLocal() as db:
             if created_transmittal_no:
@@ -336,6 +438,9 @@ def test_transmittal_document_file_kind_options_and_validation():
                     synchronize_session=False
                 )
             if archive_file_ids:
+                db.query(ArchiveFilePublicShare).filter(ArchiveFilePublicShare.file_id.in_(archive_file_ids)).delete(
+                    synchronize_session=False
+                )
                 db.query(ArchiveFile).filter(ArchiveFile.id.in_(archive_file_ids)).delete(synchronize_session=False)
             if revision_ids:
                 db.query(DocumentRevision).filter(DocumentRevision.id.in_(revision_ids)).delete(synchronize_session=False)

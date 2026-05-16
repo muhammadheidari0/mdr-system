@@ -19,7 +19,7 @@ export interface TransmittalTemplateActionDeps {
   editItem?: (id: string) => Promise<void> | void;
   issueItem?: (id: string) => Promise<void> | void;
   voidItem?: (id: string) => Promise<void> | void;
-  addDoc?: (docNumber: string) => Promise<void> | void;
+  addDoc?: (docNumber: string, fileKind?: string) => Promise<void> | void;
   removeDoc?: (index: number) => Promise<void> | void;
 }
 
@@ -171,7 +171,8 @@ function bindTemplateActions(root: HTMLElement | null, deps: TransmittalTemplate
       }
       case "doc-add": {
         const docNumber = String(actionEl.getAttribute("data-doc-number") || "").trim();
-        if (docNumber && deps.addDoc) await invoke(() => deps.addDoc?.(docNumber));
+        const fileKind = String(actionEl.getAttribute("data-file-kind") || "").trim();
+        if (docNumber && deps.addDoc) await invoke(() => deps.addDoc?.(docNumber, fileKind));
         break;
       }
       case "doc-remove": {

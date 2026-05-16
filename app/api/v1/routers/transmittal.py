@@ -116,19 +116,22 @@ def _generate_transmittal_id(db: Session, project: str, sender: str, receiver: s
     Example: T202-T-O-C-2402001
     """
     prefix = f"{project}-T-{sender}-{receiver}-{datetime.now().strftime('%y%m')}"
-    last_t = (
-        db.query(Transmittal)
-        .filter(Transmittal.id.like(f"{prefix}%"))
-        .order_by(Transmittal.id.desc())
-        .first()
-    )
-
-    if last_t:
-        try:
-            last_serial = int(last_t.id[-3:])
-            new_serial = last_serial + 1
-        except Exception:
-            new_serial = 1
+    existing_ids = [
+        str(row[0] or "")
+        for row in (
+            db.query(Transmittal.id)
+            .filter(Transmittal.id.like(f"{prefix}%"))
+            .order_by(Transmittal.id.desc())
+            .all()
+        )
+    ]
+    serials = []
+    for existing_id in existing_ids:
+        suffix = existing_id[len(prefix) :]
+        if suffix.isdigit():
+            serials.append(int(suffix))
+    if serials:
+        new_serial = max(serials) + 1
     else:
         new_serial = 1
 
@@ -344,7 +347,7 @@ def _checkbox_html(checked: bool) -> str:
     return '<span class="check is-checked"></span>' if checked else '<span class="check"></span>'
 
 
-def _active_pdf_public_share_url(
+def _active_file_public_share_url(
     db: Session,
     document: Optional[MdrDocument],
     transmittal_doc: TransmittalDoc,
@@ -353,15 +356,22 @@ def _active_pdf_public_share_url(
         return None
     if not bool(transmittal_doc.electronic_copy):
         return None
-    if _normalize_transmittal_file_kind(getattr(transmittal_doc, "file_kind", "pdf")) != "pdf":
-        return None
 
     now = datetime.utcnow()
-    pdf_file_filter = or_(
-        func.lower(func.coalesce(ArchiveFile.file_kind, "")) == "pdf",
-        func.lower(func.coalesce(ArchiveFile.mime_type, "")).in_(["application/pdf", "application/x-pdf"]),
-        func.lower(func.coalesce(ArchiveFile.detected_mime, "")).in_(["application/pdf", "application/x-pdf"]),
-        ArchiveFile.original_name.ilike("%.pdf"),
+    selected_kind = _normalize_transmittal_file_kind(getattr(transmittal_doc, "file_kind", "pdf"))
+    selected_file_filter = (
+        or_(
+            func.lower(func.coalesce(ArchiveFile.file_kind, "")) == "native",
+            ArchiveFile.original_name.ilike("%.dwg"),
+            ArchiveFile.original_name.ilike("%.dxf"),
+        )
+        if selected_kind == "native"
+        else or_(
+            func.lower(func.coalesce(ArchiveFile.file_kind, "")) == "pdf",
+            func.lower(func.coalesce(ArchiveFile.mime_type, "")).in_(["application/pdf", "application/x-pdf"]),
+            func.lower(func.coalesce(ArchiveFile.detected_mime, "")).in_(["application/pdf", "application/x-pdf"]),
+            ArchiveFile.original_name.ilike("%.pdf"),
+        )
     )
     base_query = (
         db.query(ArchiveFilePublicShare)
@@ -373,7 +383,7 @@ def _active_pdf_public_share_url(
             ArchiveFilePublicShare.provider == "nextcloud",
             ArchiveFilePublicShare.revoked_at.is_(None),
             or_(ArchiveFilePublicShare.expires_at.is_(None), ArchiveFilePublicShare.expires_at > now),
-            pdf_file_filter,
+            selected_file_filter,
         )
     )
 
@@ -428,7 +438,7 @@ def _build_transmittal_pdf_payload(db: Session, tr: Transmittal) -> SimpleNamesp
             file_label=_transmittal_file_label(getattr(d, "file_kind", "pdf")),
             electronic_copy=d.electronic_copy,
             hard_copy=d.hard_copy,
-            public_share_url=_active_pdf_public_share_url(db, mdr_rows.get(str(d.document_code or "").strip()), d),
+            public_share_url=_active_file_public_share_url(db, mdr_rows.get(str(d.document_code or "").strip()), d),
         )
         for d in tr.docs
     ]
@@ -462,7 +472,7 @@ def _render_transmittal_print_html(db: Session, tr: Transmittal) -> str:
     purposes = _purpose_flags(tr.docs)
     rows: list[str] = []
     for idx, doc in enumerate(tr.docs, 1):
-        public_share_url = _active_pdf_public_share_url(db, mdr_rows.get(str(doc.document_code or "").strip()), doc)
+        public_share_url = _active_file_public_share_url(db, mdr_rows.get(str(doc.document_code or "").strip()), doc)
         receive_note = "لینک عمومی Nextcloud" if public_share_url else (
             "نسخه کاغذی" if doc.hard_copy else (
                 f"فایل {_transmittal_file_label(getattr(doc, 'file_kind', 'pdf'))}"
@@ -757,17 +767,23 @@ def _validate_payload_documents(
     documents: List[TransmittalDocItem],
 ) -> dict[str, MdrDocument]:
     doc_numbers = [d.document_code.strip() for d in documents if d.document_code.strip()]
-    if len(set(doc_numbers)) != len(doc_numbers):
-        raise HTTPException(status_code=400, detail="Duplicate document_code in payload")
+    doc_file_keys = [
+        (d.document_code.strip(), _normalize_transmittal_file_kind(d.file_kind))
+        for d in documents
+        if d.document_code.strip()
+    ]
+    if len(set(doc_file_keys)) != len(doc_file_keys):
+        raise HTTPException(status_code=400, detail="Duplicate document_code and file_kind in payload")
 
     docs_by_code: dict[str, MdrDocument] = {}
     if not doc_numbers:
         return docs_by_code
 
-    found_docs = db.query(MdrDocument).filter(MdrDocument.doc_number.in_(doc_numbers)).all()
+    unique_doc_numbers = sorted(set(doc_numbers))
+    found_docs = db.query(MdrDocument).filter(MdrDocument.doc_number.in_(unique_doc_numbers)).all()
     docs_by_code = {d.doc_number: d for d in found_docs}
 
-    missing = sorted(set(doc_numbers) - set(docs_by_code.keys()))
+    missing = sorted(set(unique_doc_numbers) - set(docs_by_code.keys()))
     if missing:
         raise HTTPException(
             status_code=400,
