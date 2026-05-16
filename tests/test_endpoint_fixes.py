@@ -4,7 +4,15 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.db.models import ArchiveFile, ArchiveFilePublicShare, DocumentRevision, MdrDocument, Transmittal, TransmittalDoc
+from app.db.models import (
+    ArchiveFile,
+    ArchiveFilePublicShare,
+    DocumentRevision,
+    MdrDocument,
+    Organization,
+    Transmittal,
+    TransmittalDoc,
+)
 from app.db.session import SessionLocal
 from app.main import app
 from tests.auth_helpers import get_auth_headers
@@ -457,6 +465,19 @@ def test_transmittal_document_file_kind_options_and_validation():
 
 def test_transmittal_options_settings_and_labels():
     headers = _auth_headers()
+    org_code = f"TRORG{uuid.uuid4().hex[:6].upper()}"
+    org_label = f"{org_code} - Transmittal Counterparty"
+    with SessionLocal() as db:
+        db.add(
+            Organization(
+                code=org_code,
+                name="Transmittal Counterparty",
+                org_type="consultant",
+                is_active=True,
+            )
+        )
+        db.commit()
+
     settings_payload = {
         "direction_options": [
             {"code": "O", "label": "صادره", "is_active": True, "sort_order": 10},
@@ -478,11 +499,15 @@ def test_transmittal_options_settings_and_labels():
     options = options_response.json()
     assert options["direction_options"][0]["label"] == "صادره"
     assert options["recipient_options"][0]["label"] == "مشاور"
+    assert any(
+        item.get("code") == org_code and item.get("label") == org_label and item.get("source") == "organization"
+        for item in options["recipient_options"]
+    )
 
     payload = {
         "project_code": "T202",
         "sender": "O",
-        "receiver": "C",
+        "receiver": org_code,
         "subject": f"labels-{uuid.uuid4().hex[:6]}",
         "notes": "",
         "documents": [],
@@ -499,13 +524,13 @@ def test_transmittal_options_settings_and_labels():
     assert detail_response.status_code == 200, detail_response.text
     detail = detail_response.json()
     assert detail["sender_label"] == "صادره"
-    assert detail["receiver_label"] == "مشاور"
+    assert detail["receiver_label"] == org_label
 
     list_response = client.get("/api/v1/transmittal/", headers=headers)
     assert list_response.status_code == 200, list_response.text
     row = next(item for item in list_response.json() if item.get("transmittal_no") == transmittal_no)
     assert row["sender_label"] == "صادره"
-    assert row["receiver_label"] == "مشاور"
+    assert row["receiver_label"] == org_label
 
 
 def test_lookup_dictionary_endpoint_available():

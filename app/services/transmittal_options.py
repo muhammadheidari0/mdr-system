@@ -4,9 +4,10 @@ import json
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.db.models import SettingsKV
+from app.db.models import Organization, SettingsKV
 
 TRANSMITTAL_PARTIES_KEY = "custom.transmittal.parties.v1"
 
@@ -69,6 +70,52 @@ def _normalize_options(items: Any, fallback: list[dict[str, Any]]) -> list[dict[
     return sorted(normalized, key=lambda row: (int(row.get("sort_order") or 0), str(row.get("code") or "")))
 
 
+def _organization_recipient_options(db: Session, *, active_only: bool) -> list[dict[str, Any]]:
+    query = db.query(Organization)
+    if active_only:
+        query = query.filter(Organization.is_active.is_(True))
+    rows = (
+        query
+        .filter(Organization.org_type != "system")
+        .order_by(Organization.name.asc(), Organization.code.asc())
+        .all()
+    )
+    options: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        code = _norm_code(row.code)
+        if not code:
+            continue
+        name = _norm(row.name)
+        label = f"{code} - {name}" if name and name.upper() != code else code
+        options.append(
+            {
+                "code": code,
+                "label": label,
+                "is_active": bool(row.is_active),
+                "sort_order": 1000 + ((index + 1) * 10),
+                "source": "organization",
+                "organization_id": int(row.id or 0),
+                "org_type": _norm(row.org_type),
+            }
+        )
+    return options
+
+
+def _merge_recipient_options(
+    configured_options: list[dict[str, Any]],
+    organization_options: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in [*configured_options, *organization_options]:
+        code = _norm_code(row.get("code"))
+        if not code or code in seen:
+            continue
+        seen.add(code)
+        merged.append({**row, "code": code})
+    return sorted(merged, key=lambda row: (int(row.get("sort_order") or 0), str(row.get("code") or "")))
+
+
 def normalize_transmittal_parties_payload(payload: Any) -> dict[str, list[dict[str, Any]]]:
     data = payload if isinstance(payload, dict) else {}
     return {
@@ -110,10 +157,15 @@ def transmittal_options_payload(db: Session, *, active_only: bool = True) -> dic
     payload = get_transmittal_parties(db)
     if not active_only:
         return payload
-    return {
+    active_payload = {
         key: [row for row in rows if bool(row.get("is_active"))]
         for key, rows in payload.items()
     }
+    active_payload["recipient_options"] = _merge_recipient_options(
+        active_payload.get("recipient_options") or [],
+        _organization_recipient_options(db, active_only=True),
+    )
+    return active_payload
 
 
 def transmittal_party_label(db: Session, group: str, code: Any) -> str:
@@ -125,4 +177,14 @@ def transmittal_party_label(db: Session, group: str, code: Any) -> str:
     for row in rows:
         if _norm_code(row.get("code")) == normalized_code:
             return _norm(row.get("label")) or normalized_code
+    if group == "recipient_options":
+        organization = (
+            db.query(Organization)
+            .filter(Organization.org_type != "system")
+            .filter(func.upper(Organization.code) == normalized_code)
+            .first()
+        )
+        if organization:
+            name = _norm(organization.name)
+            return f"{normalized_code} - {name}" if name and name.upper() != normalized_code else normalized_code
     return normalized_code
