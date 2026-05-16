@@ -791,6 +791,7 @@ class TransmittalDoc(Base):
     revision: Mapped[str | None] = mapped_column(String(32))
     status: Mapped[str | None] = mapped_column(String(64))
     file_kind: Mapped[str] = mapped_column(String(20), default="pdf", nullable=False)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     electronic_copy: Mapped[bool] = mapped_column(Boolean, default=True)
     hard_copy: Mapped[bool] = mapped_column(Boolean, default=False)

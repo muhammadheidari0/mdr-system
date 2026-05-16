@@ -88,13 +88,13 @@ def generate_transmittal_pdf(transmittal, project_name="MDR Project", watermark_
 
     # --- 3. Documents List ---
     # هدر جدول مدارک
-    doc_data = [['Row', 'Document Number', 'Rev', 'Status', 'Title', 'Copy', 'Download']]
+    doc_data = [['Row', 'Document Number', 'Rev', 'Status', 'Title', 'Copy', 'Download', 'Remarks']]
     
     # پر کردن جدول با مدارک
     for idx, doc_item in enumerate(transmittal.documents, 1):
         copy_type = []
         selected_kind = str(getattr(doc_item, "file_kind", "pdf") or "pdf").strip().lower()
-        file_label = "DWG" if selected_kind in {"native", "dwg", "dxf"} else "PDF"
+        file_label = "Native" if selected_kind in {"native", "dwg", "dxf"} else "PDF"
         if doc_item.electronic_copy: copy_type.append(file_label)
         if doc_item.hard_copy: copy_type.append("Hard")
         public_share_url = str(getattr(doc_item, "public_share_url", "") or "").strip()
@@ -111,10 +111,11 @@ def generate_transmittal_pdf(transmittal, project_name="MDR Project", watermark_
             doc_item.document_title[:40] + "..." if len(doc_item.document_title or "") > 40 else (doc_item.document_title or ""),
             ", ".join(copy_type),
             download_cell,
+            str(getattr(doc_item, "remarks", "") or ""),
         ])
 
     # تنظیم عرض ستون‌ها
-    col_widths = [0.8*cm, 4.4*cm, 1.2*cm, 1.6*cm, 6.5*cm, 1.8*cm, 2*cm]
+    col_widths = [0.8*cm, 3.9*cm, 1.0*cm, 1.4*cm, 5.6*cm, 1.7*cm, 1.8*cm, 2.6*cm]
     doc_table = Table(doc_data, colWidths=col_widths, repeatRows=1)
     
     doc_table.setStyle(TableStyle([

@@ -49,6 +49,7 @@ class TransmittalDocItem(BaseModel):
     electronic_copy: bool = True
     hard_copy: bool = False
     document_title: Optional[str] = None
+    remarks: Optional[str] = None
     file_label: Optional[str] = None
     file_options: List[Dict[str, object]] = Field(default_factory=list)
 
@@ -240,7 +241,7 @@ def _normalize_transmittal_file_kind(value: Any) -> str:
 
 
 def _transmittal_file_label(value: Any) -> str:
-    return "DWG" if _normalize_transmittal_file_kind(value) == "native" else "PDF"
+    return "Native" if _normalize_transmittal_file_kind(value) == "native" else "PDF"
 
 
 def _archive_file_kind(row: ArchiveFile) -> str:
@@ -434,6 +435,7 @@ def _build_transmittal_pdf_payload(db: Session, tr: Transmittal) -> SimpleNamesp
             revision=d.revision,
             status=d.status,
             document_title=d.document_title,
+            remarks=getattr(d, "remarks", None),
             file_kind=_normalize_transmittal_file_kind(getattr(d, "file_kind", "pdf")),
             file_label=_transmittal_file_label(getattr(d, "file_kind", "pdf")),
             electronic_copy=d.electronic_copy,
@@ -480,6 +482,7 @@ def _render_transmittal_print_html(db: Session, tr: Transmittal) -> str:
                 else "-"
             )
         )
+        row_remarks = _safe_text(getattr(doc, "remarks", None), receive_note)
         rows.append(
             "<tr>"
             f"<td>{idx}</td>"
@@ -490,7 +493,7 @@ def _render_transmittal_print_html(db: Session, tr: Transmittal) -> str:
             f"<td>1</td>"
             f"<td>{html_escape(_copy_format_label(doc))}</td>"
             f"<td>{_download_link_html(public_share_url)}</td>"
-            f"<td>{html_escape(receive_note)}</td>"
+            f"<td>{html_escape(row_remarks)}</td>"
             "</tr>"
         )
     if not rows:
@@ -1012,6 +1015,7 @@ def create_transmittal(
             revision=doc_item.revision,
             status=doc_item.status,
             file_kind=_normalize_transmittal_file_kind(doc_item.file_kind),
+            remarks=str(doc_item.remarks or "").strip() or None,
             electronic_copy=doc_item.electronic_copy,
             hard_copy=doc_item.hard_copy,
         )
@@ -1082,6 +1086,7 @@ def get_transmittal_detail(
                 "file_kind": file_kind,
                 "file_label": _transmittal_file_label(file_kind),
                 "file_options": file_options,
+                "remarks": d.remarks,
                 "electronic_copy": bool(d.electronic_copy),
                 "hard_copy": bool(d.hard_copy),
                 "document_title": d.document_title,
@@ -1146,6 +1151,7 @@ def edit_transmittal(
                 revision=doc_item.revision,
                 status=doc_item.status,
                 file_kind=_normalize_transmittal_file_kind(doc_item.file_kind),
+                remarks=str(doc_item.remarks or "").strip() or None,
                 electronic_copy=doc_item.electronic_copy,
                 hard_copy=doc_item.hard_copy,
             )

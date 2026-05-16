@@ -7,6 +7,7 @@ export interface TransmittalDocumentPayload {
   revision: string;
   status: string;
   file_kind?: string;
+  remarks?: string;
   electronic_copy: boolean;
   hard_copy: boolean;
 }

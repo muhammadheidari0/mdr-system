@@ -314,7 +314,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     }
 
     function tr2FileKindLabel(value) {
-        return normalizeTr2FileKind(value) === "native" ? "DWG" : "PDF";
+        return normalizeTr2FileKind(value) === "native" ? "Native" : "PDF";
     }
 
     function normalizeTr2FileOptions(options, fallback = "pdf", includeFallback = true) {
@@ -433,7 +433,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         if (!tbody) return;
         const selectedRows = Array.isArray(state.selectedDocs) ? state.selectedDocs : [];
         if (!selectedRows.length) {
-            tbody.innerHTML = '<tr><td colspan="7" class="center-text muted">هنوز مدرکی اضافه نشده است</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="center-text muted">هنوز مدرکی اضافه نشده است</td></tr>';
             return;
         }
         tbody.innerHTML = selectedRows.map((d, idx) => `
@@ -448,6 +448,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     </select>
                 </td>
                 <td><span class="file-badge">${escapeHtml(tr2FileKindLabel(d.file_kind || "pdf"))}</span></td>
+                <td><input class="form-input" style="min-width:170px" value="${escapeHtml(d.remarks || "")}" placeholder="توضیحات" data-tr2-action="doc-field-change" data-index="${idx}" data-field="remarks"></td>
                 <td class="center-text"><input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy"></td>
                 <td class="center-text"><input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy"></td>
                 <td><button class="btn-archive-icon" type="button" data-tr2-action="doc-remove" data-index="${idx}">حذف</button></td>
@@ -493,6 +494,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                             <th>Revision</th>
                             <th>Status</th>
                             <th>File</th>
+                            <th>Remarks</th>
                             <th>E-Copy</th>
                             <th>Hard</th>
                         </tr>
@@ -505,6 +507,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                                 <td>${escapeHtml(doc?.revision || "-")}</td>
                                 <td>${escapeHtml(doc?.status || "-")}</td>
                                 <td>${escapeHtml(doc?.file_label || tr2FileKindLabel(doc?.file_kind || "pdf"))}</td>
+                                <td>${escapeHtml(doc?.remarks || "-")}</td>
                                 <td>${doc?.electronic_copy ? "دارد" : "ندارد"}</td>
                                 <td>${doc?.hard_copy ? "دارد" : "ندارد"}</td>
                             </tr>
@@ -911,6 +914,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     status: d.status || "IFA",
                     file_kind: fileKind,
                     file_options: fileOptions,
+                    remarks: d.remarks || "",
                     electronic_copy: Boolean(d.electronic_copy),
                     hard_copy: Boolean(d.hard_copy),
                 };
@@ -1006,6 +1010,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             status: resolved.status && resolved.status !== "Registered" ? resolved.status : "IFA",
             file_kind: fileKind,
             file_options: fileOptions,
+            remarks: "",
             electronic_copy: true,
             hard_copy: false,
         });
@@ -1062,6 +1067,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     revision: d.revision || "00",
                     status: d.status || "IFA",
                     file_kind: normalizeTr2FileKind(d.file_kind || "pdf"),
+                    remarks: d.remarks || "",
                     electronic_copy: Boolean(d.electronic_copy),
                     hard_copy: Boolean(d.hard_copy),
                 })),

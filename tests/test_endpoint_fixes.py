@@ -195,7 +195,7 @@ def test_transmittal_document_file_kind_options_and_validation():
     project_code, discipline_code = ensure_project_discipline(client, headers)
     dual_doc_number = f"{project_code}-DUAL-{uuid.uuid4().hex[:6].upper()}-TGEN"
     pdf_doc_number = f"{project_code}-PDFONLY-{uuid.uuid4().hex[:6].upper()}-TGEN"
-    native_doc_number = f"{project_code}-DWGONLY-{uuid.uuid4().hex[:6].upper()}-TGEN"
+    native_doc_number = f"{project_code}-NATIVEONLY-{uuid.uuid4().hex[:6].upper()}-TGEN"
     created_transmittal_no = ""
     document_ids: list[int] = []
     revision_ids: list[int] = []
@@ -209,7 +209,7 @@ def test_transmittal_document_file_kind_options_and_validation():
             (native_doc_number, ("native",)),
         ):
             first_kind = file_kinds[0]
-            first_ext = "dwg" if first_kind == "native" else "pdf"
+            first_ext = "xlsx" if first_kind == "native" else "pdf"
             document = MdrDocument(
                 doc_number=doc_number,
                 doc_title_e=f"Transmittal File Kind {doc_number}",
@@ -236,8 +236,8 @@ def test_transmittal_document_file_kind_options_and_validation():
             db.flush()
             revision_ids.append(int(revision.id or 0))
             for file_kind in file_kinds:
-                ext = "dwg" if file_kind == "native" else "pdf"
-                mime = "application/acad" if file_kind == "native" else "application/pdf"
+                ext = "xlsx" if file_kind == "native" else "pdf"
+                mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" if file_kind == "native" else "application/pdf"
                 archive_file = ArchiveFile(
                     revision_id=int(revision.id or 0),
                     original_name=f"{doc_number}.{ext}",
@@ -317,6 +317,7 @@ def test_transmittal_document_file_kind_options_and_validation():
                         "revision": "00",
                         "status": "IFA",
                         "file_kind": "pdf",
+                        "remarks": "PDF issue copy",
                         "electronic_copy": True,
                         "hard_copy": False,
                     },
@@ -325,6 +326,7 @@ def test_transmittal_document_file_kind_options_and_validation():
                         "revision": "00",
                         "status": "IFA",
                         "file_kind": "native",
+                        "remarks": "Native editable copy",
                         "electronic_copy": True,
                         "hard_copy": False,
                     }
@@ -340,12 +342,16 @@ def test_transmittal_document_file_kind_options_and_validation():
         indexed_detail_docs = {item.get("file_kind"): item for item in detail_docs}
         assert set(indexed_detail_docs.keys()) == {"pdf", "native"}
         assert indexed_detail_docs["pdf"].get("file_label") == "PDF"
-        assert indexed_detail_docs["native"].get("file_label") == "DWG"
+        assert indexed_detail_docs["native"].get("file_label") == "Native"
+        assert indexed_detail_docs["pdf"].get("remarks") == "PDF issue copy"
+        assert indexed_detail_docs["native"].get("remarks") == "Native editable copy"
 
         preview_response = client.get(f"/api/v1/transmittal/{created_transmittal_no}/print-preview", headers=headers)
         assert preview_response.status_code == 200, preview_response.text
         assert "PDF" in preview_response.text
-        assert "DWG" in preview_response.text
+        assert "Native" in preview_response.text
+        assert "PDF issue copy" in preview_response.text
+        assert "Native editable copy" in preview_response.text
         assert share_urls[f"{dual_doc_number}:pdf"] in preview_response.text
         assert share_urls[f"{dual_doc_number}:native"] in preview_response.text
 
