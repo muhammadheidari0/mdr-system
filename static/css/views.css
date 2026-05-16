@@ -3482,9 +3482,65 @@ body.ci-drawer-open {
     text-align: center;
 }
 
-.tr2-copy-cell input {
-    width: 16px;
-    height: 16px;
+.tr2-copy-toggle {
+    min-width: 74px;
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 5px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.76rem;
+    font-weight: 900;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tr2-copy-toggle:hover {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.tr2-copy-toggle input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.tr2-copy-toggle-mark {
+    width: 17px;
+    height: 17px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    background: #ffffff;
+    color: transparent;
+}
+
+.tr2-copy-toggle-mark .material-icons-round {
+    font-size: 14px;
+}
+
+.tr2-copy-toggle.is-on {
+    border-color: #93c5fd;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.tr2-copy-toggle.is-on .tr2-copy-toggle-mark {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #ffffff;
 }
 
 .tr2-remove-btn {

@@ -629,8 +629,20 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                 </td>
                 <td><span class="file-badge">${escapeHtml(tr2FileKindLabel(d.file_kind || "pdf"))}</span></td>
                 <td><input class="form-input tr2-remarks-input" value="${escapeHtml(d.remarks || "")}" placeholder="توضیحات" data-tr2-action="doc-field-change" data-index="${idx}" data-field="remarks"></td>
-                <td class="tr2-copy-cell"><input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy" aria-label="E-Copy"></td>
-                <td class="tr2-copy-cell"><input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy" aria-label="Hard copy"></td>
+                <td class="tr2-copy-cell">
+                    <label class="tr2-copy-toggle ${d.electronic_copy ? "is-on" : ""}" title="نسخه الکترونیکی">
+                        <input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy" aria-label="E-Copy">
+                        <span class="tr2-copy-toggle-mark"><span class="material-icons-round">check</span></span>
+                        <span>${d.electronic_copy ? "دارد" : "ندارد"}</span>
+                    </label>
+                </td>
+                <td class="tr2-copy-cell">
+                    <label class="tr2-copy-toggle ${d.hard_copy ? "is-on" : ""}" title="نسخه کاغذی / Hard">
+                        <input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy" aria-label="Hard copy">
+                        <span class="tr2-copy-toggle-mark"><span class="material-icons-round">check</span></span>
+                        <span>${d.hard_copy ? "دارد" : "ندارد"}</span>
+                    </label>
+                </td>
                 <td><button class="btn-archive-icon tr2-remove-btn" type="button" data-tr2-action="doc-remove" data-index="${idx}" title="حذف مدرک"><span class="material-icons-round">delete</span></button></td>
             </tr>
         `).join("");
@@ -1206,6 +1218,9 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
     window.updateTr2Doc = function updateTr2Doc(index, field, value) {
         if (!state.selectedDocs[index]) return;
         state.selectedDocs[index][field] = field === "file_kind" ? normalizeTr2FileKind(value) : value;
+        if (field === "electronic_copy" || field === "hard_copy") {
+            renderSelectedDocs();
+        }
     };
 
     window.removeTr2Doc = function removeTr2Doc(index) {
