@@ -385,17 +385,20 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         const alreadySelected = selectedKeys.has(tr2DocFileKey(docNumber, kind));
         let text = `+ ${label}`;
         let title = "";
+        let stateClass = "";
         if (!available) {
             text = `${label} ندارد`;
             title = `${label} ندارد`;
+            stateClass = "is-missing";
         } else if (alreadySelected) {
             text = `✓ ${label}`;
             title = `${label} قبلاً به این ترنسمیتال اضافه شده`;
+            stateClass = "is-selected";
         }
         const disabled = !available || alreadySelected;
         return `
             <button
-                class="btn-archive-icon"
+                class="btn-archive-icon tr2-file-btn ${stateClass}"
                 type="button"
                 ${disabled ? "disabled" : ""}
                 ${title ? `title="${escapeHtml(title)}"` : ""}
@@ -421,6 +424,112 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         return String(disciplineEl?.value || "").trim().toUpperCase();
     }
 
+    function disciplineSelectElement() {
+        const el = document.getElementById("tr2-discipline");
+        return el instanceof HTMLSelectElement ? el : null;
+    }
+
+    function selectedDisciplineCodes() {
+        const disciplineEl = disciplineSelectElement();
+        if (!disciplineEl) return [];
+        return Array.from(disciplineEl.selectedOptions)
+            .map((option) => String(option.value || "").trim().toUpperCase())
+            .filter(Boolean);
+    }
+
+    function visibleDisciplineOptions(filterText = "") {
+        const disciplineEl = disciplineSelectElement();
+        if (!disciplineEl) return [];
+        const filter = String(filterText || "").trim().toLowerCase();
+        return Array.from(disciplineEl.options)
+            .map((option) => ({
+                code: String(option.value || "").trim().toUpperCase(),
+                label: String(option.textContent || option.value || "").trim(),
+            }))
+            .filter((option) => option.code)
+            .filter((option) => !filter || option.code.toLowerCase().includes(filter) || option.label.toLowerCase().includes(filter));
+    }
+
+    function dispatchDisciplineChange() {
+        const disciplineEl = disciplineSelectElement();
+        if (!disciplineEl) return;
+        disciplineEl.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function setDisciplineMenuOpen(open = false) {
+        const picker = document.querySelector("[data-tr2-discipline-picker]");
+        const menu = document.getElementById("tr2-discipline-menu");
+        const trigger = document.querySelector("[data-tr2-discipline-action='toggle']");
+        if (!(picker instanceof HTMLElement) || !(menu instanceof HTMLElement)) return;
+        picker.classList.toggle("is-open", Boolean(open));
+        menu.hidden = !open;
+        if (trigger instanceof HTMLElement) {
+            trigger.setAttribute("aria-expanded", open ? "true" : "false");
+        }
+        if (open) {
+            const search = document.getElementById("tr2-discipline-search");
+            if (search instanceof HTMLInputElement) {
+                window.setTimeout(() => search.focus(), 0);
+            }
+        }
+    }
+
+    function syncDisciplinePicker(filterText = "") {
+        const selected = new Set(selectedDisciplineCodes());
+        const allOptions = visibleDisciplineOptions("");
+        const filteredOptions = visibleDisciplineOptions(filterText);
+        const summary = document.getElementById("tr2-discipline-summary");
+        const chips = document.getElementById("tr2-discipline-chips");
+        const optionsBox = document.getElementById("tr2-discipline-options");
+        const allCheckbox = document.querySelector("[data-tr2-discipline-action='all'] input");
+
+        if (summary) {
+            if (!selected.size) {
+                summary.textContent = "همه دیسیپلین‌ها";
+            } else if (selected.size === 1) {
+                const first = allOptions.find((option) => selected.has(option.code));
+                summary.textContent = first?.label || Array.from(selected)[0];
+            } else {
+                summary.textContent = `${selected.size} دیسیپلین انتخاب شده`;
+            }
+        }
+
+        if (chips) {
+            if (!selected.size) {
+                chips.innerHTML = '<span class="tr2-discipline-chip tr2-discipline-chip-all"><span>همه دیسیپلین‌ها</span></span>';
+            } else {
+                chips.innerHTML = allOptions
+                    .filter((option) => selected.has(option.code))
+                    .map((option) => `
+                        <span class="tr2-discipline-chip" title="${escapeHtml(option.label)}">
+                            <span>${escapeHtml(option.label)}</span>
+                            <button type="button" data-tr2-discipline-action="remove" data-code="${escapeHtml(option.code)}" aria-label="حذف ${escapeHtml(option.label)}">
+                                <span class="material-icons-round">close</span>
+                            </button>
+                        </span>
+                    `)
+                    .join("");
+            }
+        }
+
+        if (allCheckbox instanceof HTMLInputElement) {
+            allCheckbox.checked = selected.size === 0;
+        }
+
+        if (optionsBox) {
+            if (!filteredOptions.length) {
+                optionsBox.innerHTML = '<div class="tr2-discipline-empty">موردی یافت نشد</div>';
+            } else {
+                optionsBox.innerHTML = filteredOptions.map((option) => `
+                    <label class="tr2-discipline-option" title="${escapeHtml(option.label)}" data-tr2-discipline-action="toggle-code" data-code="${escapeHtml(option.code)}">
+                        <input type="checkbox" ${selected.has(option.code) ? "checked" : ""}>
+                        <span>${escapeHtml(option.label)}</span>
+                    </label>
+                `).join("");
+            }
+        }
+    }
+
     function setSelectedDisciplineCodes(codes = []) {
         const disciplineEl = document.getElementById("tr2-discipline");
         if (!(disciplineEl instanceof HTMLSelectElement)) return;
@@ -431,6 +540,27 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
             const code = String(option.value || "").trim().toUpperCase();
             option.selected = selected.size ? selected.has(code) : code === "";
         });
+        syncDisciplinePicker();
+    }
+
+    function updateDisciplineSelection(codes = []) {
+        setSelectedDisciplineCodes(codes);
+        dispatchDisciplineChange();
+    }
+
+    function toggleDisciplineCode(code) {
+        const normalized = String(code || "").trim().toUpperCase();
+        if (!normalized) {
+            updateDisciplineSelection([]);
+            return;
+        }
+        const selected = new Set(selectedDisciplineCodes());
+        if (selected.has(normalized)) {
+            selected.delete(normalized);
+        } else {
+            selected.add(normalized);
+        }
+        updateDisciplineSelection(Array.from(selected));
     }
 
     function currentHeaderStatus() {
@@ -476,28 +606,32 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
 
     function renderSelectedDocs() {
         const tbody = document.getElementById("tr2-docs-body");
+        const countBadge = document.getElementById("tr2-selected-count-badge");
+        const footerCount = document.getElementById("tr2-footer-doc-count");
         if (!tbody) return;
         const selectedRows = Array.isArray(state.selectedDocs) ? state.selectedDocs : [];
+        if (countBadge) countBadge.textContent = String(selectedRows.length);
+        if (footerCount) footerCount.textContent = String(selectedRows.length);
         if (!selectedRows.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="center-text muted">هنوز مدرکی اضافه نشده است</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" class="center-text muted tr2-empty-state">هنوز مدرکی اضافه نشده است</td></tr>';
             return;
         }
         tbody.innerHTML = selectedRows.map((d, idx) => `
             <tr>
                 <td>${escapeHtml(d.document_code)}</td>
-                <td><input class="form-input" style="max-width:90px" value="${escapeHtml(d.revision)}" data-tr2-action="doc-field-change" data-index="${idx}" data-field="revision"></td>
+                <td><input class="form-input tr2-revision-input" value="${escapeHtml(d.revision)}" data-tr2-action="doc-field-change" data-index="${idx}" data-field="revision"></td>
                 <td>
-                    <select class="form-input" data-tr2-action="doc-field-change" data-index="${idx}" data-field="status">
+                    <select class="form-input tr2-status-select" data-tr2-action="doc-field-change" data-index="${idx}" data-field="status">
                         <option value="IFA" ${d.status === "IFA" ? "selected" : ""}>IFA</option>
                         <option value="IFC" ${d.status === "IFC" ? "selected" : ""}>IFC</option>
                         <option value="IFI" ${d.status === "IFI" ? "selected" : ""}>IFI</option>
                     </select>
                 </td>
                 <td><span class="file-badge">${escapeHtml(tr2FileKindLabel(d.file_kind || "pdf"))}</span></td>
-                <td><input class="form-input" style="min-width:170px" value="${escapeHtml(d.remarks || "")}" placeholder="توضیحات" data-tr2-action="doc-field-change" data-index="${idx}" data-field="remarks"></td>
-                <td class="center-text"><input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy"></td>
-                <td class="center-text"><input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy"></td>
-                <td><button class="btn-archive-icon" type="button" data-tr2-action="doc-remove" data-index="${idx}">حذف</button></td>
+                <td><input class="form-input tr2-remarks-input" value="${escapeHtml(d.remarks || "")}" placeholder="توضیحات" data-tr2-action="doc-field-change" data-index="${idx}" data-field="remarks"></td>
+                <td class="tr2-copy-cell"><input type="checkbox" ${d.electronic_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="electronic_copy" aria-label="E-Copy"></td>
+                <td class="tr2-copy-cell"><input type="checkbox" ${d.hard_copy ? "checked" : ""} data-tr2-action="doc-field-change" data-index="${idx}" data-field="hard_copy" aria-label="Hard copy"></td>
+                <td><button class="btn-archive-icon tr2-remove-btn" type="button" data-tr2-action="doc-remove" data-index="${idx}" title="حذف مدرک"><span class="material-icons-round">delete</span></button></td>
             </tr>
         `).join("");
     }
@@ -739,7 +873,7 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
                     <td>${escapeHtml(item.doc_title || "-")}</td>
                     <td>${escapeHtml(item.revision || "00")}</td>
                     <td>${escapeHtml(item.status || "-")}</td>
-                    <td><div style="display:flex; gap:6px; justify-content:center;">${renderTr2FileAction(item, "pdf", selectedKeys)}${renderTr2FileAction(item, "native", selectedKeys)}</div></td>
+                    <td><div class="tr2-file-actions">${renderTr2FileAction(item, "pdf", selectedKeys)}${renderTr2FileAction(item, "native", selectedKeys)}</div></td>
                 </tr>
             `;
         }).join("");
@@ -1313,9 +1447,70 @@ import { formatShamsiDate, formatShamsiDateTime } from "../lib/persian_datetime"
         root.dataset.tr2FieldsBound = "1";
     }
 
+    function bindTransmittalDisciplinePicker() {
+        const root = document.getElementById("view-transmittal");
+        if (!root || root.dataset.tr2DisciplinePickerBound === "1") return;
+
+        root.addEventListener("click", (event) => {
+            const target = event.target;
+            const targetEl = target instanceof HTMLElement ? target : null;
+            const picker = targetEl?.closest("[data-tr2-discipline-picker]");
+            const actionEl = targetEl?.closest("[data-tr2-discipline-action]");
+            const currentFilter = String(document.getElementById("tr2-discipline-search")?.value || "");
+
+            if (!picker) {
+                setDisciplineMenuOpen(false);
+                return;
+            }
+            if (!actionEl) return;
+
+            event.preventDefault();
+            const action = String(actionEl.getAttribute("data-tr2-discipline-action") || "").trim();
+            if (action === "toggle") {
+                const menu = document.getElementById("tr2-discipline-menu");
+                setDisciplineMenuOpen(Boolean(menu?.hidden));
+                syncDisciplinePicker(currentFilter);
+                return;
+            }
+            if (action === "all") {
+                const search = document.getElementById("tr2-discipline-search");
+                if (search instanceof HTMLInputElement) search.value = "";
+                updateDisciplineSelection([]);
+                syncDisciplinePicker("");
+                return;
+            }
+            if (action === "toggle-code") {
+                toggleDisciplineCode(actionEl.getAttribute("data-code") || "");
+                syncDisciplinePicker(currentFilter);
+                return;
+            }
+            if (action === "remove") {
+                toggleDisciplineCode(actionEl.getAttribute("data-code") || "");
+                syncDisciplinePicker(currentFilter);
+            }
+        });
+
+        root.addEventListener("input", (event) => {
+            const target = event.target;
+            if (!(target instanceof HTMLInputElement)) return;
+            if (target.id !== "tr2-discipline-search") return;
+            syncDisciplinePicker(target.value);
+        });
+
+        root.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape") return;
+            const target = event.target instanceof HTMLElement ? event.target : null;
+            if (!target?.closest("[data-tr2-discipline-picker]")) return;
+            setDisciplineMenuOpen(false);
+        });
+
+        root.dataset.tr2DisciplinePickerBound = "1";
+    }
+
     function initTransmittalUiBindings() {
         bindTransmittalTemplateActions();
         bindTransmittalFieldEvents();
+        bindTransmittalDisciplinePicker();
         registerTransmittalBulkActions();
     }
 

@@ -84,10 +84,6 @@
               <select id="tr2-project" class="form-input"></select>
             </label>
             <label class="tr2-field">
-              <span>دیسیپلین</span>
-              <select id="tr2-discipline" class="form-input tr2-multi-select" multiple size="4" title="برای همه دیسیپلین‌ها انتخابی نداشته باشید"></select>
-            </label>
-            <label class="tr2-field">
               <span>فرستنده</span>
               <select id="tr2-sender" class="form-input"></select>
             </label>
@@ -99,7 +95,30 @@
               <span>جهت</span>
               <select id="tr2-direction" class="form-input"></select>
             </label>
-            <label class="tr2-field tr2-field-wide">
+            <div class="tr2-field">
+              <span>دیسیپلین‌ها</span>
+              <select id="tr2-discipline" class="tr2-native-multi" multiple size="4" title="برای همه دیسیپلین‌ها انتخابی نداشته باشید" aria-hidden="true" tabindex="-1"></select>
+              <div class="tr2-discipline-picker" data-tr2-discipline-picker>
+                <button type="button" class="tr2-discipline-trigger" data-tr2-discipline-action="toggle" aria-expanded="false" aria-controls="tr2-discipline-menu">
+                  <span class="material-icons-round">filter_list</span>
+                  <span id="tr2-discipline-summary" class="tr2-discipline-summary">همه دیسیپلین‌ها</span>
+                  <span class="material-icons-round">expand_more</span>
+                </button>
+                <div id="tr2-discipline-menu" class="tr2-discipline-menu" hidden>
+                  <div class="tr2-discipline-search">
+                    <span class="material-icons-round">search</span>
+                    <input id="tr2-discipline-search" type="search" autocomplete="off" placeholder="جست‌وجوی دیسیپلین">
+                  </div>
+                  <label class="tr2-discipline-option tr2-discipline-option-all" data-tr2-discipline-action="all">
+                    <input type="checkbox" checked>
+                    <span>همه دیسیپلین‌ها</span>
+                  </label>
+                  <div id="tr2-discipline-options" class="tr2-discipline-options"></div>
+                </div>
+                <div id="tr2-discipline-chips" class="tr2-discipline-chips" aria-live="polite"></div>
+              </div>
+            </div>
+            <label class="tr2-field tr2-field-number">
               <span>شماره خودکار</span>
               <div class="tr2-number-row">
                 <input id="tr2-next-number" class="form-input" readonly placeholder="شماره پس از انتخاب پروژه ساخته می‌شود">
@@ -109,7 +128,7 @@
                 </button>
               </div>
             </label>
-            <label class="tr2-field tr2-field-wide">
+            <label class="tr2-field tr2-field-subject">
               <span>موضوع</span>
               <input id="tr2-subject" class="form-input" placeholder="موضوع اختیاری">
             </label>
@@ -121,12 +140,15 @@
             <span class="material-icons-round">manage_search</span>
             انتخاب مدرک مجاز
           </h3>
-          <div class="general-list-toolbar">
+          <div class="general-list-toolbar tr2-search-toolbar">
             <input id="tr2-doc-search" class="form-input general-search-input" placeholder="شماره یا عنوان مدرک">
-            <button class="btn btn-primary" type="button" data-tr2-action="search-docs">جستجو</button>
+            <button class="btn btn-primary tr2-search-btn" type="button" data-tr2-action="search-docs">
+              <span class="material-icons-round">search</span>
+              جستجو
+            </button>
           </div>
           <div class="table-responsive">
-            <table class="archive-table">
+            <table class="archive-table tr2-doc-pick-table">
               <thead>
                 <tr>
                   <th>Doc No</th>
@@ -147,9 +169,10 @@
           <h3 class="general-settings-title">
             <span class="material-icons-round">checklist</span>
             مدارک انتخاب‌شده
+            <span id="tr2-selected-count-badge" class="tr2-section-count">0</span>
           </h3>
           <div class="table-responsive">
-            <table class="archive-table">
+            <table class="archive-table tr2-selected-docs-table">
               <thead>
                 <tr>
                   <th>Doc No</th>
@@ -174,15 +197,21 @@
         </section>
 
         <div class="tr2-editor-footer">
-          <button id="tr2-submit-btn" class="btn btn-primary" type="button" data-tr2-action="submit-draft">
-            <span class="material-icons-round">save</span>
-            ذخیره پیش‌نویس
-          </button>
-          <button id="tr2-issue-btn" class="btn btn-primary" type="button" data-tr2-action="submit-issue">
-            <span class="material-icons-round">send</span>
-            صدور
-          </button>
-          <button class="btn btn-secondary" type="button" data-tr2-action="show-list">انصراف</button>
+          <div class="tr2-footer-summary">
+            <span class="material-icons-round">description</span>
+            <span><strong id="tr2-footer-doc-count">0</strong> مدرک انتخاب‌شده</span>
+          </div>
+          <div class="tr2-footer-actions">
+            <button class="btn btn-secondary tr2-cancel-btn" type="button" data-tr2-action="show-list">انصراف</button>
+            <button id="tr2-submit-btn" class="btn btn-secondary tr2-save-draft-btn" type="button" data-tr2-action="submit-draft">
+              <span class="material-icons-round">save</span>
+              ذخیره پیش‌نویس
+            </button>
+            <button id="tr2-issue-btn" class="btn btn-primary tr2-issue-btn" type="button" data-tr2-action="submit-issue">
+              <span class="material-icons-round">send</span>
+              صدور
+            </button>
+          </div>
         </div>
       </div>
     </div>
