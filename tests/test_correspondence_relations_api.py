@@ -140,6 +140,8 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     )
     assert attachment_res.status_code == 200, attachment_res.text
     attachment_id = int((attachment_res.json().get("data") or {}).get("id") or 0)
+    assert attachment_id > 0
+    assert (attachment_res.json().get("data") or {}).get("preview_supported") is True
 
     preview_without_letter = client.get(f"/api/v1/correspondence/{correspondence_id}/preview", headers=headers)
     assert preview_without_letter.status_code == 404, preview_without_letter.text
@@ -178,6 +180,10 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
         headers=headers,
     )
     assert letter_res.status_code == 200, letter_res.text
+    letter_id = int((letter_res.json().get("data") or {}).get("id") or 0)
+    assert letter_id > 0
+    assert (letter_res.json().get("data") or {}).get("file_kind") == "letter"
+    assert (letter_res.json().get("data") or {}).get("preview_supported") is True
 
     unsupported_res = client.post(
         f"/api/v1/correspondence/{correspondence_id}/attachments/upload",
@@ -202,6 +208,12 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
     assert "inline" in attachment_preview.headers.get("content-disposition", "").lower()
     assert b"attachment-preview" in attachment_preview.content
 
+    letter_direct_preview = client.get(f"/api/v1/correspondence/attachments/{letter_id}/preview", headers=headers)
+    assert letter_direct_preview.status_code == 200, letter_direct_preview.text
+    assert "inline" in letter_direct_preview.headers.get("content-disposition", "").lower()
+    assert letter_direct_preview.headers.get("content-type", "").startswith("application/pdf")
+    assert b"letter-preview" in letter_direct_preview.content
+
     original_preview = client.get(f"/api/v1/correspondence/attachments/{original_id}/preview", headers=headers)
     assert original_preview.status_code == 415, original_preview.text
     assert b"editable-preview" not in original_preview.content
@@ -221,10 +233,22 @@ def test_correspondence_typeahead_preview_and_relations() -> None:
         headers=headers,
     )
     assert image_letter_res.status_code == 200, image_letter_res.text
+    image_letter_id = int((image_letter_res.json().get("data") or {}).get("id") or 0)
+    assert image_letter_id > 0
+    assert (image_letter_res.json().get("data") or {}).get("file_kind") == "letter"
+    assert (image_letter_res.json().get("data") or {}).get("preview_supported") is True
     image_letter_preview = client.get(f"/api/v1/correspondence/{correspondence_id}/preview", headers=headers)
     assert image_letter_preview.status_code == 200, image_letter_preview.text
     assert image_letter_preview.headers.get("content-type", "").startswith("image/png")
     assert image_letter_preview.content.startswith(b"\x89PNG")
+
+    image_letter_direct_preview = client.get(
+        f"/api/v1/correspondence/attachments/{image_letter_id}/preview",
+        headers=headers,
+    )
+    assert image_letter_direct_preview.status_code == 200, image_letter_direct_preview.text
+    assert image_letter_direct_preview.headers.get("content-type", "").startswith("image/png")
+    assert image_letter_direct_preview.content.startswith(b"\x89PNG")
 
     unsupported_preview = client.get(
         f"/api/v1/correspondence/attachments/{unsupported_id}/preview",

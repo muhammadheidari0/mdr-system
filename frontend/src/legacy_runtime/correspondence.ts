@@ -30,7 +30,14 @@ import { initShamsiDateInputs } from "../lib/shamsi_date_input";
   const dirCode = (v) => ["I", "IN", "INBOUND"].includes(String(v || "").toUpperCase()) ? "I" : "O";
   const dirFa = (v) => dirCode(v) === "I" ? "وارده" : "صادره";
   const statusClass = (s) => { const k = String(s || "").toLowerCase(); return k === "closed" ? "is-closed" : (k === "overdue" ? "is-overdue" : "is-open"); };
-  const kindFa = (k) => ({ letter: "فایل نامه", original: "فایل قابل ویرایش", attachment: "پیوست" }[String(k || "").toLowerCase()] || "پیوست");
+  const attachmentKindCode = (k) => {
+    const normalized = String(k || "").toLowerCase();
+    if (normalized === "main") return "letter";
+    if (normalized === "inside") return "original";
+    if (normalized === "attachments") return "attachment";
+    return ["letter", "original", "attachment"].includes(normalized) ? normalized : "attachment";
+  };
+  const kindFa = (k) => ({ letter: "فایل نامه", original: "فایل قابل ویرایش", attachment: "پیوست" }[attachmentKindCode(k)] || "پیوست");
   const info = (m) => window.UI?.success?.(m); const warn = (m) => window.UI?.warning?.(m); const err = (m) => window.UI?.error?.(m);
   const nowYyMm = (v) => { const d = v ? new Date(`${v}T00:00:00`) : new Date(); return Number.isNaN(d.getTime()) ? "0000" : `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, "0")}`; };
   const curId = () => Number(q("corrIdInput")?.value || 0);

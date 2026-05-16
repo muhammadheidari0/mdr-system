@@ -263,15 +263,43 @@ def test_webdav_primary_correspondence_attachment_flow(admin_headers: dict[str, 
     attachment_id = int(attachment.get("id") or 0)
     assert attachment_id > 0
     assert attachment.get("file_kind") == "letter"
+    assert attachment.get("preview_supported") is True
 
     download_res = client.get(f"/api/v1/correspondence/attachments/{attachment_id}/download", headers=admin_headers)
     assert download_res.status_code == 200, download_res.text
     assert download_res.content == b"webdav-stream-content"
 
+    attachment_preview_res = client.get(
+        f"/api/v1/correspondence/attachments/{attachment_id}/preview",
+        headers=admin_headers,
+    )
+    assert attachment_preview_res.status_code == 200, attachment_preview_res.text
+    assert attachment_preview_res.content == b"webdav-stream-content"
+    assert "inline;" in str(attachment_preview_res.headers.get("content-disposition") or "").lower()
+
     preview_res = client.get(f"/api/v1/correspondence/{correspondence_id}/preview", headers=admin_headers)
     assert preview_res.status_code == 200, preview_res.text
     assert preview_res.content == b"webdav-stream-content"
     assert "inline;" in str(preview_res.headers.get("content-disposition") or "").lower()
+
+    pdf_attachment_res = client.post(
+        f"/api/v1/correspondence/{correspondence_id}/attachments/upload",
+        data={"file_kind": "attachment"},
+        files={"file": ("corr-attachment.pdf", io.BytesIO(b"%PDF-1.4\ncorr-attachment-preview\n"), "application/pdf")},
+        headers=admin_headers,
+    )
+    assert pdf_attachment_res.status_code == 200, pdf_attachment_res.text
+    pdf_attachment = pdf_attachment_res.json().get("data") or {}
+    pdf_attachment_id = int(pdf_attachment.get("id") or 0)
+    assert pdf_attachment_id > 0
+    assert pdf_attachment.get("file_kind") == "attachment"
+    assert pdf_attachment.get("preview_supported") is True
+    pdf_attachment_preview = client.get(
+        f"/api/v1/correspondence/attachments/{pdf_attachment_id}/preview",
+        headers=admin_headers,
+    )
+    assert pdf_attachment_preview.status_code == 200, pdf_attachment_preview.text
+    assert pdf_attachment_preview.content == b"webdav-stream-content"
 
     delete_res = client.delete(f"/api/v1/correspondence/attachments/{attachment_id}", headers=admin_headers)
     assert delete_res.status_code == 200, delete_res.text
