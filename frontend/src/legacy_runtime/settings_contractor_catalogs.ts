@@ -365,6 +365,11 @@
             const haystack = [
                 row.activity_code,
                 row.activity_title,
+                row.activity_type,
+                row.activity_type_code,
+                row.floor,
+                row.wbs_code,
+                row.default_quantity,
                 row.organization_name,
                 row.contract_subject,
                 row.scope_label,
@@ -1338,7 +1343,7 @@
 
     function renderActivityRows(rows) {
         if (!rows.length) {
-            return `<tr><td colspan="11" class="center-text muted" style="padding: 18px;">فعالیتی با فیلترهای فعلی پیدا نشد.</td></tr>`;
+            return `<tr><td colspan="16" class="center-text muted" style="padding: 18px;">فعالیتی با فیلترهای فعلی پیدا نشد.</td></tr>`;
         }
         const canUpdate = canUpdateSettings();
         return rows
@@ -1357,6 +1362,11 @@
                         <td>${canUpdate ? `<input type="checkbox" data-activity-row-select="${id}"${selected ? " checked" : ""} aria-label="انتخاب فعالیت">` : ""}</td>
                         <td style="font-family: monospace;">${esc(row.activity_code || "-")}</td>
                         <td>${esc(row.activity_title || "-")}</td>
+                        <td>${esc(row.activity_type || "-")}</td>
+                        <td style="font-family: monospace;">${esc(row.activity_type_code || "-")}</td>
+                        <td>${esc(row.floor || "-")}</td>
+                        <td style="font-family: monospace;">${esc(row.wbs_code || "-")}</td>
+                        <td>${esc(row.default_quantity ?? "-")}</td>
                         <td>${esc(row.scope_label || "-")}</td>
                         <td>${esc(reference || "-")}</td>
                         <td>${esc(row.default_unit || "-")}</td>
@@ -1390,6 +1400,11 @@
                                         data-organization-contract-id="${contractId > 0 ? contractId : ""}"
                                         data-activity-code="${esc(row.activity_code || "")}"
                                         data-activity-title="${esc(row.activity_title || "")}"
+                                        data-activity-type="${esc(row.activity_type || "")}"
+                                        data-activity-type-code="${esc(row.activity_type_code || "")}"
+                                        data-floor="${esc(row.floor || "")}"
+                                        data-wbs-code="${esc(row.wbs_code || "")}"
+                                        data-default-quantity="${esc(row.default_quantity ?? "")}"
                                         data-default-location="${esc(row.default_location || "")}"
                                         data-default-unit="${esc(row.default_unit || "")}"
                                         data-sort-order="${Number(row.sort_order || 0)}"
@@ -1408,6 +1423,11 @@
                                         data-organization-contract-id="${contractId > 0 ? contractId : ""}"
                                         data-activity-code="${esc(row.activity_code || "")}"
                                         data-activity-title="${esc(row.activity_title || "")}"
+                                        data-activity-type="${esc(row.activity_type || "")}"
+                                        data-activity-type-code="${esc(row.activity_type_code || "")}"
+                                        data-floor="${esc(row.floor || "")}"
+                                        data-wbs-code="${esc(row.wbs_code || "")}"
+                                        data-default-quantity="${esc(row.default_quantity ?? "")}"
                                         data-default-location="${esc(row.default_location || "")}"
                                         data-default-unit="${esc(row.default_unit || "")}"
                                         data-sort-order="${Number(row.sort_order || 0)}"
@@ -1498,7 +1518,7 @@
                     </div>
                     <div class="module-crud-form-field consultant-activity-search">
                         <label>جستجو</label>
-                        <input class="module-crud-input" data-activity-search type="search" value="${esc(state.activity.searchText)}" placeholder="کد، عنوان، مرجع، واحد یا محل...">
+                        <input class="module-crud-input" data-activity-search type="search" value="${esc(state.activity.searchText)}" placeholder="کد، عنوان، تیپ، WBS، واحد یا محل...">
                     </div>
                     <div class="contractor-catalog-filter-group" role="group" aria-label="فیلتر وضعیت فعالیت">
                         ${activityStatusButton("all", "همه")}
@@ -1522,6 +1542,11 @@
                                 <th>انتخاب</th>
                                 <th>کد</th>
                                 <th>عنوان</th>
+                                <th>تیپ</th>
+                                <th>کد تیپ</th>
+                                <th>طبقه</th>
+                                <th>WBS</th>
+                                <th>مقدار</th>
                                 <th>دامنه</th>
                                 <th>مرجع</th>
                                 <th>واحد</th>
@@ -1718,6 +1743,11 @@
                             <div class="module-crud-form-field"><label>قرارداد</label><select class="module-crud-select" data-activity-form-field="organization_contract_id" ${canUpdate ? "" : "disabled"}>${renderContractOptions(organizationId, editing.organization_contract_id || "", "همه قراردادهای سازمان")}</select></div>
                             <div class="module-crud-form-field"><label>کد فعالیت</label><input class="module-crud-input" data-activity-form-field="activity_code" type="text" value="${esc(editing.activity_code || "")}" ${canUpdate ? "" : "disabled"}></div>
                             <div class="module-crud-form-field"><label>عنوان فعالیت</label><input class="module-crud-input" data-activity-form-field="activity_title" type="text" value="${esc(editing.activity_title || "")}" ${canUpdate ? "" : "disabled"}></div>
+                            <div class="module-crud-form-field"><label>تیپ</label><input class="module-crud-input" data-activity-form-field="activity_type" type="text" value="${esc(editing.activity_type || "")}" ${canUpdate ? "" : "disabled"}></div>
+                            <div class="module-crud-form-field"><label>کد تیپ</label><input class="module-crud-input" data-activity-form-field="activity_type_code" type="text" value="${esc(editing.activity_type_code || "")}" ${canUpdate ? "" : "disabled"}></div>
+                            <div class="module-crud-form-field"><label>طبقه</label><input class="module-crud-input" data-activity-form-field="floor" type="text" value="${esc(editing.floor || "")}" ${canUpdate ? "" : "disabled"}></div>
+                            <div class="module-crud-form-field"><label>WBS</label><input class="module-crud-input" data-activity-form-field="wbs_code" type="text" value="${esc(editing.wbs_code || "")}" ${canUpdate ? "" : "disabled"}></div>
+                            <div class="module-crud-form-field"><label>مقدار</label><input class="module-crud-input" data-activity-form-field="default_quantity" type="number" min="0" step="0.01" value="${esc(editing.default_quantity ?? "")}" ${canUpdate ? "" : "disabled"}></div>
                             <div class="module-crud-form-field"><label>محل پیش‌فرض</label><input class="module-crud-input" data-activity-form-field="default_location" type="text" value="${esc(editing.default_location || "")}" ${canUpdate ? "" : "disabled"}></div>
                             <div class="module-crud-form-field"><label>واحد پیش‌فرض</label><input class="module-crud-input" data-activity-form-field="default_unit" type="text" value="${esc(editing.default_unit || "")}" ${canUpdate ? "" : "disabled"}></div>
                             <div class="module-crud-form-field"><label>ترتیب</label><input class="module-crud-input" data-activity-form-field="sort_order" type="number" min="0" step="1" value="${esc(editing.sort_order ?? activityNextSortOrder())}" ${canUpdate ? "" : "disabled"}></div>
@@ -1951,6 +1981,11 @@
             organization_contract_id: String(values.organization_contract_id ?? state.activity.filters.organization_contract_id ?? ""),
             activity_code: upper(values.activity_code || ""),
             activity_title: norm(values.activity_title || ""),
+            activity_type: norm(values.activity_type || ""),
+            activity_type_code: norm(values.activity_type_code || ""),
+            floor: norm(values.floor || ""),
+            wbs_code: norm(values.wbs_code || ""),
+            default_quantity: values.default_quantity ?? "",
             default_location: norm(values.default_location || ""),
             default_unit: norm(values.default_unit || ""),
             sort_order: values.sort_order ?? activityNextSortOrder(),
@@ -2066,6 +2101,11 @@
             organization_contract_id: String(state.activity.filters.organization_contract_id || ""),
             activity_code: "",
             activity_title: "",
+            activity_type: "",
+            activity_type_code: "",
+            floor: "",
+            wbs_code: "",
+            default_quantity: "",
             default_location: "",
             default_unit: "",
             sort_order: activityNextSortOrder(),
@@ -2088,6 +2128,11 @@
             organization_contract_id: Number(readValue("organization_contract_id") || 0) || null,
             activity_code: upper(readValue("activity_code")),
             activity_title: norm(readValue("activity_title")),
+            activity_type: norm(readValue("activity_type")),
+            activity_type_code: norm(readValue("activity_type_code")),
+            floor: norm(readValue("floor")),
+            wbs_code: norm(readValue("wbs_code")),
+            default_quantity: readValue("default_quantity") === "" ? null : Number(readValue("default_quantity")),
             default_location: norm(readValue("default_location")),
             default_unit: norm(readValue("default_unit")),
             sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
@@ -2588,6 +2633,11 @@
             organization_contract_id: Number(actionEl.dataset.organizationContractId || 0) || null,
             activity_code: upper(actionEl.dataset.activityCode || ""),
             activity_title: norm(actionEl.dataset.activityTitle || ""),
+            activity_type: norm(actionEl.dataset.activityType || ""),
+            activity_type_code: norm(actionEl.dataset.activityTypeCode || ""),
+            floor: norm(actionEl.dataset.floor || ""),
+            wbs_code: norm(actionEl.dataset.wbsCode || ""),
+            default_quantity: actionEl.dataset.defaultQuantity ? Number(actionEl.dataset.defaultQuantity) : null,
             default_location: norm(actionEl.dataset.defaultLocation || ""),
             default_unit: norm(actionEl.dataset.defaultUnit || ""),
             sort_order: Number(actionEl.dataset.sortOrder || 0) || 0,
@@ -3228,6 +3278,11 @@
                     organization_contract_id: actionEl.dataset.organizationContractId || "",
                     activity_code: actionEl.dataset.activityCode || "",
                     activity_title: actionEl.dataset.activityTitle || "",
+                    activity_type: actionEl.dataset.activityType || "",
+                    activity_type_code: actionEl.dataset.activityTypeCode || "",
+                    floor: actionEl.dataset.floor || "",
+                    wbs_code: actionEl.dataset.wbsCode || "",
+                    default_quantity: actionEl.dataset.defaultQuantity || "",
                     default_location: actionEl.dataset.defaultLocation || "",
                     default_unit: actionEl.dataset.defaultUnit || "",
                     sort_order: Number(actionEl.dataset.sortOrder || 0),

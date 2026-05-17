@@ -45,7 +45,17 @@ def _create_draft(
         "qc_open_punch_count": 2,
         "qc_summary_note": "QC follow-up summary from api test",
         "manpower_rows": (
-            [{"role_code": "FOREMAN", "role_label": "Foreman", "claimed_count": 4, "claimed_hours": 8.0, "sort_order": 0}]
+            [
+                {
+                    "role_code": "FOREMAN",
+                    "role_label": "Foreman",
+                    "work_location": "Zone M",
+                    "work_floor": "B1",
+                    "claimed_count": 4,
+                    "claimed_hours": 8.0,
+                    "sort_order": 0,
+                }
+            ]
             if include_rows
             else []
         ),
@@ -55,6 +65,7 @@ def _create_draft(
                     "equipment_code": "CRN",
                     "equipment_label": "Crane",
                     "work_location": "Zone A",
+                    "work_floor": "L2",
                     "claimed_count": 2,
                     "claimed_status": "ACTIVE",
                     "claimed_hours": 5.5,
@@ -70,6 +81,7 @@ def _create_draft(
                     "activity_code": "CV-101",
                     "activity_title": "Foundation concrete",
                     "location": "B-Block",
+                    "floor": "B2",
                     "unit": "Ton",
                     "personnel_count": 12,
                     "today_quantity": 4.8,
@@ -89,6 +101,7 @@ def _create_draft(
                     "material_code": "MT-22",
                     "title": "A3 Size 20 rebar",
                     "consumption_location": "Slab B",
+                    "consumption_floor": "B3",
                     "unit": "Ton",
                     "incoming_quantity": 6,
                     "consumed_quantity": 4.8,
@@ -137,13 +150,20 @@ def _create_draft(
     assert int(data.get("qc_open_punch_count") or 0) == 2
     assert str(data.get("qc_summary_note") or "").startswith("QC follow-up")
     if include_rows:
+        manpower_rows = data.get("manpower_rows") or []
+        assert manpower_rows[0].get("work_location") == "Zone M"
+        assert manpower_rows[0].get("work_floor") == "B1"
         equipment_rows = data.get("equipment_rows") or []
         assert len(equipment_rows) == 1
         assert int(equipment_rows[0].get("claimed_count") or 0) == 2
         assert equipment_rows[0].get("work_location") == "Zone A"
+        assert equipment_rows[0].get("work_floor") == "L2"
+        activity_rows = data.get("activity_rows") or []
+        assert activity_rows[0].get("floor") == "B2"
         material_rows = data.get("material_rows") or []
         assert len(material_rows) == 1
         assert material_rows[0].get("consumption_location") == "Slab B"
+        assert material_rows[0].get("consumption_floor") == "B3"
         assert len(data.get("issue_rows") or []) == 1
     return data
 

@@ -77,6 +77,8 @@ const SECTION_DEFS: Record<
       { key: "role_code", label: "کد نقش", group: "base" },
       { key: "role_label", label: "عنوان نقش", group: "base", catalog: "role_catalog", catalogValueKey: "label" },
       { key: "work_section_label", label: "واحد / بخش کاری", group: "base", catalog: "work_section_catalog", catalogValueKey: "label" },
+      { key: "work_location", label: "محل", group: "base" },
+      { key: "work_floor", label: "طبقه", group: "base" },
       { key: "claimed_count", label: "تعداد اعلامی", type: "number", step: "1", group: "claimed" },
       { key: "claimed_hours", label: "ساعت اعلامی", type: "number", step: "0.1", group: "claimed" },
       { key: "verified_count", label: "تعداد تاییدی", type: "number", step: "1", group: "verified" },
@@ -91,6 +93,7 @@ const SECTION_DEFS: Record<
       { key: "equipment_code", label: "کد تجهیز", group: "base" },
       { key: "equipment_label", label: "عنوان تجهیز", group: "base", catalog: "equipment_catalog", catalogValueKey: "label" },
       { key: "work_location", label: "محل کارکرد", group: "base" },
+      { key: "work_floor", label: "طبقه کارکرد", group: "base" },
       { key: "claimed_count", label: "تعداد اعلامی", type: "number", step: "1", group: "claimed" },
       { key: "claimed_status", label: "وضعیت اعلامی", group: "claimed", catalog: "equipment_status_catalog", catalogValueKey: "code" },
       { key: "claimed_hours", label: "ساعت اعلامی", type: "number", step: "0.1", group: "claimed" },
@@ -111,6 +114,7 @@ const SECTION_DEFS: Record<
       { key: "activity_title", label: "عنوان فعالیت", group: "base", activityTitle: true },
       { key: "pms_step_code", label: "مرحله PMS", group: "base" },
       { key: "location", label: "محل", group: "base" },
+      { key: "floor", label: "طبقه", group: "base" },
       { key: "unit", label: "واحد", group: "base" },
       { key: "personnel_count", label: "نفرات", type: "number", step: "1", group: "base" },
       { key: "today_quantity", label: "امروز", type: "number", step: "0.01", group: "base" },
@@ -127,6 +131,7 @@ const SECTION_DEFS: Record<
       { key: "material_code", label: "کد", group: "base" },
       { key: "title", label: "عنوان", group: "base", catalog: "material_catalog", catalogValueKey: "label" },
       { key: "consumption_location", label: "محل مصرف", group: "base" },
+      { key: "consumption_floor", label: "طبقه مصرف", group: "base" },
       { key: "unit", label: "واحد", group: "base" },
       { key: "incoming_quantity", label: "ورودی", type: "number", step: "0.01", group: "base" },
       { key: "consumed_quantity", label: "مصرف", type: "number", step: "0.01", group: "base" },
@@ -334,12 +339,13 @@ function mainFieldsForSection(section: SectionKind): SectionFieldDef[] {
 
 function meaningfulKeysForSection(section: SectionKind): string[] {
   const map: Record<SectionKind, string[]> = {
-    manpower: ["role_code", "role_label", "work_section_label", "claimed_count", "claimed_hours", "verified_count", "verified_hours"],
-    equipment: ["equipment_code", "equipment_label", "work_location", "claimed_count", "claimed_status", "claimed_hours", "verified_count", "verified_status", "verified_hours"],
+    manpower: ["role_code", "role_label", "work_section_label", "work_location", "work_floor", "claimed_count", "claimed_hours", "verified_count", "verified_hours"],
+    equipment: ["equipment_code", "equipment_label", "work_location", "work_floor", "claimed_count", "claimed_status", "claimed_hours", "verified_count", "verified_status", "verified_hours"],
     activity: [
       "activity_code",
       "activity_title",
       "location",
+      "floor",
       "unit",
       "personnel_count",
       "today_quantity",
@@ -347,7 +353,7 @@ function meaningfulKeysForSection(section: SectionKind): string[] {
       "activity_status",
       "stop_reason",
     ],
-    material: ["material_code", "title", "consumption_location", "unit", "incoming_quantity", "consumed_quantity", "cumulative_quantity"],
+    material: ["material_code", "title", "consumption_location", "consumption_floor", "unit", "incoming_quantity", "consumed_quantity", "cumulative_quantity"],
     issue: ["issue_type", "description", "responsible_party", "due_date", "status"],
     report_attachment: ["attachment_type", "title", "reference_no", "linked_attachment_id"],
   };
@@ -1037,10 +1043,13 @@ function catalogDisplayValue(
 function activityOptionLabel(row: Record<string, unknown>): string {
   const code = String(row.activity_code ?? "").trim();
   const title = String(row.activity_title ?? "").trim();
+  const activityType = String(row.activity_type ?? "").trim();
+  const wbsCode = String(row.wbs_code ?? "").trim();
+  const floor = String(row.floor ?? "").trim();
   const location = String(row.default_location ?? "").trim();
   const unit = String(row.default_unit ?? "").trim();
   const scopeLabel = String(row.scope_label ?? "").trim();
-  return [code, title, location, unit, scopeLabel].filter(Boolean).join(" | ");
+  return [code, title, activityType, wbsCode, floor, location, unit, scopeLabel].filter(Boolean).join(" | ");
 }
 
 function activityOptionDatalistOptions(key: string): string {
@@ -1074,6 +1083,11 @@ function matchActivityOption(key: string, query: unknown, exactOnly = false): Re
         activityOptionLabel(row),
         row.activity_code,
         row.activity_title,
+        row.activity_type,
+        row.activity_type_code,
+        row.floor,
+        row.wbs_code,
+        row.default_quantity,
         row.default_location,
         row.default_unit,
         row.scope_label,
@@ -1150,7 +1164,7 @@ function pmsStepTypeaheadHtml(key: string, row: Record<string, unknown>, disable
 function activityTitleTypeaheadHtml(key: string, row: Record<string, unknown>, disabled: string, listScope: string): string {
   const current = String(row.activity_title ?? "").trim();
   const listId = `sl-activity-title-list-${key}-${listScope}`;
-  const placeholder = activityOptionsForKey(key).length ? "کد، عنوان، محل یا واحد را بنویسید..." : "عنوان فعالیت را بنویسید...";
+  const placeholder = activityOptionsForKey(key).length ? "کد، عنوان، طبقه، محل یا واحد را بنویسید..." : "عنوان فعالیت را بنویسید...";
   return `
     <div class="sl-typeahead-control">
       <input class="module-crud-input sl-row-input sl-typeahead-input" data-sl-field="activity_title" type="text" list="${stateBridge.esc(listId)}" value="${stateBridge.esc(current)}" data-sl-typeahead="activity-title"${disabled} placeholder="${stateBridge.esc(placeholder)}">
@@ -1870,6 +1884,7 @@ function applyActivityTitleTypeaheadValue(moduleKey: string, tabKey: string, inp
     setRowFieldValue(rowEl, "activity_title", "");
     setRowFieldValue(rowEl, "source_system", "MANUAL");
     setRowFieldValue(rowEl, "external_ref", "");
+    setRowFieldValue(rowEl, "floor", "");
     setRowFieldValue(rowEl, "pms_mapping_id", "");
     setRowFieldValue(rowEl, "pms_template_code", "");
     setRowFieldValue(rowEl, "pms_template_title", "");
@@ -1889,7 +1904,12 @@ function applyActivityTitleTypeaheadValue(moduleKey: string, tabKey: string, inp
     setRowFieldValue(rowEl, "source_system", "CATALOG");
     setRowFieldValue(rowEl, "external_ref", id > 0 ? `site_log_activity_catalog:${id}` : "");
     setRowFieldValue(rowEl, "location", match.default_location || "");
+    setRowFieldValue(rowEl, "floor", match.floor || "");
     setRowFieldValue(rowEl, "unit", match.default_unit || "");
+    if (match.default_quantity !== null && match.default_quantity !== undefined && String(match.default_quantity).trim() !== "") {
+      const currentQuantity = String(rowFieldSnapshot(rowEl).today_quantity ?? "").trim();
+      if (!currentQuantity) setRowFieldValue(rowEl, "today_quantity", match.default_quantity);
+    }
     setRowFieldValue(rowEl, "pms_mapping_id", Number(match.pms_mapping_id || 0) || "");
     setRowFieldValue(rowEl, "pms_template_code", match.pms_template_code || "");
     setRowFieldValue(rowEl, "pms_template_title", match.pms_template_title || "");
@@ -1905,6 +1925,7 @@ function applyActivityTitleTypeaheadValue(moduleKey: string, tabKey: string, inp
     setRowFieldValue(rowEl, "activity_code", "");
     setRowFieldValue(rowEl, "source_system", "");
     setRowFieldValue(rowEl, "external_ref", "");
+    setRowFieldValue(rowEl, "floor", "");
     setRowFieldValue(rowEl, "pms_mapping_id", "");
     setRowFieldValue(rowEl, "pms_template_code", "");
     setRowFieldValue(rowEl, "pms_template_title", "");
@@ -1918,6 +1939,7 @@ function applyActivityTitleTypeaheadValue(moduleKey: string, tabKey: string, inp
   if (commit) {
     setRowFieldValue(rowEl, "activity_code", "");
     setRowFieldValue(rowEl, "activity_title", "");
+    setRowFieldValue(rowEl, "floor", "");
     setRowFieldValue(rowEl, "source_system", "");
     setRowFieldValue(rowEl, "external_ref", "");
     setRowFieldValue(rowEl, "pms_mapping_id", "");
@@ -2380,7 +2402,7 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
   const manpowerTable = buildPrintTableHtml(
     "نفرات",
     "اعلام پیمانکار و تایید مشاور",
-    ["#", "کد", "عنوان", "واحد کاری", "تعداد اعلامی", "ساعت اعلامی", "تعداد تاییدی", "ساعت تاییدی", "توضیحات"],
+    ["#", "کد", "عنوان", "واحد کاری", "محل", "طبقه", "تعداد اعلامی", "ساعت اعلامی", "تعداد تاییدی", "ساعت تاییدی", "توضیحات"],
     compactManpowerRows
       .map(
         (item, index) => `
@@ -2389,6 +2411,8 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
             <td>${escHtml(textValue(item.role_code))}</td>
             <td>${escHtml(textValue(item.role_label))}</td>
             <td>${escHtml(textValue(item.work_section_label))}</td>
+            <td>${escHtml(textValue(item.work_location))}</td>
+            <td>${escHtml(textValue(item.work_floor))}</td>
             <td>${escHtml(formatNumber(toNumber(item.claimed_count), 0))}</td>
             <td>${escHtml(formatNumber(toNumber(item.claimed_hours), 1))}</td>
             <td>${escHtml(formatNumber(toNumber(item.verified_count), 0))}</td>
@@ -2397,14 +2421,14 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
           </tr>
         `
       )
-      .join("") + printOmittedRow(manpowerRows.length, compactManpowerRows.length, 9),
+      .join("") + printOmittedRow(manpowerRows.length, compactManpowerRows.length, 11),
     "ردیف نفرات برای این گزارش ثبت نشده است."
   );
 
   const equipmentTable = buildPrintTableHtml(
     "تجهیزات",
     "تعداد، وضعیت و ساعات تجهیز",
-    ["#", "کد", "عنوان", "محل کارکرد", "تعداد اعلامی", "وضعیت اعلامی", "ساعت اعلامی", "تعداد تاییدی", "وضعیت تاییدی", "ساعت تاییدی", "توضیحات"],
+    ["#", "کد", "عنوان", "محل کارکرد", "طبقه کارکرد", "تعداد اعلامی", "وضعیت اعلامی", "ساعت اعلامی", "تعداد تاییدی", "وضعیت تاییدی", "ساعت تاییدی", "توضیحات"],
     compactEquipmentRows
       .map(
         (item, index) => `
@@ -2413,6 +2437,7 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
             <td>${escHtml(textValue(item.equipment_code))}</td>
             <td>${escHtml(textValue(item.equipment_label))}</td>
             <td>${escHtml(textValue(item.work_location))}</td>
+            <td>${escHtml(textValue(item.work_floor))}</td>
             <td>${escHtml(formatNumber(toNumber(item.claimed_count), 0))}</td>
             <td>${escHtml(textValue(item.claimed_status))}</td>
             <td>${escHtml(formatNumber(toNumber(item.claimed_hours), 1))}</td>
@@ -2423,14 +2448,14 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
           </tr>
         `
       )
-      .join("") + printOmittedRow(equipmentRows.length, compactEquipmentRows.length, 11),
+      .join("") + printOmittedRow(equipmentRows.length, compactEquipmentRows.length, 12),
     "ردیف تجهیز برای این گزارش ثبت نشده است."
   );
 
   const activityTable = buildPrintTableHtml(
     "فعالیت‌های اجرایی",
     "فعالیت‌های روز و مقدار تجمیعی",
-    ["#", "کد", "عنوان فعالیت", "مرحله PMS", "محل", "واحد", "نفرات", "امروز", "تجمیعی", "وضعیت", "علت توقف", "توضیح"],
+    ["#", "کد", "عنوان فعالیت", "مرحله PMS", "محل", "طبقه", "واحد", "نفرات", "امروز", "تجمیعی", "وضعیت", "علت توقف", "توضیح"],
     compactActivityRows
       .map(
         (item, index) => `
@@ -2440,6 +2465,7 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
             <td>${escHtml(textValue(item.activity_title))}</td>
             <td>${escHtml([textValue(item.pms_step_title), item.pms_step_weight_pct ? formatNumber(toNumber(item.pms_step_weight_pct), 0, "%") : ""].filter(Boolean).join(" - ") || "-")}</td>
             <td>${escHtml(textValue(item.location))}</td>
+            <td>${escHtml(textValue(item.floor))}</td>
             <td>${escHtml(textValue(item.unit))}</td>
             <td>${escHtml(formatNumber(toNumber(item.personnel_count), 0))}</td>
             <td>${escHtml(formatNumber(toNumber(item.today_quantity), 2))}</td>
@@ -2450,14 +2476,14 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
           </tr>
         `
       )
-      .join("") + printOmittedRow(activityRows.length, compactActivityRows.length, 12),
+      .join("") + printOmittedRow(activityRows.length, compactActivityRows.length, 13),
     "ردیف فعالیت برای این گزارش ثبت نشده است."
   );
 
   const materialTable = buildPrintTableHtml(
     "مصالح",
     "ورودی، مصرف و مقدار تجمیعی",
-    ["#", "کد", "عنوان", "محل مصرف", "واحد", "ورودی", "مصرف", "تجمیعی", "توضیح"],
+    ["#", "کد", "عنوان", "محل مصرف", "طبقه مصرف", "واحد", "ورودی", "مصرف", "تجمیعی", "توضیح"],
     compactMaterialRows
       .map(
         (item, index) => `
@@ -2466,6 +2492,7 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
             <td>${escHtml(textValue(item.material_code))}</td>
             <td>${escHtml(textValue(item.title))}</td>
             <td>${escHtml(textValue(item.consumption_location))}</td>
+            <td>${escHtml(textValue(item.consumption_floor))}</td>
             <td>${escHtml(textValue(item.unit))}</td>
             <td>${escHtml(formatNumber(toNumber(item.incoming_quantity), 2))}</td>
             <td>${escHtml(formatNumber(toNumber(item.consumed_quantity), 2))}</td>
@@ -2474,7 +2501,7 @@ function buildSiteLogPrintHtml(row: Record<string, unknown>, mode: "summary" | "
           </tr>
         `
       )
-      .join("") + printOmittedRow(materialRows.length, compactMaterialRows.length, 9),
+      .join("") + printOmittedRow(materialRows.length, compactMaterialRows.length, 10),
     "ردیف مصالح برای این گزارش ثبت نشده است."
   );
 
@@ -2985,6 +3012,8 @@ function renderManpowerDetail(rows: Record<string, unknown>[]): string {
             <th rowspan="2">کد نقش</th>
             <th rowspan="2">عنوان نقش</th>
             <th rowspan="2">واحد / بخش کاری</th>
+            <th rowspan="2">محل</th>
+            <th rowspan="2">طبقه</th>
             <th colspan="2">اعلامی پیمانکار</th>
             <th colspan="2">تایید مشاور</th>
             <th rowspan="2">فایل‌ها</th>
@@ -3006,6 +3035,8 @@ function renderManpowerDetail(rows: Record<string, unknown>[]): string {
                   <td class="sl-report-code-cell">${stateBridge.esc(textValue(row.role_code))}</td>
                   <td>${stateBridge.esc(textValue(row.role_label))}</td>
                   <td>${stateBridge.esc(textValue(row.work_section_label))}</td>
+                  <td>${stateBridge.esc(textValue(row.work_location))}</td>
+                  <td>${stateBridge.esc(textValue(row.work_floor))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.claimed_count), 0))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.claimed_hours), 1))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.verified_count), 0))}</td>
@@ -3036,6 +3067,7 @@ function renderEquipmentDetail(rows: Record<string, unknown>[]): string {
             <th rowspan="2">کد تجهیز</th>
             <th rowspan="2">عنوان تجهیز</th>
             <th rowspan="2">محل کارکرد</th>
+            <th rowspan="2">طبقه کارکرد</th>
             <th colspan="3">اعلامی پیمانکار</th>
             <th colspan="3">تایید مشاور</th>
             <th rowspan="2">فایل‌ها</th>
@@ -3059,6 +3091,7 @@ function renderEquipmentDetail(rows: Record<string, unknown>[]): string {
                   <td class="sl-report-code-cell">${stateBridge.esc(textValue(row.equipment_code))}</td>
                   <td>${stateBridge.esc(textValue(row.equipment_label))}</td>
                   <td>${stateBridge.esc(textValue(row.work_location))}</td>
+                  <td>${stateBridge.esc(textValue(row.work_floor))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.claimed_count), 0))}</td>
                   <td>${stateBridge.esc(textValue(row.claimed_status))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.claimed_hours), 1))}</td>
@@ -3092,6 +3125,7 @@ function renderActivityDetail(rows: Record<string, unknown>[]): string {
             <th>عنوان فعالیت</th>
             <th>مرحله PMS</th>
             <th>محل</th>
+            <th>طبقه</th>
             <th>واحد</th>
             <th>نفرات</th>
             <th>امروز</th>
@@ -3112,6 +3146,7 @@ function renderActivityDetail(rows: Record<string, unknown>[]): string {
                   <td>${stateBridge.esc(textValue(row.activity_title))}</td>
                   <td>${stateBridge.esc([textValue(row.pms_step_title), row.pms_step_weight_pct ? formatNumber(toNumber(row.pms_step_weight_pct), 0, "%") : ""].filter(Boolean).join(" - ") || "-")}</td>
                   <td>${stateBridge.esc(textValue(row.location))}</td>
+                  <td>${stateBridge.esc(textValue(row.floor))}</td>
                   <td>${stateBridge.esc(textValue(row.unit))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.personnel_count), 0))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.today_quantity), 2))}</td>
@@ -3144,6 +3179,7 @@ function renderMaterialDetail(rows: Record<string, unknown>[]): string {
             <th>کد</th>
             <th>عنوان</th>
             <th>محل مصرف</th>
+            <th>طبقه مصرف</th>
             <th>واحد</th>
             <th>ورودی</th>
             <th>مصرف</th>
@@ -3161,6 +3197,7 @@ function renderMaterialDetail(rows: Record<string, unknown>[]): string {
                   <td class="sl-report-code-cell">${stateBridge.esc(textValue(row.material_code))}</td>
                   <td>${stateBridge.esc(textValue(row.title))}</td>
                   <td>${stateBridge.esc(textValue(row.consumption_location))}</td>
+                  <td>${stateBridge.esc(textValue(row.consumption_floor))}</td>
                   <td>${stateBridge.esc(textValue(row.unit))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.incoming_quantity), 2))}</td>
                   <td>${stateBridge.esc(formatNumber(toNumber(row.consumed_quantity), 2))}</td>
@@ -3417,6 +3454,7 @@ function activityRowFromCatalogItem(item: Record<string, unknown>, index: number
     claimed_progress_pct: "",
     verified_progress_pct: "",
     location: String(item.default_location ?? "").trim(),
+    floor: String(item.floor ?? "").trim(),
     unit: String(item.default_unit ?? "").trim(),
     personnel_count: "",
     pms_mapping_id: Number(item.pms_mapping_id || 0) || "",
@@ -3427,7 +3465,7 @@ function activityRowFromCatalogItem(item: Record<string, unknown>, index: number
     pms_step_title: "",
     pms_step_weight_pct: "",
     pms_steps: asArray(item.pms_steps),
-    today_quantity: "",
+    today_quantity: item.default_quantity ?? "",
     cumulative_quantity: "",
     activity_status: "",
     stop_reason: "",
@@ -3865,10 +3903,10 @@ async function uploadAttachment(moduleKey: string, tabKey: string, deps: SiteLog
 
 function rowAttachmentNote(section: SectionKind, rowMeta: Record<string, unknown>): string {
   const keysBySection: Record<string, string[]> = {
-    manpower: ["role_code", "role_label", "work_section_label", "note"],
-    equipment: ["equipment_code", "equipment_label", "work_location", "note"],
-    activity: ["activity_code", "activity_title", "location", "note"],
-    material: ["material_code", "title", "consumption_location", "unit", "note"],
+    manpower: ["role_code", "role_label", "work_section_label", "work_location", "work_floor", "note"],
+    equipment: ["equipment_code", "equipment_label", "work_location", "work_floor", "note"],
+    activity: ["activity_code", "activity_title", "location", "floor", "note"],
+    material: ["material_code", "title", "consumption_location", "consumption_floor", "unit", "note"],
     issue: ["issue_type", "description", "responsible_party", "note"],
     report_attachment: ["title", "reference_no", "note"],
   };

@@ -706,6 +706,8 @@ def _serialize(row: SiteLog, include_rows: bool = False, catalog_labels: dict[st
                 "role_code": x.role_code,
                 "role_label": x.role_label,
                 "work_section_label": x.work_section_label,
+                "work_location": x.work_location,
+                "work_floor": x.work_floor,
                 "claimed_count": x.claimed_count,
                 "claimed_hours": x.claimed_hours,
                 "verified_count": x.verified_count,
@@ -722,6 +724,7 @@ def _serialize(row: SiteLog, include_rows: bool = False, catalog_labels: dict[st
                 "equipment_code": x.equipment_code,
                 "equipment_label": x.equipment_label,
                 "work_location": x.work_location,
+                "work_floor": x.work_floor,
                 "claimed_count": x.claimed_count,
                 "claimed_status": x.claimed_status,
                 "claimed_hours": x.claimed_hours,
@@ -744,6 +747,7 @@ def _serialize(row: SiteLog, include_rows: bool = False, catalog_labels: dict[st
                 "claimed_progress_pct": x.claimed_progress_pct,
                 "verified_progress_pct": x.verified_progress_pct,
                 "location": x.location,
+                "floor": x.floor,
                 "unit": x.unit,
                 "personnel_count": x.personnel_count,
                 "pms_mapping_id": x.pms_mapping_id,
@@ -779,6 +783,7 @@ def _serialize(row: SiteLog, include_rows: bool = False, catalog_labels: dict[st
                 "material_code": x.material_code,
                 "title": x.title,
                 "consumption_location": x.consumption_location,
+                "consumption_floor": x.consumption_floor,
                 "unit": x.unit,
                 "incoming_quantity": x.incoming_quantity,
                 "consumed_quantity": x.consumed_quantity,
@@ -1004,28 +1009,31 @@ def _build_site_log_pdf(payload: dict[str, Any]) -> bytes:
     add_section(
         "Manpower",
         list(payload.get("manpower_rows") or []),
-        ["#", "Role", "Work Section", "Claimed Count", "Claimed Hours", "Verified Count", "Verified Hours", "Note"],
+        ["#", "Role", "Work Section", "Location", "Floor", "Claimed Count", "Claimed Hours", "Verified Count", "Verified Hours", "Note"],
         lambda row, index: [
             index,
             row.get("role_label") or row.get("role_code"),
             row.get("work_section_label"),
+            row.get("work_location"),
+            row.get("work_floor"),
             _site_log_pdf_number(row.get("claimed_count")),
             _site_log_pdf_number(row.get("claimed_hours"), 1),
             _site_log_pdf_number(row.get("verified_count")),
             _site_log_pdf_number(row.get("verified_hours"), 1),
             row.get("note"),
         ],
-        [0.8, 3.0, 3.0, 1.8, 1.8, 1.8, 1.8, 3.6],
+        [0.8, 2.4, 2.2, 2.0, 1.3, 1.5, 1.5, 1.5, 1.5, 3.0],
     )
 
     add_section(
         "Equipment",
         list(payload.get("equipment_rows") or []),
-        ["#", "Equipment", "Work Location", "Claimed Count", "Claimed Status", "Claimed Hours", "Verified Count", "Verified Status", "Verified Hours"],
+        ["#", "Equipment", "Work Location", "Floor", "Claimed Count", "Claimed Status", "Claimed Hours", "Verified Count", "Verified Status", "Verified Hours"],
         lambda row, index: [
             index,
             row.get("equipment_label") or row.get("equipment_code"),
             row.get("work_location"),
+            row.get("work_floor"),
             _site_log_pdf_number(row.get("claimed_count")),
             row.get("claimed_status"),
             _site_log_pdf_number(row.get("claimed_hours"), 1),
@@ -1033,42 +1041,44 @@ def _build_site_log_pdf(payload: dict[str, Any]) -> bytes:
             row.get("verified_status"),
             _site_log_pdf_number(row.get("verified_hours"), 1),
         ],
-        [0.8, 3.3, 2.3, 1.6, 1.8, 1.6, 1.6, 1.8, 1.6],
+        [0.8, 2.9, 2.0, 1.2, 1.5, 1.6, 1.5, 1.5, 1.6, 1.5],
     )
 
     add_section(
         "Activities",
         list(payload.get("activity_rows") or []),
-        ["#", "Code", "Title", "Location", "Unit", "Today", "Cumulative", "Status"],
+        ["#", "Code", "Title", "Location", "Floor", "Unit", "Today", "Cumulative", "Status"],
         lambda row, index: [
             index,
             row.get("activity_code"),
             row.get("activity_title"),
             row.get("location"),
+            row.get("floor"),
             row.get("unit"),
             _site_log_pdf_number(row.get("today_quantity"), 2),
             _site_log_pdf_number(row.get("cumulative_quantity"), 2),
             row.get("activity_status"),
         ],
-        [0.8, 2.1, 5.6, 2.1, 1.4, 1.6, 1.8, 2.2],
+        [0.8, 1.8, 4.6, 1.8, 1.2, 1.2, 1.5, 1.6, 2.0],
     )
 
     add_section(
         "Materials",
         list(payload.get("material_rows") or []),
-        ["#", "Code", "Title", "Consumption Location", "Unit", "Incoming", "Consumed", "Cumulative", "Note"],
+        ["#", "Code", "Title", "Consumption Location", "Floor", "Unit", "Incoming", "Consumed", "Cumulative", "Note"],
         lambda row, index: [
             index,
             row.get("material_code"),
             row.get("title"),
             row.get("consumption_location"),
+            row.get("consumption_floor"),
             row.get("unit"),
             _site_log_pdf_number(row.get("incoming_quantity"), 2),
             _site_log_pdf_number(row.get("consumed_quantity"), 2),
             _site_log_pdf_number(row.get("cumulative_quantity"), 2),
             row.get("note"),
         ],
-        [0.8, 1.8, 3.4, 2.3, 1.3, 1.6, 1.6, 1.7, 3.0],
+        [0.8, 1.5, 2.8, 2.0, 1.2, 1.1, 1.4, 1.4, 1.4, 2.8],
     )
 
     add_section(
@@ -1355,6 +1365,11 @@ def _serialize_activity_catalog_item(row: SiteLogActivityCatalog) -> dict[str, A
         "contract_subject": contract_subject or None,
         "activity_code": row.activity_code,
         "activity_title": row.activity_title,
+        "activity_type": row.activity_type,
+        "activity_type_code": row.activity_type_code,
+        "floor": row.floor,
+        "wbs_code": row.wbs_code,
+        "default_quantity": float(row.default_quantity) if row.default_quantity is not None else None,
         "default_location": row.default_location,
         "default_unit": row.default_unit,
         "sort_order": int(row.sort_order or 0),
@@ -1468,6 +1483,8 @@ class ManpowerIn(BaseModel):
     role_code: Optional[str] = Field(default=None, max_length=64)
     role_label: Optional[str] = Field(default=None, max_length=255)
     work_section_label: Optional[str] = Field(default=None, max_length=255)
+    work_location: Optional[str] = Field(default=None, max_length=255)
+    work_floor: Optional[str] = Field(default=None, max_length=64)
     claimed_count: Optional[int] = Field(default=None, ge=0)
     claimed_hours: Optional[float] = Field(default=None, ge=0)
     verified_count: Optional[int] = Field(default=None, ge=0)
@@ -1481,6 +1498,7 @@ class EquipmentIn(BaseModel):
     equipment_code: Optional[str] = Field(default=None, max_length=64)
     equipment_label: Optional[str] = Field(default=None, max_length=255)
     work_location: Optional[str] = Field(default=None, max_length=255)
+    work_floor: Optional[str] = Field(default=None, max_length=64)
     claimed_count: Optional[int] = Field(default=None, ge=0)
     claimed_status: Optional[str] = Field(default=None, max_length=32)
     claimed_hours: Optional[float] = Field(default=None, ge=0)
@@ -1500,6 +1518,7 @@ class ActivityIn(BaseModel):
     claimed_progress_pct: Optional[float] = Field(default=None, ge=0, le=100)
     verified_progress_pct: Optional[float] = Field(default=None, ge=0, le=100)
     location: Optional[str] = Field(default=None, max_length=255)
+    floor: Optional[str] = Field(default=None, max_length=64)
     unit: Optional[str] = Field(default=None, max_length=64)
     personnel_count: Optional[int] = Field(default=None, ge=0)
     pms_mapping_id: Optional[int] = Field(default=None, ge=1)
@@ -1522,6 +1541,7 @@ class MaterialIn(BaseModel):
     material_code: Optional[str] = Field(default=None, max_length=64)
     title: Optional[str] = Field(default=None, max_length=255)
     consumption_location: Optional[str] = Field(default=None, max_length=255)
+    consumption_floor: Optional[str] = Field(default=None, max_length=64)
     unit: Optional[str] = Field(default=None, max_length=64)
     incoming_quantity: Optional[float] = Field(default=None, ge=0)
     consumed_quantity: Optional[float] = Field(default=None, ge=0)
@@ -1632,6 +1652,8 @@ def _sanitize_manpower(rows: list[ManpowerIn] | None) -> list[dict[str, Any]]:
             "role_code": _upper(r.role_code) or None,
             "role_label": _norm(r.role_label) or None,
             "work_section_label": _norm(r.work_section_label) or None,
+            "work_location": _norm(r.work_location) or None,
+            "work_floor": _norm(r.work_floor) or None,
             "claimed_count": _to_int(r.claimed_count),
             "claimed_hours": _to_float(r.claimed_hours),
             "verified_count": _to_int(r.verified_count),
@@ -1639,7 +1661,7 @@ def _sanitize_manpower(rows: list[ManpowerIn] | None) -> list[dict[str, Any]]:
             "note": _norm(r.note) or None,
             "sort_order": int(r.sort_order if r.sort_order is not None else i),
         }
-        if any([row["role_code"], row["role_label"], row["work_section_label"], row["claimed_count"] is not None, row["claimed_hours"] is not None, row["verified_count"] is not None, row["verified_hours"] is not None, row["note"]]):
+        if any([row["role_code"], row["role_label"], row["work_section_label"], row["work_location"], row["work_floor"], row["claimed_count"] is not None, row["claimed_hours"] is not None, row["verified_count"] is not None, row["verified_hours"] is not None, row["note"]]):
             out.append(row)
     return out
 
@@ -1652,6 +1674,7 @@ def _sanitize_equipment(rows: list[EquipmentIn] | None) -> list[dict[str, Any]]:
             "equipment_code": _upper(r.equipment_code) or None,
             "equipment_label": _norm(r.equipment_label) or None,
             "work_location": _norm(r.work_location) or None,
+            "work_floor": _norm(r.work_floor) or None,
             "claimed_count": _to_int(r.claimed_count),
             "claimed_status": _upper(r.claimed_status) or None,
             "claimed_hours": _to_float(r.claimed_hours),
@@ -1665,6 +1688,7 @@ def _sanitize_equipment(rows: list[EquipmentIn] | None) -> list[dict[str, Any]]:
             row["equipment_code"],
             row["equipment_label"],
             row["work_location"],
+            row["work_floor"],
             row["claimed_count"] is not None,
             row["claimed_status"],
             row["claimed_hours"] is not None,
@@ -1689,6 +1713,7 @@ def _sanitize_activity(rows: list[ActivityIn] | None) -> list[dict[str, Any]]:
             "claimed_progress_pct": _to_float(r.claimed_progress_pct),
             "verified_progress_pct": _to_float(r.verified_progress_pct),
             "location": _norm(r.location) or None,
+            "floor": _norm(r.floor) or None,
             "unit": _norm(r.unit) or None,
             "personnel_count": _to_int(r.personnel_count),
             "pms_mapping_id": _to_int(r.pms_mapping_id),
@@ -1713,6 +1738,7 @@ def _sanitize_activity(rows: list[ActivityIn] | None) -> list[dict[str, Any]]:
                 row["claimed_progress_pct"] is not None,
                 row["verified_progress_pct"] is not None,
                 row["location"],
+                row["floor"],
                 row["unit"],
                 row["personnel_count"] is not None,
                 row["pms_mapping_id"],
@@ -1784,6 +1810,7 @@ def _sanitize_material(rows: list[MaterialIn] | None) -> list[dict[str, Any]]:
             "material_code": _upper(r.material_code) or None,
             "title": _norm(r.title) or None,
             "consumption_location": _norm(r.consumption_location) or None,
+            "consumption_floor": _norm(r.consumption_floor) or None,
             "unit": _norm(r.unit) or None,
             "incoming_quantity": _to_float(r.incoming_quantity),
             "consumed_quantity": _to_float(r.consumed_quantity),
@@ -1796,6 +1823,7 @@ def _sanitize_material(rows: list[MaterialIn] | None) -> list[dict[str, Any]]:
                 row["material_code"],
                 row["title"],
                 row["consumption_location"],
+                row["consumption_floor"],
                 row["unit"],
                 row["incoming_quantity"] is not None,
                 row["consumed_quantity"] is not None,
@@ -2503,6 +2531,8 @@ def _site_log_report_columns(report_section: str = "general") -> list[dict[str, 
     if section == "manpower":
         return common + [
             {"key": "work_section_label", "label": "واحد / بخش کاری", "type": "text"},
+            {"key": "work_location", "label": "محل", "type": "text"},
+            {"key": "work_floor", "label": "طبقه", "type": "text"},
             {"key": "role_code", "label": "کد نقش", "type": "text"},
             {"key": "role_label", "label": "عنوان نقش", "type": "text"},
             {"key": "claimed_count", "label": "تعداد اعلامی", "type": "number"},
@@ -2521,6 +2551,7 @@ def _site_log_report_columns(report_section: str = "general") -> list[dict[str, 
             {"key": "equipment_code", "label": "کد تجهیز", "type": "text"},
             {"key": "equipment_label", "label": "عنوان تجهیز", "type": "text"},
             {"key": "work_location", "label": "محل کارکرد", "type": "text"},
+            {"key": "work_floor", "label": "طبقه کارکرد", "type": "text"},
             {"key": "claimed_count", "label": "تعداد اعلامی", "type": "number"},
             {"key": "verified_count", "label": "تعداد تاییدی", "type": "number"},
             {"key": "count_delta", "label": "اختلاف تعداد", "type": "number"},
@@ -2539,6 +2570,7 @@ def _site_log_report_columns(report_section: str = "general") -> list[dict[str, 
             {"key": "material_code", "label": "کد مصالح", "type": "text"},
             {"key": "material_title", "label": "عنوان مصالح", "type": "text"},
             {"key": "consumption_location", "label": "محل مصرف", "type": "text"},
+            {"key": "consumption_floor", "label": "طبقه مصرف", "type": "text"},
             {"key": "unit", "label": "واحد", "type": "text"},
             {"key": "incoming_quantity", "label": "ورودی", "type": "number"},
             {"key": "consumed_quantity", "label": "مصرفی", "type": "number"},
@@ -2554,6 +2586,7 @@ def _site_log_report_columns(report_section: str = "general") -> list[dict[str, 
             {"key": "activity_title", "label": "عنوان فعالیت", "type": "text"},
             {"key": "pms_step_title", "label": "مرحله PMS", "type": "text"},
             {"key": "location", "label": "محل", "type": "text"},
+            {"key": "floor", "label": "طبقه", "type": "text"},
             {"key": "unit", "label": "واحد", "type": "text"},
             {"key": "today_quantity", "label": "امروز", "type": "number"},
             {"key": "cumulative_quantity", "label": "تجمعی", "type": "number"},
@@ -2664,6 +2697,8 @@ def _site_log_report_query(
                         SiteLogManpowerRow.role_code.ilike(pattern),
                         SiteLogManpowerRow.role_label.ilike(pattern),
                         SiteLogManpowerRow.work_section_label.ilike(pattern),
+                        SiteLogManpowerRow.work_location.ilike(pattern),
+                        SiteLogManpowerRow.work_floor.ilike(pattern),
                         SiteLogManpowerRow.note.ilike(pattern),
                     )
                 ),
@@ -2672,6 +2707,7 @@ def _site_log_report_query(
                         SiteLogEquipmentRow.equipment_code.ilike(pattern),
                         SiteLogEquipmentRow.equipment_label.ilike(pattern),
                         SiteLogEquipmentRow.work_location.ilike(pattern),
+                        SiteLogEquipmentRow.work_floor.ilike(pattern),
                         SiteLogEquipmentRow.claimed_status.ilike(pattern),
                         SiteLogEquipmentRow.verified_status.ilike(pattern),
                         SiteLogEquipmentRow.note.ilike(pattern),
@@ -2682,6 +2718,7 @@ def _site_log_report_query(
                         SiteLogMaterialRow.material_code.ilike(pattern),
                         SiteLogMaterialRow.title.ilike(pattern),
                         SiteLogMaterialRow.consumption_location.ilike(pattern),
+                        SiteLogMaterialRow.consumption_floor.ilike(pattern),
                         SiteLogMaterialRow.unit.ilike(pattern),
                         SiteLogMaterialRow.note.ilike(pattern),
                     )
@@ -2692,6 +2729,7 @@ def _site_log_report_query(
                         SiteLogActivityRow.activity_title.ilike(pattern),
                         SiteLogActivityRow.pms_step_title.ilike(pattern),
                         SiteLogActivityRow.location.ilike(pattern),
+                        SiteLogActivityRow.floor.ilike(pattern),
                         SiteLogActivityRow.unit.ilike(pattern),
                         SiteLogActivityRow.activity_status.ilike(pattern),
                         SiteLogActivityRow.stop_reason.ilike(pattern),
@@ -2831,6 +2869,8 @@ def _site_log_report_section_rows(
                     "row_id": item.id,
                     "row_sort_order": item.sort_order,
                     "work_section_label": item.work_section_label,
+                    "work_location": item.work_location,
+                    "work_floor": item.work_floor,
                     "role_code": item.role_code,
                     "role_label": item.role_label,
                     "claimed_count": round(claimed_count, 2),
@@ -2859,6 +2899,7 @@ def _site_log_report_section_rows(
                     "equipment_code": item.equipment_code,
                     "equipment_label": item.equipment_label,
                     "work_location": item.work_location,
+                    "work_floor": item.work_floor,
                     "claimed_count": round(claimed_count, 2),
                     "verified_count": round(verified_count, 2),
                     "count_delta": round(verified_count - claimed_count, 2),
@@ -2883,6 +2924,7 @@ def _site_log_report_section_rows(
                     "material_code": item.material_code,
                     "material_title": item.title,
                     "consumption_location": item.consumption_location,
+                    "consumption_floor": item.consumption_floor,
                     "unit": item.unit,
                     "incoming_quantity": round(float(item.incoming_quantity or 0), 2),
                     "consumed_quantity": round(float(item.consumed_quantity or 0), 2),
@@ -2906,6 +2948,7 @@ def _site_log_report_section_rows(
                     "activity_title": item.activity_title,
                     "pms_step_title": item.pms_step_title,
                     "location": item.location,
+                    "floor": item.floor,
                     "unit": item.unit,
                     "today_quantity": round(float(item.today_quantity or 0), 2),
                     "cumulative_quantity": round(float(item.cumulative_quantity or 0), 2),

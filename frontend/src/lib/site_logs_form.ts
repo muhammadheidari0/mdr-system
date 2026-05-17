@@ -71,6 +71,8 @@ function sanitizeManpowerRows(rows: unknown): Record<string, unknown>[] {
         role_code: upper(row.role_code) || null,
         role_label: String(row.role_label ?? "").trim() || null,
         work_section_label: String(row.work_section_label ?? "").trim() || null,
+        work_location: String(row.work_location ?? "").trim() || null,
+        work_floor: String(row.work_floor ?? "").trim() || null,
         claimed_count: toInt(row.claimed_count),
         claimed_hours: toFloat(row.claimed_hours),
         verified_count: toInt(row.verified_count),
@@ -82,6 +84,8 @@ function sanitizeManpowerRows(rows: unknown): Record<string, unknown>[] {
         !!out.role_code ||
         !!out.role_label ||
         !!out.work_section_label ||
+        !!out.work_location ||
+        !!out.work_floor ||
         out.claimed_count !== null ||
         out.claimed_hours !== null ||
         out.verified_count !== null ||
@@ -101,6 +105,7 @@ function sanitizeEquipmentRows(rows: unknown): Record<string, unknown>[] {
         equipment_code: upper(row.equipment_code) || null,
         equipment_label: String(row.equipment_label ?? "").trim() || null,
         work_location: String(row.work_location ?? "").trim() || null,
+        work_floor: String(row.work_floor ?? "").trim() || null,
         claimed_count: toInt(row.claimed_count),
         claimed_status: upper(row.claimed_status) || null,
         claimed_hours: toFloat(row.claimed_hours),
@@ -114,6 +119,7 @@ function sanitizeEquipmentRows(rows: unknown): Record<string, unknown>[] {
         !!out.equipment_code ||
         !!out.equipment_label ||
         !!out.work_location ||
+        !!out.work_floor ||
         out.claimed_count !== null ||
         !!out.claimed_status ||
         out.claimed_hours !== null ||
@@ -139,6 +145,7 @@ function sanitizeActivityRows(rows: unknown): Record<string, unknown>[] {
         claimed_progress_pct: toFloat(row.claimed_progress_pct),
         verified_progress_pct: toFloat(row.verified_progress_pct),
         location: String(row.location ?? "").trim() || null,
+        floor: String(row.floor ?? "").trim() || null,
         unit: String(row.unit ?? "").trim() || null,
         personnel_count: toInt(row.personnel_count),
         today_quantity: toFloat(row.today_quantity),
@@ -155,6 +162,7 @@ function sanitizeActivityRows(rows: unknown): Record<string, unknown>[] {
         out.claimed_progress_pct !== null ||
         out.verified_progress_pct !== null ||
         !!out.location ||
+        !!out.floor ||
         !!out.unit ||
         out.personnel_count !== null ||
         out.today_quantity !== null ||
@@ -176,6 +184,7 @@ function sanitizeMaterialRows(rows: unknown): Record<string, unknown>[] {
         material_code: upper(row.material_code) || null,
         title: String(row.title ?? "").trim() || null,
         consumption_location: String(row.consumption_location ?? "").trim() || null,
+        consumption_floor: String(row.consumption_floor ?? "").trim() || null,
         unit: String(row.unit ?? "").trim() || null,
         incoming_quantity: toFloat(row.incoming_quantity),
         consumed_quantity: toFloat(row.consumed_quantity),
@@ -187,6 +196,7 @@ function sanitizeMaterialRows(rows: unknown): Record<string, unknown>[] {
         !!out.material_code ||
         !!out.title ||
         !!out.consumption_location ||
+        !!out.consumption_floor ||
         !!out.unit ||
         out.incoming_quantity !== null ||
         out.consumed_quantity !== null ||

@@ -89,6 +89,11 @@ def _upsert_activity_catalog_item(
     activity_title: str,
     organization_id: int | None = None,
     organization_contract_id: int | None = None,
+    activity_type: str | None = None,
+    activity_type_code: str | None = None,
+    floor: str | None = None,
+    wbs_code: str | None = None,
+    default_quantity: float | None = None,
     default_location: str | None = None,
     default_unit: str | None = None,
     sort_order: int = 10,
@@ -101,6 +106,11 @@ def _upsert_activity_catalog_item(
         "organization_contract_id": organization_contract_id,
         "activity_code": activity_code,
         "activity_title": activity_title,
+        "activity_type": activity_type,
+        "activity_type_code": activity_type_code,
+        "floor": floor,
+        "wbs_code": wbs_code,
+        "default_quantity": default_quantity,
         "default_location": default_location,
         "default_unit": default_unit,
         "sort_order": sort_order,
@@ -570,6 +580,11 @@ def test_site_log_activity_catalog_crud_and_runtime_fallback() -> None:
         project_code=project_code,
         activity_code=code_project,
         activity_title="Project Default Activity",
+        activity_type="Concrete",
+        activity_type_code="CONC",
+        floor="B1",
+        wbs_code="1.2.3",
+        default_quantity=125.5,
         default_location="Zone A",
         default_unit="Ton",
         sort_order=40,
@@ -615,6 +630,11 @@ def test_site_log_activity_catalog_crud_and_runtime_fallback() -> None:
         sort_order=10,
     )
     assert (project_only.get("item") or {}).get("scope_code") == "project"
+    assert (project_only.get("item") or {}).get("activity_type") == "Concrete"
+    assert (project_only.get("item") or {}).get("activity_type_code") == "CONC"
+    assert (project_only.get("item") or {}).get("floor") == "B1"
+    assert (project_only.get("item") or {}).get("wbs_code") == "1.2.3"
+    assert (project_only.get("item") or {}).get("default_quantity") == 125.5
     assert (org_only.get("item") or {}).get("scope_code") == "organization"
     assert (contract_only.get("item") or {}).get("scope_code") == "contract"
 
@@ -628,6 +648,10 @@ def test_site_log_activity_catalog_crud_and_runtime_fallback() -> None:
     runtime_codes = [str(item.get("activity_code") or "") for item in runtime_rows]
     assert runtime_codes[:4] == [code_contract, code_duplicate, code_org_only, code_project]
     assert runtime_codes.count(code_duplicate) == 1
+    runtime_project_row = next(row for row in runtime_rows if row.get("activity_code") == code_project)
+    assert runtime_project_row.get("activity_type") == "Concrete"
+    assert runtime_project_row.get("wbs_code") == "1.2.3"
+    assert runtime_project_row.get("default_quantity") == 125.5
 
     delete_contract_item = client.post(
         "/api/v1/settings/site-log-activity-catalog/delete",
@@ -697,8 +721,20 @@ def test_site_log_activity_catalog_excel_import_upserts_selected_scope() -> None
     template_workbook = load_workbook(BytesIO(template_res.content), read_only=True, data_only=True)
     try:
         template_sheet = template_workbook.active
-        headers = [template_sheet.cell(row=1, column=index).value for index in range(1, 7)]
-        assert headers == ["کد فعالیت", "عنوان فعالیت", "محل پیش‌فرض", "واحد", "ترتیب", "وضعیت"]
+        headers = [template_sheet.cell(row=1, column=index).value for index in range(1, 12)]
+        assert headers == [
+            "کد فعالیت",
+            "عنوان فعالیت",
+            "تیپ",
+            "کد تیپ",
+            "طبقه",
+            "WBS",
+            "مقدار",
+            "محل پیش‌فرض",
+            "واحد",
+            "ترتیب",
+            "وضعیت",
+        ]
     finally:
         template_workbook.close()
 
@@ -706,10 +742,10 @@ def test_site_log_activity_catalog_excel_import_upserts_selected_scope() -> None
     code_two = f"IMP{uuid4().hex[:4].upper()}"
     workbook = Workbook()
     sheet = workbook.active
-    sheet.append(["کد فعالیت", "عنوان فعالیت", "محل پیش‌فرض", "واحد", "ترتیب", "وضعیت"])
-    sheet.append([code_one, "Imported Activity One", "Block A", "m3", 10, "فعال"])
-    sheet.append([code_two, "Imported Activity Two", "Block B", "kg", 20, "غیرفعال"])
-    sheet.append(["", "Missing Code", "Block C", "m2", 30, "فعال"])
+    sheet.append(["کد فعالیت", "عنوان فعالیت", "تیپ", "کد تیپ", "طبقه", "WBS", "مقدار", "محل پیش‌فرض", "واحد", "ترتیب", "وضعیت"])
+    sheet.append([code_one, "Imported Activity One", "Concrete", "CONC", "B1", "1.2.3", 42.5, "Block A", "m3", 10, "فعال"])
+    sheet.append([code_two, "Imported Activity Two", "Formwork", "FORM", "GF", "1.2.4", 10, "Block B", "kg", 20, "غیرفعال"])
+    sheet.append(["", "Missing Code", "Steel", "STL", "B2", "1.2.5", 1, "Block C", "m2", 30, "فعال"])
     buffer = BytesIO()
     workbook.save(buffer)
     workbook.close()
@@ -743,13 +779,18 @@ def test_site_log_activity_catalog_excel_import_upserts_selected_scope() -> None
     assert row_one is not None
     assert row_two is not None
     assert row_one.get("scope_code") == "contract"
+    assert row_one.get("activity_type") == "Concrete"
+    assert row_one.get("activity_type_code") == "CONC"
+    assert row_one.get("floor") == "B1"
+    assert row_one.get("wbs_code") == "1.2.3"
+    assert row_one.get("default_quantity") == 42.5
     assert row_one.get("default_location") == "Block A"
     assert row_two.get("is_active") is False
 
     update_workbook = Workbook()
     update_sheet = update_workbook.active
-    update_sheet.append(["activity_code", "activity_title", "default_location", "default_unit", "sort_order", "is_active"])
-    update_sheet.append([code_one, "Imported Activity One Updated", "Block A1", "m3", 15, "yes"])
+    update_sheet.append(["activity_code", "activity_title", "activity_type", "activity_type_code", "floor", "wbs_code", "default_quantity", "default_location", "default_unit", "sort_order", "is_active"])
+    update_sheet.append([code_one, "Imported Activity One Updated", "Concrete Updated", "CONC-U", "B2", "1.2.3.1", 55, "Block A1", "m3", 15, "yes"])
     update_buffer = BytesIO()
     update_workbook.save(update_buffer)
     update_workbook.close()
@@ -778,6 +819,9 @@ def test_site_log_activity_catalog_excel_import_upserts_selected_scope() -> None
     updated_row = next((row for row in update_body.get("items", []) if row.get("activity_code") == code_one), None)
     assert updated_row is not None
     assert updated_row.get("activity_title") == "Imported Activity One Updated"
+    assert updated_row.get("activity_type") == "Concrete Updated"
+    assert updated_row.get("wbs_code") == "1.2.3.1"
+    assert updated_row.get("default_quantity") == 55
     assert updated_row.get("sort_order") == 15
 
     runtime_res = client.get(

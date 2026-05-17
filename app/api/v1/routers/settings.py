@@ -418,6 +418,11 @@ class SiteLogActivityCatalogUpsertIn(BaseModel):
     organization_contract_id: Optional[int] = Field(default=None, ge=1)
     activity_code: str = Field(..., min_length=1, max_length=64)
     activity_title: str = Field(..., min_length=1, max_length=255)
+    activity_type: Optional[str] = Field(default=None, max_length=128)
+    activity_type_code: Optional[str] = Field(default=None, max_length=64)
+    floor: Optional[str] = Field(default=None, max_length=64)
+    wbs_code: Optional[str] = Field(default=None, max_length=64)
+    default_quantity: Optional[float] = Field(default=None, ge=0)
     default_location: Optional[str] = Field(default=None, max_length=255)
     default_unit: Optional[str] = Field(default=None, max_length=64)
     sort_order: int = 0
@@ -591,6 +596,11 @@ def _serialize_site_log_activity_catalog_row(row: SiteLogActivityCatalog) -> Dic
         "contract_subject": _norm(getattr(contract, "subject", None)) or None,
         "activity_code": _upper(row.activity_code),
         "activity_title": _norm(row.activity_title),
+        "activity_type": _norm(row.activity_type) or None,
+        "activity_type_code": _norm(row.activity_type_code) or None,
+        "floor": _norm(row.floor) or None,
+        "wbs_code": _norm(row.wbs_code) or None,
+        "default_quantity": float(row.default_quantity) if row.default_quantity is not None else None,
         "default_location": _norm(row.default_location) or None,
         "default_unit": _norm(row.default_unit) or None,
         "sort_order": int(row.sort_order or 0),
@@ -871,6 +881,10 @@ def _load_site_log_activity_catalog_payload(
                     _norm(getattr(getattr(item, "organization", None), "name", None)),
                     _norm(getattr(getattr(item, "organization_contract", None), "contract_number", None)),
                     _norm(getattr(getattr(item, "organization_contract", None), "subject", None)),
+                    _norm(item.activity_type),
+                    _norm(item.activity_type_code),
+                    _norm(item.floor),
+                    _norm(item.wbs_code),
                     _upper(item.project_code),
                 ]
             ).lower()
@@ -929,6 +943,26 @@ _ACTIVITY_IMPORT_HEADER_ALIASES: Dict[str, str] = {
     "شرح": "activity_title",
     "عنوان": "activity_title",
     "عنوانفعالیت": "activity_title",
+    "activitytype": "activity_type",
+    "type": "activity_type",
+    "تیپ": "activity_type",
+    "نوع": "activity_type",
+    "activitytypecode": "activity_type_code",
+    "typecode": "activity_type_code",
+    "کدتیپ": "activity_type_code",
+    "کدنوع": "activity_type_code",
+    "floor": "floor",
+    "level": "floor",
+    "طبقه": "floor",
+    "wbs": "wbs_code",
+    "wbscode": "wbs_code",
+    "کدwbs": "wbs_code",
+    "کدساختارشکستکار": "wbs_code",
+    "defaultquantity": "default_quantity",
+    "quantity": "default_quantity",
+    "qty": "default_quantity",
+    "مقدار": "default_quantity",
+    "حجم": "default_quantity",
     "defaultlocation": "default_location",
     "location": "default_location",
     "محل": "default_location",
@@ -985,6 +1019,16 @@ def _activity_import_int(value: Any, default: int) -> int:
         return int(float(text))
     except (TypeError, ValueError):
         return default
+
+
+def _activity_import_float(value: Any) -> float | None:
+    text = _activity_import_cell_text(value)
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
 
 
 def _resolve_activity_catalog_scope(
@@ -1097,12 +1141,24 @@ def _site_log_activity_catalog_template_bytes() -> bytes:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Activity Catalog"
-    headers = ["کد فعالیت", "عنوان فعالیت", "محل پیش‌فرض", "واحد", "ترتیب", "وضعیت"]
+    headers = [
+        "کد فعالیت",
+        "عنوان فعالیت",
+        "تیپ",
+        "کد تیپ",
+        "طبقه",
+        "WBS",
+        "مقدار",
+        "محل پیش‌فرض",
+        "واحد",
+        "ترتیب",
+        "وضعیت",
+    ]
     sheet.append(headers)
-    sheet.append(["CV-101", "آرماتوربندی فونداسیون", "بلوک B", "تن", 10, "فعال"])
-    sheet.append(["CV-118", "قالب بندی دیوار حائل", "ضلع شمالی", "مترمربع", 20, "فعال"])
+    sheet.append(["CV-101", "آرماتوربندی فونداسیون", "Concrete", "CONC", "B1", "1.2.3", 120, "بلوک B", "تن", 10, "فعال"])
+    sheet.append(["CV-118", "قالب بندی دیوار حائل", "Formwork", "FORM", "GF", "1.2.4", 85, "ضلع شمالی", "مترمربع", 20, "فعال"])
     sheet.freeze_panes = "A2"
-    widths = [18, 34, 24, 14, 12, 14]
+    widths = [18, 34, 18, 16, 14, 18, 14, 24, 14, 12, 14]
     header_fill = PatternFill("solid", fgColor="EAF2FF")
     header_font = Font(bold=True, color="0B3A7A")
     for col_index, width in enumerate(widths, start=1):
@@ -1194,6 +1250,11 @@ def _site_log_pms_mapping_workbook_bytes(rows: List[Dict[str, Any]] | None = Non
     headers = [
         "activity_code",
         "activity_title",
+        "activity_type",
+        "activity_type_code",
+        "floor",
+        "wbs_code",
+        "default_quantity",
         "default_location",
         "default_unit",
         "reference",
@@ -1209,6 +1270,11 @@ def _site_log_pms_mapping_workbook_bytes(rows: List[Dict[str, Any]] | None = Non
                 [
                     row.get("activity_code") or "",
                     row.get("activity_title") or "",
+                    row.get("activity_type") or "",
+                    row.get("activity_type_code") or "",
+                    row.get("floor") or "",
+                    row.get("wbs_code") or "",
+                    row.get("default_quantity") if row.get("default_quantity") is not None else "",
                     row.get("default_location") or "",
                     row.get("default_unit") or "",
                     row.get("organization_name") or row.get("contract_subject") or row.get("project_code") or "",
@@ -1219,11 +1285,11 @@ def _site_log_pms_mapping_workbook_bytes(rows: List[Dict[str, Any]] | None = Non
                 ]
             )
     else:
-        sheet.append(["CV-101", "Concrete work", "Block A", "m3", "Contract A", "CONC", "Concrete PMS", "", ""])
+        sheet.append(["CV-101", "Concrete work", "Concrete", "CONC", "B1", "1.2.3", 120, "Block A", "m3", "Contract A", "CONC", "Concrete PMS", "", ""])
     sheet.freeze_panes = "A2"
     header_fill = PatternFill("solid", fgColor="EAF2FF")
     header_font = Font(bold=True, color="0B3A7A")
-    widths = [18, 34, 24, 14, 24, 22, 32, 16, 14]
+    widths = [18, 34, 18, 16, 14, 18, 14, 24, 14, 24, 22, 32, 16, 14]
     for col_index, width in enumerate(widths, start=1):
         sheet.column_dimensions[sheet.cell(row=1, column=col_index).column_letter].width = width
         cell = sheet.cell(row=1, column=col_index)
@@ -4405,6 +4471,11 @@ def upsert_site_log_activity_catalog(
     row.organization_contract_id = int(contract.id) if contract else None
     row.activity_code = activity_code
     row.activity_title = activity_title
+    row.activity_type = _norm(payload.activity_type) or None
+    row.activity_type_code = _norm(payload.activity_type_code) or None
+    row.floor = _norm(payload.floor) or None
+    row.wbs_code = _norm(payload.wbs_code) or None
+    row.default_quantity = float(payload.default_quantity) if payload.default_quantity is not None else None
     row.default_location = _norm(payload.default_location) or None
     row.default_unit = _norm(payload.default_unit) or None
     row.sort_order = int(payload.sort_order or 0)
@@ -4521,6 +4592,11 @@ async def import_site_log_activity_catalog(
         row.organization_contract_id = scope_contract_id
         row.activity_code = activity_code
         row.activity_title = activity_title
+        row.activity_type = _norm(raw_row.get("activity_type")) or None
+        row.activity_type_code = _norm(raw_row.get("activity_type_code")) or None
+        row.floor = _norm(raw_row.get("floor")) or None
+        row.wbs_code = _norm(raw_row.get("wbs_code")) or None
+        row.default_quantity = _activity_import_float(raw_row.get("default_quantity"))
         row.default_location = _norm(raw_row.get("default_location")) or None
         row.default_unit = _norm(raw_row.get("default_unit")) or None
         row.sort_order = _activity_import_int(raw_row.get("sort_order"), max_sort_order + (index * 10))

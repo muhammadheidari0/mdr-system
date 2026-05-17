@@ -36,24 +36,44 @@ def _create_log(
         "log_date": datetime.utcnow().strftime("%Y-%m-%dT00:00:00"),
         "weather": "CLEAR",
         "summary": f"{log_type} report",
-        "manpower_rows": [{"role_code": "WORKER", "role_label": "Worker", "claimed_count": claimed_count, "claimed_hours": claimed_hours, "sort_order": 0}],
+        "manpower_rows": [
+            {
+                "role_code": "WORKER",
+                "role_label": "Worker",
+                "work_location": "Zone M",
+                "work_floor": "B1",
+                "claimed_count": claimed_count,
+                "claimed_hours": claimed_hours,
+                "sort_order": 0,
+            }
+        ],
         "equipment_rows": [
             {
                 "equipment_code": "CRN",
                 "equipment_label": "Crane",
                 "work_location": "North bay",
+                "work_floor": "L2",
                 "claimed_count": 3,
                 "claimed_status": "ACTIVE",
                 "claimed_hours": 6.0,
                 "sort_order": 0,
             }
         ],
-        "activity_rows": [{"activity_code": "A-1", "activity_title": "Execution", "claimed_progress_pct": claimed_progress, "sort_order": 0}],
+        "activity_rows": [
+            {
+                "activity_code": "A-1",
+                "activity_title": "Execution",
+                "floor": "B2",
+                "claimed_progress_pct": claimed_progress,
+                "sort_order": 0,
+            }
+        ],
         "material_rows": [
             {
                 "material_code": "CEM",
                 "title": "Cement",
                 "consumption_location": "Batching plant",
+                "consumption_floor": "B3",
                 "unit": "bag",
                 "incoming_quantity": 4,
                 "consumed_quantity": 2,
@@ -205,8 +225,16 @@ def test_site_logs_reports_volume_variance_progress() -> None:
     manpower_body = manpower_res.json()
     assert manpower_body.get("report_section") == "manpower"
     assert any(column.get("key") == "role_label" for column in manpower_body.get("columns", []))
+    assert any(column.get("key") == "work_location" for column in manpower_body.get("columns", []))
+    assert any(column.get("key") == "work_floor" for column in manpower_body.get("columns", []))
     manpower_rows = manpower_body.get("data", [])
-    assert any(int(row.get("log_id") or 0) == daily_id and row.get("role_label") == "Worker" for row in manpower_rows)
+    assert any(
+        int(row.get("log_id") or 0) == daily_id
+        and row.get("role_label") == "Worker"
+        and row.get("work_location") == "Zone M"
+        and row.get("work_floor") == "B1"
+        for row in manpower_rows
+    )
     assert float(manpower_body.get("summary", {}).get("claimed_count") or 0) >= 24
 
     equipment_res = client.get(
@@ -218,7 +246,11 @@ def test_site_logs_reports_volume_variance_progress() -> None:
     assert equipment_body.get("report_section") == "equipment"
     assert any(column.get("key") == "equipment_label" for column in equipment_body.get("columns", []))
     assert any(column.get("key") == "work_location" for column in equipment_body.get("columns", []))
-    assert any(row.get("equipment_label") == "Crane" and row.get("work_location") == "North bay" for row in equipment_body.get("data", []))
+    assert any(column.get("key") == "work_floor" for column in equipment_body.get("columns", []))
+    assert any(
+        row.get("equipment_label") == "Crane" and row.get("work_location") == "North bay" and row.get("work_floor") == "L2"
+        for row in equipment_body.get("data", [])
+    )
 
     material_res = client.get(
         f"/api/v1/site-logs/reports/table?project_code={project_code}&discipline_code={discipline_code}&report_section=material&page_size=5000",
@@ -229,7 +261,13 @@ def test_site_logs_reports_volume_variance_progress() -> None:
     assert material_body.get("report_section") == "material"
     assert any(column.get("key") == "material_title" for column in material_body.get("columns", []))
     assert any(column.get("key") == "consumption_location" for column in material_body.get("columns", []))
-    assert any(row.get("material_title") == "Cement" and row.get("consumption_location") == "Batching plant" for row in material_body.get("data", []))
+    assert any(column.get("key") == "consumption_floor" for column in material_body.get("columns", []))
+    assert any(
+        row.get("material_title") == "Cement"
+        and row.get("consumption_location") == "Batching plant"
+        and row.get("consumption_floor") == "B3"
+        for row in material_body.get("data", [])
+    )
     assert float(material_body.get("summary", {}).get("incoming_quantity") or 0) >= 8
 
     activity_res = client.get(
@@ -240,7 +278,8 @@ def test_site_logs_reports_volume_variance_progress() -> None:
     activity_body = activity_res.json()
     assert activity_body.get("report_section") == "activity"
     assert any(column.get("key") == "activity_title" for column in activity_body.get("columns", []))
-    assert any(row.get("activity_title") == "Execution" for row in activity_body.get("data", []))
+    assert any(column.get("key") == "floor" for column in activity_body.get("columns", []))
+    assert any(row.get("activity_title") == "Execution" and row.get("floor") == "B2" for row in activity_body.get("data", []))
 
     verified_filter_res = client.get(
         f"/api/v1/site-logs/reports/table?project_code={project_code}&status_code=VERIFIED&organization_id={contractor.get('organization_id')}",
