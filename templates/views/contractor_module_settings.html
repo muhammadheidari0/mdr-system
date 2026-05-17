@@ -35,6 +35,20 @@
                     <span class="settings-nav-card-subtitle">کاتالوگ‌های گزارش پیمانکار</span>
                 </span>
             </button>
+            <button
+                type="button"
+                class="settings-nav-card"
+                data-contractor-settings-tab="workflow-statuses"
+                role="tab"
+                aria-selected="false"
+                aria-controls="contractor-settings-tab-workflow-statuses"
+            >
+                <span class="material-icons-round settings-nav-card-icon">account_tree</span>
+                <span class="settings-nav-card-copy">
+                    <span class="settings-nav-card-title">گردش کار RFI/NCR</span>
+                    <span class="settings-nav-card-subtitle">وضعیت‌های فرم‌ها</span>
+                </span>
+            </button>
         </div>
 
         <div class="settings-shell-panels">
@@ -55,6 +69,21 @@
                 </div>
 
                 <div id="contractorSiteLogCatalogsRoot" class="contractor-settings-catalogs-root"></div>
+            </section>
+            <section
+                id="contractor-settings-tab-workflow-statuses"
+                class="module-settings-tab-content"
+                data-contractor-settings-tab-content="workflow-statuses"
+                role="tabpanel"
+                aria-hidden="true"
+            >
+                <div class="general-settings-note general-settings-note-info">
+                    <span class="material-icons-round">info</span>
+                    <div>
+                        وضعیت‌های RFI، NCR و دستورکار از این بخش خوانده می‌شوند. اگر وضعیت ضروری مثل <code>DRAFT</code> برای RFI غیرفعال باشد، ثبت فرم انجام نمی‌شود.
+                    </div>
+                </div>
+                <div id="contractorWorkflowStatusesRoot" class="contractor-workflow-statuses-root contractor-settings-catalogs-root"></div>
             </section>
         </div>
     </div>

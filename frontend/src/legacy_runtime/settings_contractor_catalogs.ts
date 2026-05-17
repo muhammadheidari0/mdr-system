@@ -3,6 +3,7 @@
     const LEGACY_ENDPOINT = "/api/v1/settings/site-log-catalogs";
     const ACTIVITY_ENDPOINT = "/api/v1/settings/site-log-activity-catalog";
     const PMS_ENDPOINT = "/api/v1/settings/site-log-pms";
+    const WORKFLOW_STATUS_ENDPOINT = "/api/v1/settings/workflow-statuses";
 
     const CATALOG_SPECS = [
         {
@@ -130,7 +131,46 @@
             editingItem: null,
             bulkCatalog: null,
         },
+        workflow: {
+            items: [],
+            activeItemType: "RFI",
+            searchText: "",
+            statusFilter: "all",
+            editingItem: null,
+        },
     };
+
+    const WORKFLOW_ITEM_TYPES = [
+        { key: "RFI", label: "RFI", title: "درخواست اطلاعات فنی", icon: "help" },
+        { key: "NCR", label: "NCR", title: "عدم انطباق", icon: "report" },
+        { key: "WORK_INSTRUCTION", label: "Work Instruction", title: "دستورکار", icon: "assignment" },
+    ];
+
+    const REQUIRED_WORKFLOW_STATUSES = [
+        { item_type: "RFI", code: "DRAFT", label: "Draft", is_terminal: false, sort_order: 10, is_active: true },
+        { item_type: "RFI", code: "SUBMITTED", label: "Submitted", is_terminal: false, sort_order: 20, is_active: true },
+        { item_type: "RFI", code: "IN_REVIEW", label: "In Review", is_terminal: false, sort_order: 30, is_active: true },
+        { item_type: "RFI", code: "RETURNED", label: "Returned", is_terminal: false, sort_order: 40, is_active: true },
+        { item_type: "RFI", code: "ANSWERED", label: "Answered", is_terminal: false, sort_order: 50, is_active: true },
+        { item_type: "RFI", code: "CLOSED", label: "Closed", is_terminal: true, sort_order: 60, is_active: true },
+        { item_type: "RFI", code: "SUPERSEDED", label: "Superseded", is_terminal: true, sort_order: 70, is_active: true },
+        { item_type: "NCR", code: "ISSUED", label: "Issued", is_terminal: false, sort_order: 10, is_active: true },
+        { item_type: "NCR", code: "CONTRACTOR_REPLY", label: "Contractor Reply", is_terminal: false, sort_order: 20, is_active: true },
+        { item_type: "NCR", code: "ACCEPTED", label: "Accepted", is_terminal: false, sort_order: 30, is_active: true },
+        { item_type: "NCR", code: "REJECTED", label: "Rejected", is_terminal: false, sort_order: 40, is_active: true },
+        { item_type: "NCR", code: "RECTIFIED", label: "Rectified", is_terminal: false, sort_order: 50, is_active: true },
+        { item_type: "NCR", code: "VERIFIED", label: "Verified", is_terminal: false, sort_order: 60, is_active: true },
+        { item_type: "NCR", code: "CLOSED", label: "Closed", is_terminal: true, sort_order: 70, is_active: true },
+        { item_type: "NCR", code: "REOPENED", label: "Reopened", is_terminal: false, sort_order: 80, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "DRAFT", label: "Draft", is_terminal: false, sort_order: 10, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "SUBMITTED", label: "Submitted", is_terminal: false, sort_order: 20, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "IN_REVIEW", label: "In Review", is_terminal: false, sort_order: 30, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "APPROVED", label: "Approved", is_terminal: false, sort_order: 40, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "APPROVED_AS_NOTED", label: "Approved As Noted", is_terminal: false, sort_order: 50, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "REVISE_RESUBMIT", label: "Revise & Resubmit", is_terminal: false, sort_order: 60, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "REJECTED", label: "Rejected", is_terminal: false, sort_order: 70, is_active: true },
+        { item_type: "WORK_INSTRUCTION", code: "CLOSED", label: "Closed", is_terminal: true, sort_order: 80, is_active: true },
+    ];
 
     function esc(value) {
         return String(value == null ? "" : value)
@@ -163,6 +203,11 @@
 
     function reportCatalogKeys() {
         return CATALOG_SPECS.map((item) => item.key);
+    }
+
+    function normalizeContractorSettingsTab(value) {
+        const key = String(value || "").trim();
+        return ["report-settings", "workflow-statuses"].includes(key) ? key : "report-settings";
     }
 
     function normalizeReportCatalog(value) {
@@ -239,6 +284,10 @@
         return document.getElementById("contractorSiteLogCatalogsRoot");
     }
 
+    function getWorkflowRoot() {
+        return document.getElementById("contractorWorkflowStatusesRoot");
+    }
+
     function getActivityRoot() {
         return document.getElementById("consultantSiteLogActivityCatalogRoot");
     }
@@ -274,6 +323,52 @@
 
     function activityNextSortOrder() {
         const rows = asArray(state.activity.items);
+        if (!rows.length) return 10;
+        return rows.reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), 0) + 10;
+    }
+
+    function normalizeWorkflowItemType(value) {
+        const key = upper(value);
+        return WORKFLOW_ITEM_TYPES.some((item) => item.key === key) ? key : "RFI";
+    }
+
+    function activeWorkflowItemType() {
+        state.workflow.activeItemType = normalizeWorkflowItemType(state.workflow.activeItemType);
+        return state.workflow.activeItemType;
+    }
+
+    function workflowTypeSpec(itemType = activeWorkflowItemType()) {
+        const key = normalizeWorkflowItemType(itemType);
+        return WORKFLOW_ITEM_TYPES.find((item) => item.key === key) || WORKFLOW_ITEM_TYPES[0];
+    }
+
+    function workflowStatusFilterValue() {
+        const value = String(state.workflow.statusFilter || "all").trim().toLowerCase();
+        return ["all", "active", "inactive"].includes(value) ? value : "all";
+    }
+
+    function workflowRowsFor(itemType = activeWorkflowItemType()) {
+        const target = normalizeWorkflowItemType(itemType);
+        return asArray(state.workflow.items).filter((row) => normalizeWorkflowItemType(row.item_type) === target);
+    }
+
+    function filteredWorkflowRows() {
+        const query = norm(state.workflow.searchText).toLowerCase();
+        const status = workflowStatusFilterValue();
+        return workflowRowsFor().filter((row) => {
+            const isActive = Boolean(row.is_active);
+            if (status === "active" && !isActive) return false;
+            if (status === "inactive" && isActive) return false;
+            if (!query) return true;
+            const haystack = [row.item_type, row.code, row.label]
+                .map((value) => norm(value).toLowerCase())
+                .join(" ");
+            return haystack.includes(query);
+        });
+    }
+
+    function workflowNextSortOrder(itemType = activeWorkflowItemType()) {
+        const rows = workflowRowsFor(itemType);
         if (!rows.length) return 10;
         return rows.reduce((max, row) => Math.max(max, Number(row.sort_order || 0)), 0) + 10;
     }
@@ -1230,6 +1325,254 @@
         `;
     }
 
+    function renderWorkflowStatusTypeTabs() {
+        const active = activeWorkflowItemType();
+        return `
+            <div class="contractor-catalog-subtabs" role="tablist" aria-label="Workflow status item types">
+                ${WORKFLOW_ITEM_TYPES.map((item) => {
+                    const rows = workflowRowsFor(item.key);
+                    const isActive = active === item.key;
+                    return `
+                        <button
+                            type="button"
+                            class="contractor-catalog-subtab ${isActive ? "active" : ""}"
+                            data-contractor-catalog-action="switch-workflow-type"
+                            data-workflow-item-type="${esc(item.key)}"
+                            aria-selected="${isActive ? "true" : "false"}"
+                        >
+                            <span class="material-icons-round">${esc(item.icon)}</span>
+                            ${esc(item.label)}
+                            <small>${rows.length}</small>
+                        </button>
+                    `;
+                }).join("")}
+            </div>
+        `;
+    }
+
+    function workflowStatusFilterButton(status, label) {
+        const active = workflowStatusFilterValue() === status;
+        return `
+            <button
+                type="button"
+                class="contractor-catalog-filter-btn ${active ? "active" : ""}"
+                data-contractor-catalog-action="set-workflow-status-filter"
+                data-status-filter="${esc(status)}"
+            >
+                ${esc(label)}
+            </button>
+        `;
+    }
+
+    function renderWorkflowStatusRows(rows) {
+        if (!rows.length) {
+            return `<tr><td colspan="7" class="center-text muted" style="padding: 18px;">وضعیتی برای این فرم ثبت نشده است.</td></tr>`;
+        }
+        const canUpdate = canUpdateSettings();
+        return rows
+            .map((row) => {
+                const id = Number(row.id || 0);
+                const itemType = normalizeWorkflowItemType(row.item_type);
+                const code = upper(row.code || "");
+                const label = norm(row.label || "");
+                const sortOrder = Number(row.sort_order || 0);
+                const isTerminal = Boolean(row.is_terminal);
+                const isActive = Boolean(row.is_active);
+                const spec = workflowTypeSpec(itemType);
+                return `
+                    <tr>
+                        <td>${esc(spec.label)}</td>
+                        <td style="font-family: monospace;">${esc(code)}</td>
+                        <td>${esc(label)}</td>
+                        <td>${isTerminal ? `<span class="contractor-settings-status is-inactive">پایانی</span>` : `<span class="doc-muted-pill">باز</span>`}</td>
+                        <td>${sortOrder}</td>
+                        <td>${renderStatus(isActive)}</td>
+                        <td>
+                            ${canUpdate ? `
+                                <div class="module-crud-actions">
+                                    <button
+                                        type="button"
+                                        class="btn-archive-icon"
+                                        data-contractor-catalog-action="edit-workflow-status"
+                                        data-item-id="${id}"
+                                        data-workflow-item-type="${esc(itemType)}"
+                                        data-item-code="${esc(code)}"
+                                        data-item-label="${esc(label)}"
+                                        data-item-sort-order="${sortOrder}"
+                                        data-item-is-terminal="${isTerminal ? "1" : "0"}"
+                                        data-item-is-active="${isActive ? "1" : "0"}"
+                                        title="ویرایش"
+                                    >
+                                        <span class="material-icons-round">edit</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        class="btn-archive-icon"
+                                        data-contractor-catalog-action="toggle-workflow-status-active"
+                                        data-item-id="${id}"
+                                        data-workflow-item-type="${esc(itemType)}"
+                                        data-item-code="${esc(code)}"
+                                        data-item-label="${esc(label)}"
+                                        data-item-sort-order="${sortOrder}"
+                                        data-item-is-terminal="${isTerminal ? "1" : "0"}"
+                                        data-item-is-active="${isActive ? "1" : "0"}"
+                                        title="${isActive ? "غیرفعال‌سازی" : "فعال‌سازی"}"
+                                    >
+                                        <span class="material-icons-round">${isActive ? "visibility_off" : "restart_alt"}</span>
+                                    </button>
+                                </div>
+                            ` : `<span class="muted">فقط مشاهده</span>`}
+                        </td>
+                    </tr>
+                `;
+            })
+            .join("");
+    }
+
+    function renderWorkflowStatusForm() {
+        const editing = state.workflow.editingItem || {};
+        const itemType = normalizeWorkflowItemType(editing.item_type || activeWorkflowItemType());
+        const id = Number(editing.id || 0);
+        const sortOrder = Number(editing.sort_order ?? workflowNextSortOrder(itemType));
+        return `
+            <div class="module-crud-form-wrap contractor-settings-inline-form" data-workflow-status-form-scope>
+                <input type="hidden" data-workflow-status-field="id" value="${id > 0 ? id : ""}">
+                <div class="contractor-settings-inline-form-head">
+                    <div>
+                        <strong data-workflow-status-form-title>${id > 0 ? "ویرایش وضعیت" : "افزودن وضعیت جدید"}</strong>
+                        <span>کد وضعیت باید همان مقداری باشد که فرم‌ها در API استفاده می‌کنند؛ مثلا برای RFI مقدار <code>DRAFT</code> لازم است.</span>
+                    </div>
+                </div>
+                <div class="module-crud-form-grid">
+                    <div class="module-crud-form-field">
+                        <label>فرم</label>
+                        <select class="module-crud-select" data-workflow-status-field="item_type">
+                            ${WORKFLOW_ITEM_TYPES.map((item) => `<option value="${esc(item.key)}"${item.key === itemType ? " selected" : ""}>${esc(item.label)} - ${esc(item.title)}</option>`).join("")}
+                        </select>
+                    </div>
+                    <div class="module-crud-form-field">
+                        <label>کد وضعیت</label>
+                        <input class="module-crud-input" data-workflow-status-field="code" type="text" value="${esc(upper(editing.code || ""))}" placeholder="DRAFT">
+                    </div>
+                    <div class="module-crud-form-field">
+                        <label>عنوان نمایشی</label>
+                        <input class="module-crud-input" data-workflow-status-field="label" type="text" value="${esc(norm(editing.label || ""))}" placeholder="Draft">
+                    </div>
+                    <div class="module-crud-form-field">
+                        <label>ترتیب</label>
+                        <input class="module-crud-input" data-workflow-status-field="sort_order" type="number" min="0" step="1" value="${Number.isFinite(sortOrder) ? sortOrder : 0}">
+                    </div>
+                    <div class="module-crud-form-field contractor-settings-checkbox-field">
+                        <label class="contractor-settings-checkbox-wrap">
+                            <input data-workflow-status-field="is_terminal" type="checkbox"${editing.is_terminal ? " checked" : ""}>
+                            <span>وضعیت پایانی است</span>
+                        </label>
+                    </div>
+                    <div class="module-crud-form-field contractor-settings-checkbox-field">
+                        <label class="contractor-settings-checkbox-wrap">
+                            <input data-workflow-status-field="is_active" type="checkbox"${editing.is_active === false || editing.is_active === "0" ? "" : " checked"}>
+                            <span>فعال باشد</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="module-crud-form-actions">
+                    <button type="button" class="btn btn-secondary" data-contractor-catalog-action="reset-workflow-status-form">لغو</button>
+                    <button type="button" class="btn btn-primary" data-contractor-catalog-action="save-workflow-status">ذخیره وضعیت</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderWorkflowStatuses() {
+        const root = getWorkflowRoot();
+        if (!(root instanceof HTMLElement)) return;
+        const itemType = activeWorkflowItemType();
+        const rows = workflowRowsFor(itemType);
+        const filteredRows = filteredWorkflowRows();
+        const activeCount = rows.filter((row) => Boolean(row.is_active)).length;
+        const typeSpec = workflowTypeSpec(itemType);
+        root.innerHTML = `
+            <div class="contractor-report-settings">
+                ${renderWorkflowStatusTypeTabs()}
+                <section class="general-settings-card contractor-settings-card contractor-settings-card-wide">
+                    <div class="contractor-settings-card-head">
+                        <div>
+                            <h3 class="general-settings-title">
+                                <span class="material-icons-round">${esc(typeSpec.icon)}</span>
+                                وضعیت‌های ${esc(typeSpec.label)}
+                            </h3>
+                            <p class="contractor-settings-card-subtitle">این لیست در فرم‌های RFI/NCR/دستورکار برای انتخاب و اعتبارسنجی وضعیت استفاده می‌شود.</p>
+                        </div>
+                        <div class="contractor-settings-card-meta">
+                            <span class="doc-muted-pill">${rows.length} وضعیت</span>
+                            <span class="doc-muted-pill">${activeCount} فعال</span>
+                        </div>
+                    </div>
+
+                    <div class="contractor-catalog-toolbar">
+                        <div class="module-crud-form-field contractor-catalog-search">
+                            <label>جستجو</label>
+                            <input class="module-crud-input" data-workflow-status-search value="${esc(state.workflow.searchText)}" placeholder="کد یا عنوان وضعیت...">
+                        </div>
+                        <div class="contractor-catalog-filter-group" role="group" aria-label="فیلتر وضعیت‌ها">
+                            ${workflowStatusFilterButton("all", "همه")}
+                            ${workflowStatusFilterButton("active", "فعال")}
+                            ${workflowStatusFilterButton("inactive", "غیرفعال")}
+                        </div>
+                        ${canUpdateSettings() ? `
+                            <button type="button" class="btn btn-secondary contractor-catalog-add-btn" data-contractor-catalog-action="seed-workflow-statuses">
+                                <span class="material-icons-round">playlist_add_check</span>
+                                افزودن پیش‌فرض‌ها
+                            </button>
+                        ` : ""}
+                    </div>
+
+                    <div class="module-crud-table-wrap contractor-catalog-table-wrap">
+                        <table class="module-crud-table">
+                            <thead>
+                                <tr>
+                                    <th>فرم</th>
+                                    <th>کد</th>
+                                    <th>عنوان</th>
+                                    <th>نوع</th>
+                                    <th>ترتیب</th>
+                                    <th>وضعیت</th>
+                                    <th>عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>${renderWorkflowStatusRows(filteredRows)}</tbody>
+                        </table>
+                    </div>
+
+                    ${canUpdateSettings() ? renderWorkflowStatusForm() : ""}
+                </section>
+            </div>
+        `;
+    }
+
+    function switchContractorSettingsTab(requestedTab = "report-settings", shouldLoad = true) {
+        const tab = normalizeContractorSettingsTab(requestedTab);
+        state.contractor.activeMainTab = tab;
+        const view = document.getElementById("view-contractor-settings");
+        if (!(view instanceof HTMLElement)) return;
+        view.querySelectorAll("[data-contractor-settings-tab]").forEach((button) => {
+            const isActive = String(button.dataset.contractorSettingsTab || "") === tab;
+            button.classList.toggle("active", isActive);
+            button.setAttribute("aria-selected", isActive ? "true" : "false");
+        });
+        view.querySelectorAll("[data-contractor-settings-tab-content]").forEach((panel) => {
+            const isActive = String(panel.dataset.contractorSettingsTabContent || "") === tab;
+            panel.classList.toggle("active", isActive);
+            panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+        });
+        if (!shouldLoad) return;
+        if (tab === "workflow-statuses") {
+            void loadWorkflowStatuses(false);
+            return;
+        }
+        void loadLegacyCatalogs(false);
+    }
+
     function pmsStepsText(row) {
         return asArray(row.steps)
             .map((step) => `${upper(step.step_code || "")}|${norm(step.step_title || "")}|${Number(step.weight_pct || 0)}`)
@@ -1936,6 +2279,57 @@
         });
     }
 
+    function readWorkflowStatusFormValues(root = getWorkflowRoot()) {
+        const fieldValue = (name) => {
+            const field = root?.querySelector?.(`[data-workflow-status-field="${name}"]`);
+            if (field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement) {
+                return field.value;
+            }
+            return "";
+        };
+        const checkboxValue = (name, fallback = false) => {
+            const field = root?.querySelector?.(`[data-workflow-status-field="${name}"]`);
+            return field instanceof HTMLInputElement ? Boolean(field.checked) : fallback;
+        };
+        const id = Number(fieldValue("id") || 0);
+        const itemType = normalizeWorkflowItemType(fieldValue("item_type") || activeWorkflowItemType());
+        const sortOrder = Number(fieldValue("sort_order") || 0);
+        return {
+            id: id > 0 ? id : null,
+            item_type: itemType,
+            code: upper(fieldValue("code")),
+            label: norm(fieldValue("label")),
+            is_terminal: checkboxValue("is_terminal", false),
+            sort_order: Number.isFinite(sortOrder) ? sortOrder : 0,
+            is_active: checkboxValue("is_active", true),
+        };
+    }
+
+    function resetWorkflowStatusForm() {
+        state.workflow.editingItem = null;
+        renderWorkflowStatuses();
+    }
+
+    function openWorkflowStatusForm(values = {}) {
+        const itemType = normalizeWorkflowItemType(values.item_type || activeWorkflowItemType());
+        state.workflow.activeItemType = itemType;
+        state.workflow.editingItem = {
+            id: values.id || "",
+            item_type: itemType,
+            code: upper(values.code || ""),
+            label: norm(values.label || ""),
+            sort_order: values.sort_order ?? workflowNextSortOrder(itemType),
+            is_terminal: values.is_terminal === true || values.is_terminal === "1",
+            is_active: values.is_active !== false && values.is_active !== "0",
+        };
+        renderWorkflowStatuses();
+        const codeInput = getWorkflowRoot()?.querySelector?.('[data-workflow-status-field="code"]');
+        if (codeInput && typeof codeInput.focus === "function") {
+            codeInput.focus();
+            if (typeof codeInput.select === "function") codeInput.select();
+        }
+    }
+
     function openContractorCatalogDrawer(values = {}) {
         const spec = activeReportSpec();
         state.contractor.editingItem = {
@@ -2379,6 +2773,26 @@
         }
     }
 
+    async function loadWorkflowStatuses(force = false) {
+        if (state.loading && !force) return false;
+        const root = getWorkflowRoot();
+        if (!(root instanceof HTMLElement)) return false;
+        state.loading = true;
+        root.classList.add("is-loading");
+        try {
+            const payload = await request(WORKFLOW_STATUS_ENDPOINT);
+            state.workflow.items = asArray(payload.data);
+            renderWorkflowStatuses();
+            return true;
+        } catch (error) {
+            notify("error", error.message || "بارگذاری وضعیت‌های گردش کار ناموفق بود.");
+            return false;
+        } finally {
+            state.loading = false;
+            root.classList.remove("is-loading");
+        }
+    }
+
     async function loadActivityCatalog(force = false) {
         if (state.loading && !force) return false;
         const root = getActivityRoot();
@@ -2440,6 +2854,111 @@
         } catch (error) {
             notify("error", error.message || "ذخیره آیتم ناموفق بود.");
             return false;
+        }
+    }
+
+    async function saveWorkflowStatus(actionEl = null) {
+        if (!canUpdateSettings()) {
+            notify("error", "شما دسترسی تغییر تنظیمات را ندارید.");
+            return false;
+        }
+        const payload = readWorkflowStatusFormValues();
+        if (!payload.code) {
+            notify("error", "کد وضعیت الزامی است.");
+            return false;
+        }
+        if (!payload.label) {
+            notify("error", "عنوان وضعیت الزامی است.");
+            return false;
+        }
+        actionEl?.setAttribute?.("disabled", "disabled");
+        try {
+            await request(WORKFLOW_STATUS_ENDPOINT, {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+            state.workflow.activeItemType = payload.item_type;
+            state.workflow.editingItem = null;
+            notify("success", "وضعیت گردش کار ذخیره شد.");
+            await loadWorkflowStatuses(true);
+            return true;
+        } catch (error) {
+            notify("error", error.message || "ذخیره وضعیت گردش کار ناموفق بود.");
+            return false;
+        } finally {
+            actionEl?.removeAttribute?.("disabled");
+        }
+    }
+
+    async function toggleWorkflowStatusActive(actionEl) {
+        if (!canUpdateSettings()) {
+            notify("error", "شما دسترسی تغییر تنظیمات را ندارید.");
+            return false;
+        }
+        const itemType = normalizeWorkflowItemType(actionEl?.dataset?.workflowItemType || activeWorkflowItemType());
+        const payload = {
+            id: Number(actionEl?.dataset?.itemId || 0) || null,
+            item_type: itemType,
+            code: upper(actionEl?.dataset?.itemCode || ""),
+            label: norm(actionEl?.dataset?.itemLabel || ""),
+            is_terminal: String(actionEl?.dataset?.itemIsTerminal || "") === "1",
+            sort_order: Number(actionEl?.dataset?.itemSortOrder || 0),
+            is_active: String(actionEl?.dataset?.itemIsActive || "") !== "1",
+        };
+        if (!payload.code || !payload.label) {
+            notify("error", "اطلاعات وضعیت برای تغییر فعال/غیرفعال کامل نیست.");
+            return false;
+        }
+        actionEl?.setAttribute?.("disabled", "disabled");
+        try {
+            await request(WORKFLOW_STATUS_ENDPOINT, {
+                method: "POST",
+                body: JSON.stringify(payload),
+            });
+            state.workflow.activeItemType = itemType;
+            notify("success", payload.is_active ? "وضعیت فعال شد." : "وضعیت غیرفعال شد.");
+            await loadWorkflowStatuses(true);
+            return true;
+        } catch (error) {
+            notify("error", error.message || "تغییر وضعیت ناموفق بود.");
+            return false;
+        } finally {
+            actionEl?.removeAttribute?.("disabled");
+        }
+    }
+
+    async function seedRequiredWorkflowStatuses(actionEl = null) {
+        if (!canUpdateSettings()) {
+            notify("error", "شما دسترسی تغییر تنظیمات را ندارید.");
+            return false;
+        }
+        actionEl?.setAttribute?.("disabled", "disabled");
+        try {
+            const existingRows = asArray(state.workflow.items);
+            for (const required of REQUIRED_WORKFLOW_STATUSES) {
+                const existing = existingRows.find(
+                    (row) => normalizeWorkflowItemType(row.item_type) === required.item_type && upper(row.code) === required.code
+                );
+                await request(WORKFLOW_STATUS_ENDPOINT, {
+                    method: "POST",
+                    body: JSON.stringify({
+                        ...required,
+                        id: Number(existing?.id || 0) || null,
+                        label: existing?.label || required.label,
+                        sort_order: Number(existing?.sort_order ?? required.sort_order),
+                        is_terminal: Boolean(existing?.is_terminal ?? required.is_terminal),
+                        is_active: true,
+                    }),
+                });
+            }
+            notify("success", "وضعیت‌های پیش‌فرض RFI/NCR/دستورکار آماده شدند.");
+            await loadWorkflowStatuses(true);
+            return true;
+        } catch (error) {
+            notify("error", error.message || "افزودن وضعیت‌های پیش‌فرض ناموفق بود.");
+            return false;
+        } finally {
+            actionEl?.removeAttribute?.("disabled");
         }
     }
 
@@ -3033,14 +3552,22 @@
         if (state.bound) return;
 
         document.addEventListener("click", (event) => {
+            const contractorTab = event?.target?.closest?.(".settings-nav-card[data-contractor-settings-tab]");
+            if (contractorTab instanceof HTMLElement && contractorTab.closest("#view-contractor-settings")) {
+                switchContractorSettingsTab(contractorTab.dataset.contractorSettingsTab || "report-settings");
+                return;
+            }
+
             const actionEl = event?.target?.closest?.("[data-contractor-catalog-action]");
             if (!(actionEl instanceof HTMLElement)) return;
 
             const contractorRoot = getContractorRoot();
+            const workflowRoot = getWorkflowRoot();
             const activityRoot = getActivityRoot();
             const insideContractor = contractorRoot && (contractorRoot.contains(actionEl) || actionEl.closest("#view-contractor-settings"));
+            const insideWorkflow = workflowRoot && workflowRoot.contains(actionEl);
             const insideActivity = activityRoot && (activityRoot.contains(actionEl) || actionEl.closest("#consultant-settings-tab-site-log-activity"));
-            if (!insideContractor && !insideActivity) return;
+            if (!insideContractor && !insideWorkflow && !insideActivity) return;
 
             const action = String(actionEl.dataset.contractorCatalogAction || "").trim();
             const card = actionEl.closest("[data-catalog-type]");
@@ -3048,9 +3575,52 @@
             if (action === "refresh") {
                 if (insideActivity) {
                     void loadActivityCatalog(true);
+                } else if (state.contractor.activeMainTab === "workflow-statuses") {
+                    void loadWorkflowStatuses(true);
                 } else {
                     void loadLegacyCatalogs(true);
                 }
+                return;
+            }
+            if (insideWorkflow && action === "switch-workflow-type") {
+                state.workflow.activeItemType = normalizeWorkflowItemType(actionEl.dataset.workflowItemType || "");
+                state.workflow.searchText = "";
+                state.workflow.statusFilter = "all";
+                state.workflow.editingItem = null;
+                renderWorkflowStatuses();
+                return;
+            }
+            if (insideWorkflow && action === "set-workflow-status-filter") {
+                state.workflow.statusFilter = String(actionEl.dataset.statusFilter || "all");
+                renderWorkflowStatuses();
+                return;
+            }
+            if (insideWorkflow && action === "edit-workflow-status") {
+                openWorkflowStatusForm({
+                    id: Number(actionEl.dataset.itemId || 0),
+                    item_type: actionEl.dataset.workflowItemType || "",
+                    code: actionEl.dataset.itemCode || "",
+                    label: actionEl.dataset.itemLabel || "",
+                    sort_order: Number(actionEl.dataset.itemSortOrder || 0),
+                    is_terminal: String(actionEl.dataset.itemIsTerminal || "") === "1",
+                    is_active: String(actionEl.dataset.itemIsActive || "") === "1",
+                });
+                return;
+            }
+            if (insideWorkflow && action === "toggle-workflow-status-active") {
+                void toggleWorkflowStatusActive(actionEl);
+                return;
+            }
+            if (insideWorkflow && action === "reset-workflow-status-form") {
+                resetWorkflowStatusForm();
+                return;
+            }
+            if (insideWorkflow && action === "save-workflow-status") {
+                void saveWorkflowStatus(actionEl);
+                return;
+            }
+            if (insideWorkflow && action === "seed-workflow-statuses") {
+                void seedRequiredWorkflowStatuses(actionEl);
                 return;
             }
             if (insideActivity && action === "switch-activity-subtab") {
@@ -3314,6 +3884,22 @@
                     return;
                 }
             }
+            const workflowRoot = getWorkflowRoot();
+            if (workflowRoot instanceof HTMLElement && workflowRoot.contains(target)) {
+                if (target.matches("[data-workflow-status-search]")) {
+                    state.workflow.searchText = target instanceof HTMLInputElement ? target.value : "";
+                    renderWorkflowStatuses();
+                    const nextInput = getWorkflowRoot()?.querySelector?.("[data-workflow-status-search]");
+                    if (nextInput && typeof nextInput.focus === "function") {
+                        nextInput.focus();
+                        if (nextInput instanceof HTMLInputElement) {
+                            const end = nextInput.value.length;
+                            nextInput.setSelectionRange(end, end);
+                        }
+                    }
+                }
+                return;
+            }
             const contractorRoot = getContractorRoot();
             if (!(contractorRoot instanceof HTMLElement) || !contractorRoot.contains(target)) return;
             if (!target.matches("[data-contractor-catalog-search]")) return;
@@ -3334,6 +3920,19 @@
         document.addEventListener("change", (event) => {
             const target = event?.target;
             if (!(target instanceof HTMLElement)) return;
+            const workflowRoot = getWorkflowRoot();
+            if (workflowRoot instanceof HTMLElement && workflowRoot.contains(target)) {
+                if (target.matches('[data-workflow-status-field="item_type"]')) {
+                    const current = readWorkflowStatusFormValues(workflowRoot);
+                    if (!current.id) {
+                        const sortInput = workflowRoot.querySelector('[data-workflow-status-field="sort_order"]');
+                        if (sortInput instanceof HTMLInputElement) {
+                            sortInput.value = String(workflowNextSortOrder(current.item_type));
+                        }
+                    }
+                }
+                return;
+            }
             const root = getActivityRoot();
             if (!(root instanceof HTMLElement) || !root.contains(target)) return;
 
@@ -3384,7 +3983,9 @@
 
     async function initContractorSiteLogCatalogs(force = false) {
         bindActions();
-        return loadLegacyCatalogs(force);
+        const tab = normalizeContractorSettingsTab(state.contractor.activeMainTab || "report-settings");
+        switchContractorSettingsTab(tab, false);
+        return tab === "workflow-statuses" ? loadWorkflowStatuses(force) : loadLegacyCatalogs(force);
     }
 
     async function initConsultantSiteLogActivityCatalog(force = false) {
