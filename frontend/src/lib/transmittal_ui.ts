@@ -102,9 +102,12 @@ function bindTemplateActions(root: HTMLElement | null, deps: TransmittalTemplate
       closeTransmittalRowMenus(root);
       return;
     }
+    const action = String(actionEl.getAttribute("data-tr2-action") || "").trim().toLowerCase();
+    if (action === "doc-field-change") {
+      return;
+    }
     event.preventDefault();
 
-    const action = String(actionEl.getAttribute("data-tr2-action") || "").trim().toLowerCase();
     if (action !== "toggle-row-menu") {
       closeTransmittalRowMenus(root);
     }
