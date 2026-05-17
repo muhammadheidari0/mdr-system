@@ -33,6 +33,7 @@ from app.db.models import (
     TransmittalDoc,
 )
 from app.services.document_activity_service import log_document_activity
+from app.services.archive_service import create_archive_file_public_share
 from app.services.nextcloud_adapter import NextcloudAdapter
 from app.services.pdf_service import generate_transmittal_pdf
 from app.services.storage_policy import get_storage_integrations
@@ -389,61 +390,73 @@ def _active_file_public_share_url(
         return None
     if not bool(transmittal_doc.electronic_copy):
         return None
+    file_record = _transmittal_doc_archive_file(db, document, transmittal_doc)
+    return _active_public_share_url_for_file(db, file_record)
 
-    now = datetime.utcnow()
-    selected_kind = _normalize_transmittal_file_kind(getattr(transmittal_doc, "file_kind", "pdf"))
-    selected_file_filter = (
-        or_(
-            func.lower(func.coalesce(ArchiveFile.file_kind, "")) == "native",
-            ArchiveFile.original_name.ilike("%.dwg"),
-            ArchiveFile.original_name.ilike("%.dxf"),
-        )
-        if selected_kind == "native"
-        else or_(
-            func.lower(func.coalesce(ArchiveFile.file_kind, "")) == "pdf",
-            func.lower(func.coalesce(ArchiveFile.mime_type, "")).in_(["application/pdf", "application/x-pdf"]),
-            func.lower(func.coalesce(ArchiveFile.detected_mime, "")).in_(["application/pdf", "application/x-pdf"]),
-            ArchiveFile.original_name.ilike("%.pdf"),
-        )
-    )
-    base_query = (
+
+def _active_public_share_url_for_file(db: Session, file_record: Optional[ArchiveFile]) -> Optional[str]:
+    file_id = int(getattr(file_record, "id", 0) or 0)
+    if file_id <= 0:
+        return None
+    row = (
         db.query(ArchiveFilePublicShare)
-        .join(ArchiveFile, ArchiveFilePublicShare.file_id == ArchiveFile.id)
-        .join(DocumentRevision, ArchiveFile.revision_id == DocumentRevision.id)
         .filter(
-            DocumentRevision.document_id == document.id,
-            ArchiveFile.deleted_at.is_(None),
+            ArchiveFilePublicShare.file_id == file_id,
             ArchiveFilePublicShare.provider == "nextcloud",
             ArchiveFilePublicShare.revoked_at.is_(None),
-            or_(ArchiveFilePublicShare.expires_at.is_(None), ArchiveFilePublicShare.expires_at > now),
-            selected_file_filter,
+            or_(ArchiveFilePublicShare.expires_at.is_(None), ArchiveFilePublicShare.expires_at > datetime.utcnow()),
         )
-    )
-
-    revision = _safe_text(transmittal_doc.revision, "").strip()
-    if revision:
-        exact_share = (
-            base_query.filter(or_(DocumentRevision.revision == revision, ArchiveFile.revision == revision))
-            .order_by(
-                ArchiveFilePublicShare.created_at.desc(),
-                ArchiveFile.uploaded_at.desc(),
-                ArchiveFilePublicShare.id.desc(),
-            )
-            .first()
-        )
-        if exact_share is not None:
-            return exact_share.share_url
-
-    latest_share = (
-        base_query.order_by(
-            DocumentRevision.created_at.desc(),
-            ArchiveFile.uploaded_at.desc(),
-            ArchiveFilePublicShare.created_at.desc(),
-            ArchiveFilePublicShare.id.desc(),
-        )
+        .order_by(ArchiveFilePublicShare.created_at.desc(), ArchiveFilePublicShare.id.desc())
         .first()
     )
-    return latest_share.share_url if latest_share is not None else None
+    return str(row.share_url or "").strip() if row is not None else None
+
+
+def _ensure_file_public_share_url(
+    db: Session,
+    user: User,
+    document: Optional[MdrDocument],
+    transmittal_doc: TransmittalDoc,
+) -> Optional[str]:
+    if document is None or not bool(getattr(transmittal_doc, "electronic_copy", False)):
+        return None
+    file_record = _transmittal_doc_archive_file(db, document, transmittal_doc)
+    active_url = _active_public_share_url_for_file(db, file_record)
+    if active_url:
+        return active_url
+    file_id = int(getattr(file_record, "id", 0) or 0)
+    if file_id <= 0:
+        return None
+    try:
+        payload = create_archive_file_public_share(db, file_id, user)
+    except Exception:
+        db.rollback()
+        return None
+    public_share = payload.get("public_share") if isinstance(payload, dict) else None
+    if isinstance(public_share, dict):
+        created_url = str(public_share.get("url") or "").strip()
+        if created_url:
+            return created_url
+    return _active_public_share_url_for_file(db, file_record)
+
+
+def _ensure_transmittal_e_copy_public_shares(db: Session, user: User, tr: Transmittal) -> None:
+    doc_codes = [str(doc.document_code or "").strip() for doc in tr.docs if str(doc.document_code or "").strip()]
+    if not doc_codes:
+        return
+    try:
+        mdr_rows = {
+            row.doc_number: row
+            for row in db.query(MdrDocument).filter(MdrDocument.doc_number.in_(sorted(set(doc_codes)))).all()
+        }
+    except Exception:
+        db.rollback()
+        return
+    for doc in list(tr.docs):
+        try:
+            _ensure_file_public_share_url(db, user, mdr_rows.get(str(doc.document_code or "").strip()), doc)
+        except Exception:
+            db.rollback()
 
 
 def _download_link_html(url: Optional[str]) -> str:
@@ -1399,6 +1412,8 @@ def create_transmittal(
                     },
                 )
         db.commit()
+        db.refresh(new_tr)
+        _ensure_transmittal_e_copy_public_shares(db, user, new_tr)
         return {
             "ok": True,
             "transmittal_no": transmittal_id,
@@ -1519,6 +1534,8 @@ def edit_transmittal(
         )
 
     db.commit()
+    db.refresh(tr)
+    _ensure_transmittal_e_copy_public_shares(db, user, tr)
     return {"ok": True, "id": tr.id, "status": state, "message": "Transmittal draft updated"}
 
 
@@ -1563,6 +1580,8 @@ def issue_transmittal(
                 },
             )
     db.commit()
+    db.refresh(tr)
+    _ensure_transmittal_e_copy_public_shares(db, user, tr)
     return {"ok": True, "id": tr.id, "status": STATE_ISSUED, "message": "Transmittal issued"}
 
 
@@ -1629,6 +1648,7 @@ def print_preview_transmittal(
     if not tr:
         raise HTTPException(status_code=404, detail="Transmittal not found")
     enforce_scope_access(db, user, project_code=tr.project_code)
+    _ensure_transmittal_e_copy_public_shares(db, user, tr)
     return HTMLResponse(_render_transmittal_print_html(db, tr))
 
 
@@ -1642,6 +1662,7 @@ def download_cover_sheet(
     if not tr:
         raise HTTPException(status_code=404, detail="Transmittal not found")
     enforce_scope_access(db, user, project_code=tr.project_code)
+    _ensure_transmittal_e_copy_public_shares(db, user, tr)
     state_record = _get_transmittal_state_record(tr)
     state = state_record["status"]
     watermark_text = None
@@ -1674,6 +1695,7 @@ def download_transmittal_package(
     if not tr:
         raise HTTPException(status_code=404, detail="Transmittal not found")
     enforce_scope_access(db, user, project_code=tr.project_code)
+    _ensure_transmittal_e_copy_public_shares(db, user, tr)
     package_file = _build_transmittal_package_zip(db, tr)
     filename = f"Transmittal_{_zip_safe_segment(tr.id, 'transmittal')}_package.zip"
 

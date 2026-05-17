@@ -18,6 +18,7 @@ from app.db.models import (
 )
 from app.db.session import SessionLocal
 from app.main import app
+from app.services import archive_service as archive_service_module
 from tests.auth_helpers import get_auth_headers
 from tests.auth_helpers import get_test_admin_credentials
 from tests.site_logs_helpers import create_scoped_user_and_login, ensure_project_discipline
@@ -192,6 +193,163 @@ def test_transmittal_download_cover_returns_pdf_attachment():
                     synchronize_session=False
                 )
                 db.query(ArchiveFile).filter(ArchiveFile.id == archive_file_id).delete(synchronize_session=False)
+            if revision_id > 0:
+                db.query(DocumentRevision).filter(DocumentRevision.id == revision_id).delete(synchronize_session=False)
+            if document_id > 0:
+                document = db.query(MdrDocument).filter(MdrDocument.id == document_id).first()
+                if document is not None:
+                    db.delete(document)
+            db.commit()
+
+
+def test_transmittal_e_copy_auto_creates_pdf_and_native_public_links(monkeypatch):
+    headers = _auth_headers()
+    project_code, discipline_code = ensure_project_discipline(client, headers)
+    doc_number = f"{project_code}-AUTO-SHARE-{uuid.uuid4().hex[:6].upper()}-TGEN"
+    document_id = 0
+    revision_id = 0
+    archive_file_ids: list[int] = []
+
+    class FakeNextcloudShareAdapter:
+        def __init__(self) -> None:
+            self.create_calls: list[str] = []
+
+        def file_exists(self, remote_path: str) -> bool:
+            return True
+
+        def create_public_share(self, remote_relative_path: str, **kwargs):
+            del kwargs
+            self.create_calls.append(remote_relative_path)
+            suffix = remote_relative_path.strip("/").replace("/", "-").replace(".", "-")
+            return {
+                "provider_share_id": f"share-{len(self.create_calls)}",
+                "token": f"token-{len(self.create_calls)}",
+                "url": f"https://cloud.example.test/s/{suffix}",
+            }
+
+    adapter = FakeNextcloudShareAdapter()
+    monkeypatch.setattr(archive_service_module, "_nextcloud_adapter", lambda _db: adapter)
+
+    with SessionLocal() as db:
+        document = MdrDocument(
+            doc_number=doc_number,
+            doc_title_e="Auto Share Native Test",
+            doc_title_p="Auto Share Native Test",
+            subject="Auto Share Native Test",
+            project_code=project_code,
+            discipline_code=discipline_code,
+            mdr_code="E",
+            package_code=None,
+            block="T",
+            level_code=None,
+        )
+        db.add(document)
+        db.flush()
+        document_id = int(document.id or 0)
+        revision = DocumentRevision(
+            document_id=document_id,
+            revision="00",
+            status="IFA",
+            file_name=f"{doc_number}.pdf",
+            file_path=f"webdav://Archive/{doc_number}.pdf",
+        )
+        db.add(revision)
+        db.flush()
+        revision_id = int(revision.id or 0)
+        for file_kind, ext, mime in (
+            ("pdf", "pdf", "application/pdf"),
+            ("native", "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        ):
+            archive_file = ArchiveFile(
+                revision_id=revision_id,
+                original_name=f"{doc_number}.{ext}",
+                stored_path=f"webdav://Archive/{doc_number}.{ext}",
+                mime_type=mime,
+                detected_mime=mime,
+                size_bytes=2048,
+                storage_backend="nextcloud",
+                file_kind=file_kind,
+                is_primary=file_kind == "pdf",
+                revision="00",
+                status="IFA",
+            )
+            db.add(archive_file)
+            db.flush()
+            archive_file_ids.append(int(archive_file.id or 0))
+        db.commit()
+
+    transmittal_no = ""
+    try:
+        create_response = client.post(
+            "/api/v1/transmittal/create",
+            headers={**headers, "Content-Type": "application/json"},
+            json={
+                "project_code": project_code,
+                "sender": "O",
+                "receiver": "C",
+                "subject": f"auto-share-{uuid.uuid4().hex[:6]}",
+                "notes": "",
+                "documents": [
+                    {
+                        "document_code": doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "pdf",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    },
+                    {
+                        "document_code": doc_number,
+                        "revision": "00",
+                        "status": "IFA",
+                        "file_kind": "native",
+                        "electronic_copy": True,
+                        "hard_copy": False,
+                    },
+                ],
+            },
+        )
+        assert create_response.status_code == 200, create_response.text
+        transmittal_no = create_response.json()["transmittal_no"]
+        assert sorted(adapter.create_calls) == sorted([f"/Archive/{doc_number}.pdf", f"/Archive/{doc_number}.xlsx"])
+
+        preview_response = client.get(f"/api/v1/transmittal/{transmittal_no}/print-preview", headers=headers)
+        assert preview_response.status_code == 200, preview_response.text
+        assert f"https://cloud.example.test/s/Archive-{doc_number}-pdf" in preview_response.text
+        assert f"https://cloud.example.test/s/Archive-{doc_number}-xlsx" in preview_response.text
+        assert "Native" in preview_response.text
+
+        with SessionLocal() as db:
+            shares = (
+                db.query(ArchiveFilePublicShare)
+                .filter(ArchiveFilePublicShare.file_id.in_(archive_file_ids))
+                .all()
+            )
+            assert len(shares) == 2
+
+            db.query(ArchiveFilePublicShare).filter(ArchiveFilePublicShare.file_id.in_(archive_file_ids)).delete(
+                synchronize_session=False
+            )
+            db.commit()
+
+        adapter.create_calls.clear()
+        preview_retry_response = client.get(f"/api/v1/transmittal/{transmittal_no}/print-preview", headers=headers)
+        assert preview_retry_response.status_code == 200, preview_retry_response.text
+        assert sorted(adapter.create_calls) == sorted([f"/Archive/{doc_number}.pdf", f"/Archive/{doc_number}.xlsx"])
+        assert f"https://cloud.example.test/s/Archive-{doc_number}-pdf" in preview_retry_response.text
+        assert f"https://cloud.example.test/s/Archive-{doc_number}-xlsx" in preview_retry_response.text
+    finally:
+        with SessionLocal() as db:
+            if transmittal_no:
+                db.query(TransmittalDoc).filter(TransmittalDoc.transmittal_id == transmittal_no).delete(
+                    synchronize_session=False
+                )
+                db.query(Transmittal).filter(Transmittal.id == transmittal_no).delete(synchronize_session=False)
+            if archive_file_ids:
+                db.query(ArchiveFilePublicShare).filter(ArchiveFilePublicShare.file_id.in_(archive_file_ids)).delete(
+                    synchronize_session=False
+                )
+                db.query(ArchiveFile).filter(ArchiveFile.id.in_(archive_file_ids)).delete(synchronize_session=False)
             if revision_id > 0:
                 db.query(DocumentRevision).filter(DocumentRevision.id == revision_id).delete(synchronize_session=False)
             if document_id > 0:
